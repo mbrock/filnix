@@ -637,7 +637,9 @@ intl/DcgettextRwlock.v
 intl/DcgettextReal.v
 intl/DcgettextRealV.v
 getopt/GetoptSkipTest.v
+hello/HelloVersionLits.v
 hello/HelloGlibcDebts.v
+hello/HelloEmitBug.v
 libio/LibioCleanupFpLock.v
 libio/LibioDefaultXsputn.v
 libio/LibioFlushOver.v

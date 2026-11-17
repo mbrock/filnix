@@ -161,18 +161,28 @@ Definition hello_ro_rest (ge : genv) (o : hello_objs) : iProp Σ :=
   liveq DfracDiscarded (ho_eb o) (ho_ereg o) ∗
   HelloGlibcDebts.AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
-  [∗ list] s ∈ hello_lits_rest, str_ro (sym_ptr ge s).
+  ([∗ list] s ∈ hello_lits_rest, str_ro (sym_ptr ge s)) ∗ version_ro ge.
 
-(** The two missing shares complete Hello's read-only promise. *)
+(** The read-only objects that startup gives main are persistent. The
+    proof goes conjunct by conjunct, because one search over the whole
+    conjunction takes minutes. *)
+#[global] Instance hello_ro_rest_persistent ge o : Persistent (hello_ro_rest ge o).
+Proof using Type.
+  rewrite /hello_ro_rest /version_ro /str_ro /AllocLogic.tcache_idle /liveq /pcellq /icellq.
+  repeat (apply bi.sep_persistent; [apply _|]). apply _.
+Qed.
+
+(** The two missing shares and the formatter's tables complete Hello's
+    read-only promise. *)
 Lemma hello_ro_join ge o :
-  hello_ro_rest ge o ∗ str_ro (sym_ptr ge "hello#str.69") ∗ str_ro (sym_ptr ge "hello#parse_options.longopts.64") ⊢
-  hello_ro ge o.
+  hello_ro_rest ge o ∗ str_ro (sym_ptr ge "hello#str.69") ∗ str_ro (sym_ptr ge "hello#parse_options.longopts.64") ∗
+  hello_printf_ro ge ⊢ hello_ro ge o.
 Proof using Type.
   rewrite /hello_ro_rest /hello_ro.
-  iIntros "((#A & #B & #C & #D & #E & #F & #G & #H & #I & #J & #L) & #S & #T)".
+  iIntros "((#A & #B & #C & #D & #E & #F & #G & #H & #I & #J & #L & #V) & #S & #T & #P)".
   iSplitR; [iExact "A"|]. iSplitR; [iExact "B"|]. iSplitR; [iExact "C"|]. iSplitR; [iExact "D"|].
   iSplitR; [iExact "E"|]. iSplitR; [iExact "F"|]. iSplitR; [iExact "G"|]. iSplitR; [iExact "H"|].
-  iSplitR; [iExact "I"|]. iSplitR; [iExact "J"|].
+  iSplitR; [iExact "I"|]. iSplitR; [iExact "J"|]. iSplit; [|iSplit; [iExact "V"|iExact "P"]].
   iEval (rewrite -(take_drop 10 hello_lits_rest)) in "L". iEval (rewrite big_sepL_app) in "L".
   iDestruct "L" as "[L1 L2]".
   change hello_lits with (take 10 hello_lits_rest ++ ["hello#str.69"%string; "hello#parse_options.longopts.64"%string] ++
@@ -211,7 +221,7 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
         [45; 45] [45] [45; 87; 32] (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)) ∗
         □ X)%I /\
     (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
-      hello_ro_rest ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
+      hello_ro_rest ge o ∗ hello_printf_ro ge ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
       ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
       hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
   labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
@@ -243,11 +253,11 @@ Proof.
     rewrite /tab /hello_tab_ps. iDestruct (pts_app with "HT") as "[Ht HT]".
     iDestruct (pts_app with "HT") as "[L1 HT]". iDestruct (pts_app with "HT") as "[L2 HT]".
     iDestruct (pts_app with "HT") as "[L3 HT]". iDestruct (pts_app with "HT") as "[L4 L5]".
-    iMod (Hpre with "H1") as "(#Hro & Hps & Hav & Hn & HX & Hio & Hpv & Hgo)".
+    iMod (Hpre with "H1") as "(#Hro & #Hpr & Hps & Hav & Hn & HX & Hio & Hpv & Hgo)".
     iMod (hello_table_own_ro with "Ht L1 L2 L3 L4 L5") as "(#Htab & #Hos & #Hts)"; try assumption.
     iModIntro. rewrite E69 Etb.
     iSplitR; [iApply hello_ro_join; rewrite E69 Etb; iSplitR; [iExact "Hro"|];
-      iSplitR; [iExists s_optstring; iExact "Hos" | iExact "Hts"]|].
+      iSplitR; [iExists s_optstring; iExact "Hos"|]; iSplitR; [iExact "Hts" | iExact "Hpr"]|].
     iSplitL "Hps"; [iExact "Hps"|]. iSplitL "Hav"; [iExact "Hav"|]. iSplitL "Hn"; [iExact "Hn"|].
     iSplitL "HX"; [iExact "HX"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
     iSplitL "Hgo"; [iExact "Hgo"|]. iSplitR; [iExact "Htab" | iExact "Hos"].

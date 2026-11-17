@@ -9,7 +9,7 @@
     state. Whoever discharges the contracts chooses that state, and the
     initial heap must supply it. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic HelloName.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv FileIdle SysWrappers AtexitLogic AllocLogic
-  LibioLogic HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc.
+  LibioLogic HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
 From Glibc Require FileInv LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -153,6 +153,26 @@ Definition hello_stdio_wide (out : iProp Σ) : iProp Σ :=
   (stream_life (ho_in o) ∗ exit_stream false (ho_in o)) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
   tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
 
+(** The strings of gnulib's version text and bug-report lines, listed
+    in [HelloVersionLits](HelloVersionLits.v), are read-only and hold
+    their exact bytes. *)
+Definition version_ro : iProp Σ :=
+  [∗ list] ns ∈ version_lits, word_string DfracDiscarded (sym_ptr ge ns.1) ns.2.
+
+(** The strings are persistent. *)
+Global Instance version_ro_persistent : Persistent version_ro.
+Proof using Type. rewrite /version_ro. apply _. Qed.
+
+(** The formatter's read-only tables, [printf_ro], read only the
+    linked program, so any world gives the same tables. This world is
+    the one [hello_ro] names them in. *)
+Definition ro_world : os_world := mkOsWorld None null None [] (fun _ => false) null false.
+Definition hello_printf_ro : iProp Σ := printf_ro (glibc_program := program_of ro_world glibc_os_registry ge).
+
+(** The tables are persistent. *)
+Global Instance hello_printf_ro_persistent : Persistent hello_printf_ro.
+Proof using Type. apply printf_ro_persistent. Qed.
+
 (** Calls share read-only ownership of the linked constants, stream
     pointers, errno lifetime, allocator prelude and program literals. *)
 Definition hello_ro : iProp Σ :=
@@ -162,11 +182,11 @@ Definition hello_ro : iProp Σ :=
   liveq DfracDiscarded (ho_eb o) (ho_ereg o) ∗
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
-  [∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s).
+  ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro.
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof using Type. rewrite /hello_ro /str_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type. rewrite /hello_ro /version_ro /str_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)

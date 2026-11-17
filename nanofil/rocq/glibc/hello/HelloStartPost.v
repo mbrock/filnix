@@ -28,7 +28,7 @@ From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic HelloName.
-From Glibc Require Import OsBlocks OsWorld FileInv FileIdle WordString LibioStdfiles HelloGlibcDebts
+From Glibc Require Import OsBlocks OsWorld FileInv FileIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
 From Glibc Require AllocLogic AtexitLogic ExitRun HelloGlibcJoin.
@@ -55,8 +55,13 @@ Lemma hello_lit_heads : take 3 ((fun ns : string * list Z * list Z => (ns.1.1, n
    ("glibc_getopt#str.145", [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84])]%string.
 Proof. vm_compute. reflexivity. Qed.
 
-(** The other strings are Hello's literals. *)
-Lemma hello_lit_rest_names : (fun ns : string * list Z * list Z => ns.1.1) <$> drop 3 hello_lit_strs = hello_lits_rest.
+(** The next strings are Hello's literals. *)
+Lemma hello_lit_rest_names : (fun ns : string * list Z * list Z => ns.1.1) <$> take 24 (drop 3 hello_lit_strs) = hello_lits_rest.
+Proof. vm_compute. reflexivity. Qed.
+
+(** The last strings are those of gnulib's version text, with the bytes
+    that [version_lits] gives them. *)
+Lemma hello_lit_version : (fun ns : string * list Z * list Z => (ns.1.1, ns.1.2)) <$> drop 24 (drop 3 hello_lit_strs) = version_lits.
 Proof. vm_compute. reflexivity. Qed.
 
 Section post.
@@ -261,6 +266,7 @@ Proof using Hi.
   iDestruct (hello_alloc_kept_own with "Lmp Hal") as "HM". iMod (tcache_idle_discard with "HM") as "#HM".
   iDestruct (hello_exit_kept_own with "Hex") as "[Hxi Hxl]". iMod (hello_lits_own with "Hlit") as "Hlit".
   iEval (rewrite -(take_drop 3 hello_lit_strs) big_sepL_app) in "Hlit". iDestruct "Hlit" as "[Hl3 #Hlr]".
+  iEval (rewrite -(take_drop 24 (drop 3 hello_lit_strs)) big_sepL_app) in "Hlr". iDestruct "Hlr" as "[#Hlr #Hlv]".
   iEval (cbv [take hello_lit_strs]; cbn [big_opL fst snd]) in "Hl3".
   iDestruct "Hl3" as "(#Hlp & #Htp & #Hkey & _)". iEval (rewrite E3) in "Hlp". iEval (rewrite E4) in "Htp".
   iEval (rewrite /hello_io_kept_ps pts_concat; cbn [big_opL]) in "Hio".
@@ -288,8 +294,10 @@ Proof using Hi.
       iSplitR; [iExact "Lsb"|iExact "Hsb"]. }
     iSplitR; [iExact "Lso"|]. iSplitR; [iExact "Hso"|]. iSplitR; [iExact "Lse"|]. iSplitR; [iExact "Hse"|].
     iSplitR; [iExact "Leb"|]. iSplitR; [iExact "HM"|]. iSplitR; [iExact "Hlp"|]. iSplitR; [iExact "Htp"|].
-    rewrite -hello_lit_rest_names big_sepL_fmap. iApply (big_sepL_mono with "Hlr").
-    iIntros (k ns _) "H". iExists _. iExact "H". }
+    iSplit.
+    { rewrite -hello_lit_rest_names big_sepL_fmap. iApply (big_sepL_mono with "Hlr").
+      iIntros (k ns _) "H". iExists _. iExact "H". }
+    rewrite /version_ro -hello_lit_version big_sepL_fmap. iExact "Hlv". }
   iSplitR; [iExact "Hkey"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
   iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Lpn Hpn Lnb Hnb Lns Hns".

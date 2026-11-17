@@ -127,7 +127,7 @@ Lemma wp_proper_name s f e ls lab d v rest j Ψ :
 Proof using Lb.
   intros Hs Hv. iIntros "#Hro Hio Hpv HK".
   iAssert (str_ro (sym_ptr ge s)) as "#Hs".
-  { iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hl)".
+  { iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & [Hl _])".
     iApply (big_sepL_elem_of with "Hl"). apply list_elem_of_In. revert Hs. cbn. tauto. }
   iApply (wp_call_ptr w0 ge _ _ True%I (fun q => ⌜q = sym_ptr ge s⌝)%I with "[//]");
     [|cbn; rewrite Hv; reflexivity|].

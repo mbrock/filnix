@@ -47,10 +47,6 @@ Local Abbreviation cc := (ct_cc hello_ct_objs).
     calling thread. *)
 Context (tb : Z) (Hself : ow_self w = mkPtr tb (Obj tb)).
 
-(** The read-only objects that startup gives main are persistent. *)
-#[global] Instance hello_ro_rest_persistent ge o : Persistent (hello_ro_rest ge o).
-Proof using Type. rewrite /hello_ro_rest /str_ro /AllocLogic.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
-
 (** A thread id's cell splits into a half and two quarters, one for
     each lock. *)
 Lemma bytes_thirds b o xs :

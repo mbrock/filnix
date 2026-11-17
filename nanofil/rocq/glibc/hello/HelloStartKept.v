@@ -21,7 +21,7 @@ From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap StringLogic MemLogic.
-From Glibc Require Import FileInv StrlenLogic WordString HelloGetoptTable HelloGetoptStart StartImageUnique
+From Glibc Require Import HelloVersionLits FileInv StrlenLogic WordString HelloGetoptTable HelloGetoptStart StartImageUnique
   HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad HelloImageCtors
   HelloImageStart HelloStartKeptAlloc.
 Import ListNotations.
@@ -79,10 +79,10 @@ Definition hello_io_kept_ps : list (piece * pval) :=
 (** ## The strings *)
 
 (** Main passes these strings to its callees: the two strings of
-    gnulib's program name module, getopt's environment key and the
-    other literals of Hello. *)
+    gnulib's program name module, getopt's environment key, the other
+    literals of Hello and the strings of gnulib's version text. *)
 Definition hello_lit_names : list string :=
-  ["progname#str.3"; "progname#str.4"; "glibc_getopt#str.145"] ++ hello_lits_rest.
+  ["progname#str.3"; "progname#str.4"; "glibc_getopt#str.145"] ++ hello_lits_rest ++ map fst version_lits.
 
 (** ## The check on a smaller copy
 

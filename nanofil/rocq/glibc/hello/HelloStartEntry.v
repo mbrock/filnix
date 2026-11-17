@@ -95,7 +95,7 @@ Lemma hello_main_entry debt (E : iProp Σ) T dom envp es sz tb av ar p0 ps y z :
   (G ⊢ tcb_cleanup_inv (ow_self w) ∗ (tcb_cleanup_inv (ow_self w) -∗ G)) ->
   (hello_stdio w hge o ∗ hd_priv w hge o debt ⊢ G ∗ (G -∗ hello_stdio w hge o ∗ hd_priv w hge o debt)) ->
   hello_start_main_res img_globals fr w av ar p0 ps y z -∗ icell tb CutoffLogic.off_stackblock_size sz -∗
-  hd_priv w hge o debt ==∗
+  hd_priv w hge o debt -∗ hello_printf_ro hge ==∗
   fs_pre (hello_main_spec w hge o debt hello_exit0) (hello_main_x av ar p0 ps y z sz).
 Proof using Hi Hk.
   intros G Hself Hdg Hld Hln Hg.
@@ -162,7 +162,7 @@ Proof using Hi Hk.
   assert (Etb : sym_ptr hge "hello#parse_options.longopts.64" =
     mkPtr (img_a "hello#parse_options.longopts.64") (Ro (img_a "hello#parse_options.longopts.64"))) by num.
   rewrite /hello_start_main_res.
-  iIntros "(Hro & #HN & Hst & #Hargs & Hav & Hnc & HX0 & Hio & Hgo) Hsz Hpv".
+  iIntros "(Hro & #HN & Hst & #Hargs & Hav & Hnc & HX0 & Hio & Hgo) Hsz Hpv #Hpr".
   iMod (CutoffLogic.stack_size_own (glibc_program := Pw) tb sz Hself with "Hsz") as "#HC".
   rewrite /hello_start_ps /hello_image_tab_ps /hello_image_getopt_ps /hello_tab_ps /getopt_start_ps.
   iDestruct (pts_app with "Hst") as "[Ht Hst]". iDestruct (pts_app with "Ht") as "[Ht L]".
@@ -179,7 +179,7 @@ Proof using Hi Hk.
   iModIntro. rewrite /hello_main_x. cbn [fs_pre hello_main_spec hello_main_pre].
   iSplit; [iPureIntro; split; [cbn [length] in *; lia|exact Hloop]|].
   iSplitL "Hro"; [iApply hello_ro_join; rewrite E69 Etb; iSplitL "Hro"; [iExact "Hro"|];
-    iSplitR; [iExists s_optstring; iExact "Hos" | iExact "Hts"]|].
+    iSplitR; [iExists s_optstring; iExact "Hos"|]; iSplitR; [iExact "Hts" | iExact "Hpr"]|].
   iSplitR; [iExact "Hargs"|].
   iSplitL "Havl Hcl"; [iSplit; [iPureIntro; split_and!; assumption|]; iSplitL "Havl"; [iExact "Havl"|iExact "Hcl"]|].
   iSplitL "Hnc"; [iExact "Hnc"|]. iSplitL "HX0"; [iExact "HX0"|]. iSplitL "Hio"; [iExact "Hio"|].

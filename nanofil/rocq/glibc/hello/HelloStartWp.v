@@ -320,7 +320,10 @@ Proof using Hi.
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
   iMod (hello_hd_build (final_world w0 tb) fr tb Hself sv t Ht0 with "Hpriv [Les] [Hes] Htid Hrr Loc")
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
-  iMod (Hx with "[Gh2 Hrest]") as "HX"; [iDestruct "Gh2" as "[A B]"; iFrame "A B Hrest"|].
+  iDestruct "Hrest" as "[Hgl #Hgro]".
+  iAssert (hello_printf_ro hge) as "#Hpr".
+  { iDestruct "Hgro" as "(_ & _ & _ & _ & _ & _ & _ & _ & Hp)". iExact "Hp". }
+  iMod (Hx with "[Gh2 Hgl]") as "HX"; [iDestruct "Gh2" as "[A B]"; iFrame "A B Hgl Hgro"|].
   pose (gg := getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp).
   pose (gs := getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env)).
@@ -344,7 +347,7 @@ Proof using Hi.
     (hello_getopt_E (final_world w0 tb) fr tb)
     (fun mid q => gg ∗ (gs ∗ hello_getopt_T (final_world w0 tb) fr tb mid q))%I
     hello_dom envp (env_entries m env) sz tb avb (reg_of m avb) p0 ps p0 (short_name p0 q0s) Hself Rd Rl Hln Hg
-    with "[Hres] Hsz Hpv") as "Hpre"; [rewrite /hello_start_main_res; iSplitR; [iExact "Hrr" | iExact "Hres"]|].
+    with "[Hres] Hsz Hpv Hpr") as "Hpre"; [rewrite /hello_start_main_res; iSplitR; [iExact "Hrr" | iExact "Hres"]|].
   iModIntro. iExact "Hpre".
 Qed.
 

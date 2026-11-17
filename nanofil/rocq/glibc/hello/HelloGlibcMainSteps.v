@@ -176,7 +176,7 @@ Qed.
 (** A literal of `main` is a read-only string. *)
 Lemma lit_ro s : In s hello_lits -> hello_ro ge o ⊢ str_ro (sym_ptr ge s).
 Proof using Type.
-  intros Hs. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hl)".
+  intros Hs. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & [Hl _])".
   iApply (big_sepL_elem_of with "Hl"). apply list_elem_of_In. exact Hs.
 Qed.
 
