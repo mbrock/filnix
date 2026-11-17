@@ -242,6 +242,7 @@ startup/StartCtorRunner.v
 startup/StartCallMainSpec.v
 startup/StartCallMain.v
 startup/StartLibcStartMain.v
+startup/StartOwn.v
 startup/StartMainHiAtexit.v
 startup/StartCtorCalls.v
 startup/StartCtorChain.v
