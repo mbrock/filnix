@@ -15,8 +15,10 @@
     The hook uses the second fact only when its user assumes that the
     leaf 4 list ends.
 
-    Like the interpreter, this hook is not proved sound, and its
-    soundness proof is being written. *)
+    A wrong answer from the hook would make the interpreter accept a
+    function that traps. The proof in [CpuHook](CpuHook.v) rules that
+    out. It shows that each answer is a valid step of the program
+    logic. *)
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics AbsRun.
@@ -41,6 +43,9 @@ Definition disjoint4 (ps : list (nat * Z)) : bool :=
     end in
   go ps.
 
+(** The function [cpuid_out] replaces the four bytes of one result
+    block by the given abstract bytes. It answers nothing when the
+    block does not fit a writable object of the state. *)
 Definition cpuid_out (st : astate) (p : nat * Z) (bytes : list abyte) : option astate :=
   let (o, k) := p in
   let* ob := get_obj st o in
@@ -49,6 +54,30 @@ Definition cpuid_out (st : astate) (p : nat * Z) (bytes : list abyte) : option a
                                 (splice k (repeat XAny 4) (o_aux ob)))))
   else None.
 
+(** The checker knows which leaf a call asks for only when the range
+    of the leaf argument is a single number. *)
+Definition is_leaf (st : astate) (l : aint) (n : Z) : bool :=
+  let (lo, hi) := rng st l in (lo =? n) && (hi =? n).
+
+(** The EAX block of an answer holds four unknown bytes. A leaf 4
+    answer for a symbolic subleaf says more when the leaf 4 list is
+    assumed to end. Its first byte then has no cache type at the last
+    subleaf. *)
+Definition eax_bytes (leaf4 : bool) (st : astate) (l : aint) (subleaf : option aint) : list abyte :=
+  match subleaf with
+  | Some (S s) => if leaf4 && is_leaf st l 4 then [BEnd s last4 31; BR; BR; BR] else repeat BR 4
+  | _ => repeat BR 4
+  end.
+
+(** The ECX block of a leaf 1 answer holds the XSAVE bit in bit 3 of
+    its last byte, and the guard stands for that bit. *)
+Definition ecx_bytes (st : astate) (l : aint) : list abyte :=
+  if is_leaf st l 1 then [BR; BR; BR; BGuard 3] else repeat BR 4.
+
+(** The function [acpuid] is the checker's step for a CPUID call. It
+    wants the four result pointers at exact offsets of objects in the
+    state, and it wants the four blocks to lie apart. It then rewrites
+    the blocks in the order EAX, EBX, ECX, EDX. *)
 Definition acpuid (leaf4 : bool) (leaf : aval) (subleaf : option aint) (ps : list aval) (st : astate) : option astate :=
   match leaf, ps with
   | VI l, [pa; pb; pc; pd] =>
@@ -57,14 +86,9 @@ Definition acpuid (leaf4 : bool) (leaf : aval) (subleaf : option aint) (ps : lis
       let* c := exact_ptr st pc in
       let* d := exact_ptr st pd in
       if disjoint4 [a; b; c; d] then
-        let one := match rng st l with (1, 1) => true | _ => false end in
-        let ends := match rng st l, subleaf with
-                    | (4, 4), Some (S s) => if leaf4 then [BEnd s last4 31; BR; BR; BR] else repeat BR 4
-                    | _, _ => repeat BR 4
-                    end in
-        let* st1 := cpuid_out st a ends in
+        let* st1 := cpuid_out st a (eax_bytes leaf4 st l subleaf) in
         let* st2 := cpuid_out st1 b (repeat BR 4) in
-        let* st3 := cpuid_out st2 c (if one then [BR; BR; BR; BGuard 3] else repeat BR 4) in
+        let* st3 := cpuid_out st2 c (ecx_bytes st l) in
         cpuid_out st3 d (repeat BR 4)
       else None
   | _, _ => None

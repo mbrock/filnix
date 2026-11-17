@@ -188,6 +188,7 @@ zsys/OsFstat.v
 zsys/OsIoctl.v
 zsys/OsLseek.v
 zsys/OsThread.v
+zsys/OsCpuid.v
 zsys/OsWrite.v
 zsys/OsWritev.v
 zsys/OsStartCalls.v
@@ -254,6 +255,16 @@ getopt/GetoptInitial.v
 getopt/GetoptInitialize.v
 getopt/GetoptLongSession.v
 hi_atexit/HiAtexitGe.v
+startup/CpuRules.v
+startup/CpuHook.v
+startup/CpuSetup.v
+startup/CpuSound.v
+startup/CpuTunables.v
+startup/CpuIntelWord.v
+startup/CpuVendors.v
+startup/CpuCache.v
+startup/CpuParts.v
+startup/CpuInit.v
 hi_atexit/HiAtexitImage.v
 hi_atexit/HiAtexitPrepare.v
 libio/ExitRunLoop.v
