@@ -985,6 +985,7 @@ hello/HelloImageLoad.v
 hello/HelloImageKept.v
 hello/HelloImageKeptRefused.v
 hello/HelloImageGettextLink.v
+hello/HelloGetoptDiagImage.v
 hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
 hello/HelloImageCtors.v

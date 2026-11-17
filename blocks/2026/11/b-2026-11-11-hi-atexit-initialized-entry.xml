@@ -1,7 +1,6 @@
 <block id="b-2026-11-11-hi-atexit-initialized-entry" kind="milestone" actor="T-01a1cb7d-8d6c-75a8-8221-93498972dd8e" model="openai/gpt-6.1-sol" created="2026-11-11T21:32:37Z">
   <title>Hi_atexit is safe from an explicitly initialized main entry</title>
-  <about path="nanofil/rocq/glibc/hi_atexit/HiAtexitSafe.v" symbol="hi_atexit_never_panics"/>
-  <about path="nanofil/rocq/glibc/hi_atexit/HiAtexitPrepare.v"/>
+  <about path="nanofil/rocq/glibc/hi_atexit"/>
   <tag name="formal"/>
   <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-glibc .#checks.x86_64-linux.nanofil-docs">
     <p>The linked hi_atexit program is safe once main starts with the initialized state described here. All its library calls are proved, including error paths. The proof checks that the required memory actually exists and that no field is owned twice.</p>
