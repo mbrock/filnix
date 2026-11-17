@@ -104,6 +104,34 @@ Definition cut_edge (keys : key_table) (live_in : list (name * list name)) (f : 
   let phis := match find_block (TAtom l) (fn_blocks f) with Some b => b_phis b | None => [] end in
   cut_sig_of keys (add_new (phi_sources phis from) live).
 
+(** The rows for the edges into one block have the same proof after
+    the phi nodes have run, so a proof wants to write that part once.
+    After the phi nodes, each C variable that they pick is held in the
+    temporary that its phi node defines, on every way in. The function
+    [phi_dests] pairs each temporary that a phi node reads along the
+    edge from the block named from with the temporary that the node
+    defines. *)
+Definition phi_dests (phis : list phi) (from : string) : list (name * name) :=
+  flat_map (fun ph => match ph with
+                      | Phi d _ pairs => match lookup (TAtom from) pairs with Some (Tmp t) => [(t, d)] | _ => [] end
+                      end) phis.
+
+(** A proof of a block's body needs to know which temporary holds
+    each C variable after the phi nodes have run. The function
+    [cut_body] computes that list. It takes the temporaries that are
+    live at the label, and it adds each temporary that a phi node
+    defines. A phi node copies a value from the temporary that it
+    reads. So the temporary that it defines holds the same C variable,
+    and the list gives it the same key. The function follows the phi
+    nodes along one edge, which is the edge from the block named from.
+    A proof picks any edge and uses the result for every edge. *)
+Definition cut_body (keys : key_table) (live_in : list (name * list name)) (f : func) (l from : string) : cut_sig :=
+  let live := match lookup (TAtom l) live_in with Some ts => ts | None => [] end in
+  let phis := match find_block (TAtom l) (fn_blocks f) with Some b => b_phis b | None => [] end in
+  let edge := cut_edge keys live_in f l from in
+  app (filter (fun '(t, _) => existsb (name_eqb t) live) edge)
+    (flat_map (fun '(t, d) => match lookup t edge with Some k => [(d, k)] | None => [] end) (phi_dests phis from)).
+
 Fixpoint cut_in (table : list (string * cut_sig)) (l : string) : cut_sig :=
   match table with
   | [] => []

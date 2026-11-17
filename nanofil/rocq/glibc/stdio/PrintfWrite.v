@@ -69,6 +69,15 @@ Definition loop_from_start : cut_sig :=
 Definition loop_from_copy : cut_sig :=
   Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L15" "L68".
 
+(** Each round of the loop starts with phi nodes, which copy `c: s`
+    and `c: count` into two fixed temporaries. So the rest of the block
+    reads the same temporaries whichever way the function came in. The
+    definition [loop_body] lists the temporaries that the rest of the
+    block reads. The proof below treats that rest once and uses it for
+    both rows of the block. *)
+Definition loop_body : cut_sig :=
+  Eval vm_compute in cut_body S.temp_keys S.live_in glibc___printf_buffer_write "L15" "start".
+
 (** The function also reaches the block that copies the bytes from
     two blocks. It comes from the block `L43` when the window has room
     for all the bytes that are left, and from the block `L67` when the
@@ -78,6 +87,11 @@ Definition copy_from_count : cut_sig :=
   Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L43".
 Definition copy_from_room : cut_sig :=
   Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
+
+(** After the phi node of that block, one temporary holds the number
+    of bytes to copy on both ways in. *)
+Definition copy_body : cut_sig :=
+  Eval vm_compute in cut_body S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
 
 Section write.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -167,14 +181,14 @@ Local Ltac row_simpl :=
 (** Every block of the function meets its row. *)
 Lemma write_table : ⊢ blocks_hold glibc___printf_buffer_write write_blocks.
 Proof using Type*.
-  apply blocks_close. iIntros "#IH". repeat iSplit; [| | | | | | done]; iModIntro.
+  apply blocks_close. iIntros "#IH".
   (* L15: a round of the loop returns when no byte is left. Otherwise it looks for a free byte in the
      window, and it calls the flushing function when the window is full. The two rows for this block
-     have the same proof. *)
-  2,3: (
-  iIntros ([bb dq [pa pc] str d cnt] e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
-  iDestruct "H" as "[%Hok [Hout Hstr]]"; block_enter_from Hfrom;
-  rewrite (Z.mod_small cnt (2 ^ 64)); [|lia]; step; branch_eqn E;
+     share this proof of the block's body. *)
+  iAssert (body_triple glibc___printf_buffer_write "L15" loop_body wr_in wr_vals wr_pre wr_post) as "#Hloop".
+  { iModIntro;
+  iIntros ([bb dq [pa pc] str d cnt] e Φ) "%He H HK"; row_simpl; c_env_open He;
+  iDestruct "H" as "[%Hok [Hout Hstr]]"; body_start glibc___printf_buffer_write "L15"; step; branch_eqn E;
   [step; iApply wp_ret_void; iNext; iApply "HK"; iFrame "Hstr Hout"; done|];
   step; iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)"; buf_open "Hbuf";
   step; check "Hl"; load_window "Hl" "Hptr" "Hwl"; step; check "Hl"; load_window "Hl" "Hend" "Hwl";
@@ -190,14 +204,16 @@ Proof using Type*.
   [step; iApply wp_ret_void; iNext; iApply "HK"; iFrame "Hstr"; iSplit; [done|];
    iExists breg2, w2, written2, mode2; iFrame "Hbuf HR"; done|];
   goto_block "IH" "HK" 3%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) str d cnt) breg2 w2 written2 mode2 0);
-  row_simpl; iFrame "Hstr HR Hbuf"; iPureIntro; branch_fact E; lia).
+  row_simpl; iFrame "Hstr HR Hbuf"; iPureIntro; branch_fact E; lia. }
   (* L68: the round copies the bytes, advances the buffer's write pointer and the pointer into the
      string, and goes back to the start of the loop. The string lends the bytes to memcpy, and the
-     buffer lends its window. The first row copies every byte that is left. *)
-  3,4: (
-  iIntros ([[bb dq [pa pc] str d cnt] breg w written mode m] e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
+     buffer lends its window. The two rows for this block share this proof of the block's body. *)
+  iAssert (body_triple glibc___printf_buffer_write "L68" copy_body wr_room copy_vals
+    (fun y => ⌜copy_ok y⌝ ∗ room_pre y)%I (fun y => wr_post (wm_in y))) as "#Hcopy".
+  { iModIntro;
+  iIntros ([[bb dq [pa pc] str d cnt] breg w written mode m] e Φ) "%He H HK"; row_simpl; c_env_open He;
   iDestruct "H" as "(%Hcp & (%Hok & %Hcnt & %Hroom & %Hmd) & Hbuf & HR & Hstr)"; destruct Hcp as [Hcp Hm0]; destruct Hm0;
-  buf_open "Hbuf"; unfold pwin_ok in Hw; block_enter_from Hfrom; step; load_window "Hl" "Hptr" "Hwl";
+  buf_open "Hbuf"; unfold pwin_ok in Hw; body_start glibc___printf_buffer_write "L68"; step; load_window "Hl" "Hptr" "Hwl";
   iDestruct (word_string_lend dq (mkPtr pa pc) str d m with "Hstr")
     as (sb sreg ys) "((%Hlen & %Hc & %Hsb8 & %Hsa & %Hsend & %Hsp & %Hy) & Hsl & Hys & Hback)"; [lia..|];
   cbn [ptr_addr ptr_cap] in *; destruct Hlen;
@@ -213,7 +229,26 @@ Proof using Type*.
   goto_block "IH" "HK" 2%nat with (WrIn bb dq (mkPtr pa pc) str (d + Z.of_nat (length ys)) _);
   row_simpl; iFrame "Hstr"; iSplit; [iPureIntro; lia|];
   out_close "HR" with (PWin (pw_obj w) (pw_reg w) (pw_base w) (pw_ptr w + Z.of_nat (length ys)) (pw_end w));
-  unfold pwin_ok; cbn [pw_obj pw_reg pw_base pw_ptr pw_end]; lia).
+  unfold pwin_ok; cbn [pw_obj pw_reg pw_base pw_ptr pw_end]; lia. }
+  repeat iSplit; [| | | | | | done]; iModIntro.
+  (* The two rows for L15 take the step into the block and use its body. *)
+  2,3: (iIntros ([bb dq [pa pc] str d cnt] e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
+        iDestruct "H" as "[%Hok H]"; block_enter_from Hfrom; rewrite (Z.mod_small cnt (2 ^ 64)); [|lia];
+        iApply ("Hloop" $! (WrIn bb dq (mkPtr pa pc) str d cnt) with "[] [H] HK");
+        [iPureIntro; c_env_close | row_simpl; iFrame "H"; done]).
+  (* The two rows for L68 do the same. The first row copies every byte that is left. *)
+  3: (iIntros (y e from Φ) "%Hfrom %He [[%Hcp %Hm] H] HK"; row_simpl; c_env_open He;
+      iDestruct "H" as "[%Hroom H]"; block_enter_from Hfrom;
+      rewrite (Z.mod_small (wr_count (wm_in y)) (2 ^ 64)); [|lia];
+      iApply ("Hcopy" $! y with "[] [H] HK");
+      [iPureIntro; row_simpl; rewrite Hm; c_env_close
+      | cbn beta; row_simpl; iFrame "H"; iPureIntro; split; assumption]).
+  3: (iIntros (y e from Φ) "%Hfrom %He [%Hcp H] HK"; row_simpl; c_env_open He;
+      iDestruct "H" as "[%Hroom H]"; block_enter_from Hfrom;
+      rewrite (Z.mod_small (wm_copy y) (2 ^ 64)); [|lia];
+      iApply ("Hcopy" $! y with "[] [H] HK");
+      [iPureIntro; row_simpl; c_env_close
+      | cbn beta; row_simpl; iFrame "H"; iPureIntro; split; assumption]).
   - (* start: a buffer that has failed takes no bytes. *)
     iIntros ([bb dq [pa pc] str d cnt] e from Φ) "_ %He H HK".
     row_simpl. c_env_open He. iDestruct "H" as "[%Hok [Hout Hstr]]".

@@ -102,6 +102,31 @@ Proof using Type.
   iApply ("Hb" $! x e from Φ with "[] [] HP HK"); iPureIntro; [exact Hfrom | exact He].
 Qed.
 
+(** ## A block's body *)
+
+(** A block with several ways in has one row for each, and the rows
+    differ only in what the phi nodes read. What the function does
+    after the phi nodes is the same on every way in. A proof states
+    that part once as the block's body and derives each row from it by
+    the step into the block. *)
+
+(** The function [body_at] gives the point of a function just after
+    the phi nodes of the block l. *)
+Definition body_at (f : func) (l : string) : point :=
+  match find_block (TAtom l) (fn_blocks f) with
+  | Some b => Exec (TAtom l) (b_insts b) (b_jump b)
+  | None => Enter (TAtom l) None
+  end.
+
+(** A body meets its specification when the function runs safely from
+    the point after the phi nodes, in every environment that fits the
+    signature. The signature names the temporaries that the phi nodes
+    define, as [cut_body] computes it. *)
+Definition body_triple (f : func) (l : string) (sig : cut_sig) (B : Type) (vals : B -> list (string * word))
+    (pre : B -> iProp Σ) (post : B -> outcome -> iProp Σ) : iProp Σ :=
+  □ ∀ x e Φ, ⌜c_env sig e (vals x)⌝ -∗ pre x -∗ (∀ r, post x r -∗ Φ r) -∗
+      WP (ERun (mkFrame f e [] None (body_at f l)) : sexpr) {{ Φ }}.
+
 (** ## From the entry block to the function's contract *)
 
 (** A function meets a contract when the first row of its table
@@ -205,6 +230,12 @@ Ltac block_enter :=
 Ltac block_enter_from H :=
   cbn [edge_fits bs_from] in H; lazymatch type of H with ?from = _ => subst from end;
   iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
+
+(** The tactic [body_start] f l shows the instructions of the body of
+    the block l of the function f, at the start of a proof of that
+    body. *)
+Ltac body_start f l :=
+  let v := eval vm_compute in (body_at f l) in change (body_at f l) with v.
 
 (** The tactic [branch_eqn] takes a conditional jump and leaves one
     goal for each edge, with the condition's value as the hypothesis E. *)
