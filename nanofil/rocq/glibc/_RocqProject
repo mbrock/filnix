@@ -283,6 +283,7 @@ nptl/CutoffLogic.v
 nptl/RdlockLogic.v
 nptl/RwunlockLogic.v
 nptl/WrlockLogic.v
+nptl/RwunlockWrite.v
 zsys/OsRegistry.v
 getopt/GetoptBytes.v
 getopt/GetoptState.v
