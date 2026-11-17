@@ -22,7 +22,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import StartState StartLibcStartMain.
+From Glibc Require Import OsWorld OsStart StartState StartLibcStartMain.
 From Glibc Require FileInv.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -751,4 +751,43 @@ Proof.
     destruct (start_bases_heap _ _ _ _ _ Ha He Hv b Hin) as (n & reg & [E' _] & Hk & _).
     rewrite (Hr _ _ E) in E'. injection E' as ->.
     apply (proj1 (Forall_forall _ _) Hn reg (proj2 (list_elem_of_In _ _) (proj1 (object_region_in _ _ _ E))) Hk).
+Qed.
+
+(** ## What the OS world knows when a run begins
+
+    Calling errno's setter twice, or before its handler exists, makes
+    the runtime panic, so the proof must know which startup calls have
+    already happened. It keeps that record in one [[ghost-state]] key.
+    When the runtime first calls into glibc, none of those calls has
+    happened, and the lemmas below give the proof that first record. *)
+
+(** A run must begin with the key saying that startup has done nothing
+    yet. This list holds key k with no cookie and no handler. *)
+Definition start_key_ps (k : Z) : list (piece * pval) := [(PName k, start_ghost (mkPtr 0 CNone) false false)].
+
+(** The ghost key agrees with any memory. *)
+Lemma start_key_agree m k : all_agree m (start_key_ps k).
+Proof. cbn. split; exact I. Qed.
+
+(** The ghost key is no piece of the runtime's objects, which all
+    belong to memory objects. *)
+Lemma start_key_heap_apart k m argv env av ps :
+  forall l, l ∈ (start_key_ps k).*1 -> l ∉ (start_heap_ps m argv env av ps).*1.
+Proof.
+  apply (keys_apart (fun l => piece_obj l = None)
+                    (fun l => exists b, piece_obj l = Some b /\ In b (start_bases argv env av))).
+  - apply List.Forall_cons; [reflexivity | apply List.Forall_nil].
+  - apply start_heap_objs.
+  - intros l E (b & E' & _). rewrite E in E'. discriminate.
+Qed.
+
+(** Adequacy asks that the first world and memory satisfy the world
+    interpretation. Startup's interpretation accepts them when the key
+    says that nothing has happened yet, as in every start state. *)
+Lemma start_os_wi g w0 w k m h :
+  start_os g w0 w -> h !! PName k = Some (start_ghost (mkPtr 0 CNone) false false) -> os_wi_start w0 k m w h.
+Proof.
+  intros (_ & Hfd & ->) Hk. exists (mkPtr 0 CNone), false, false. split; [exact Hk|].
+  split; [reflexivity|]. split; [intros p E; discriminate E|]. split; [|exact Hfd].
+  intros Hz. cbn in Hz. lia.
 Qed.

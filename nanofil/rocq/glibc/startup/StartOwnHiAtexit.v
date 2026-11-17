@@ -157,3 +157,15 @@ Proof.
   apply List.Forall_forall. intros r Hr E. rewrite forallb_forall in C. specialize (C r Hr).
   rewrite E in C. discriminate.
 Qed.
+
+(** The run must own the image's memory and the startup key at once,
+    so they must not collide. They cannot, because the image's lists
+    hold only memory, and the key is not memory. *)
+Lemma hi_start_key_apart k : forall l, l ∈ (start_key_ps k).*1 -> l ∉ hi_start_all_ps.*1.
+Proof.
+  assert (C : forallb (fun lv => match lv.1 with PName _ => false | _ => true end) hi_start_all_ps = true)
+    by (vm_cast_no_check (eq_refl true)).
+  intros l Hl Hin. cbn in Hl. apply list_elem_of_singleton in Hl as ->.
+  apply list_elem_of_fmap in Hin as ([l v] & E & Hin). cbn in E. subst l.
+  rewrite forallb_forall in C. specialize (C _ (proj1 (list_elem_of_In _ _) Hin)). discriminate C.
+Qed.
