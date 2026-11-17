@@ -8,12 +8,15 @@
 
     ## Constructors as parameters
 
-    The table's order is not known when the runner is proved, because the
-    starting memory may list the constructors in any order. So the
-    contract does not name them. For each name in the table it takes what
-    the constructor needs, what it gives back, and the promise that a
-    call to it turns the one into the other. The final assembly keeps that
-    promise for each real constructor by using its own contract. *)
+    Nobody knows in advance the order in which the constructors run,
+    because the starting memory may list them in any order. So the
+    contract does not name them. Two constructors may also need the same
+    memory: both `c: _IO_stdfiles_init` and `c: check_stdfiles_vtables`
+    need the lives of the standard streams. So the contract follows one
+    assertion K through all the calls, and K is told which constructors
+    have already run. Each call must turn K before it into K after it.
+    The final assembly shows this for each real constructor from its own
+    contract. *)
 
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -86,16 +89,22 @@ Definition cr_table (c : cr_in) : iProp Σ :=
   ([∗ list] i ↦ p ∈ cr_ptrs c, pcellq (cr_dq c) (cr_tb c) (24 + 8 * Z.of_nat i) p) ∗
   live_capq (cr_adq c) (ptr_cap (cr_argv c)) (cr_avreg c) ∗ live_capq (cr_adq c) (ptr_cap (cr_env c)) (cr_enreg c).
 
+(** The runner calls the constructors one after another, so each call
+    must leave memory as the next call expects it. The call of the i-th
+    constructor starts from K applied to the first i names and ends in K
+    applied to the first i + 1 names. *)
+Definition ctor_chain_ok (xs : list word) (K : list name -> iProp Σ) (order : list name) : Prop :=
+  forall i g, nth_error order i = Some g -> ctor_call_ok g xs (K (firstn i order)) (K (firstn (S i) order)).
+
 (** A call of the runner with a clear flag sets the flag and runs every
-    constructor of the table once, in table order. Each constructor
-    turns its own precondition cP g into its postcondition cQ g. *)
+    constructor of the table once, in table order. The assertion K goes
+    from no constructor run to all of them run. *)
 Definition ctor_runner_spec : fspec Σ :=
-  FSpec (cr_in * (name -> iProp Σ) * (name -> iProp Σ)) (fun _ => [])
-    (fun '(c, cP, cQ) =>
-       ⌜cr_ok c /\ Forall (fun g => ctor_call_ok g (cr_args c) (cP g) (cQ g)) (cr_order c)⌝ ∗
-       live (cr_fl c) (cr_flreg c) ∗ ibyte (cr_fl c) 0 0 ∗ cr_table c ∗ [∗ list] g ∈ cr_order c, cP g)%I
-    (fun '(c, cP, cQ) r =>
-       ⌜r = RetVoid⌝ ∗ live (cr_fl c) (cr_flreg c) ∗ ibyte (cr_fl c) 0 1 ∗ cr_table c ∗
-       [∗ list] g ∈ cr_order c, cQ g)%I.
+  FSpec (cr_in * (list name -> iProp Σ)) (fun _ => [])
+    (fun '(c, K) =>
+       ⌜cr_ok c /\ ctor_chain_ok (cr_args c) K (cr_order c)⌝ ∗
+       live (cr_fl c) (cr_flreg c) ∗ ibyte (cr_fl c) 0 0 ∗ cr_table c ∗ K [])%I
+    (fun '(c, K) r =>
+       ⌜r = RetVoid⌝ ∗ live (cr_fl c) (cr_flreg c) ∗ ibyte (cr_fl c) 0 1 ∗ cr_table c ∗ K (cr_order c))%I.
 
 End spec.

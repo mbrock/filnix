@@ -38,7 +38,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma ctor_runner_has_spec `{!Defines ge "zrun_deferred_global_ctors" start_ctor_runner_fn} :
   HasSpec registry (os_wi w0) ge ctor_runner_name ctor_runner_spec.
 Proof using Type.
-  intros [[c cP] cQ]. exists start_ctor_runner_fn.
+  intros [c K]. exists start_ctor_runner_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
   cbn [fs_pre fs_post fs_args ctor_runner_spec].
   iIntros "([%Hok %Hcalls] & Lfl & Hfl & Htab & HP) HK".
@@ -49,12 +49,11 @@ Proof using Type.
   destruct order as [|g0 [|g1 [|g2 [|? ?]]]]; try discriminate Hlen.
   inversion Hptrs as [|? p0 ? ? Hp0 Hptrs1]; subst. inversion Hptrs1 as [|? p1 ? ? Hp1 Hptrs2]; subst.
   inversion Hptrs2 as [|? p2 ? ? Hp2 Hptrs3]; subst. inversion Hptrs3; subst.
-  inversion Hcalls as [|? ? Hc0 Hcalls1]; subst. inversion Hcalls1 as [|? ? Hc1 Hcalls2]; subst.
-  inversion Hcalls2 as [|? ? Hc2 _]; subst.
+  pose proof (Hcalls 0%nat g0 eq_refl) as Hc0. pose proof (Hcalls 1%nat g1 eq_refl) as Hc1.
+  pose proof (Hcalls 2%nat g2 eq_refl) as Hc2. cbn [firstn] in Hc0, Hc1, Hc2.
   destruct Hp0 as (Hf0 & Hk0 & Hr0), Hp1 as (Hf1 & Hk1 & Hr1), Hp2 as (Hf2 & Hk2 & Hr2).
   unfold ctor_table_size in Htbe. rewrite /cr_table /=.
   iDestruct "Htab" as "(Ltb & Hargc & Hargv & Henv & (Hq0 & Hq1 & Hq2 & _) & Cav & Cen)".
-  iDestruct "HP" as "(HP0 & HP1 & HP2 & _)".
   (* The flag is clear, so the runner sets it and goes on. *)
   step. step_global Gfl. iApply (wp_live_fit1 with "Lfl"). iIntros ([Hfl0 Hfl48]) "Lfl". check "Lfl".
   iApply (wp_raw_load_byte with "Lfl Hfl"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | a2 |].
@@ -77,14 +76,14 @@ Proof using Type.
   load_pointer_dq "Ltb Hq2 C2" by a2. iNext. iIntros "Ltb Hq2 _".
   (* Each constructor is checked and then called through its contract. *)
   iApply wp_check_function; [vx | exact Hk0 |]. iNext.
-  iApply (Hc0 with "HP0"); [vx | exact Hf0 | exact Hk0 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
-  iNext. iIntros "HQ0".
+  iApply (Hc0 with "HP"); [vx | exact Hf0 | exact Hk0 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
+  iNext. iIntros "HP".
   iApply wp_check_function; [vx | exact Hk1 |]. iNext.
-  iApply (Hc1 with "HP1"); [vx | exact Hf1 | exact Hk1 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
-  iNext. iIntros "HQ1".
+  iApply (Hc1 with "HP"); [vx | exact Hf1 | exact Hk1 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
+  iNext. iIntros "HP".
   iApply wp_check_function; [vx | exact Hk2 |]. iNext.
-  iApply (Hc2 with "HP2"); [vx | exact Hf2 | exact Hk2 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
-  iNext. iIntros "HQ2".
+  iApply (Hc2 with "HP"); [vx | exact Hf2 | exact Hk2 | rewrite /cr_args /= Z.mod_small; [reflexivity | lia] |].
+  iNext. iIntros "HP".
   iApply wp_ret_void. iNext. iApply "HK". iSplit; [done|]. iFrame.
 Qed.
 
