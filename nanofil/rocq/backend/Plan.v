@@ -44,7 +44,8 @@ Inductive access : Type :=
 | AStore (w : width) (off : Z) (v : value) (p : place) (* `raw_store(W, Off, V, P)` *)
 | ALoadPointer (d : name) (off : Z) (es : list effect) (p : place) (* `let(tmp(D), p, raw_load_pointer(Off, Es), [P])` *)
 | AStorePointer (off : Z) (v : value) (p : place) (es : list effect) (* `raw_store_pointer(Off, V, P, Es)` *)
-| ATouch (p : place). (* `touch(P)`: the check alone, with no access after it *)
+| ATouch (p : place) (* `touch(P)`: the check alone, with no access after it *)
+| ACas (d : name) (k : class) (t : cas_type) (off : Z) (p : place) (e n : value). (* `let(tmp(D), K, raw_cas(T, Off), [P, E, N])` *)
 
 (** An instruction after fusion (filc_amd64.pl's `fused_blocks/5`). *)
 Inductive finst : Type :=
@@ -65,6 +66,7 @@ Definition access_uses (a : access) : list name :=
   match a with
   | ALoad _ _ _ _ p | ALoadPointer _ _ _ p | ATouch p => place_uses p
   | AStore _ _ v p | AStorePointer _ v p _ => value_temps [v] ++ place_uses p
+  | ACas _ _ _ _ p e n => place_uses p ++ value_temps [e; n]
   end.
 
 (** The temporary an access defines, with its class. *)
@@ -72,6 +74,7 @@ Definition access_defs (a : access) : list (name * class) :=
   match a with
   | ALoad d k _ _ _ => [(d, k)]
   | ALoadPointer d _ _ _ => [(d, P)]
+  | ACas d k _ _ _ _ _ => [(d, k)]
   | AStore _ _ _ _ | AStorePointer _ _ _ _ | ATouch _ => []
   end.
 

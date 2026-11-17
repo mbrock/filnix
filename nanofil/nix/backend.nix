@@ -15,7 +15,7 @@
 # seven C programs that between them reach every line form; full=true
 # takes the whole corpus, with and without -O. M2: the extracted ABI
 # plans are the terms filc_abi.pl prints (rocq/backend/tests/abi.sh),
-# on the same files and six more C programs that reach the plan forms
+# on the same files and seven more C programs that reach the plan forms
 # the others lack; full=true takes the whole corpus. NFB: Nfb.v's
 # writer writes the words nfb.pl writes and its reader reads them back
 # (rocq/backend/tests/nfb.sh, docs/nfb.md), on the same files; full=true
@@ -82,7 +82,7 @@ let
     ];
   };
   quick = "tests/filc/*.ir tests/c/ldouble.c tests/c/prog/address-difference.c tests/c/prog/alias.c tests/c/prog/asm-fixed.c tests/c/prog/constructor.c tests/c/prog/source-bytes.c tests/c/prog/thread-local.c";
-  quickAbi = "${quick} tests/c/fstructs.c tests/c/variadic.c tests/c/prog/structs.c tests/c/prog/memcpy-small.c tests/c/prog/weak-symbols.c tests/c/prog/byval.c";
+  quickAbi = "${quick} tests/c/fstructs.c tests/c/variadic.c tests/c/prog/structs.c tests/c/prog/memcpy-small.c tests/c/prog/weak-symbols.c tests/c/prog/byval.c tests/c/prog/atomic-rmw.c";
   corpus = "tests/filc/*.ir tests/c/*.c tests/c/prog/*.c";
   edge = "rocq/backend/tests/edge/*.ir";
   pizlonate = "rocq/backend/tests/pizlonate/*.ir";

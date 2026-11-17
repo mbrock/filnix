@@ -152,6 +152,11 @@ Definition proven_access (st : storage) (i : inst) (q : name) (p : place) : opti
       | Heap => if name_eqb q' q then Some (ATouch p) else None
       | Local => None
       end
+  | Let d k (RawCas t off) [Tmp q'; e; n] =>
+      match st with
+      | Heap => if name_eqb q' q then Some (ACas d k t off p e n) else None
+      | Local => None
+      end
   | _ => None
   end.
 
@@ -160,7 +165,7 @@ Definition proven_access (st : storage) (i : inst) (q : name) (p : place) : opti
 Definition access_offset (a : access) : Z :=
   match a with
   | ALoad _ _ _ off _ | AStore _ off _ _ | ALoadPointer _ off _ _
-  | AStorePointer off _ _ _ => off
+  | AStorePointer off _ _ _ | ACas _ _ _ off _ _ _ => off
   | ATouch _ => 0
   end.
 
@@ -183,7 +188,7 @@ Definition reusable (i : inst) : option (name * Z) :=
 Definition not_emitted (i : inst) : bool :=
   match i with
   | Call _ (Tmp _) _ | RawCall _ _ _ | RawStore _ _ _ _ | RawStorePointer _ _ _ _ | Touch _ => true
-  | Let _ _ (RawLoad _ _) _ | Let _ _ (RawLoadPointer _ _) _ => true
+  | Let _ _ (RawLoad _ _) _ | Let _ _ (RawLoadPointer _ _) _ | Let _ _ (RawCas _ _) _ => true
   | Let _ P (Add | Sub | Itop) _ => true
   | Let _ P Copy [Tmp _] | Let _ P Copy [Const _] => true
   | _ => false

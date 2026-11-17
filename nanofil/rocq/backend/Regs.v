@@ -399,6 +399,8 @@ Fixpoint actions_call (acts : list action) (acc : rcall) : rcall :=
 Definition access_call (a : access) : rcall :=
   match a with
   | AStorePointer _ _ _ _ => RCallDuringReads
+  (* A pointer cas calls filc_strong_cas_ptr_with_manual_tracking. *)
+  | ACas _ _ CasP _ _ _ _ => RCallDuringReads
   | ALoadPointer _ _ es _ =>
       if existsb is_atomic_read es then RCallAfterReads else RCallNone
   | _ => RCallNone
@@ -507,6 +509,7 @@ Record eblock : Type := mkEBlock {
 Definition access_value_uses (a : access) : list name :=
   match a with
   | AStore _ _ v _ | AStorePointer _ v _ _ => value_temps [v]
+  | ACas _ _ _ _ _ e n => value_temps [e; n]
   | _ => []
   end.
 
@@ -2835,6 +2838,7 @@ Definition rraw_access (rc : rctx) (b : name) (index : string) (a : access) : li
   | AStorePointer _ v (AtValue p) es => flat_map (rpointer_store_effect rc b index v p) es
   | AStorePointer _ _ (AtLocal _ _) _ => todo "pointer store at a local"
   | ATouch _ => []
+  | ACas _ _ _ _ _ _ _ => todo "cas"
   end.
 
 Definition local_load_eff_lines (e : effect) : list line :=

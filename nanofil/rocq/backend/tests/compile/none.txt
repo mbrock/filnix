@@ -1,3 +1,4 @@
+c/setjmp-first.c
 exitfail.i
 fd-hook.i
 filc/asm-fixed-runs.ir
