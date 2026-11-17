@@ -216,23 +216,15 @@ Its `ready` says every object lies between 0 and Next, empty if freed,
 Next is at most 2^48, and nothing at or above Next has been written. Run.v's `Driver` runs over any `Runtime`, and the
 gates run `Driver InterpRuntime`.
 
-## The concrete layer
+## The glibc layer
 
-The glibc layer is named by
-[runtime-concrete.txt](../rocq/glibc/runtime-concrete.txt). Its current
-member is `hi_atexit/HiAtexitSafe.v`: its safety statement supplies the
-exact integer allocator cursor 4294969872 where the logic expects a
-runtime state. Its initialized-entry statement records preparation of
-that same interpreter image. These describe a prepared interpreter
-image, not arbitrary implementations of `Runtime`.
-Their statements remain unchanged. The default build compiles
-this file's import closure again with a transparent `Fix.v`; it does not
-make every glibc proof transparent to accommodate this one theorem.
-
-Several `hi_atexit` preparation files name `InterpRuntime` directly.
-That alone does not require a transparent `Fix.v`: a file can construct
-interpreter data without equating it with the abstract logic's state.
-The compiler rejection check distinguishes the two cases.
+No glibc file needs the interpreter's runtime. `Fix.v` seals `R`, so a
+glibc proof sees only the `Runtime` signature, and the scheduled check
+`nanofil-glibc-abstract` compiles every glibc file again with `R` left
+abstract. The theorem `hi_atexit_never_panics` in
+[StartSafeHiAtexit.v](../rocq/glibc/startup/StartSafeHiAtexit.v) takes
+the runtime state as a premise, `R.ready s m`, rather than fixing an
+allocator cursor.
 
 ### Interpreter references outside glibc
 

@@ -331,7 +331,6 @@ startup/CpuHiAtexit.v
 startup/StartLsmImage.v
 startup/StartImageEarly.v
 hi_atexit/HiAtexitImage.v
-hi_atexit/HiAtexitPrepare.v
 libio/ExitRunLoop.v
 libio/LibioCloseSteps.v
 libio/LibioDoWrite.v
@@ -380,9 +379,7 @@ string/StpcpyLogic.v
 string/StrlenWord.v
 string/StrncmpBits.v
 getopt/GetoptColon.v
-hi_atexit/HiAtexitEntryMemory.v
 hi_atexit/HiAtexitExitEnv.v
-hi_atexit/HiAtexitPrepareFrame.v
 hi_atexit/HiAtexitSetb.v
 libio/ExitRun.v
 libio/LibioCloseItEnd.v
@@ -1147,14 +1144,11 @@ getopt/GetoptLongPfxEnd.v
 hi_atexit/HiAtexitInitialExit.v
 hi_atexit/HiAtexitPutsXsputn.v
 getopt/GetoptLongAmbTail.v
-hi_atexit/HiAtexitEntryImage.v
 hi_atexit/HiAtexitPuts.v
 getopt/GetoptLongAmbPrint.v
 hi_atexit/HiAtexitMain.v
 getopt/GetoptLongAmbItem.v
-hi_atexit/HiAtexitEntryOwn.v
 getopt/GetoptLongAmbList.v
-hi_atexit/HiAtexitSafe.v
 hi_atexit/HiAtexitStartBridge.v
 startup/StartImageDisjoint.v
 startup/StartOwnHiAtexit.v

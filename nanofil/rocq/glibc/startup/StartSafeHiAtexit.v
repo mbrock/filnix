@@ -42,7 +42,7 @@ Proof. eexists. reflexivity. Qed.
 (** Every run of hi_atexit from a state in which the runtime can start
     it avoids panics, stuck steps and contract failures, and never
     returns. *)
-Theorem hi_atexit_start_never_panics w0 m s w xs fuel :
+Theorem hi_atexit_never_panics w0 m s w xs fuel :
   start_state hi_module w0 m w xs ->
   In 1 (ow_fds w0) -> ow_leaf4_ends w0 = true -> Fix.R.ready s m ->
   labelled_safe glibc_os_registry hge (invocation start_libc_start_main_fn xs) m s w fuel (fun _ => False).

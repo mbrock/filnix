@@ -1,6 +1,5 @@
-(** The safety proof of hi_atexit starts at `c: main`, in a state that
-    [HiAtexitPrepare](HiAtexitPrepare.v) builds by host writes. The proof
-    of glibc's startup code ends at the same place, the call of `c: main`
+(** The proof of main for hi_atexit starts at `c: main`. The proof of
+    glibc's startup code ends at the same place, the call of `c: main`
     from `c: __libc_start_call_main`. This module connects the two. It
     says what startup must hold when it calls `c: main`, and it proves
     that this is enough for main's existing proof.

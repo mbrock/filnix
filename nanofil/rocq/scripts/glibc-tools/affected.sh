@@ -12,8 +12,7 @@
 # Without FILE arguments the edits are the .v files under rocq/theories
 # and rocq/glibc that differ from the merge base with origin/main, in
 # commits or in the worktree. A new file must be known to git (git add
-# -N) before Nix sees it. A file in runtime-concrete.txt is skipped; its
-# check is nanofil-glibc-concrete.
+# -N) before Nix sees it.
 set -euo pipefail
 repo=$(git -C "$(dirname "$0")" rev-parse --show-toplevel)
 cd "$repo"

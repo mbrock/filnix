@@ -29,7 +29,7 @@ nanofil/rocq/scripts/glibc-tools/affected.sh --list nanofil/rocq/glibc/GlibcEnv.
 
 ## Start from cached objects
 
-A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. CI publishes a commit's objects while it builds them, so the newest commits of main can lag the cache. When the checkout's commit misses many objects, `warm.sh` warms from the most recent commit of `origin/main` that is cached. It then deletes the objects of files that differ from that commit, and of files that import a changed theory, and reports how many files still have no object. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces. It reports the files of `runtime-concrete.txt` as failures, because they need the concrete runtime and the tree's `Fix.v` seals it.
+A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. CI publishes a commit's objects while it builds them, so the newest commits of main can lag the cache. When the checkout's commit misses many objects, `warm.sh` warms from the most recent commit of `origin/main` that is cached. It then deletes the objects of files that differ from that commit, and of files that import a changed theory, and reports how many files still have no object. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces.
 
 ```sh
 . nanofil/rocq/scripts/glibc-tools/env.sh
@@ -75,9 +75,9 @@ The [generator guide](../glibc-code/README.md) describes captured code fixtures 
 
 ## Check the runtime boundary
 
-The push gate compiles general proofs with a sealed runtime. The concrete check compiles the concrete layer's closure with a transparent interpreter, twice daily and on pushes that touch that layer, `Fix.v` or the runtime. The abstract gate runs twice daily, including Hello's exact assumption comparison and an allowlist audit of every top-level proof.
+The push gate compiles every glibc proof with a sealed runtime. The abstract gate runs twice daily: it compiles every glibc proof with the runtime left abstract, compares Hello's assumptions exactly, and audits every top-level proof against an allowlist.
 
-`abstract-general.sh TREE OUT` checks an existing source copy with an abstract runtime. Its input has the sealed `Fix.v` binding and concrete objects previously compiled with a transparent binding. It requires exactly the failures listed in `runtime-concrete.txt` and accepts only compiler errors located in the listed files. `abstract-general-test.sh` exercises that script on small trees.
+`abstract-general.sh TREE OUT` checks an existing source copy with an abstract runtime. Its input has the sealed `Fix.v` binding, and every file must compile. `abstract-general-test.sh` exercises that script on small trees.
 
 ```sh
 nix build -L .#checks.x86_64-linux.nanofil-glibc

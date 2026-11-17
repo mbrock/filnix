@@ -184,10 +184,8 @@ It takes the `.v` files under `rocq/theories` and `rocq/glibc` that
 differ from `origin/main` and builds them and their importers with the
 push checks' own per-file derivations. Every other object comes from
 Cachix, and an importer recompiles only when an interface it loads
-changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. The files in
-`glibc/runtime-concrete.txt` belong to `nanofil-glibc-concrete`, which
-runs twice daily and on pushes that touch them; build it when you edit
-one. `glibc-tools/README.md` describes the tools.
+changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them.
+`glibc-tools/README.md` describes the tools.
 
 When a proof feels slow, see where its time goes with `rocq c -q -time
 -R theories Nanofil FILE.v`; the glibc gate also prints sentences over

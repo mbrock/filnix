@@ -14,10 +14,9 @@
 # import lists with rocq dep and records each file's compile time. The
 # separate nanofil-rocq check still compiles and checks the entire model.
 #
-# The files of rocq/glibc/runtime-concrete.txt need the interpreter's
-# runtime. The push check does not compile them; nanofil-glibc-concrete
-# compiles them with their import closures at that runtime, and
-# nanofil-glibc-abstract compiles every other file at an abstract one.
+# The push check compiles every file with Fix.v's sealed runtime, and the
+# scheduled nanofil-glibc-abstract compiles every file again with the
+# runtime left abstract.
 #
 # The grammar round trip of a glibc file is not part of the check, because
 # it compiles the file a second time whenever anything the file imports
@@ -203,31 +202,18 @@ let
       )
     );
   # A file that no general file imports needs no interface.
-  imported = lib.genAttrs (lib.unique (
-    lib.concatMap (n: imports.${n}) generalNames
-  )) (_: true);
+  imported = lib.genAttrs (lib.unique (lib.concatMap (n: imports.${n}) names)) (
+    _: true
+  );
   exported = n: replaced.${n} > 0 && imported ? ${n};
-  ifaceVo = lib.genAttrs (lib.filter exported generalNames) (
+  ifaceVo = lib.genAttrs (lib.filter exported names) (
     compile "interface-" exportVo interfaceSource
   );
-  checkVo = lib.genAttrs generalNames (
-    n:
-    assert lib.assertMsg (!importsConcrete n)
-      "glibc.nix: ${path.${n}}.v imports a file of runtime-concrete.txt, so list it there too";
-    compile "" exportVo source n
-  );
-  exportVo = lib.genAttrs generalNames (
+  checkVo = lib.genAttrs names (compile "" exportVo source);
+  exportVo = lib.genAttrs names (
     n: if exported n then ifaceVo.${n} else checkVo.${n}
   );
-  concreteClosure = lib.unique (
-    lib.concatMap (n: closure.${n} ++ [ n ]) concreteNames
-  );
-  concreteVo = lib.genAttrs concreteClosure (
-    compile "concrete-" concreteVo (
-      n: if n == "Fix" then concreteFix else source n
-    )
-  );
-  vo = exportVo // lib.getAttrs concreteNames concreteVo;
+  vo = exportVo;
   # Rebuild Hello's entire Glibc closure against one abstract runtime.
   # No interpreter Glibc object may enter this graph through an import.
   helloNames = closure.HelloNeverPanics ++ [ "HelloNeverPanics" ];
@@ -244,65 +230,14 @@ let
       lib.replaceStrings [ sealedBinding ] [ binding ] source
     );
   abstractFix = runtimeFix "Declare Module R : Runtime.";
-  concreteFix = runtimeFix "Module R := InterpRuntime.";
-  # rocq/glibc/runtime-concrete.txt lists the files that need the
-  # interpreter's runtime. Every other file is general, and has an
-  # abstract object.
-  concretePaths = lib.filter (l: l != "" && !lib.hasPrefix "#" l) (
-    lib.splitString "\n" (builtins.readFile (glibc + "/runtime-concrete.txt"))
-  );
-  concreteNames =
-    assert lib.assertMsg (lib.all (l: lib.elem (lib.removeSuffix ".v" l) paths)
-      concretePaths
-    ) "glibc.nix: runtime-concrete.txt lists a file that is not under rocq/glibc";
-    map (l: baseNameOf (lib.removeSuffix ".v" l)) concretePaths;
-  importsConcrete = n: lib.any (d: lib.elem d concreteNames) closure.${n};
-  generalNames = lib.filter (n: !lib.elem n concreteNames) names;
   abstractSource =
     n: if n == "Fix" then abstractFix else glibc + "/${path.${n}}.v";
-  abstractVo = lib.genAttrs generalNames (
-    n:
-    assert lib.assertMsg (!importsConcrete n)
-      "glibc.nix: ${path.${n}}.v imports a file of runtime-concrete.txt, so list it there too";
-    compile "abstract-" abstractVo abstractSource n
+  abstractVo = lib.genAttrs names (
+    compile "abstract-" abstractVo abstractSource
   );
-  # A listed file that imports no other listed file must be rejected
-  # by both the sealed and abstract runtimes, so a file cannot leave
-  # either check by being listed without need. rocq_reject.py accepts an error
-  # that Rocq reports at a position in the file with status 1; it
-  # refuses a timeout, a signal, another status and a failure to load a
-  # library. The file's interpreter object is an input: the two
-  # compilations differ only in the runtime binding of Fix.v, so the
-  # runtime causes the rejection.
-  rejected =
-    prefix: objects:
-    lib.genAttrs (lib.filter (n: !importsConcrete n) concreteNames) (
-      n:
-      pkgs.runCommand "nanofil-glibc-${prefix}rejected-${n}"
-        {
-          nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
-          OCAMLRUNPARAM = "o=200";
-        }
-        ''
-          set -o pipefail
-          mkdir -p theories glibc/${dirOf path.${n}} $out
-          ${link objects n}
-          cp ${glibc + "/${path.${n}}.v"} glibc/${path.${n}}.v
-          test -f ${concreteVo.${n}}/${n}.vo
-          python3 ${../tests/rocq_reject.py} --file glibc/${path.${n}}.v --timeout 900 --log $out/log -- \
-            rocq c -q -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee $out/verdict
-        ''
-    );
-  sealedRejected = rejected "sealed-" exportVo;
-  abstractRejected = rejected "abstract-" abstractVo;
-  # rocq_reject.py itself: it accepts a type error from Rocq, and
-  # refuses a file that compiles, a timeout, a signal, an unexpected
-  # status, a missing library and an error outside the file.
   rejectTestSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
-      ../tests/rocq_reject.py
-      ../tests/rocq_reject_test.py
       ../tests/assumption_scan.py
       ../tests/proof_inventory.py
       ../tests/rocq_runtime_audit.py
@@ -320,21 +255,18 @@ let
       ''
         set -o pipefail
         mkdir $out
-        python3 ${rejectTestSrc}/tests/rocq_reject_test.py -v 2>&1 | tee $out/log
-        python3 ${rejectTestSrc}/tests/test_scan.py
+        python3 ${rejectTestSrc}/tests/test_scan.py 2>&1 | tee $out/log
         python3 ${rejectTestSrc}/tests/test_nested_audit.py
         python3 ${rejectTestSrc}/tests/rocq_interface_test.py
         touch $out/passed
       '';
-  # The scheduled check nanofil-glibc-abstract: every general file
-  # compiles against the abstract runtime, and every listed file is
-  # rejected by it.
+  # The scheduled check nanofil-glibc-abstract: every file compiles
+  # against the abstract runtime.
   abstractGeneral =
     pkgs.runCommand "nanofil-glibc-abstract-general"
       {
         passthru = {
           vo = abstractVo;
-          rejected = abstractRejected;
           inherit rejectTests abstractHello abstractAudit;
         };
       }
@@ -343,18 +275,15 @@ let
         test -f ${abstractHello}/passed
         mkdir $out
         cat ${
-          lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") generalNames
+          lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") names
         } >$out/audit-summary
         cat ${
-          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") generalNames
+          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") names
         } >$out/timings.log
-        ${lib.concatMapStrings (
-          n: "cp ${abstractRejected.${n}}/verdict $out/rejected-${n}.log\n"
-        ) (lib.attrNames abstractRejected)}
-        echo "@@glibc abstract general ${toString (builtins.length generalNames)} files compiled, ${toString (builtins.length concreteNames)} listed files rejected"
+        echo "@@glibc abstract general ${toString (builtins.length names)} files compiled"
         touch $out/passed
       '';
-  abstractAudit = lib.genAttrs generalNames (
+  abstractAudit = lib.genAttrs names (
     n:
     pkgs.runCommand "nanofil-glibc-abstract-audit-${n}"
       {
@@ -444,7 +373,7 @@ let
         printf '%s\n' "-R ../theories Nanofil" "-R . Glibc" >project/glibc/_RocqProject
         (
           cd project
-          ${link (if lib.elem n concreteNames then concreteVo else exportVo) n}
+          ${link exportVo n}
         )
         mkdir -p project/glibc/${dirOf path.${n}}
         cp ${glibc + "/${path.${n}}.v"} project/glibc/${path.${n}}.v
@@ -490,30 +419,6 @@ let
         python3 ${timingTestSrc}/tests/rocq_totals_test.py -v 2>&1 | tee -a $out/log
         touch $out/passed
       '';
-  # The check nanofil-glibc-concrete: each listed file compiles with its
-  # whole import closure at the interpreter's runtime, and is rejected at
-  # the sealed one. It recompiles about 270 files to check one theorem,
-  # so it runs twice daily and on pushes that touch a listed file, Fix.v
-  # or the runtime, not in the push check.
-  concrete =
-    pkgs.runCommand "nanofil-glibc-concrete"
-      {
-        passthru = {
-          vo = concreteVo;
-          rejected = sealedRejected;
-        };
-      }
-      ''
-        mkdir $out
-        ${lib.concatMapStrings (
-          n: "cat ${sealedRejected.${n}}/verdict | tee -a $out/rejected.log\n"
-        ) (lib.attrNames sealedRejected)}
-        cat ${
-          lib.concatMapStringsSep " " (n: "${concreteVo.${n}}/time") concreteClosure
-        } >$out/timings.log
-        echo "@@glibc concrete ${toString (builtins.length concreteClosure)} files compiled, ${toString (builtins.length (lib.attrNames sealedRejected))} listed files rejected at the sealed runtime"
-        touch $out/passed
-      '';
   glibcSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.fileFilter (f: f.hasExt "v") glibc;
@@ -531,9 +436,6 @@ pkgs.runCommand "nanofil-glibc"
         timingTests
         abstractHello
         abstractGeneral
-        concrete
-        concreteVo
-        sealedRejected
         closure
         modelClosure
         ;
@@ -588,7 +490,7 @@ pkgs.runCommand "nanofil-glibc"
     fi
     mkdir $out
     cat ${
-      lib.concatMapStringsSep " " (n: "${checkVo.${n}}/time") generalNames
+      lib.concatMapStringsSep " " (n: "${checkVo.${n}}/time") names
     } | tee $out/timings.log
     # Build-time totals (AGENTS.md, Rocq proof speed); a readout, nothing
     # fails on it. An edit here never rebuilds a theory, so only Glibc
@@ -597,7 +499,7 @@ pkgs.runCommand "nanofil-glibc"
     mkdir $out/sentence-timings
     ${lib.concatMapStrings (
       n: "cp ${checkVo.${n}}/sentence-timings.log $out/sentence-timings/${n}.log\n"
-    ) generalNames}
+    ) names}
     cat ${probes}/log | tee $out/probes.log
-    echo "@@glibc ${toString (builtins.length generalNames)} files compiled"
+    echo "@@glibc ${toString (builtins.length names)} files compiled"
   ''

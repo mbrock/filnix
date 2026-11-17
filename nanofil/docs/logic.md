@@ -1004,13 +1004,12 @@ its file name followed by its own name. The functors of `theories/` are
 unchanged, and a glibc file that needs one of them applies it to `R`
 and `LG0`.
 
-The glibc proofs make two kinds of claim about the runtime. A theorem
-such as `hi_atexit_never_panics` is about the interpreter and its own
-allocator. `Fix.v` binds `R` to `InterpRuntime`, so that such a theorem
-depends on no assumption. `hello_never_panics` claims more: GNU Hello
-does not panic on any runtime that satisfies the axioms of `Runtime`. A
-proof that used a fact about the interpreter's allocator would break
-that claim, and the ordinary build would still accept it.
+The glibc theorems claim that a program does not panic on any runtime
+that satisfies the axioms of `Runtime`. `hello_never_panics` and
+`hi_atexit_never_panics` both take the runtime state as a premise.
+`Fix.v` seals `R` to `InterpRuntime`, so a proof that used a fact about
+the interpreter's allocator would break that claim, and an ordinary
+build with a transparent binding would still accept it.
 
 The glibc check catches such a proof by compiling files a second time
 with the runtime left abstract. For that compilation it replaces the
@@ -1021,9 +1020,8 @@ requires `Print Assumptions` to list exactly the twelve fields of `R`
 for `hello_never_panics`.
 
 Twice daily the check `nanofil-glibc-abstract` compiles every other
-general file in the same way. A file that needs the interpreter's
-runtime is listed in `rocq/glibc/runtime-concrete.txt`, and the check
-requires Rocq to reject each listed file against the abstract runtime.
+glibc file in the same way, so no glibc proof depends on the
+interpreter's runtime.
 
 **Main's start block.** [HelloMain.v](../rocq/theories/hello_contracts/HelloMain.v)
 applies every `…On` functor to one `Logic R`. Its world is libc's, and
