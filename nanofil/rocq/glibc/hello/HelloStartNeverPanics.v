@@ -13,9 +13,9 @@
     glibc reads them, the allocator's cursor is ready, and the
     environment's free releases heap objects. The calls that print,
     convert or read the locale are still contracts, the fields of
-    [HelloCore], and so are the two printers of getopt's warnings. A
-    script in nanofil/tests lists and counts these premises, and CI
-    prints the count.
+    [HelloCore]. So is glibc's formatter, and so is the fact that stderr
+    is narrow when getopt prints a warning. A script in nanofil/tests
+    lists and counts these premises, and CI prints the count.
 
     The proof divides the start memory into the objects that each part
     of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
@@ -50,10 +50,11 @@ Proof. eexists. reflexivity. Qed.
     avoids panics, stuck steps and contract failures, and it never
     returns. The last premise gives the open contracts. For each ghost
     state, it chooses the library calls of [HelloCore]. For every
-    environment array and thread object, it gives the two printers of
-    getopt's warnings as [hello_tb_contracts] states them. *)
+    environment array and thread object, it gives the contracts that
+    [hello_tb_contracts] states: the formatter's contract, the lend of
+    stderr, and the private state's shape. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 m s w xs frt dom fuel :
+    w0 m s w xs frt fuel :
   start_state hello_image_module w0 m w xs ->
   In 1 (ow_fds w0) -> In 2 (ow_fds w0) -> start_c_locale m xs ->
   ow_leaf4_ends w0 = true ->
@@ -62,7 +63,7 @@ Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piec
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
     exists (debt : forall tb, HelloCore (final_world w0 tb) (hello_start_ge frt) hello_image_objs),
     forall b ss, nth_error xs 3 = Some (WPtr (mkPtr b (Obj b))) -> string_array m b ss ->
-    forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts w0 m frt debt (b, ss) dom tb) ->
+    forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts w0 m frt debt (b, ss) tb) ->
   labelled_safe glibc_os_registry (hello_start_ge frt) (invocation start_libc_start_main_fn xs)
     m s w fuel (fun _ => False).
 Proof.
@@ -81,7 +82,7 @@ Proof.
     Hr Hd Agr Wi).
   intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc dom Hleaf Hf Herr Hfr Ha He Hv
+  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc Hleaf Hf Herr Hfr Ha He Hv
     Hargc Hargc2 Hord with "L T A E V K").
   intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.

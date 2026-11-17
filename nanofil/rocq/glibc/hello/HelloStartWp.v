@@ -16,7 +16,7 @@
     contracts, which build it from the objects that `c: getenv` reads
     and from the image's private list. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec PrintfSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,7 +29,8 @@ From Glibc Require Import FileInv OsWorld OsRegistry OsStart OsCpuid StartCtors 
   WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloGlibcLibsT HelloImageModule
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
-  HelloStartEntry HelloStartFacts StartWpHiAtexit.
+  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt
+  HelloStartHdRules HelloStartHdBuild HelloStartGetoptRules.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -98,36 +99,28 @@ Local Instance run_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry hge) 
   nanofil_irisGS glibc_os_registry (os_wi_start w0 k) hge.
 Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 
-(** When getopt rejects an option, it prints a warning, and Hello's
-    library calls need private state that startup does not build. These
-    contracts cover both for one thread object tb and the environment
-    array env. The two printers of warnings borrow G, which is half of
-    what `c: getenv` reads together with a resource E that the contracts
-    choose. The contracts must also build Hello's private state from
-    exactly the objects that startup leaves for it: what `c: getenv`
-    reads, the image's private list, the flag `c: __libc_enable_secure`
-    and the thread id that `c: __tls_init_tp` wrote. *)
-Definition hello_tb_contracts (env : Z * list (Z * list Z)) (dom : ptr) (tb : Z) : Prop :=
+(** The proof of main assumes some facts about Hello's library calls.
+    For one thread and one environment, these facts say what the calls
+    keep between them. Part of what they keep serves getopt's warnings,
+    and the objects that startup leaves unused provide that part. Two
+    facts are assumed because their proofs are not done yet. One says
+    that glibc's formatter works as its contract says. The other says
+    that stderr is narrow whenever main lends it. *)
+Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let envp := mkPtr env.1 (Obj env.1) in
-  exists (E : iProp Σ) (T : ptr -> ptr -> iProp Σ),
-  let G := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
+  let half := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp ∗
-    getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env) ∗ E)%I in
-  getopt_diag_rule (final_world w0 tb) glibc_os_registry hge G T (ho_err o) dom /\
-  getopt_ldiag_rule (final_world w0 tb) glibc_os_registry hge G T (ho_err o) dom /\
-  (G ⊢ tcb_cleanup_inv (ow_self (final_world w0 tb)) ∗ (tcb_cleanup_inv (ow_self (final_world w0 tb)) -∗ G)) /\
-  (hello_stdio (final_world w0 tb) hge o ∗ hd_priv (final_world w0 tb) hge o (debt tb) ⊢
-     G ∗ (G -∗ hello_stdio (final_world w0 tb) hge o ∗ hd_priv (final_world w0 tb) hge o (debt tb))) /\
-  (getenv_globals (glibc_program := P tb) (DfracOwn 1) (img_a "__environ_counter") (img_gd "__environ_counter")
-      (img_a "__environ") (img_gd "__environ") 0 envp ∗
-   getenv_storage (DfracOwn 1) DfracDiscarded envp (env_entries m env) ∗ pts hello_priv_ps ∗
-   live (lo_es hello_lsm_objs) (lo_esreg hello_lsm_objs) ∗ (∃ v, bytes (lo_es hello_lsm_objs) 0 (le_bytes v 4)) ∗
-   (∃ t, bytes tb 720 (le_bytes t 4)) ==∗
-   hd_priv (final_world w0 tb) hge o (debt tb)).
+    getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
+  HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
+    (vfprintf_spec (glibc_program := P tb)) /\
+  (file_inv (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) ⊢ hello_err_view (final_world w0 tb)) /\
+  exists X : iProp Σ,
+  (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ half ∗ hello_hd_getopt (final_world w0 tb) fr tb ∗ X) /\
+  (half ∗ hello_hd_rest (final_world w0 tb) fr ==∗ X).
 
 (** The run's memory, split into the parts the image proofs name, lets
     the startup body reach main and lets main run without a panic. *)
-Lemma hello_start_wp fr0 argv env av aps order argc dom :
+Lemma hello_start_wp fr0 argv env av aps order argc :
   ow_leaf4_ends w0 = true -> frees_heap fr ->
   lookup (TAtom "__libc_errno") img_globals = Some (ow_errno_cell w0) ->
   call_frame start_libc_start_main_fn
@@ -136,7 +129,7 @@ Lemma hello_start_wp fr0 argv env av aps order argc dom :
   string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av aps ->
   argc = Z.of_nat (length argv.2) -> 1 <= argc < 2 ^ 31 ->
   Permutation order (ctor_names hello_image_module) ->
-  (forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts env dom tb) ->
+  (forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts env tb) ->
   pts hello_start_all_ps -∗
   (bytes hello_runner_objs.2.1 0 (le_bytes argc 4) ∗ pcell hello_runner_objs.2.1 8 (mkPtr argv.1 (Obj argv.1)) ∗
    pcell hello_runner_objs.2.1 16 (mkPtr env.1 (Obj env.1)) ∗
@@ -185,7 +178,6 @@ Proof using Hi.
   iIntros (tb t a (Htb0 & Htb16 & Htbe & Ht0 & Hta))
     "[_ Hicf] Ltb H0 H16 Htp H776 H784 H792 Lre Hre Lse Hse Hcap Len Hen Ldx Hdx La Hc Ht Les Hes Leb".
   destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & Hself & Hfds).
-  destruct (Hc tb ltac:(lia) ltac:(lia)) as (E & T & Hdg & Hld & Hln & Hg & Hbuild).
   iDestruct "Hicf" as "(Lcf & Fcf & Ltl & Ttl & Lkn & Kkn & Sm)".
   iDestruct (icf_tunables_early (glibc_program := P tb) hello_pm_objs with "[Ttl]") as "[(%tv & Pt & T27) _]";
     [iExact "Ttl"|].
@@ -321,10 +313,38 @@ Proof using Hi.
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".
   rewrite /StartTlsInitTpSpec.tp_fields. iDestruct "Htp" as "(Htid & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hsz)".
-  iMod (Hbuild with "[$Gg $Gs $Hpriv $Les $Hes Htid]") as "Hpv"; [iExists t; iExact "Htid"|].
-  iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (debt tb) E T dom envp
-    (env_entries m env) sz tb avb (reg_of m avb) p0 ps p0 (short_name p0 q0s) Hself Hdg Hld Hln Hg
-    with "Hres Hsz Hpv") as "Hpre".
+  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & Hlend & X & Hpv & Hx).
+  iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
+  iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
+  iDestruct "Hes" as (sv) "Hes".
+  assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
+  iMod (hello_hd_build (final_world w0 tb) fr tb Hself sv t Ht0 with "Hpriv [Les] [Hes] Htid Hrr Loc")
+    as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
+  iMod (Hx with "[Gh2 Hrest]") as "HX"; [iDestruct "Gh2" as "[A B]"; iFrame "A B Hrest"|].
+  pose (gg := getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
+      (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp).
+  pose (gs := getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env)).
+  iAssert (hd_priv (final_world w0 tb) hge o (debt tb)) with "[Gh1 Hgo HX]" as "Hpv".
+  { iApply Hpv. iFrame "Gh1 Hgo HX". }
+  destruct (hello_hd_rules (final_world w0 tb) fr Hfree Herr (Hvf := proj1 (Hc tb ltac:(lia) ltac:(lia))) tb gs)
+    as (Rd & Rl & Rn).
+  apply (getopt_diag_rule_sep_l _ _ _ gg) in Rd. apply (getopt_ldiag_rule_sep_l _ _ _ gg) in Rl.
+  assert (Hln : gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) ⊢
+    tcb_cleanup_inv (ow_self (final_world w0 tb)) ∗
+    (tcb_cleanup_inv (ow_self (final_world w0 tb)) -∗ gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb))).
+  { iIntros "[A B]". iDestruct (Rn with "B") as "[$ W]". iIntros "C". iFrame "A". iApply ("W" with "C"). }
+  assert (Hg : hello_stdio (final_world w0 tb) hge o ∗ hd_priv (final_world w0 tb) hge o (debt tb) ⊢
+    (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb)) ∗
+    (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) -∗ hello_stdio (final_world w0 tb) hge o ∗
+      hd_priv (final_world w0 tb) hge o (debt tb))).
+  { rewrite Hpv. iIntros "H".
+    iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hlend (gg ∗ gs) X with "H") as "[[[A B] C] W]".
+    iFrame "A B C". iIntros "(A & B & C)". iApply ("W" with "[$A $B $C]"). }
+  iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (debt tb)
+    (hello_getopt_E (final_world w0 tb) fr tb)
+    (fun mid q => gg ∗ (gs ∗ hello_getopt_T (final_world w0 tb) fr tb mid q))%I
+    hello_dom envp (env_entries m env) sz tb avb (reg_of m avb) p0 ps p0 (short_name p0 q0s) Hself Rd Rl Hln Hg
+    with "[Hres] Hsz Hpv") as "Hpre"; [rewrite /hello_start_main_res; iSplitR; [iExact "Hrr" | iExact "Hres"]|].
   iModIntro. iExact "Hpre".
 Qed.
 

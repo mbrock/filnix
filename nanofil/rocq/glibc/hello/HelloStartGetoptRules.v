@@ -2,11 +2,12 @@
     and glibc prints it to stderr. GNU Hello's proof assumes two rules
     for these reports, one for short options and one for long options.
     Each rule names a resource G that the caller holds between reports.
-    This module proves both rules for the G that Hello holds after
-    startup, from the objects that
-    [HelloStartGetopt](HelloStartGetopt.v) gives. A few proofs that
-    it relies on are not finished yet, so it assumes their results for
-    now. *)
+    This module proves both rules for each state of the G that Hello
+    holds after startup, from the objects that
+    [HelloStartGetopt](HelloStartGetopt.v) gives.
+    [HelloStartHdRules](HelloStartHdRules.v) then hides the state. The
+    proof of glibc's formatter is not finished yet, so this module
+    assumes its contract for now. *)
 
 From Glibc Require Import GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.
@@ -215,12 +216,6 @@ Definition hello_dg_T (v tid : Z) (mid q : ptr) : iProp Σ :=
     hello_lk1.1 hello_lk1.2 i1 hello_lk2.1 hello_lk2.2 i2 hello_lkt.1 hello_lkt.2 i3 tb tid (ho_vb ob) (ho_sb ob)
     (ho_sreg ob) (ho_err ob) hello_dg_F hello_dg_Lm v mid q.
 
-(** The caller does not know the flag, which holds a 32-bit value, or
-    the thread's id. G hides both. *)
-Definition hello_getopt_G : iProp Σ := ∃ vt : Z * Z, ⌜0 <= vt.1 < 2 ^ 32⌝ ∗ hello_dg_G vt.1 vt.2.
-Definition hello_getopt_T : ptr -> ptr -> iProp Σ :=
-  fun mid q => (∃ vt : Z * Z, ⌜0 <= vt.1 < 2 ^ 32⌝ ∗ hello_dg_T vt.1 vt.2 mid q)%I.
-
 (** Every image fact that the diagnostic rules need holds for Hello. *)
 Lemma hello_dg_premises v : 0 <= v < 2 ^ 32 ->
   dlk_premises eb hello_dom (ptr_addr hello_nb) (ptr_cap hello_nb) lc_messages_off hello_p276 hello_p277
@@ -256,11 +251,12 @@ Proof using Type.
   intros H; repeat destruct H as [H|H]; try contradiction; vm_compute in H; injection H as <-; vm_compute; split; congruence.
 Qed.
 
-(** The rule for short options holds for G and T. *)
-Lemma hello_getopt_diag : getopt_diag_rule w glibc_os_registry hge hello_getopt_G hello_getopt_T (ho_err ob) hello_dom.
+(** The rule for short options holds for G and T, for each value v of
+    the flag and each thread id. *)
+Lemma hello_dg_diag v tid : 0 <= v < 2 ^ 32 ->
+  getopt_diag_rule w glibc_os_registry hge (hello_dg_G v tid) (hello_dg_T v tid) (ho_err ob) hello_dom.
 Proof using Hfr Herr Hvf Hloc.
-  apply (getopt_diag_rule_ex w glibc_os_registry hge (fun vt : Z * Z => 0 <= vt.1 < 2 ^ 32) _ _ _ _ (0, 0));
-    [cbn; lia|]. intros [v tid] Hv. cbn in Hv |- *.
+  intros Hv.
   eapply (hello_getopt_diag_rule_lock (glibc_program := hello_rules_program) eb Herr LibioCleanupExit.holds_os_glibc) with (Q := hello_dg_Q)
     (ic := Ro hello_ib.1) (tc := hello_tc) (dd := hello_dd) (lk1 := lock_ptr hello_lk1)
     (lk2 := lock_ptr hello_lk2) (lkt := lock_ptr hello_lkt).
@@ -271,11 +267,11 @@ Proof using Hfr Herr Hvf Hloc.
     intros n m Hin Hl. exact (hello_dg_ws n m Hin Hl).
 Qed.
 
-(** The rule for long options holds for G and T. *)
-Lemma hello_getopt_ldiag : getopt_ldiag_rule w glibc_os_registry hge hello_getopt_G hello_getopt_T (ho_err ob) hello_dom.
+(** The rule for long options holds in the same way. *)
+Lemma hello_dg_ldiag v tid : 0 <= v < 2 ^ 32 ->
+  getopt_ldiag_rule w glibc_os_registry hge (hello_dg_G v tid) (hello_dg_T v tid) (ho_err ob) hello_dom.
 Proof using Hfr Herr Hvf Hloc.
-  apply (getopt_ldiag_rule_ex w glibc_os_registry hge (fun vt : Z * Z => 0 <= vt.1 < 2 ^ 32) _ _ _ _ (0, 0));
-    [cbn; lia|]. intros [v tid] Hv. cbn in Hv |- *.
+  intros Hv.
   eapply (hello_getopt_ldiag_rule_lock (glibc_program := hello_rules_program) eb Herr LibioCleanupExit.holds_os_glibc)
     with (Q := hello_dg_Q) (ic := Ro hello_ib.1) (tc := hello_tc) (dd := hello_dd) (lk1 := lock_ptr hello_lk1)
     (lk2 := lock_ptr hello_lk2) (lkt := lock_ptr hello_lkt).
@@ -298,28 +294,11 @@ Qed.
 
 (** Between reports, G lends the thread's cleanup state and takes it
     back in any region. *)
-Lemma hello_getopt_lend : hello_getopt_G ⊢ tcb_cleanup_inv (ow_self w) ∗ (tcb_cleanup_inv (ow_self w) -∗ hello_getopt_G).
+Lemma hello_dg_lend v tid :
+  hello_dg_G v tid ⊢ tcb_cleanup_inv (ow_self w) ∗ (tcb_cleanup_inv (ow_self w) -∗ hello_dg_G v tid).
 Proof using Type.
-  iIntros "(%vt & %Hv & HG)". iDestruct (dlk_lend (glibc_program := hello_rules_program) with "HG") as "[Hc Hb]".
-  iFrame "Hc". iIntros "Hc". iExists vt. iSplit; [done|]. iApply ("Hb" with "Hc").
-Qed.
-
-(** When startup ends, Hello's proof must show that getopt can report
-    a bad option and that the thread can still clean up. So it needs
-    the two rules and the loan of the cleanup state, and they hold even
-    when G also carries an extra part N, such as half of getenv's
-    state. *)
-Theorem hello_getopt_rules (N : iProp Σ) :
-  getopt_diag_rule w glibc_os_registry hge (N ∗ hello_getopt_G)%I (fun mid q => N ∗ hello_getopt_T mid q)%I
-    (ho_err ob) hello_dom /\
-  getopt_ldiag_rule w glibc_os_registry hge (N ∗ hello_getopt_G)%I (fun mid q => N ∗ hello_getopt_T mid q)%I
-    (ho_err ob) hello_dom /\
-  (N ∗ hello_getopt_G ⊢ tcb_cleanup_inv (ow_self w) ∗ (tcb_cleanup_inv (ow_self w) -∗ N ∗ hello_getopt_G)).
-Proof using Hfr Herr Hvf Hloc.
-  split; [apply getopt_diag_rule_sep_l; exact hello_getopt_diag|].
-  split; [apply getopt_ldiag_rule_sep_l; exact hello_getopt_ldiag|].
-  iIntros "[HN HG]". iDestruct (hello_getopt_lend with "HG") as "[Hc Hb]". iFrame "Hc".
-  iIntros "Hc". iFrame "HN". iApply ("Hb" with "Hc").
+  iIntros "HG". iDestruct (dlk_lend (glibc_program := hello_rules_program) with "HG") as "[Hc Hb]".
+  iFrame "Hc". iExact "Hb".
 Qed.
 
 End rules.

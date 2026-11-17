@@ -4,11 +4,13 @@
     writable globals: three read-write locks, the root of the cache of
     translations and the head of the list of bound domains. The
     formatter reads its two dispatch tables and three globals that hold
-    the conversions a program registers. No start list holds these ten
-    objects yet. This module lists them and shows what Hello's image
-    holds in each. The five gettext globals are zero, so every lock is
-    free, the cache is empty and no domain is bound. The three
-    conversion globals are null, and the tables hold their bytes.
+    the conversions a program registers. Gettext also reads the name of
+    the message category in the global locale. No other start list holds
+    these ten objects or that name. This module lists them and shows
+    what Hello's image holds in each. The five gettext globals are zero,
+    so every lock is free, the cache is empty and no domain is bound.
+    The three conversion globals are null, the tables hold their bytes,
+    and the name is "C".
 
     To keep the check fast, it runs on a copy of the image that keeps
     only these objects. *)
@@ -17,7 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
 From Glibc Require Import StartImageUnique StartImageCpu HelloImageErase HelloImageEraseMem HelloImagePieces
-  HelloImageModule HelloImageLoad HelloStartKept HelloImageKept.
+  HelloImageModule HelloImageLoad HelloStartKept HelloImageKept StartImageEarly.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -53,13 +55,24 @@ Definition hello_printf_ro_ps : list (piece * pval) :=
   obj_ps (img_ob "__printf_modifier_table") (repeat 0 8%nat) ++
   obj_ps (img_ob "__printf_va_arg_table") (repeat 0 8%nat).
 
+(** Gettext also reads the name of the current locale's message
+    category. The global locale keeps the thirteen category names from
+    offset 128, so the name for LC_MESSAGES, category 5, is the pointer
+    at offset 168. It points at the constant "C". The early list owns
+    only the first word of the global locale, so this list adds the
+    eight bytes of the name. *)
+Definition hello_locale_names : list string := ["_nl_global_locale"; "_nl_C_name"]%string.
+Definition hello_locale_slot_ps : list (piece * pval) :=
+  ptr_ps (img_a "_nl_global_locale") 168 (mkPtr (img_a "_nl_C_name") (Ro (img_a "_nl_C_name"))).
+
 (** This is the whole list of the module. *)
-Definition hello_diag_objs_ps : list (piece * pval) := hello_gettext_rw_ps ++ hello_printf_ro_ps.
+Definition hello_diag_objs_ps : list (piece * pval) :=
+  hello_gettext_rw_ps ++ hello_printf_ro_ps ++ hello_locale_slot_ps.
 
 (** ## The check on a smaller copy *)
 
 Definition hello_diag_objs_keep (n : name) : bool :=
-  existsb (name_eqb n) (map TAtom (hello_gettext_rw_names ++ hello_printf_names)).
+  existsb (name_eqb n) (map TAtom (hello_gettext_rw_names ++ hello_printf_names ++ hello_locale_names)).
 
 Definition hello_diag_objs_skel : module := Eval vm_compute in erase hello_diag_objs_keep hello_image_module.
 Lemma hello_diag_objs_skel_eq : erase hello_diag_objs_keep hello_image_module = hello_diag_objs_skel.
@@ -98,8 +111,8 @@ Proof. apply pieces_unique_sound. vm_compute. reflexivity. Qed.
 
 (** ## Hello's private start list *)
 
-(** Hello starts with these ten objects and with gettext's fifteen
-    constants in its private state. *)
+(** Hello starts with these ten objects, the category's name and
+    gettext's fifteen constants in its private state. *)
 Definition hello_getopt_priv_ps : list (piece * pval) := hello_kept_ps ++ hello_diag_objs_ps.
 
 (** The loader's image holds every one of those pieces. *)

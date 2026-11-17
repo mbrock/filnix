@@ -54,15 +54,17 @@ Definition hello_getopt_ro : iProp Σ :=
 #[global] Instance hello_getopt_ro_persistent : Persistent hello_getopt_ro.
 Proof using Type. rewrite /hello_getopt_ro. apply _. Qed.
 
-(** The private state owns the three free locks, the empty cache and the
-    empty list of bound domains. *)
+(** The private state owns gettext's three locks, which are free, its
+    cache, which is empty, and its list of domains, which is empty. It
+    also owns the name of the messages' locale, which is "C". *)
 Definition hello_getopt_rw : iProp Σ :=
   rw_lock (img_a "_nl_state_lock") (img_gd "_nl_state_lock") 0 0 0 0 ∗
   rw_lock (img_a "__libc_setlocale_lock") (img_gd "__libc_setlocale_lock") 0 0 0 0 ∗
   rw_lock (img_a "glibc_dcigettext#tree_lock") (img_gd "glibc_dcigettext#tree_lock") 0 0 0 0 ∗
   tfind_root (DfracOwn 1) (img_a "glibc_dcigettext#root") 0 (img_gd "glibc_dcigettext#root") ∗
   liveq (DfracOwn 1) (img_a "_nl_domain_bindings") (img_gd "_nl_domain_bindings") ∗
-  pcellq (DfracOwn 1) (img_a "_nl_domain_bindings") 0 null.
+  pcellq (DfracOwn 1) (img_a "_nl_domain_bindings") 0 null ∗
+  pcell (img_a "_nl_global_locale") 168 (mkPtr cb (Ro cb)).
 
 (** Eight zero bytes with no capabilities are a stored null pointer. *)
 Lemma zero_null_cell b reg : pts (obj_ps (b, reg) (repeat 0 8%nat)) ⊢ live b reg ∗ pcell b 0 null.
@@ -118,7 +120,7 @@ Lemma hello_getopt_own : ge_globals ge = img_globals ->
   pts hello_getopt_priv_ps ==∗ hello_getopt_ro ∗ hello_getopt_rw.
 Proof using Type.
   intros Hg. rewrite /hello_getopt_priv_ps /hello_kept_ps /hello_diag_objs_ps /hello_gettext_rw_ps /hello_printf_ro_ps.
-  iIntros "H". iDestruct (pts_app with "H") as "[HK [HR HP]]".
+  iIntros "H". iDestruct (pts_app with "H") as "[HK [HR HP]]". iDestruct (pts_app with "HP") as "[HP Sl]".
   iDestruct (pts_app with "HK") as "[Hlc HK]". iDestruct (pts_app with "HK") as "[Hmsg HK]".
   iDestruct (pts_app with "HK") as "[Hsuf Hdom]".
   iDestruct (pts_app with "HR") as "[L1 HR]". iDestruct (pts_app with "HR") as "[L2 HR]".
@@ -149,7 +151,7 @@ Proof using Type.
     iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "N1"|]. iSplit; [iExact "N2" | iExact "N3"]. }
   rewrite /hello_getopt_rw (zero_rw_lock _ _) (zero_rw_lock _ _) (zero_rw_lock _ _).
   iDestruct (zero_null_cell with "Rt") as "[Rl Rc]". iDestruct (zero_null_cell with "Db") as "[Dl Dc]".
-  iFrame "L1 L2 L3". rewrite /tfind_root /liveq /pcellq /live /pcell -!pts_ptsq. iFrame.
+  iFrame "L1 L2 L3". rewrite /hello_locale_slot_ps. rewrite /tfind_root /liveq /pcellq /live /pcell -!pts_ptsq. iFrame.
 Qed.
 
 End own.

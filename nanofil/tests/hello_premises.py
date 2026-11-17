@@ -16,10 +16,12 @@ arrow's left side is one premise, except:
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
   Its body, hello_tb_contracts in HelloStartWp.v, counts three
-  obligations, each with its own label: the printer of getopt's
-  warnings, the printer of its long-option warnings, and the build of
-  hd_priv from the objects that startup leaves. Its other conjuncts
-  only say how the printers borrow their state, so they are not counted.
+  obligations, each with its own label: the contract of glibc's
+  formatter (vfprintf_has_spec), the lend of stderr in the narrow mode
+  that getopt's warnings print in (hello_stderr_lend), and the build of
+  the private state's free part X from the objects that startup leaves.
+  The conjunct that fixes hd_priv's shape only says which state the
+  caller picks, so it is not counted.
 
 A section hypothesis that the proof uses (`Proof using H`) is a premise
 of the closed theorem even though the statement does not show it, so it
@@ -57,7 +59,9 @@ TAGS = [
     (r'hd_wprintf', 'wprintf (gap W)'),
     (r'hd_version_etc|hd_print|hd_emit_bug|hd_error_', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
-    (r'getopt_l?diag_rule|build hd_priv', 'getopt'),
+    (r'vfprintf_has_spec', 'printf'),
+    (r'hello_stderr_lend', 'file_idle'),
+    (r'build X', 'locale'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
@@ -123,12 +127,12 @@ def tb_contracts():
     out = []
     for c in split_top(body, '/\\'):
         c = strip_parens(c)
-        if c.startswith('getopt_diag_rule'):
-            out.append(f"contract: getopt's warning printer ({c})")
-        elif c.startswith('getopt_ldiag_rule'):
-            out.append(f"contract: getopt's long-option warning printer ({c})")
-        elif c.endswith('hd_priv (final_world w0 tb) hge o (debt tb)') and '==∗' in c:
-            out.append(f"contract: build hd_priv from the objects startup leaves ({c})")
+        if c.startswith('HasSpec') and '__vfprintf_internal' in c:
+            out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
+        elif c.startswith('file_inv') and 'hello_err_view' in c:
+            out.append(f"contract: stderr is narrow when main lends it, hello_stderr_lend ({c})")
+        elif c.endswith('==∗ X'):
+            out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
     if len(out) != 3:
         sys.exit(f'hello_premises: expected 3 counted conjuncts in hello_tb_contracts, found {len(out)}')
     return out
