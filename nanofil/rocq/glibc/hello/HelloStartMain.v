@@ -4,8 +4,8 @@
     runs the constructors and then calls main. The proof of the startup
     body takes a contract for each of those calls as a premise.
     [StartMainHiAtexit](../startup/StartMainHiAtexit.v) proves them for
-    the hi_atexit image. This module proves the call of main and the
-    constructor runner for Hello, in the world that startup ends in.
+    the hi_atexit image. This module proves early init, the
+    constructor runner and the call of main for Hello, in the world that startup ends in.
 
     Some library calls that Hello's main makes, such as the locale calls,
     are not proved yet. Main's contract in
@@ -22,7 +22,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic HelloMain.
 From Glibc Require Import OsWorld OsRegistry OsStart StartCtors StartLogic StartCallMainSpec StartCallMain
   StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HelloImageModule HelloImageFnLink
-  HelloGlibcDebts HelloGlibcLibsT HelloStartBridge.
+  HelloGlibcDebts HelloGlibcLibsT HelloStartBridge HelloImageLoad HelloImageEarly
+  StartCode StartTunableGetValSpec StartTunableGetVal StartTunableIsInitializedSpec StartTunableIsInitialized
+  StartClockGettimeSpec StartClockGettime StartGetrlimitSpec StartGetrlimit StartCtypeInitSpec StartCtypeInit
+  StartPthreadTunablesSpec StartPthreadTunables StartPtmallocInitSpec StartPtmallocInit
+  StartEarlyInitSpec StartEarlyInit.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -51,6 +55,55 @@ Proof using Type.
   assert (Hdef : Defines hello_ge "zrun_deferred_global_ctors" start_ctor_runner_fn)
     by (vm_compute; reflexivity).
   exact (ctor_runner_has_spec (glibc_program := program_of (final_world w0 tb) glibc_os_registry hello_ge)).
+Qed.
+
+(** This tactic proves that a symbol exists. It computes the pointer
+    first, because computing with an unknown pointer does not end. *)
+Local Ltac has_sym :=
+  lazymatch goal with |- exists p, lookup ?n ?g = Some p =>
+    let v := eval vm_compute in (lookup n g) in
+    lazymatch v with Some ?p => exists p; vm_compute; reflexivity end end.
+
+(** Startup sets up the allocator, the character tables and the thread
+    defaults before it runs any constructor. The function that does so,
+    `c: __libc_early_init`, keeps its contract in the final world,
+    because every function it calls is Hello's own code and every
+    system call it makes is left to the runtime. *)
+Lemma hello_early_init_has_spec tb :
+  HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hello_ge (TAtom "__libc_early_init")
+    (early_init_spec (glibc_program := program_of (final_world w0 tb) glibc_os_registry hello_ge)).
+Proof using Hi.
+  pose (Pg := program_of (final_world w0 tb) glibc_os_registry hello_ge).
+  destruct (hello_loaded_tables g m Hi) as [Eg _].
+  assert (X : forall s, absent_ok hello_image_module s = true -> os_ext hello_ge s)
+    by (intros s Hs; exact (absent_ok_sound _ _ _ fr _ Hi Hs)).
+  assert (D1 : Defines hello_ge "__tunable_get_val" start_tunable_get_val_fn) by (vm_compute; reflexivity).
+  assert (D2 : Defines hello_ge "__tunable_is_initialized" start_tunable_is_initialized_fn) by (vm_compute; reflexivity).
+  assert (D3 : Defines hello_ge "__GI___clock_gettime" start_clock_gettime_fn) by (vm_compute; reflexivity).
+  assert (D4 : Defines hello_ge "__GI___getrlimit" start_getrlimit_fn) by (vm_compute; reflexivity).
+  assert (D5 : Defines hello_ge "__GI___ctype_init" start_ctype_init_fn) by (vm_compute; reflexivity).
+  assert (D6 : Defines hello_ge "__pthread_tunables_init" start_pthread_tunables_init_fn) by (vm_compute; reflexivity).
+  assert (D7 : Defines hello_ge "__ptmalloc_init" start_ptmalloc_init_fn) by (vm_compute; reflexivity).
+  assert (D8 : Defines hello_ge "__getrandom_early_init" start_getrandom_early_init_fn) by (vm_compute; reflexivity).
+  assert (D9 : Defines hello_ge "__libc_early_init" start_early_init_fn) by (vm_compute; reflexivity).
+  pose proof (tunable_size_has_spec (glibc_program := Pg)) as Hsize.
+  pose proof (tunable_int_has_spec (glibc_program := Pg)) as Hint.
+  pose proof (tunable_is_initialized_has_spec (glibc_program := Pg)) as Hinit.
+  pose proof (clock_gettime_has_spec (glibc_program := Pg) eq_refl
+    (X "zsys_clock_gettime" ltac:(vm_compute; reflexivity))) as Hclock.
+  pose proof (getrlimit_has_spec (glibc_program := Pg) eq_refl
+    (X "zsys_getrlimit" ltac:(vm_compute; reflexivity))) as Hrlim.
+  pose proof (ctype_init_has_spec (glibc_program := Pg)) as Hctype.
+  assert (Hcb : exists cb, lookup (TAtom "glibc_pthread_mutex_conf#_dl_tunable_set_mutex_spin_count")
+    (ge_globals hello_ge) = Some cb) by (cbn [ge_globals]; rewrite Eg; has_sym).
+  destruct Hcb as [cb Hcb].
+  pose proof (pthread_tunables_init_has_spec (glibc_program := Pg) cb Hcb) as Hpth.
+  pose proof (getrandom_early_init_has_spec (glibc_program := Pg)) as Hgre.
+  assert (Hcbs : Forall (fun n => exists p, lookup (TAtom n) (ge_globals hello_ge) = Some p) pm_callbacks)
+    by (cbn [ge_globals]; rewrite Eg; repeat constructor; has_sym).
+  pose proof (ptmalloc_init_has_spec (glibc_program := Pg) eq_refl
+    (X "zsys_getrandom" ltac:(vm_compute; reflexivity)) Hcbs) as Hpm.
+  exact (early_init_has_spec (glibc_program := Pg)).
 Qed.
 
 (** ## The call of main
