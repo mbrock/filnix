@@ -1,0 +1,205 @@
+(** GNU Hello prints through `c: fprintf`, `c: printf`, `c: error` and
+    the diagnostics of `c: getopt`, and all of them reach glibc's
+    `c: __vfprintf_internal`. This module states the contracts of the
+    formatter and of the functions it is built from, in one place, so
+    that every proof and every caller reads the same statements.
+
+    The contracts say that a call is safe and that it gives back what
+    it was lent. They say nothing about the bytes that reach the
+    stream. That is all Hello's proof needs of a print.
+
+    The formatter's contract covers the formats that Hello uses. Such a
+    format is literal text with the conversions `%s`, `%c`, `%d` and
+    `%%`, and none of them has a flag, a width or a precision. The
+    grammar of [NarrowFormat](NarrowFormat.v) describes exactly these
+    formats, and its parser is a function, so a caller shows that a
+    constant format is covered by computing the parser on its bytes. *)
+
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
+From iris.proofmode Require Import proofmode.
+From iris.base_logic.lib Require Import gen_heap.
+From iris.program_logic Require Import language weakestpre.
+From Stdlib Require Import String ZArith List Lia.
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic VariadicLogic.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv WordString PrintfStreamInv FxprintfStream
+  NarrowFormat NarrowArgs FormatterCode FormatterStringTable CStruct PrintfLayout PrintfOut.
+Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Open Scope string_scope.
+Open Scope list_scope.
+Open Scope Z_scope.
+
+(** ## The formatter's read-only data *)
+
+Definition jump_table : string := "glibc_vfprintf_internal#jump_table".
+Definition step0_jumps : string := "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277".
+
+(** The function [loaded_bytes] reads the bytes of a data object of
+    the captured unit. It reads them from the memory that the loader
+    builds for the formatter's two tables. *)
+Definition loaded_bytes (n : string) : list Z :=
+  match lookup (TAtom n) (fst formatter_tables_loaded),
+        find (fun i => match i with IData m _ _ _ => term_eqb m (TAtom n) | _ => false end) formatter_string_tables with
+  | Some p, Some (IData _ _ _ items) =>
+      map (fun i => load_bytes (snd formatter_tables_loaded) (ptr_addr p + Z.of_nat i) 1)
+        (seq 0 (Z.to_nat (items_size items)))
+  | _, _ => []
+  end.
+
+Definition jump_table_bytes : list Z := Eval vm_compute in loaded_bytes jump_table.
+Definition step0_jumps_bytes : list Z := Eval vm_compute in loaded_bytes step0_jumps.
+
+(** The function [table_bytes] gives the bytes of one of the
+    formatter's two dispatch tables. *)
+Definition table_bytes (n : string) : list Z :=
+  if String.eqb n jump_table then jump_table_bytes else
+  if String.eqb n step0_jumps then step0_jumps_bytes else [].
+
+(** Both tables have their bytes, so the definition above did not fall
+    back to the empty list. *)
+Lemma table_bytes_sizes : (length (table_bytes jump_table), length (table_bytes step0_jumps)) = (91, 128)%nat.
+Proof. vm_compute. reflexivity. Qed.
+
+Section spec.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+
+(** The linked program has the table n, and anyone may read its bytes. *)
+Definition ro_table (n : string) : iProp Σ :=
+  ∃ b reg, ⌜lookup (TAtom n) (ge_globals ge) = Some (mkPtr b (Ro b)) /\ 0 < b /\
+            b + Z.of_nat (length (table_bytes n)) <= r_end reg /\ r_end reg <= 2 ^ 63⌝ ∗
+    liveq DfracDiscarded b reg ∗ bytesq DfracDiscarded b 0 (table_bytes n).
+
+(** The global n holds a null pointer, and nobody can write it. *)
+Definition null_global (n : string) : iProp Σ :=
+  ∃ b reg, ⌜lookup (TAtom n) (ge_globals ge) = Some (mkPtr b (Obj b)) /\ 0 < b /\ b mod 8 = 0 /\
+            b + 8 <= r_end reg /\ r_end reg <= 2 ^ 63⌝ ∗
+    liveq DfracDiscarded b reg ∗ pcellq DfracDiscarded b 0 null.
+
+(** The formatter reads its two dispatch tables. It also reads three
+    globals that are null while the program has registered no
+    conversion of its own, and Hello registers none. *)
+Definition printf_ro : iProp Σ :=
+  ro_table jump_table ∗ ro_table step0_jumps ∗
+  null_global "__printf_function_table" ∗ null_global "__printf_modifier_table" ∗
+  null_global "__printf_va_arg_table".
+
+(** ## Arguments *)
+
+(** The formatter's arguments are the string arguments [str_arg] of
+    [WordString](../string/WordString.v): integers, null pointers and
+    pointers into read-only strings. *)
+
+(** The argument cursor ap points skip bytes into a snapshot of the
+    call's arguments xs, past the named ones. *)
+Definition va_at (ap : ptr) (skip : Z) (xs : list word) : iProp Σ :=
+  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < sb /\ sb mod 16 = 0 /\ sb + req_extent (fx_req xs) <= 2 ^ 48⌝ ∗
+    pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb + skip) (Ro sb))) ∗
+    pts (snapshot_ps xs sb (fx_req xs)).
+
+(** ## The formatter *)
+
+(** The record [vfp_in] is the logical input of a call of the
+    formatter. *)
+Record vfp_in : Type := VfpIn {
+  vi_vb : Z;                      (* the stream jump tables *)
+  vi_fp : ptr;                    (* the stream *)
+  vi_mode : Z; vi_flags2 : Z; vi_held : option Z;
+  vi_fmt : ptr; vi_dq : dfrac; vi_bytes : list Z;
+  vi_ds : list narrow_directive;  (* the parsed format *)
+  vi_ap : ptr; vi_skip : Z; vi_xs : list word; vi_rest : list word;
+  vi_eb : Z                       (* errno *)
+}.
+
+(** `c: __vfprintf_internal (fp, fmt, ap, 0)` is safe when the format
+    parses in the narrow grammar, the arguments after the named ones
+    fit its conversions, and every argument is an integer, null or a
+    read-only string. It returns an int and gives back the stream, the
+    format and errno. The stream may have become narrow. *)
+Definition vfprintf_spec : fspec Σ :=
+  FSpec vfp_in
+    (fun x => [WPtr (vi_fp x); WPtr (vi_fmt x); WPtr (vi_ap x); WInt 0])
+    (fun x =>
+       ⌜parse_narrow (vi_bytes x) = Some (vi_ds x) /\
+        narrow_progress (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
+        ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x)))⌝ ∗
+       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (vi_mode x) (vi_flags2 x) (vi_held x) ∗
+       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ va_at (vi_ap x) (vi_skip x) (vi_xs x) ∗
+       ([∗ list] a ∈ vi_xs x, str_arg a) ∗ errno_any (vi_eb x) ∗ printf_ro)%I
+    (fun x o =>
+       ∃ n mode', ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
+       printf_stream (vi_vb x) (ow_self w0) (vi_fp x) mode' (vi_flags2 x) (vi_held x) ∗
+       word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
+
+(** ## Appending to a buffer *)
+
+(** `c: __printf_buffer_putc (buf, ch)` appends one character. It
+    keeps the buffer usable with the same backend. The out-of-line
+    `c: __printf_buffer_putc_1` has the same contract. *)
+Definition putc_spec (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec (Z * Z) (fun '(bb, c) => [WPtr (mkPtr bb (Obj bb)); WInt c])
+    (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out R bb)%I
+    (fun '(bb, c) o => ⌜o = RetVoid⌝ ∗ printf_out R bb)%I.
+
+(** ## The file-backed buffer *)
+
+(** A file-backed buffer writes into the character buffer of its
+    stream when the stream has room there. Otherwise it writes into its
+    own staging array. Two functions make this choice, and the record
+    [fwin_in] is the logical input of both. It names the buffer, the
+    stream and the stream's character buffer. It also gives the offsets
+    of the stream's write pointer and write end in the character
+    buffer. *)
+Record fwin_in : Type := FWinIn {
+  fi_buf : Z; fi_breg : region;
+  fi_file : Z; fi_freg : region;
+  fi_data : Z; fi_dreg : region;
+  fi_bo : Z; fi_eo : Z;
+  fi_dqf : dfrac; fi_dqd : dfrac
+}.
+
+(** The stream's two offsets lie in its character buffer. *)
+Definition fwin_ok (i : fwin_in) : Prop :=
+  0 < fi_data i /\ 0 <= fi_bo i /\ 0 <= fi_eo i /\ fi_data i + fi_bo i <= r_end (fi_dreg i) /\
+  fi_data i + fi_eo i <= r_end (fi_dreg i) /\ r_end (fi_dreg i) <= 2 ^ 63.
+
+(** The choice reads the stream's write pointer and write end. The
+    predicate [fwin_stream] owns those two fields and a reader's share
+    of the lifetimes of the stream and of its character buffer. *)
+Definition fwin_stream (i : fwin_in) : iProp Σ :=
+  ⌜fwin_ok i⌝ ∗ file_liveq (fi_dqf i) (fi_file i) (fi_freg i) ∗ liveq (fi_dqd i) (fi_data i) (fi_dreg i) ∗
+  file_cells (fi_file i)
+    [("_IO_write_ptr", VPtr (mkPtr (fi_data i + fi_bo i) (Obj (fi_data i))));
+     ("_IO_write_end", VPtr (mkPtr (fi_data i + fi_eo i) (Obj (fi_data i))))].
+
+(** The window that is chosen. *)
+Definition fwin_choice (i : fwin_in) : pwin :=
+  if fi_bo i <? fi_eo i then data_win (fi_data i) (fi_dreg i) (fi_bo i) (fi_eo i)
+  else stage_win (fi_buf i) (fi_breg i).
+
+Definition fwin_fp (i : fwin_in) : list (string * fval) :=
+  [("fp", VPtr (mkPtr (fi_file i) (Obj (fi_file i))))].
+
+(** `c: __printf_buffer_to_file_switch (buf)` points the buffer's three
+    pointers at the chosen window. *)
+Definition switch_spec : fspec Σ :=
+  FSpec fwin_in (fun i => [WPtr (mkPtr (fi_buf i) (Obj (fi_buf i)))])
+    (fun i => fwin_stream i ∗ pbuf_file_live (fi_buf i) (fi_breg i) ∗ pbuf_file (fi_buf i) (fwin_fp i) ∗
+       ∃ ob op oe, pbuf (fi_buf i) [("write_base", VPtr ob); ("write_ptr", VPtr op); ("write_end", VPtr oe)])%I
+    (fun i o => ⌜o = RetVoid⌝ ∗ fwin_stream i ∗ pbuf_file_live (fi_buf i) (fi_breg i) ∗
+       pbuf_file (fi_buf i) (fwin_fp i) ∗ pbuf (fi_buf i) (pbuf_ptrs (fwin_choice i)))%I.
+
+(** `c: __printf_buffer_to_file_init (buf, fp)` sets every field of the
+    buffer: no bytes written, the mode of a file-backed buffer, the
+    stream, and the chosen window. *)
+Definition file_init_spec : fspec Σ :=
+  FSpec fwin_in (fun i => [WPtr (mkPtr (fi_buf i) (Obj (fi_buf i))); WPtr (mkPtr (fi_file i) (Obj (fi_file i)))])
+    (fun i => fwin_stream i ∗ pbuf_file_live (fi_buf i) (fi_breg i) ∗
+       (∃ ofp, pbuf_file (fi_buf i) [("fp", VPtr ofp)]) ∗
+       ∃ ob op oe written mode, pbuf (fi_buf i)
+         [("write_base", VPtr ob); ("write_ptr", VPtr op); ("write_end", VPtr oe);
+          ("written", VInt written); ("mode", VInt mode)])%I
+    (fun i o => ⌜o = RetVoid⌝ ∗ fwin_stream i ∗ pbuf_file_live (fi_buf i) (fi_breg i) ∗
+       pbuf_file (fi_buf i) (fwin_fp i) ∗ pbuf (fi_buf i) (pbuf_vals (fwin_choice i) 0 4))%I.
+
+End spec.
+
+#[global] Hint Unfold fwin_fp : structs.

@@ -420,6 +420,11 @@ stdio/PrintfBufferXsputnPrelude.v
 stdio/PrintfBufferXsputnZero.v
 stdio/PrintfStreamInv.v
 stdio/FxprintfStream.v
+stdio/PrintfLayout.v
+stdio/PrintfOut.v
+stdio/PrintfSpec.v
+stdio/PrintfPutc.v
+stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
@@ -959,6 +964,7 @@ hello/HelloImageCpu.v
 hello/HelloImageEarly.v
 hello/HelloStartKeptAlloc.v
 hello/HelloStartKept.v
+hello/HelloLibFormats.v
 hello/HelloImageDisjoint.v
 startup/StartLsmHello.v
 hello/HelloImageLsm.v
