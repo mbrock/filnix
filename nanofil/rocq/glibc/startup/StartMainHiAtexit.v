@@ -20,7 +20,11 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic.
 From Glibc Require Import OsWorld OsRegistry OsStart StartCtors HiAtexitGe HiAtexitModule HiAtexitInitial
-  StartLogic StartCallMainSpec StartCallMain StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HiAtexitStartBridge.
+  StartLogic StartCallMainSpec StartCallMain StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HiAtexitStartBridge
+  StartCode StartTunableGetValSpec StartTunableGetVal StartTunableIsInitializedSpec StartTunableIsInitialized
+  StartClockGettimeSpec StartClockGettime StartGetrlimitSpec StartGetrlimit StartCtypeInitSpec StartCtypeInit
+  StartPthreadTunablesSpec StartPthreadTunables StartPtmallocInitSpec StartPtmallocInit
+  StartEarlyInitSpec StartEarlyInit.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -69,6 +73,49 @@ Proof using Type.
   assert (Hdef : Defines hge "zrun_deferred_global_ctors" start_ctor_runner_fn)
     by (vm_compute; reflexivity).
   exact (ctor_runner_has_spec (glibc_program := P tb)).
+Qed.
+
+(** ## Initializing libc *)
+
+(** This tactic proves that the image has a symbol for a name, by first
+    computing the symbol's pointer and then checking it. *)
+Local Ltac has_sym :=
+  lazymatch goal with |- exists p, lookup ?n ?g = Some p =>
+    let v := eval vm_compute in (lookup n g) in
+    lazymatch v with Some ?p => exists p; vm_compute; reflexivity end end.
+
+(** Startup sets up the allocator, the character tables and the thread
+    defaults before it runs any constructor. The function that does so,
+    `c: __libc_early_init`, keeps its contract in the final world,
+    because every function it calls is the image's own code. *)
+Lemma hi_early_init_has_spec tb :
+  HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__libc_early_init")
+    (early_init_spec (glibc_program := P tb)).
+Proof using Type.
+  pose (Pg := P tb).
+  assert (D1 : Defines hge "__tunable_get_val" start_tunable_get_val_fn) by (vm_compute; reflexivity).
+  assert (D2 : Defines hge "__tunable_is_initialized" start_tunable_is_initialized_fn) by (vm_compute; reflexivity).
+  assert (D3 : Defines hge "__GI___clock_gettime" start_clock_gettime_fn) by (vm_compute; reflexivity).
+  assert (D4 : Defines hge "__GI___getrlimit" start_getrlimit_fn) by (vm_compute; reflexivity).
+  assert (D5 : Defines hge "__GI___ctype_init" start_ctype_init_fn) by (vm_compute; reflexivity).
+  assert (D6 : Defines hge "__pthread_tunables_init" start_pthread_tunables_init_fn) by (vm_compute; reflexivity).
+  assert (D7 : Defines hge "__ptmalloc_init" start_ptmalloc_init_fn) by (vm_compute; reflexivity).
+  assert (D8 : Defines hge "__getrandom_early_init" start_getrandom_early_init_fn) by (vm_compute; reflexivity).
+  assert (D9 : Defines hge "__libc_early_init" start_early_init_fn) by (vm_compute; reflexivity).
+  pose proof (tunable_size_has_spec (glibc_program := Pg)) as Hsize.
+  pose proof (tunable_int_has_spec (glibc_program := Pg)) as Hint.
+  pose proof (tunable_is_initialized_has_spec (glibc_program := Pg)) as Hinit.
+  pose proof (clock_gettime_has_spec (glibc_program := Pg) eq_refl ltac:(split; vm_compute; reflexivity)) as Hclock.
+  pose proof (getrlimit_has_spec (glibc_program := Pg) eq_refl ltac:(split; vm_compute; reflexivity)) as Hrlim.
+  pose proof (ctype_init_has_spec (glibc_program := Pg)) as Hctype.
+  assert (Hcb : exists cb, lookup (TAtom "glibc_pthread_mutex_conf#_dl_tunable_set_mutex_spin_count")
+    (ge_globals hge) = Some cb) by has_sym.
+  destruct Hcb as [cb Hcb].
+  pose proof (pthread_tunables_init_has_spec (glibc_program := Pg) cb Hcb) as Hpth.
+  pose proof (getrandom_early_init_has_spec (glibc_program := Pg)) as Hgre.
+  pose proof (ptmalloc_init_has_spec (glibc_program := Pg) eq_refl ltac:(split; vm_compute; reflexivity)
+    ltac:(repeat constructor; has_sym)) as Hpm.
+  exact (early_init_has_spec (glibc_program := Pg)).
 Qed.
 
 End hi.
