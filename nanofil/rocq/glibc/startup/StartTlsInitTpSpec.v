@@ -55,7 +55,7 @@ Lemma tcb_fresh tb :
   obj tb (heap_req 16 2496) ⊢
   live tb (mkRegion tb (tb + 2496) Heap Live) ∗ pcell tb 0 null ∗ pcell tb 16 null ∗ tp_zero tb ∗
   pcell tb 776 null ∗ pcell tb 784 null ∗ bytes tb 792 [0; 0; 0; 0].
-Proof.
+Proof using Type.
   rewrite obj_zero_block; [|vm_compute; congruence].
   change (req_extent (heap_req 16 2496)) with 2496. change (req_kind (heap_req 16 2496)) with Heap.
   change (Z.to_nat 2496) with (layout_len tcb_layout).

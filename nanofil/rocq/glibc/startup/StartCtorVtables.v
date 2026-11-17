@@ -50,7 +50,7 @@ Lemma wp_check_vtables fr fi fireg fo foreg fe fereg vb vreg dq Φ :
   vt_ok dq fi fireg vb -∗ vt_ok dq fo foreg vb -∗ vt_ok dq fe fereg vb -∗ liveq dq vb vreg -∗
   ▷ (vt_ok dq fi fireg vb -∗ vt_ok dq fo foreg vb -∗ vt_ok dq fe fereg vb -∗ liveq dq vb vreg -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hi Ho He Hv Hi0 Hial Hiend Ho0 Hoal Hoend He0 Heal Heend Hvb. injection Hfr as <-.
   iIntros "[Hli Hci] [Hlo Hco] [Hle Hce] Hlv HK".
   step. step_global Hi. step. norm.
@@ -78,7 +78,7 @@ Qed.
 #[global] Instance check_vtables_has_spec
     `{!Defines ge "glibc_vtables#check_stdfiles_vtables" start_check_vtables_fn} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vtables#check_stdfiles_vtables") check_vtables_spec.
-Proof.
+Proof using Type.
   intros [[[[[[[[fi fireg] fo] foreg] fe] fereg] vb] vreg] dq]. exists start_check_vtables_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args check_vtables_spec].

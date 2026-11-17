@@ -70,7 +70,7 @@ Lemma wp_setup_tls fr c re rereg x se sereg sp spreg Φ :
        live re rereg -∗ ibyte re 0 x -∗ live se sereg -∗ pcell se 0 sp -∗ live_cap (ptr_cap sp) spreg -∗
        Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hinit.
   intros Hfr Hrs [Hfs Hgs] Hre Hse Hreend Hseal Hseend Hx Hsp. injection Hfr as <-.
   iIntros "Hkey Hlre Hre Hlse Hse Hcap HK". step.
   iApply wp_alloc; [reflexivity | vm_compute; congruence | vm_compute; congruence |

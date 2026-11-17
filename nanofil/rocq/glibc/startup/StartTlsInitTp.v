@@ -51,7 +51,7 @@ Lemma wp_tls_init_tp fr tb treg re rereg x se sereg sp spreg Φ :
        live re rereg -∗ ibyte re 0 x -∗ live se sereg -∗ pcell se 0 sp -∗ live_cap (ptr_cap sp) spreg -∗
        Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hr1 Hr2 Hr3 [Hf1 Hg1] [Hf2 Hg2] [Hf3 Hg3] Hre Hse Hreend Hseal Hseend Hx Hsp Hself Htb Hal Hend Hreg.
   injection Hfr as <-. assert (Hal8 : tb mod 8 = 0) by (Z.div_mod_to_equations; lia).
   iIntros "Hl (H720 & H728 & H736 & H744 & H752 & H760 & H1312 & H1569 & H1572 & H1592 & H1720)
@@ -96,7 +96,7 @@ Lemma tls_init_tp_has_spec tb
   os_ext ge "zthread_self_cookie" -> os_ext ge "zthread_self_id" -> os_ext ge "zthread_self" ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   HasSpec registry (os_wi w0) ge (TAtom "__tls_init_tp") (tls_init_tp_spec ge tb).
-Proof.
+Proof using Type.
   intros Hr1 Hr2 Hr3 He1 He2 He3 Hself [[[[[[[treg re] rereg] x] se] sereg] sp] spreg].
   exists start_tls_init_tp_fn. split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args tls_init_tp_spec].

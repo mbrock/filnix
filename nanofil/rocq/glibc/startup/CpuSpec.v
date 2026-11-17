@@ -191,7 +191,7 @@ Qed.
 Lemma cpu0_shape :
   pinned 0 (map open_byte (o_bytes cpu0)) = [(31%nat, BGuard 3)] /\ length (o_bytes cpu0) = 528%nat /\
   o_aux cpu0 = repeat XAny 528 /\ o_ro cpu0 = false /\ o_align cpu0 = 8.
-Proof. vm_compute. auto. Qed.
+Proof using Type*. vm_compute. auto. Qed.
 
 Lemma features_own B i cf reg :
   nth_error B i = Some (mkPlace cf reg false) -> cf mod 8 = 0 -> cf + 528 <= r_end reg ->
@@ -218,7 +218,7 @@ Qed.
 Lemma tun0_shape :
   pinned 0 (map open_byte (o_bytes tun0)) = map (fun q => (Z.to_nat (fst q), BK (snd q))) icf_tunable_bytes /\
   length (o_bytes tun0) = 4896%nat /\ o_aux tun0 = repeat XAny 4896 /\ o_ro tun0 = false /\ o_align tun0 = 8.
-Proof. vm_compute. auto. Qed.
+Proof using Type*. vm_compute. auto. Qed.
 
 Lemma tunables_own B i tl reg :
   nth_error B i = Some (mkPlace tl reg false) -> tl mod 8 = 0 -> tl + 4896 <= r_end reg ->
@@ -249,7 +249,7 @@ Lemma known_shape :
   map open_byte (o_bytes known) = map BK icf_known_bytes /\ length (o_bytes known) = 544%nat /\
   o_aux known = repeat XNone 544 /\ o_ro known = true /\ o_align known = 4 /\
   forallb (fun x => (0 <=? x) && (x <? 256)) icf_known_bytes = true.
-Proof. vm_compute. auto 10. Qed.
+Proof using Type*. vm_compute. auto 10. Qed.
 
 Lemma known_own B i kn reg :
   nth_error B i = Some (mkPlace kn reg true) -> kn mod 4 = 0 -> kn + 544 <= r_end reg ->
@@ -361,7 +361,7 @@ Lemma icf_shape :
   sp_args icf_spec = [CP 0 0 0] /\ sp_guard icf_spec = false /\ sp_ret icf_spec = None /\
   gobjs = map TAtom (cpu :: tl :: kn :: map fst icf_small_globals) /\
   forallb (fun g => 0 <=? snd g) icf_small_globals = true.
-Proof. vm_compute. auto 10. Qed.
+Proof using Type*. vm_compute. auto 10. Qed.
 
 (** * Places
 

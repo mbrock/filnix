@@ -44,7 +44,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     `{!Defines ge "__pthread_tunables_init" start_pthread_tunables_init_fn} :
   lookup (TAtom "glibc_pthread_mutex_conf#_dl_tunable_set_mutex_spin_count") (ge_globals ge) = Some cb ->
   HasSpec registry (os_wi w0) ge (TAtom "__pthread_tunables_init") pthread_tunables_init_spec.
-Proof.
+Proof using Type*.
   intros Hcb [[tl tlreg] v]. exists start_pthread_tunables_init_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
   cbn [fs_pre fs_post fs_args pthread_tunables_init_spec].

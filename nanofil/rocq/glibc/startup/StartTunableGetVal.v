@@ -52,7 +52,7 @@ Lemma wp_tunable_get_val_size fr id cb tl tlreg v dst dreg w Φ :
   ▷ (live tl tlreg -∗ bytes tl (id * 136 + 48) (le_bytes 2 4) -∗ icell tl (id * 136 + 88) v -∗
      ibyte tl (id * 136 + 104) 0 -∗ live dst dreg -∗ icell dst 0 (v mod 2 ^ 64) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Htl Hid Hal Hend Hdal Hdend. injection Hfr as <-.
   iIntros "Hl Hty Hv Hin Hld Hd HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([H0 H48]) "Hl".
@@ -81,7 +81,7 @@ Lemma wp_tunable_get_val_int fr id cb tl tlreg v dst dreg xs Φ :
      ibyte tl (id * 136 + 104) 0 -∗ live dst dreg -∗ bytes dst 0 (le_bytes ((v mod 2 ^ 64) mod 2 ^ 32) 4) -∗
      Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Htl Hid Hal Hend Hdend Hlen. injection Hfr as <-.
   iIntros "Hl Hty Hv Hin Hld Hd HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([H0 H48]) "Hl".
@@ -106,7 +106,7 @@ Qed.
 (** A size tunable read satisfies [tunable_size_spec]. *)
 #[global] Instance tunable_size_has_spec `{!Defines ge "__tunable_get_val" start_tunable_get_val_fn} :
   HasSpec registry (os_wi w0) ge (TAtom "__tunable_get_val") tunable_size_spec.
-Proof.
+Proof using Type.
   intros [[[[[[[id cb] tl] tlreg] v] dst] dreg] w]. exists start_tunable_get_val_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args tunable_size_spec].
@@ -119,7 +119,7 @@ Qed.
 (** An int tunable read satisfies [tunable_int_spec]. *)
 #[global] Instance tunable_int_has_spec `{!Defines ge "__tunable_get_val" start_tunable_get_val_fn} :
   HasSpec registry (os_wi w0) ge (TAtom "__tunable_get_val") tunable_int_spec.
-Proof.
+Proof using Type.
   intros [[[[[[[id cb] tl] tlreg] v] dst] dreg] xs]. exists start_tunable_get_val_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args tunable_int_spec].

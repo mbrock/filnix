@@ -36,7 +36,7 @@ Lemma wp_errno_handler fr v eb reg xs Φ :
   live eb reg -∗ bytes eb 0 xs -∗
   ▷ (live eb reg -∗ bytes eb 0 (le_bytes (v mod 2 ^ 32) 4) -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Heb Hend Hlen. injection Hfr as <-. iIntros "Hl Hx HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([H0 H48]) "Hl".
   step. step_global Heb. check "Hl". store_word "Hl Hx" by (a2) preserving (wi_store). iNext. iIntros "Hl Hx".
@@ -47,7 +47,7 @@ Qed.
     meets the handler's contract. *)
 #[global] Instance errno_handler_has_spec `{!Defines ge "glibc_libc_start#errno_handler" errno_handler_fn} :
   HasSpec registry (os_wi w0) ge errno_handler_name (errno_handler_spec ge).
-Proof.
+Proof using Type.
   intros [[[v eb] reg] xs]. exists errno_handler_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args errno_handler_spec].

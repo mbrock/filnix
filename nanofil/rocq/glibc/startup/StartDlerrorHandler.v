@@ -36,7 +36,7 @@ Lemma wp_dlerror_handler fr p db reg x Φ :
   live db reg -∗ pcell db 0 x -∗
   ▷ (live db reg -∗ pcell db 0 p -∗ Φ RetVoid) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hdb Hal Hend. injection Hfr as <-. iIntros "Hl Hx HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([H0 H48]) "Hl".
   step. step_global Hdb. check "Hl". store "Hl" "Hx".
@@ -48,7 +48,7 @@ Qed.
 #[global] Instance dlerror_handler_has_spec
     `{!Defines ge "glibc_libc_start#dlerror_handler" start_dlerror_handler_fn} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_libc_start#dlerror_handler") (dlerror_handler_spec ge).
-Proof.
+Proof using Type.
   intros [[[p db] reg] x]. exists start_dlerror_handler_fn.
   split; [apply defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args dlerror_handler_spec].
