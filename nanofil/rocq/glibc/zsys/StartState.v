@@ -48,9 +48,19 @@ Open Scope Z_scope.
     words and strings stored in it. *)
 
 (** This predicate holds when a live heap object starts at base b and
-    has room for at least n bytes. *)
+    has room for n bytes rounded up to whole 16-byte granules. The
+    placement is the runtime's own. `c: filc_allocate` calls
+    `c: filc_prepare_allocate`, which rounds the size up to
+    `FILC_MINALIGN`, 16 bytes, and puts the payload 16 bytes past the start
+    of a verse-heap allocation. That allocation is aligned to
+    `VERSE_HEAP_MIN_ALIGN`, also 16 bytes. Then
+    `c: initialize_object_header` sets the object's upper bound to its base
+    plus the rounded size. The bound of 2^48 is the one that the model's
+    own heap allocation rule gives every object it places. *)
 Definition heap_object (m : mem) (b n : Z) : Prop :=
-  exists reg, live_at m b reg /\ r_kind reg = Heap /\ b + n <= r_end reg.
+  exists reg, live_at m b reg /\ r_kind reg = Heap /\
+    0 < b /\ b mod 16 = 0 /\ b + (n + 15) / 16 * 16 <= r_end reg /\
+    r_end reg <= 2 ^ 48.
 
 (** The 8-byte slot at address a holds pointer p, with its capability in
     the slot's [[aux]] entry. *)
