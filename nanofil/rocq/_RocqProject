@@ -125,4 +125,6 @@ theories/hello_contracts/StartupFixtures.v
 theories/exec/AbsRun.v
 theories/exec/AbsInfer.v
 theories/exec/AbsDen.v
+theories/exec/AbsMem.v
+theories/exec/AbsStep.v
 theories/exec/AbsSound.v

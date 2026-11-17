@@ -230,22 +230,22 @@ Definition agree (n : nat) (ρ ρ' : nat -> Z) : Prop := forall s, (s < n)%nat -
 Definition upd (ρ : nat -> Z) (n : nat) (z : Z) : nat -> Z := fun s => if Nat.eqb s n then z else ρ s.
 
 Lemma agree_upd ρ n z : agree n ρ (upd ρ n z).
-Proof. intros s Hs. unfold upd. destruct (Nat.eqb_spec s n); [lia | reflexivity]. Qed.
+Proof using Type. intros s Hs. unfold upd. destruct (Nat.eqb_spec s n); [lia | reflexivity]. Qed.
 
 Lemma upd_same ρ n z : upd ρ n z n = z.
-Proof. unfold upd. rewrite Nat.eqb_refl. reflexivity. Qed.
+Proof using Type. unfold upd. rewrite Nat.eqb_refl. reflexivity. Qed.
 
 Lemma agree_refl n ρ : agree n ρ ρ.
-Proof. intros s _. reflexivity. Qed.
+Proof using Type. intros s _. reflexivity. Qed.
 
 Lemma agree_trans n n' ρ1 ρ2 ρ3 : (n <= n')%nat -> agree n ρ1 ρ2 -> agree n' ρ2 ρ3 -> agree n ρ1 ρ3.
-Proof. intros Hn H1 H2 s Hs. rewrite H2 by lia. apply H1. exact Hs. Qed.
+Proof using Type. intros Hn H1 H2 s Hs. rewrite H2 by lia. apply H1. exact Hs. Qed.
 
 Lemma dint_agree n ρ ρ' a : agree n ρ ρ' -> wf_int n a -> dint ρ' a = dint ρ a.
-Proof. intros Ha Hw. destruct a as [z|s]; [reflexivity | exact (Ha s Hw)]. Qed.
+Proof using Type. intros Ha Hw. destruct a as [z|s]; [reflexivity | exact (Ha s Hw)]. Qed.
 
 Lemma dval_agree n ρ ρ' B v w : agree n ρ ρ' -> wf_val n v -> dval ρ B v w -> dval ρ' B v w.
-Proof.
+Proof using Type.
   intros Ha Hw. destruct v as [a|c k a b| |o a|a| |g]; cbn [dval wf_val] in *; try (intros H; exact H).
   - rewrite (dint_agree n ρ ρ' a Ha Hw). auto.
   - destruct Hw as [Hwa Hwb]. rewrite (dint_agree n ρ ρ' a Ha Hwa), (dint_agree n ρ ρ' b Ha Hwb). auto.
@@ -255,49 +255,49 @@ Qed.
 
 Lemma dvals_agree n ρ ρ' B vs ws :
   agree n ρ ρ' -> Forall (wf_val n) vs -> Forall2 (dval ρ B) vs ws -> Forall2 (dval ρ' B) vs ws.
-Proof.
+Proof using Type.
   intros Ha Hw H. induction H as [|v w vs ws Hv _ IH]; constructor.
   - inversion_clear Hw. eapply dval_agree; eauto.
   - inversion_clear Hw. auto.
 Qed.
 
 Lemma dbyte_agree n ρ ρ' b x : agree n ρ ρ' -> wf_byte n b -> dbyte ρ b x -> dbyte ρ' b x.
-Proof.
+Proof using Type.
   intros Ha Hw [Hr H]. split; [exact Hr|]. destruct b; cbn [wf_byte] in *; try exact H.
   - rewrite (Ha s Hw). exact H.
   - rewrite (Ha s Hw). exact H.
 Qed.
 
 Lemma dflag_agree n ρ ρ' s fl : agree n ρ ρ' -> (s < n)%nat -> wf_flag n fl -> dflag ρ s fl -> dflag ρ' s fl.
-Proof.
+Proof using Type.
   intros Ha Hs Hw H. destruct fl; cbn [dflag wf_flag] in *; rewrite ?(Ha s Hs); try exact H.
   - rewrite (Ha s0 Hw). exact H.
   - rewrite (Ha s0 Hw). exact H.
 Qed.
 
 Lemma wf_int_mono n n' a : (n <= n')%nat -> wf_int n a -> wf_int n' a.
-Proof. destruct a; cbn; [auto | lia]. Qed.
+Proof using Type. destruct a; cbn; [auto | lia]. Qed.
 
 Lemma wf_val_mono n n' v : (n <= n')%nat -> wf_val n v -> wf_val n' v.
-Proof.
+Proof using Type.
   intros Hn. destruct v; cbn; try tauto; try apply (wf_int_mono n n'); auto.
   intros [H1 H2]. split; eapply wf_int_mono; eauto.
 Qed.
 
 Lemma wf_byte_mono n n' b : (n <= n')%nat -> wf_byte n b -> wf_byte n' b.
-Proof. destruct b; cbn; try tauto; lia. Qed.
+Proof using Type. destruct b; cbn; try tauto; lia. Qed.
 
 Lemma wf_flag_mono n n' fl : (n <= n')%nat -> wf_flag n fl -> wf_flag n' fl.
-Proof. destruct fl; cbn; try tauto; lia. Qed.
+Proof using Type. destruct fl; cbn; try tauto; lia. Qed.
 
 Lemma wf_obj_mono n n' o : (n <= n')%nat -> wf_obj n o -> wf_obj n' o.
-Proof.
+Proof using Type.
   intros Hn. destruct o as [ob|]; cbn; [|auto]. apply Forall_impl. intros b. apply wf_byte_mono. exact Hn.
 Qed.
 
 Lemma dbytes_agree n ρ ρ' bs xs :
   agree n ρ ρ' -> Forall (wf_byte n) bs -> Forall2 (dbyte ρ) bs xs -> Forall2 (dbyte ρ') bs xs.
-Proof.
+Proof using Type.
   intros Ha Hw H. induction H as [|b x bs xs Hbx _ IH]; constructor.
   - inversion_clear Hw. eapply dbyte_agree; eauto.
   - inversion_clear Hw. auto.
@@ -305,13 +305,13 @@ Qed.
 
 Lemma obj_ok_agree n ρ ρ' B pl ob xs cs :
   agree n ρ ρ' -> wf_obj n (Some ob) -> obj_ok ρ B pl ob xs cs -> obj_ok ρ' B pl ob xs cs.
-Proof.
+Proof using Type.
   intros Ha Hw (Hb & Hrest). split; [|exact Hrest]. eapply dbytes_agree; eauto.
 Qed.
 
 Lemma objs_ok_agree n ρ ρ' B os X :
   agree n ρ ρ' -> Forall (wf_obj n) os -> objs_ok ρ B os X -> objs_ok ρ' B os X.
-Proof.
+Proof using Type.
   intros Ha Hw (H1 & H2 & H). split; [exact H1|]. split; [exact H2|]. intros i ob Hi.
   destruct (H i ob Hi) as (pl & xs & cs & Hp & Hx & Ho). exists pl, xs, cs. split; [exact Hp|]. split; [exact Hx|].
   eapply obj_ok_agree; [exact Ha | | exact Ho]. rewrite Forall_forall in Hw. apply (Hw (Some ob)).
@@ -320,7 +320,7 @@ Qed.
 
 Lemma denv_agree n ρ ρ' B st e :
   agree n ρ ρ' -> Forall (fun nv => wf_val n (snd nv)) (st_env st) -> denv ρ B st e -> denv ρ' B st e.
-Proof.
+Proof using Type.
   intros Ha Hw H m v Hm. destruct (H m v Hm) as (w & Hl & Hv). exists w. split; [exact Hl|].
   eapply dval_agree; [exact Ha | | exact Hv]. rewrite Forall_forall in Hw.
   assert (Hin : exists k, In (k, v) (st_env st)).
@@ -337,7 +337,7 @@ Qed.
 Lemma M_fresh ρ B st e X lo hi z :
   M ρ B st e X -> lo <= z <= hi ->
   M (upd ρ (length (st_bnd st)) z) B (snd (fresh st lo hi)) e X.
-Proof.
+Proof using Type.
   intros (HB & HG & (Hbnd & Hfl & Hlin & Hg) & (We & Wf & Wl & Wo) & He & Ho) Hz.
   set (n := length (st_bnd st)) in *. pose proof (agree_upd ρ n z) as Ha.
   unfold fresh. cbn [snd]. split; [exact HB|]. split; [exact HG|]. split; [|split; [|split]].
@@ -366,12 +366,12 @@ Qed.
 (** * Ranges *)
 
 Lemma length_list_set {A : Type} n (x : A) l : length (list_set n x l) = length l.
-Proof. revert l. induction n as [|n IH]; intros [|y l]; cbn; auto. Qed.
+Proof using Type. revert l. induction n as [|n IH]; intros [|y l]; cbn; auto. Qed.
 
 Lemma nth_error_list_set {A : Type} n (x : A) l m :
   nth_error (list_set n x l) m =
   if Nat.eqb m n then match nth_error l m with Some _ => Some x | None => None end else nth_error l m.
-Proof.
+Proof using Type.
   revert l m. induction n as [|n IH]; intros [|y l] [|m]; cbn; auto.
   destruct (Nat.eqb m n); reflexivity.
 Qed.
@@ -381,13 +381,13 @@ Definition bok (ρ : nat -> Z) (bnd : list (Z * Z)) : Prop :=
   forall s lo hi, nth_error bnd s = Some (lo, hi) -> lo <= ρ s <= hi.
 
 Lemma bok_set ρ bnd s lo hi : bok ρ bnd -> lo <= ρ s <= hi -> bok ρ (list_set s (lo, hi) bnd).
-Proof.
+Proof using Type.
   intros Hb Hs m l h. rewrite nth_error_list_set. destruct (Nat.eqb_spec m s) as [->|_]; [|apply Hb].
   destruct (nth_error bnd s); [|discriminate]. intros [= <- <-]. exact Hs.
 Qed.
 
 Lemma bok_meet ρ bnd s lo hi : bok ρ bnd -> lo <= ρ s <= hi -> bok ρ (meet s lo hi bnd).
-Proof.
+Proof using Type.
   intros Hb Hs. unfold meet. destruct (nth s bnd (0, 0)) as [l h] eqn:E.
   intros m l' h'. rewrite nth_error_list_set. destruct (Nat.eqb_spec m s) as [->|_]; [|apply Hb].
   destruct (nth_error bnd s) as [[l0 h0]|] eqn:E'; [|discriminate]. intros [= <- <-].
@@ -395,11 +395,11 @@ Proof.
 Qed.
 
 Lemma length_meet s lo hi bnd : length (meet s lo hi bnd) = length bnd.
-Proof. unfold meet. destruct (nth s bnd (0, 0)). apply length_list_set. Qed.
+Proof using Type. unfold meet. destruct (nth s bnd (0, 0)). apply length_list_set. Qed.
 
 Lemma rng_sound ρ st a lo hi :
   sat ρ st -> wf_int (length (st_bnd st)) a -> rng st a = (lo, hi) -> lo <= dint ρ a <= hi.
-Proof.
+Proof using Type.
   intros (Hb & _) Hw. destruct a as [z|s]; cbn [rng dint wf_int] in *.
   - intros [= <- <-]. lia.
   - intros E. apply Hb. rewrite <- E. apply nth_error_nth'. exact Hw.
@@ -413,7 +413,7 @@ Lemma M_same ρ B st st' e X :
   Forall (fun f => (fst f < length (st_bnd st))%nat /\ wf_flag (length (st_bnd st)) (snd f)) (st_flags st') ->
   Forall (fun l => (fst (fst l) < length (st_bnd st))%nat /\ (snd (fst l) < length (st_bnd st))%nat) (st_lin st') ->
   M ρ B st' e X.
-Proof.
+Proof using Type.
   intros (HB & HG & _ & (We & _ & _ & Wo) & He & Ho) Ee Eo El Hs Wf Wl.
   split; [exact HB|]. split; [exact HG|]. split; [exact Hs|]. split; [|split].
   - unfold wf. rewrite El, Ee, Eo. auto.
@@ -423,18 +423,18 @@ Qed.
 
 Lemma M_wf_flags ρ B st e X : M ρ B st e X ->
   Forall (fun f => (fst f < length (st_bnd st))%nat /\ wf_flag (length (st_bnd st)) (snd f)) (st_flags st).
-Proof. intros (_ & _ & _ & (_ & W & _) & _). exact W. Qed.
+Proof using Type. intros (_ & _ & _ & (_ & W & _) & _). exact W. Qed.
 
 Lemma M_wf_lin ρ B st e X : M ρ B st e X ->
   Forall (fun l => (fst (fst l) < length (st_bnd st))%nat /\ (snd (fst l) < length (st_bnd st))%nat) (st_lin st).
-Proof. intros (_ & _ & _ & (_ & _ & W & _) & _). exact W. Qed.
+Proof using Type. intros (_ & _ & _ & (_ & _ & W & _) & _). exact W. Qed.
 
 Lemma M_sat ρ B st e X : M ρ B st e X -> sat ρ st.
-Proof. intros (_ & _ & H & _). exact H. Qed.
+Proof using Type. intros (_ & _ & H & _). exact H. Qed.
 
 Lemma M_set_bnd ρ B st e X bnd :
   M ρ B st e X -> length bnd = length (st_bnd st) -> bok ρ bnd -> M ρ B (set_bnd st bnd) e X.
-Proof.
+Proof using Type.
   intros HM El Hb. pose proof (M_sat _ _ _ _ _ HM) as (_ & Hf & Hl & Hg).
   apply (M_same ρ B st); auto.
   - split; [exact Hb|]. auto.
@@ -447,7 +447,7 @@ Qed.
 Lemma set_rng_sound ρ B st e X a lo hi :
   M ρ B st e X -> lo <= dint ρ a <= hi ->
   M ρ B (set_rng st a lo hi) e X /\ length (st_bnd (set_rng st a lo hi)) = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Ha. destruct a as [z|s]; cbn [set_rng dint] in *; [auto|].
   pose proof (M_sat _ _ _ _ _ HM) as (Hb & _ & Hl & _).
   set (f := fun (bnd : list (Z * Z)) (l : nat * nat * Z) =>
@@ -471,7 +471,7 @@ Qed.
 Lemma M_add_flag ρ B st e X s fl :
   M ρ B st e X -> (s < length (st_bnd st))%nat -> wf_flag (length (st_bnd st)) fl -> dflag ρ s fl ->
   M ρ B (add_flag st s fl) e X.
-Proof.
+Proof using Type.
   intros HM Hs Hw Hd. pose proof (M_sat _ _ _ _ _ HM) as (Hb & Hf & Hl & Hg).
   apply (M_same ρ B st); auto.
   - split; [exact Hb|]. split; [|auto]. intros s' fl' [[= <- <-]|Hin]; [exact Hd | apply Hf; exact Hin].
@@ -482,7 +482,7 @@ Qed.
 Lemma M_add_lin ρ B st e X t s c :
   M ρ B st e X -> (t < length (st_bnd st))%nat -> (s < length (st_bnd st))%nat -> ρ t = ρ s + c ->
   M ρ B (add_lin st t s c) e X.
-Proof.
+Proof using Type.
   intros HM Ht Hs Hd. pose proof (M_sat _ _ _ _ _ HM) as (Hb & Hf & Hl & Hg).
   apply (M_same ρ B st); auto.
   - split; [exact Hb|]. split; [exact Hf|]. split; [|exact Hg].
@@ -492,7 +492,7 @@ Proof.
 Qed.
 
 Lemma M_set_guard ρ B st e X b : M ρ B st e X -> (b = true -> guard) -> M ρ B (set_guard st b) e X.
-Proof.
+Proof using Type.
   intros HM Hb. pose proof (M_sat _ _ _ _ _ HM) as (Hbd & Hf & Hl & Hg).
   apply (M_same ρ B st); auto.
   - split; [exact Hbd|]. auto.
@@ -506,51 +506,51 @@ Qed.
     by the other everywhere. The state means the same afterwards. *)
 
 Lemma sub_sym_val (ρ : nat -> Z) s t u : ρ s = ρ t -> ρ (sub_sym s t u) = ρ u.
-Proof. intros E. unfold sub_sym. destruct (Nat.eqb_spec u s) as [->|_]; auto. Qed.
+Proof using Type. intros E. unfold sub_sym. destruct (Nat.eqb_spec u s) as [->|_]; auto. Qed.
 
 Lemma sub_sym_lt n s t u : (t < n)%nat -> (u < n)%nat -> (sub_sym s t u < n)%nat.
-Proof. intros Ht Hu. unfold sub_sym. destruct (Nat.eqb u s); assumption. Qed.
+Proof using Type. intros Ht Hu. unfold sub_sym. destruct (Nat.eqb u s); assumption. Qed.
 
 Lemma dint_sub ρ s t a : ρ s = ρ t -> dint ρ (sub_aint s t a) = dint ρ a.
-Proof. intros E. destruct a as [z|u]; cbn; [reflexivity|]. destruct (Nat.eqb_spec u s) as [->|_]; cbn; auto. Qed.
+Proof using Type. intros E. destruct a as [z|u]; cbn; [reflexivity|]. destruct (Nat.eqb_spec u s) as [->|_]; cbn; auto. Qed.
 
 Lemma wf_int_sub n s t a : (t < n)%nat -> wf_int n a -> wf_int n (sub_aint s t a).
-Proof. intros Ht. destruct a as [z|u]; cbn; [auto|]. destruct (Nat.eqb u s); cbn; auto. Qed.
+Proof using Type. intros Ht. destruct a as [z|u]; cbn; [auto|]. destruct (Nat.eqb u s); cbn; auto. Qed.
 
 Lemma dval_sub ρ B s t v w : ρ s = ρ t -> dval ρ B v w -> dval ρ B (sub_aval s t v) w.
-Proof. intros E. destruct v; cbn [dval sub_aval]; rewrite ?(dint_sub ρ s t) by exact E; auto. Qed.
+Proof using Type. intros E. destruct v; cbn [dval sub_aval]; rewrite ?(dint_sub ρ s t) by exact E; auto. Qed.
 
 Lemma wf_val_sub n s t v : (t < n)%nat -> wf_val n v -> wf_val n (sub_aval s t v).
-Proof.
+Proof using Type.
   intros Ht. destruct v; cbn [wf_val sub_aval]; auto using wf_int_sub.
   intros [H1 H2]. auto using wf_int_sub.
 Qed.
 
 Lemma dbyte_sub ρ s t b x : ρ s = ρ t -> dbyte ρ b x -> dbyte ρ (sub_byte s t b) x.
-Proof.
+Proof using Type.
   intros E [Hr H]. split; [exact Hr|]. destruct b; cbn [sub_byte]; rewrite ?(sub_sym_val ρ s t) by exact E; exact H.
 Qed.
 
 Lemma wf_byte_sub n s t b : (t < n)%nat -> wf_byte n b -> wf_byte n (sub_byte s t b).
-Proof. intros Ht. destruct b; cbn [wf_byte sub_byte]; auto using sub_sym_lt. Qed.
+Proof using Type. intros Ht. destruct b; cbn [wf_byte sub_byte]; auto using sub_sym_lt. Qed.
 
 Lemma dflag_sub ρ s t u fl : ρ s = ρ t -> dflag ρ u fl -> dflag ρ (sub_sym s t u) (sub_flag s t fl).
-Proof. intros E. destruct fl; cbn [dflag sub_flag]; rewrite !(sub_sym_val ρ s t) by exact E; auto. Qed.
+Proof using Type. intros E. destruct fl; cbn [dflag sub_flag]; rewrite !(sub_sym_val ρ s t) by exact E; auto. Qed.
 
 Lemma wf_flag_sub n s t fl : (t < n)%nat -> wf_flag n fl -> wf_flag n (sub_flag s t fl).
-Proof. intros Ht. destruct fl; cbn [wf_flag sub_flag]; auto using sub_sym_lt. Qed.
+Proof using Type. intros Ht. destruct fl; cbn [wf_flag sub_flag]; auto using sub_sym_lt. Qed.
 
 Lemma lookup_map_snd {X Y : Type} (f : X -> Y) n (l : list (name * X)) :
   lookup n (map (fun nv => (fst nv, f (snd nv))) l) = option_map f (lookup n l).
-Proof. induction l as [|[k v] l IH]; cbn; [reflexivity|]. destruct (name_eqb n k); [reflexivity | exact IH]. Qed.
+Proof using Type. induction l as [|[k v] l IH]; cbn; [reflexivity|]. destruct (name_eqb n k); [reflexivity | exact IH]. Qed.
 
 Lemma Forall2_map_left {X Y Z' : Type} (R : Y -> Z' -> Prop) (f : X -> Y) l l' :
   Forall2 (fun x => R (f x)) l l' -> Forall2 R (map f l) l'.
-Proof. induction 1; cbn; constructor; auto. Qed.
+Proof using Type. induction 1; cbn; constructor; auto. Qed.
 
 Lemma M_sub ρ B st e X s t :
   M ρ B st e X -> ρ s = ρ t -> (t < length (st_bnd st))%nat -> M ρ B (sub_state s t st) e X.
-Proof.
+Proof using Type.
   intros (HB & HG & (Hb & Hf & Hl & Hg) & (We & Wf & Wl & Wo) & He & (L1 & L2 & Ho)) E Ht.
   split; [exact HB|]. split; [exact HG|]. unfold sub_state. split; [|split; [|split]].
   - split; [exact Hb|]. split; [|split; [|exact Hg]]; cbn [st_flags st_lin].
@@ -587,7 +587,7 @@ Qed.
 Lemma ref_le_sound ρ B st e X a b :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b -> dint ρ a <= dint ρ b ->
   exists st', ref_le st a b = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb Hab. unfold ref_le.
   destruct (rng st a) as [alo ahi] eqn:Ea. destruct (rng st b) as [blo bhi] eqn:Eb.
   pose proof (rng_sound _ _ _ _ _ (M_sat _ _ _ _ _ HM) Wa Ea) as Ra.
@@ -601,7 +601,7 @@ Qed.
 Lemma ref_lt_sound ρ B st e X a b :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b -> dint ρ a < dint ρ b ->
   exists st', ref_lt st a b = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb Hab. unfold ref_lt.
   destruct (rng st a) as [alo ahi] eqn:Ea. destruct (rng st b) as [blo bhi] eqn:Eb.
   pose proof (rng_sound _ _ _ _ _ (M_sat _ _ _ _ _ HM) Wa Ea) as Ra.
@@ -615,7 +615,7 @@ Qed.
 Lemma ref_eq_sound ρ B st e X a b :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b -> dint ρ a = dint ρ b ->
   exists st', ref_eq st a b = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb Hab. unfold ref_eq.
   destruct (rng st a) as [alo ahi] eqn:Ea. destruct (rng st b) as [blo bhi] eqn:Eb.
   pose proof (rng_sound _ _ _ _ _ (M_sat _ _ _ _ _ HM) Wa Ea) as Ra.
@@ -635,7 +635,7 @@ Qed.
 Lemma ref_ne_sound ρ B st e X a b :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b -> dint ρ a <> dint ρ b ->
   exists st', ref_ne st a b = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb Hab. unfold ref_ne.
   destruct (rng st a) as [alo ahi] eqn:Ea. destruct (rng st b) as [blo bhi] eqn:Eb.
   pose proof (rng_sound _ _ _ _ _ (M_sat _ _ _ _ _ HM) Wa Ea) as Ra.
@@ -651,14 +651,14 @@ Qed.
 
 Lemma In_flag_picks {Y : Type} st s (pick : flag -> option Y) x :
   In x (flag_picks st s pick) -> exists fl, In (s, fl) (st_flags st) /\ pick fl = Some x.
-Proof.
+Proof using Type.
   unfold flag_picks. intros Hin. apply in_flat_map in Hin as ([u fl] & Hin & Hx). cbn [fst snd] in Hx.
   destruct (Nat.eqb_spec u s) as [->|_]; [|destruct Hx]. destruct (pick fl) as [y|] eqn:E; [|destruct Hx].
   destruct Hx as [<-|[]]. exists fl. auto.
 Qed.
 
 Lemma flag_eqb_eq a b : flag_eqb a b = true -> a = b.
-Proof.
+Proof using Type.
   destruct a, b; cbn; try discriminate; auto.
   - intros H. apply Z.eqb_eq in H. congruence.
   - intros H. apply andb_true_iff in H as [H H3]. apply andb_true_iff in H as [H1 H2].
@@ -667,7 +667,7 @@ Proof.
 Qed.
 
 Lemma has_flag_In st s fl : has_flag st s fl = true -> In (s, fl) (st_flags st).
-Proof.
+Proof using Type.
   unfold has_flag. intros H. apply existsb_exists in H as ([u fl'] & Hin & H). cbn [fst snd] in H.
   apply andb_true_iff in H as [H1 H2]. apply Nat.eqb_eq in H1. apply flag_eqb_eq in H2. subst. exact Hin.
 Qed.
@@ -680,7 +680,7 @@ Qed.
 Lemma note_nonzero_sound ρ B st e X a :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> dint ρ a <> 0 ->
   exists st', note_nonzero st a = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Ha. destruct a as [z|s]; cbn [note_nonzero dint wf_int] in *; [eauto|].
   pose proof (M_sat _ _ _ _ _ HM) as (_ & Hf & _). pose proof (M_wf_flags _ _ _ _ _ HM) as Wf.
   set (picks := flag_picks st s (fun fl => match fl with FEndNz u key => Some (u, key) | _ => None end)).
@@ -703,13 +703,13 @@ Proof.
 Qed.
 
 Lemma cond_bit_01 c k x y r : cond_bit c k x y = Some r -> r = 0 \/ r = 1.
-Proof.
+Proof using Type.
   destruct c; cbn; try discriminate; destruct (signed k x); try discriminate; destruct (signed k y); try discriminate;
     intros [= <-]; match goal with |- context [if ?b then _ else _] => destruct b end; auto.
 Qed.
 
 Lemma cond_bit_negate c k x y : cond_bit c k x y = Some 0 -> cond_bit (negate c) k x y = Some 1.
-Proof.
+Proof using Type.
   destruct c; cbn; try discriminate; destruct (signed k x) as [sx|]; try discriminate;
     destruct (signed k y) as [sy|]; try discriminate;
     repeat match goal with
@@ -720,12 +720,12 @@ Proof.
 Qed.
 
 Lemma sign_extension_small m h u : 0 <= u < h -> h <= m -> sign_extension m h u = u.
-Proof. intros Hu Hm. unfold sign_extension. rewrite Z.mod_small by lia. destruct (Z.leb_spec h u); lia. Qed.
+Proof using Type. intros Hu Hm. unfold sign_extension. rewrite Z.mod_small by lia. destruct (Z.leb_spec h u); lia. Qed.
 
 Lemma nonneg_half_sound ρ st k a sx :
   sat ρ st -> wf_int (length (st_bnd st)) a -> nonneg_half st k a = true ->
   signed k (dint ρ a) = Some sx -> sx = dint ρ a.
-Proof.
+Proof using Type.
   intros Hs Wa. unfold nonneg_half. destruct (rng st a) as [lo hi] eqn:E.
   pose proof (rng_sound _ _ _ _ _ Hs Wa E) as R. intros H. apply andb_true_iff in H as [H1 H2].
   apply Z.leb_le in H1. apply Z.ltb_lt in H2. unfold signed, half in *.
@@ -736,7 +736,7 @@ Lemma refine1_sound ρ B st e X c k a b :
   M ρ B st e X -> wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b ->
   cond_bit c k (dint ρ a) (dint ρ b) = Some 1 ->
   exists st', refine1 st c k a b = Some st' /\ M ρ B st' e X /\ length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb. pose proof (M_sat _ _ _ _ _ HM) as Hs.
   destruct c; cbn [cond_bit refine1]; try discriminate.
   - destruct (Z.eqb_spec (dint ρ a) (dint ρ b)); [|discriminate]. intros _. apply ref_eq_sound; auto.
@@ -783,7 +783,7 @@ Lemma refine_sound ρ B st e X c k a b r :
   cond_bit c k (dint ρ a) (dint ρ b) = Some r ->
   exists st', refine st c k a b (negb (r =? 0)) = Some st' /\ M ρ B st' e X /\
               length (st_bnd st') = length (st_bnd st).
-Proof.
+Proof using Type.
   intros HM Wa Wb Hc. unfold refine. destruct (cond_bit_01 _ _ _ _ _ Hc) as [-> | ->]; cbn [Z.eqb negb].
   - apply refine1_sound; auto. apply cond_bit_negate. exact Hc.
   - apply refine1_sound; auto.
@@ -799,23 +799,23 @@ Definition step (ρ : nat -> Z) (st : astate) (ρ' : nat -> Z) (st' : astate) : 
   agree (length (st_bnd st)) ρ ρ' /\ (length (st_bnd st) <= length (st_bnd st'))%nat.
 
 Lemma step_refl ρ st : step ρ st ρ st.
-Proof. split; [apply agree_refl | lia]. Qed.
+Proof using Type. split; [apply agree_refl | lia]. Qed.
 
 Lemma step_same ρ st st' : length (st_bnd st') = length (st_bnd st) -> step ρ st ρ st'.
-Proof. intros E. split; [apply agree_refl | lia]. Qed.
+Proof using Type. intros E. split; [apply agree_refl | lia]. Qed.
 
 Lemma step_trans ρ1 st1 ρ2 st2 ρ3 st3 : step ρ1 st1 ρ2 st2 -> step ρ2 st2 ρ3 st3 -> step ρ1 st1 ρ3 st3.
-Proof. intros [A1 L1] [A2 L2]. split; [eapply agree_trans; eauto | lia]. Qed.
+Proof using Type. intros [A1 L1] [A2 L2]. split; [eapply agree_trans; eauto | lia]. Qed.
 
 Lemma step_val ρ st ρ' st' B v w :
   step ρ st ρ' st' -> wf_val (length (st_bnd st)) v -> dval ρ B v w ->
   wf_val (length (st_bnd st')) v /\ dval ρ' B v w.
-Proof. intros [Ha Hl] Wv Hv. split; [eapply wf_val_mono; eauto | eapply dval_agree; eauto]. Qed.
+Proof using Type. intros [Ha Hl] Wv Hv. split; [eapply wf_val_mono; eauto | eapply dval_agree; eauto]. Qed.
 
 Lemma step_vals ρ st ρ' st' B vs ws :
   step ρ st ρ' st' -> Forall (wf_val (length (st_bnd st))) vs -> Forall2 (dval ρ B) vs ws ->
   Forall (wf_val (length (st_bnd st'))) vs /\ Forall2 (dval ρ' B) vs ws.
-Proof.
+Proof using Type.
   intros [Ha Hl] Wv Hv. split; [|eapply dvals_agree; eauto].
   eapply Forall_impl; [|exact Wv]. intros v. apply wf_val_mono. exact Hl.
 Qed.
@@ -823,7 +823,7 @@ Qed.
 Lemma step_int ρ st ρ' st' a :
   step ρ st ρ' st' -> wf_int (length (st_bnd st)) a ->
   wf_int (length (st_bnd st')) a /\ dint ρ' a = dint ρ a.
-Proof. intros [Ha Hl] Wa. split; [eapply wf_int_mono; eauto | eapply dint_agree; eauto]. Qed.
+Proof using Type. intros [Ha Hl] Wa. split; [eapply wf_int_mono; eauto | eapply dint_agree; eauto]. Qed.
 
 (** The result [R] of a step is a new state, true under a valuation
     that extends the old one, together with a value that describes the
@@ -834,7 +834,7 @@ Definition R (ρ : nat -> Z) (B : list place) (e : env) (X : cont) (st st' : ast
 Lemma fresh_sound ρ B st e X lo hi z s st' :
   M ρ B st e X -> lo <= z <= hi -> fresh st lo hi = (s, st') ->
   exists ρ', M ρ' B st' e X /\ step ρ st ρ' st' /\ (s < length (st_bnd st'))%nat /\ ρ' s = z.
-Proof.
+Proof using Type.
   intros HM Hz E. pose proof (M_fresh ρ B st e X lo hi z HM Hz) as H. unfold fresh in *. injection E as <- <-.
   exists (upd ρ (length (st_bnd st)) z). split; [exact H|]. unfold step. cbn [st_bnd]. rewrite length_app. cbn [length].
   split; [split; [apply agree_upd | lia]|]. split; [lia | apply upd_same].
@@ -843,7 +843,7 @@ Qed.
 Lemma mk_sound ρ B st e X lo hi z a st' :
   M ρ B st e X -> lo <= z <= hi -> mk st lo hi = (a, st') ->
   exists ρ', M ρ' B st' e X /\ step ρ st ρ' st' /\ wf_int (length (st_bnd st')) a /\ dint ρ' a = z.
-Proof.
+Proof using Type.
   intros HM Hz. unfold mk. destruct (Z.eqb_spec lo hi) as [Elh|_].
   - intros [= <- <-]. exists ρ. split; [exact HM|]. split; [apply step_refl|]. split; [exact I | cbn; lia].
   - destruct (fresh st lo hi) as [s st1] eqn:E. intros [= <- <-].
@@ -851,7 +851,7 @@ Proof.
 Qed.
 
 Lemma lookup_In {Y : Type} n (l : list (name * Y)) v : lookup n l = Some v -> exists k, In (k, v) l.
-Proof.
+Proof using Type.
   induction l as [|[k v'] l IH]; cbn; [discriminate|].
   destruct (name_eqb n k); [intros [= ->]; exists k; auto|].
   intros H. destruct (IH H) as [k' Hk]. exists k'. auto.
@@ -860,7 +860,7 @@ Qed.
 Lemma M_env ρ B st e X n v :
   M ρ B st e X -> lookup n (st_env st) = Some v ->
   wf_val (length (st_bnd st)) v /\ exists w, lookup n e = Some w /\ dval ρ B v w.
-Proof.
+Proof using Type.
   intros (_ & _ & _ & (We & _) & He & _) E. split; [|exact (He n v E)].
   destruct (lookup_In _ _ _ E) as [k Hk]. rewrite Forall_forall in We. exact (We _ Hk).
 Qed.
@@ -881,7 +881,7 @@ Definition int_at (m : Z) (v : aval) (st : astate) : option (aval * astate) :=
 Lemma int_at_sound ρ B st e X m v w x st' :
   1 < m -> M ρ B st e X -> wf_val (length (st_bnd st)) v -> dval ρ B v w -> int_at m v st = Some (x, st') ->
   exists n, w = WInt n /\ R ρ B e X st st' x (WInt (n mod m)).
-Proof.
+Proof using Type.
   intros Hm HM Wv Hv. pose proof (M_sat _ _ _ _ _ HM) as Hs.
   destruct v as [a|c k a b| |o a|a| |g]; cbn [int_at dval wf_val] in *; try discriminate.
   - destruct (rng st a) as [lo hi] eqn:E. pose proof (rng_sound _ _ _ _ _ Hs Wv E) as Rg.
@@ -908,7 +908,7 @@ Qed.
 Lemma tmp_at_sound ρ B st e X k v w x st' :
   M ρ B st e X -> wf_val (length (st_bnd st)) v -> dval ρ B v w -> tmp_at k v st = Some (x, st') ->
   exists w', word_at_class k w = Some w' /\ R ρ B e X st st' x w'.
-Proof.
+Proof using Type.
   intros HM Wv Hv. destruct k; try discriminate.
   - change (tmp_at W v st) with (int_at (2 ^ 32) v st). intros E.
     destruct (int_at_sound ρ B st e X (2 ^ 32) v w x st' ltac:(reflexivity) HM Wv Hv E) as (n & -> & H).
@@ -922,7 +922,7 @@ Proof.
 Qed.
 
 Lemma index_of_nth n l i : index_of n l = Some i -> nth_error l i = Some n.
-Proof.
+Proof using Type.
   revert i. induction l as [|x l IH]; cbn; [discriminate|]. intros i.
   destruct (name_eqb n x) eqn:E.
   - intros [= <-]. apply term_eqb_eq in E. subst. reflexivity.
@@ -932,14 +932,14 @@ Qed.
 Hypothesis Hfn : fnames_ok.
 
 Lemma R_same ρ B e X st x w : M ρ B st e X -> wf_val (length (st_bnd st)) x -> dval ρ B x w -> R ρ B e X st st x w.
-Proof. intros HM Wx Hx. exists ρ. split; [exact HM|]. split; [apply step_refl | auto]. Qed.
+Proof using Type. intros HM Wx Hx. exists ρ. split; [exact HM|]. split; [apply step_refl | auto]. Qed.
 
 (** An operand that the checker reads describes the word that the
     program reads. *)
 Lemma avalue_sound ρ B st e X k v x st' :
   M ρ B st e X -> avalue gobjs fnames k v st = Some (x, st') ->
   exists w, value_x ge e k v = Some w /\ R ρ B e X st st' x w.
-Proof.
+Proof using Hfn.
   intros HM. destruct v as [n|n|s]; cbn [avalue value_x].
   - destruct (lookup n (st_env st)) as [x0|] eqn:E; [|discriminate]. intros Ht.
     destruct (M_env _ _ _ _ _ _ _ HM E) as (W0 & w0 & El & Hv). rewrite El.
@@ -965,7 +965,7 @@ Definition Rs (ρ : nat -> Z) (B : list place) (e : env) (X : cont) (st st' : as
 Lemma avalues_sound ρ B st e X ks vs xs st' :
   M ρ B st e X -> avalues gobjs fnames ks vs st = Some (xs, st') ->
   exists ws, map2_option (value_x ge e) ks vs = Some ws /\ Rs ρ B e X st st' xs ws.
-Proof.
+Proof using Hfn.
   revert ρ st vs xs st'. induction ks as [|k ks IH]; intros ρ st [|v vs] xs st' HM; cbn [avalues map2_option]; try discriminate.
   - intros [= <- <-]. exists []. split; [reflexivity|]. exists ρ. split; [exact HM|]. split; [apply step_refl|]. auto.
   - destruct (avalue gobjs fnames k v st) as [[x st1]|] eqn:E1; [|discriminate].
@@ -982,7 +982,7 @@ Qed.
 Lemma as_int_sound ρ B st e X v w x st' :
   M ρ B st e X -> wf_val (length (st_bnd st)) v -> dval ρ B v w -> as_int v st = (x, st') ->
   R ρ B e X st st' x w.
-Proof.
+Proof using Type.
   intros HM Wv Hv. destruct v as [a|c k a b| |o a|a| |g]; cbn [as_int];
     try (intros [= <- <-]; apply R_same; assumption).
   cbn [dval wf_val] in *. destruct Hv as (r & Hc & ->). destruct Wv as [Wa Wb].
@@ -1003,7 +1003,7 @@ Qed.
 Lemma as_ints_sound ρ B st e X vs ws xs st' :
   M ρ B st e X -> Forall (wf_val (length (st_bnd st))) vs -> Forall2 (dval ρ B) vs ws ->
   as_ints vs st = (xs, st') -> Rs ρ B e X st st' xs ws.
-Proof.
+Proof using Type.
   revert ρ st ws xs st'. induction vs as [|v vs IH]; intros ρ st ws xs st' HM Wv Hv; cbn [as_ints].
   - intros [= <- <-]. inversion Hv; subst. exists ρ. split; [exact HM|]. split; [apply step_refl|]. auto.
   - destruct (as_int v st) as [x st1] eqn:E1. destruct (as_ints vs st1) as [xs' st2] eqn:E2. intros [= <- <-].
@@ -1016,14 +1016,14 @@ Proof.
 Qed.
 
 Lemma land_le x y : 0 <= x -> 0 <= y -> 0 <= Z.land x y <= y.
-Proof.
+Proof using Type.
   intros Hx Hy. split; [apply Z.land_nonneg; auto|].
   apply (Z.ldiff_le _ _ Hy). apply Z.bits_inj'. intros i Hi.
   rewrite Z.ldiff_spec, Z.land_spec, Z.bits_0. destruct (Z.testbit x i), (Z.testbit y i); reflexivity.
 Qed.
 
 Lemma lor_bound a b h : 0 <= a <= h -> 0 <= b <= h -> 0 <= Z.lor a b <= 2 ^ (Z.log2 h + 1) - 1.
-Proof.
+Proof using Type.
   intros Ha Hb. assert (H0 : 0 <= Z.lor a b) by (apply Z.lor_nonneg; lia). split; [exact H0|].
   pose proof (Z.log2_nonneg h) as Hl.
   destruct (Z.eq_dec (Z.lor a b) 0) as [->|Hne]; [pose proof (Z.pow_pos_nonneg 2 (Z.log2 h + 1)); lia|].
@@ -1034,7 +1034,7 @@ Proof.
 Qed.
 
 Lemma lxor_bound a b h : 0 <= a <= h -> 0 <= b <= h -> 0 <= Z.lxor a b <= 2 ^ (Z.log2 h + 1) - 1.
-Proof.
+Proof using Type.
   intros Ha Hb. assert (H0 : 0 <= Z.lxor a b) by (apply Z.lxor_nonneg; lia). split; [exact H0|].
   pose proof (Z.log2_nonneg h) as Hl.
   destruct (Z.eq_dec (Z.lxor a b) 0) as [->|Hne]; [pose proof (Z.pow_pos_nonneg 2 (Z.log2 h + 1)); lia|].
@@ -1062,7 +1062,7 @@ Record icls (k : class) (m h bits : Z) : Prop := mkIcls {
 }.
 
 Lemma icls_of k m : modulus_of k = Some m -> exists h bits, icls k m h bits.
-Proof.
+Proof using Type.
   destruct k; cbn [modulus_of]; try discriminate; intros [= <-].
   - exists (2 ^ 31), 32. split; try reflexivity; try easy. auto.
   - exists (2 ^ 63), 64. split; try reflexivity; try easy. auto.
@@ -1071,7 +1071,7 @@ Qed.
 Lemma clamp_sound ρ B st e X m lo hi v a st' :
   0 < m -> M ρ B st e X -> lo <= v <= hi -> clamp st m lo hi = (a, st') ->
   exists ρ', M ρ' B st' e X /\ step ρ st ρ' st' /\ wf_int (length (st_bnd st')) a /\ dint ρ' a = v mod m.
-Proof.
+Proof using Type.
   intros Hm HM Hv. unfold clamp. destruct ((0 <=? lo) && (hi <? m)) eqn:E.
   - apply andb_true_iff in E as [H1 H2]. apply Z.leb_le in H1. apply Z.ltb_lt in H2.
     rewrite Z.mod_small by lia. apply mk_sound; assumption.
@@ -1088,19 +1088,19 @@ Definition Ri (ρ : nat -> Z) (B : list place) (e : env) (X : cont) (st st' : as
 
 Lemma fin_mk ρ B st e X lo hi z r st' :
   M ρ B st e X -> lo <= z <= hi -> Some (mk st lo hi) = Some (r, st') -> Ri ρ B e X st st' r z.
-Proof. intros HM Hz [= E]. exact (mk_sound ρ B st e X lo hi z r st' HM Hz E). Qed.
+Proof using Type. intros HM Hz [= E]. exact (mk_sound ρ B st e X lo hi z r st' HM Hz E). Qed.
 
 Lemma fin_clamp ρ B st e X m lo hi v r st' :
   0 < m -> M ρ B st e X -> lo <= v <= hi -> Some (clamp st m lo hi) = Some (r, st') ->
   Ri ρ B e X st st' r (v mod m).
-Proof. intros Hm HM Hz [= E]. exact (clamp_sound ρ B st e X m lo hi v r st' Hm HM Hz E). Qed.
+Proof using Type. intros Hm HM Hz [= E]. exact (clamp_sound ρ B st e X m lo hi v r st' Hm HM Hz E). Qed.
 
 Lemma abin_rng_sound ρ B st e X o k m h bits x y r st' :
   icls k m h bits -> M ρ B st e X ->
   wf_int (length (st_bnd st)) x -> wf_int (length (st_bnd st)) y ->
   abin_rng o k m x y st = Some (r, st') ->
   exists z, alu o k [WInt (dint ρ x); WInt (dint ρ y)] = Some (WInt z) /\ Ri ρ B e X st st' r z.
-Proof.
+Proof using Type.
   intros [Hmod Hhalf Hbits Hhk Hsh Hm Hh Hb Hle _ _] HM Wx Wy. pose proof (M_sat _ _ _ _ _ HM) as Hs. unfold abin_rng.
   destruct (rng st x) as [xlo xhi] eqn:Ex. destruct (rng st y) as [ylo yhi] eqn:Ey.
   pose proof (rng_sound _ _ _ _ _ Hs Wx Ex) as Rx. pose proof (rng_sound _ _ _ _ _ Hs Wy Ey) as Ry.
@@ -1153,7 +1153,7 @@ Lemma abin_sound ρ B st e X o k x y r st' :
   abin o k x y st = Some (r, st') ->
   (k = W \/ k = L) /\
   exists z, alu o k [WInt (dint ρ x); WInt (dint ρ y)] = Some (WInt z) /\ Ri ρ B e X st st' r z.
-Proof.
+Proof using Type.
   intros HM Wx Wy. unfold abin. destruct (modulus_of k) as [m|] eqn:Em; [|discriminate].
   destruct (icls_of k m Em) as (h & bits & Hc). intros E. split; [exact (ic_k _ _ _ _ Hc)|]. revert E.
   assert (Hg : abin_rng o k m x y st = Some (r, st') ->
@@ -1166,10 +1166,10 @@ Qed.
 
 Lemma R_step ρ ρ1 B e X st st1 st' x w :
   step ρ st ρ1 st1 -> R ρ1 B e X st1 st' x w -> R ρ B e X st st' x w.
-Proof. intros S1 (ρ' & H & S2 & W & D'). exists ρ'. split; [exact H|]. split; [eapply step_trans; eauto | auto]. Qed.
+Proof using Type. intros S1 (ρ' & H & S2 & W & D'). exists ρ'. split; [exact H|]. split; [eapply step_trans; eauto | auto]. Qed.
 
 Lemma land_pow2_bit a n : 0 <= n -> Z.land a (2 ^ n) <> 0 -> Z.testbit a n = true.
-Proof.
+Proof using Type.
   intros Hn Hne. destruct (Z.testbit a n) eqn:E; [reflexivity|]. exfalso. apply Hne.
   apply Z.bits_inj'. intros i Hi. rewrite Z.land_spec, Z.bits_0, Z.pow2_bits_eqb by exact Hn.
   destruct (Z.eqb_spec n i) as [<-|_]; [rewrite E; reflexivity | apply andb_false_r].
@@ -1181,7 +1181,7 @@ Lemma aflags_sound ρ ρ' B st st' e X o k a b r z :
   wf_int (length (st_bnd st)) a -> wf_int (length (st_bnd st)) b -> wf_int (length (st_bnd st')) r ->
   alu o k [WInt (dint ρ a); WInt (dint ρ b)] = Some (WInt z) -> dint ρ' r = z ->
   M ρ' B (aflags o k a b r st st') e X /\ length (st_bnd (aflags o k a b r st st')) = length (st_bnd st').
-Proof.
+Proof using Type.
   intros HM HM' [Ha Hl] Wa Wb Wr Halu Hr.
   pose proof (M_sat _ _ _ _ _ HM) as (Hbnd & Hf & _). pose proof (M_wf_flags _ _ _ _ _ HM) as Wf.
   rewrite Forall_forall in Wf.
@@ -1231,7 +1231,7 @@ Qed.
 Lemma op_res_alu2 o k x y w m :
   (k = W \/ k = L) -> (forall c ck, o <> Cmp c ck) -> alu o k [WInt x; WInt y] = Some w ->
   op_res o k [WInt x; WInt y] m = Some (OpRes (RVal w) m).
-Proof.
+Proof using Type.
   intros Hk Hc Ha. destruct o; try discriminate Ha; try (exfalso; eapply Hc; reflexivity);
     destruct Hk as [-> | ->]; unfold op_res, op_res_int; cbn [fmt_of additive_res]; rewrite Ha; reflexivity.
 Qed.
@@ -1241,7 +1241,7 @@ Lemma abinop_sound ρ B st e X o k a b ws v st' :
   Forall (wf_val (length (st_bnd st))) [VI a; VI b] -> Forall2 (dval ρ B) [VI a; VI b] ws ->
   (let? (r, st1) := abin o k a b st in Some (VI r, aflags o k a b r st st1)) = Some (v, st') ->
   exists w, (forall m, op_res o k ws m = Some (OpRes (RVal w) m)) /\ R ρ B e X st st' v w.
-Proof.
+Proof using Type.
   intros Hc HM Wv Hv. inversion Wv as [|? ? Wa Wv']; subst. inversion Wv' as [|? ? Wb _]; subst.
   inversion Hv as [|? wa ? ws' Ha Hv']; subst. inversion Hv' as [|? wb ? ws'' Hb Hv'']; subst. inversion Hv''; subst.
   cbn [dval wf_val] in *. subst wa wb.
@@ -1255,13 +1255,13 @@ Qed.
 
 Lemma cond_bit_int c ck x y :
   int_cond c = true -> (ck = W \/ ck = L) -> exists r, cond_bit c ck x y = Some r.
-Proof. intros Hc [-> | ->]; destruct c; try discriminate; cbn; eauto. Qed.
+Proof using Type. intros Hc [-> | ->]; destruct c; try discriminate; cbn; eauto. Qed.
 
 Lemma aop_int_sound ρ B st e X o k xs ws v st' :
   M ρ B st e X -> Forall (wf_val (length (st_bnd st))) xs -> Forall2 (dval ρ B) xs ws ->
   aop_int o k xs st = Some (v, st') ->
   exists w, (forall m, op_res o k ws m = Some (OpRes (RVal w) m)) /\ R ρ B e X st st' v w.
-Proof.
+Proof using Type.
   intros HM Wv Hv. pose proof (M_sat _ _ _ _ _ HM) as Hs.
   assert (Hgen : (forall c ck, o <> Cmp c ck) -> forall a b, xs = [VI a; VI b] ->
             (let? (r, st1) := abin o k a b st in Some (VI r, aflags o k a b r st st1)) = Some (v, st') ->
@@ -1342,7 +1342,7 @@ Lemma aop_sound ρ B st e X o k xs ws v st' :
   M ρ B st e X -> Forall (wf_val (length (st_bnd st))) xs -> Forall2 (dval ρ B) xs ws ->
   aop o k xs st = Some (v, st') ->
   exists w, (forall m, op_res o k ws m = Some (OpRes (RVal w) m)) /\ R ρ B e X st st' v w.
-Proof.
+Proof using Type.
   intros HM Wv Hv.
   assert (Hgen : (let (xs', st1) := as_ints xs st in aop_int o k xs' st1) = Some (v, st') ->
             exists w, (forall m, op_res o k ws m = Some (OpRes (RVal w) m)) /\ R ρ B e X st st' v w).
