@@ -274,6 +274,8 @@ startup/StartJoin.v
 startup/StartGetenv.v
 startup/StartMainHiAtexit.v
 startup/StartRunHiAtexit.v
+startup/StartWpHiAtexit.v
+startup/StartSafeHiAtexit.v
 startup/StartCtorCalls.v
 startup/StartCtorChain.v
 startup/StartVtablesImage.v
