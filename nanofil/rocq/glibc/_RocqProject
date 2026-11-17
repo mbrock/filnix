@@ -948,6 +948,7 @@ hello/HelloImageFnLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
 hello/HelloImageCpu.v
+hello/HelloImageDisjoint.v
 startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
@@ -1095,6 +1096,7 @@ hi_atexit/HiAtexitEntryOwn.v
 getopt/GetoptLongAmbList.v
 hi_atexit/HiAtexitSafe.v
 hi_atexit/HiAtexitStartBridge.v
+startup/StartImageDisjoint.v
 getopt/GetoptLongAmbHead.v
 getopt/GetoptLongAmbPoss.v
 getopt/GetoptLongAmbRep.v
