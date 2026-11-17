@@ -1003,6 +1003,7 @@ hello/HelloImageLsm.v
 hello/HelloImageEnviron.v
 hello/HelloStartAssembly.v
 hello/HelloStartCtors.v
+hello/HelloStartFacts.v
 hello/HelloImageLayoutRefused.v
 hello/HelloGlibcMainSteps.v
 hi_atexit/HiAtexitPutsRules.v
