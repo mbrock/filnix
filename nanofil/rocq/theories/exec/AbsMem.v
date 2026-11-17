@@ -316,9 +316,9 @@ Section mem.
 Variable guard : Prop.
 Variable ge : genv.
 Variable gobjs : list name.
-Local Abbreviation M := (M guard ge gobjs).
-Local Abbreviation obj_ok := (obj_ok guard).
-Local Abbreviation R := (R guard ge gobjs).
+Local Notation M := (M guard ge gobjs).
+Local Notation obj_ok := (obj_ok guard).
+Local Notation R := (R guard ge gobjs).
 
 (** * Memory
 

@@ -28,11 +28,11 @@ Variable fnames : list (name * (list class * ret_type)).
 Variable specs : name -> list fspec.
 Hypothesis Hfn : fnames_ok ge fnames.
 
-Local Abbreviation M := (M guard ge gobjs).
-Local Abbreviation R := (R guard ge gobjs).
-Local Abbreviation ainst := (ainst builtin gobjs fnames specs).
-Local Abbreviation avalue := (avalue gobjs fnames).
-Local Abbreviation avalues := (avalues gobjs fnames).
+Local Notation M := (M guard ge gobjs).
+Local Notation R := (R guard ge gobjs).
+Local Notation ainst := (ainst builtin gobjs fnames specs).
+Local Notation avalue := (avalue gobjs fnames).
+Local Notation avalues := (avalues gobjs fnames).
 
 (** * Instructions that leave memory alone *)
 
