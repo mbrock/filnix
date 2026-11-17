@@ -42,6 +42,13 @@ step "prefetch the Fil-C toolchain"
 # From the binary cache; a cache miss would build LLVM, so don't block setup.
 timeout 900 nix build --no-link --max-jobs 0 .#filcc || echo "filcc not fully cached; it will build on first use"
 
+step "prefetch the Rocq tools and the compiled model"
+# nanofil/AGENTS.md, The Rocq edit loop: env.sh links Rocq, Iris and the
+# model objects from the binary cache, so a proof thread starts checking
+# at once. warm.sh stays with the thread, because it depends on the commit.
+timeout 600 bash -c '. nanofil/rocq/scripts/glibc-tools/env.sh' \
+  || echo "Rocq tools not fully cached; env.sh fetches them on first use"
+
 mkdir -p "$HOME/.config/amp"
 cat > "$HOME/.config/amp/AGENTS.md" <<'EOF'
 # filnix orb notes

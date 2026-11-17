@@ -116,6 +116,62 @@ critical path of a full rebuild, the time from editing a random line to
 its file's result and to rechecking its importers, and the slowest
 files. CI times vary by about 2x with load, so read them as rough.
 
+## The Rocq edit loop
+
+A proof edit should come back in seconds. Recompiling a whole file to
+see the next goal costs a minute or more per try in the large startup
+and hi_atexit files, and a whole gate costs ten minutes or more, so use
+these steps in this order and keep the slow ones out of the loop:
+
+1. Once per orb, and again after you rebase onto a newer main, put the
+   tools on the path and the cached objects beside the sources. The orb
+   setup has already fetched the tools, and each step takes about 20 s.
+   `PE_REFRESH=1` relinks the compiled model at your commit; without it
+   a model from an older main fails with "Unable to locate library":
+
+   ```sh
+   PE_REFRESH=1 . nanofil/rocq/scripts/glibc-tools/env.sh
+   nanofil/rocq/scripts/glibc-tools/warm.sh
+   ```
+
+   `warm.sh` prints how many files had cached objects. When main has
+   moved past the last finished glibc CI run, many miss; build only the
+   imports of the file you work on (`one.sh` on each, or `build.sh`),
+   not the whole tree.
+2. While you write a proof, keep a persistent session open. It holds one
+   `rocq repl` with your file loaded up to the line you are working on,
+   so each try costs only the time of the tactics you send, and a chunk
+   that prints an error is rolled back. A try in `StartPtmallocInit.v`
+   went from about 75 s as a recompile to 1–20 s in the session; a small
+   tactic answers in 0.15 s. Do not recompile the file, or insert
+   `Show.` markers, to see the next goal.
+
+   ```sh
+   D=nanofil/rocq/scripts/glibc-tools/rq
+   $D/start.sh startup/StartTlsInitTp.v 120        # load lines 1..120; restart after an import changes
+   $D/rq.py 'iIntros "H". Show.'             # try tactics against the loaded state
+   $D/rq.py -f nanofil/rocq/glibc/startup/StartTlsInitTp.v 121 140   # replay edited lines
+   kill "$(cat /tmp/rq.pid)"                 # stop it; never pkill -f
+   ```
+
+   The header of `rq/server.py` describes the protocol. Copy a proof that
+   works back into the file and keep going.
+3. When a file is done, compile it alone against the objects beside it:
+   `nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/glibc DIR/FILE.v`.
+   After an edit to a file that others import, compile that file the
+   same way first, so that its importers load the new object.
+4. Before pushing, run `affected.sh` as described below, then push with
+   `scripts/ship` and start the next task. Do not wait on CI or poll it:
+   no push waits on it, your subscription reports a red run, and you fix
+   it forward.
+
+Keep these out of the loop. The whole gate (`nix build
+.#checks.x86_64-linux.nanofil-glibc`) is CI's job. `make` and `build.sh`
+have no early cutoff, so after an edit to a widely imported file they
+recompile every importer: one proof edit in `GlibcEnv.v` rebuilt 201
+files in 6 min 45 s. Do not sit in `sleep` loops waiting on a build;
+work in a session meanwhile, or take the next task.
+
 Before pushing a Rocq edit, compile the files you edited and every file
 that imports them, not the whole gate:
 
@@ -127,14 +183,10 @@ It takes the `.v` files under `rocq/theories` and `rocq/glibc` that
 differ from `origin/main` and builds them and their importers with the
 push checks' own per-file derivations. Every other object comes from
 Cachix, and an importer recompiles only when an interface it loads
-changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. To iterate on one proof, load its file once into a persistent REPL with
-`glibc-tools/rq/start.sh FILE LINE` and try tactics with `rq/rq.py`,
-which rolls a failing chunk back; see the header of `rq/server.py`. The files in
+changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. The files in
 `glibc/runtime-concrete.txt` belong to `nanofil-glibc-concrete`, which
 runs twice daily and on pushes that touch them; build it when you edit
-one. For many edits in a row, `glibc-tools/warm.sh` copies the cached
-objects into the checkout so that `build.sh` compiles only what changed
-(`glibc-tools/README.md`).
+one. `glibc-tools/README.md` describes the tools.
 
 When a proof feels slow, see where its time goes with `rocq c -q -time
 -R theories Nanofil FILE.v`; the glibc gate also prints sentences over
