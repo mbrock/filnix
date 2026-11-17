@@ -108,6 +108,18 @@ Proof.
   destruct (r_kind r); congruence.
 Qed.
 
+(** The run must own the image's memory and the startup key at once,
+    so they must not collide. They cannot, because Hello's lists hold
+    only memory, and the key is not memory. *)
+Lemma hello_start_key_apart k : forall l, l ∈ (start_key_ps k).*1 -> l ∉ hello_start_all_ps.*1.
+Proof.
+  assert (C : forallb (fun lv => match lv.1 with PName _ => false | _ => true end) hello_start_all_ps = true)
+    by (vm_cast_no_check (eq_refl true)).
+  intros l Hl Hin. cbn in Hl. apply list_elem_of_singleton in Hl as ->.
+  apply list_elem_of_fmap in Hin as ([l v] & E & Hin). cbn in E. subst l.
+  rewrite forallb_forall in C. specialize (C _ (proj1 (list_elem_of_In _ _) Hin)). discriminate C.
+Qed.
+
 (** ## Owning the six lists
 
     The proof of a whole run begins from a heap whose points-to
