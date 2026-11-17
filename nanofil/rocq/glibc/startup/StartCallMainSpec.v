@@ -110,7 +110,7 @@ Definition start_call_main_spec (mn : name) (main_spec : fspec Σ) (E : Z -> iPr
     (fun '(x, o, dq, mainp, argc, argv, envp) =>
        ⌜cm_ok mn (fs_args main_spec x) o mainp argc argv envp⌝ ∗
        tcb_start (ow_self w0) ∗ cm_reads o dq argv envp ∗
-       (tcb_cleanup_inv (ow_self w0) -∗ cm_reads o dq argv envp -∗ fs_pre main_spec x) ∗
+       (tcb_cleanup_inv (ow_self w0) -∗ cm_reads o dq argv envp ==∗ fs_pre main_spec x) ∗
        (∀ r, fs_post main_spec x r -∗ ∃ st, ⌜r = Ret (WInt st) /\ 0 <= st < 2 ^ 32⌝ ∗ E st))%I
     (fun _ _ => False)%I.
 

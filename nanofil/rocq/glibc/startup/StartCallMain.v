@@ -178,13 +178,12 @@ Proof using Hmain Hexit Hself Hself_ext.
   iNext. iIntros "Len Hen Lev". iApply wp_check_function; [vx | exact Hmc |]. iNext.
   (* The call of main. *)
   destruct (Hmain x) as (gf & Hgf & _ & _). destruct (Htakes gf Hgf) as [Hnv Hconv].
-  iApply (wp_raw_call_spec mn main_spec x _ _ _ _ _ _ _ _ _ mainp gf _ (fs_args main_spec x) None
-            with "[Hpre Ltb H776 H784 H792 Len Hen Lav Lev]");
-    [vx | exact Hmp | exact Hmc | vx | exact Hgf | rewrite (Z.mod_small argc); [apply Hconv | exact Hargc]
-    | rewrite Hnv app_nil_r; reflexivity | |].
-  { iApply ("Hpre" with "[Ltb H776 H784 H792] [$Len $Hen $Lav $Lev]").
-    iExists tb, treg, _. iFrame "Ltb H776 H784". iSplit; [iPureIntro; unfold off_cancelhandling; repeat split; (reflexivity || lia)|].
+  iMod ("Hpre" with "[Ltb H776 H784 H792] [$Len $Hen $Lav $Lev]") as "Hpre".
+  { iExists tb, treg, _. iFrame "Ltb H776 H784". iSplit; [iPureIntro; unfold off_cancelhandling; repeat split; (reflexivity || lia)|].
     iSplit; [iPureIntro; lia|]. iExact "H792". }
+  iApply (wp_raw_call_spec mn main_spec x _ _ _ _ _ _ _ _ _ mainp gf _ (fs_args main_spec x) None with "Hpre");
+    [vx | exact Hmp | exact Hmc | vx | exact Hgf | rewrite (Z.mod_small argc); [apply Hconv | exact Hargc]
+    | rewrite Hnv app_nil_r; reflexivity |].
   iIntros (v) "Hv". iDestruct ("Hpost" with "Hv") as (st [-> Hst]) "HE".
   iExists _. iSplit; [iPureIntro; cbn; reflexivity|]. iNext. cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
   rewrite (Z.mod_small st); [|exact Hst]. check "L6". store_int "L6" "H6". rewrite (Z.mod_small st); [|exact Hst].
