@@ -3,9 +3,9 @@
     [StartState](../zsys/StartState.v) allows. The proof of the startup
     body in [StartLibcStartMain](../startup/StartLibcStartMain.v) takes
     the memory that startup reads and writes as separate resources, and
-    earlier modules list that memory for Hello as seven lists of pieces
+    earlier modules list that memory for Hello as eight lists of pieces
     of the loader's image. This module shows that every start state
-    holds all seven lists, and turns them into owned resources.
+    holds all eight lists, and turns them into owned resources.
 
     A start state keeps every object of the loader's image, except that
     it fills in the constructor table. The step from a kept image to
@@ -18,11 +18,11 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
-  HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm StartImageUnique.
+  HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The seven lists in every start state
+(** ## The eight lists in every start state
 
     The lists are the CPU globals, the memory of early init and of the
     constructor runner, the inputs of the constructors, the frame that
@@ -50,9 +50,9 @@ Qed.
     unchanged. *)
 Definition hello_start_all_ps : list (piece * pval) :=
   hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps ++ hello_start_kept_ps ++
-  hello_lsm_ps ++ hello_stdout_life_ps.
+  hello_lsm_ps ++ hello_stdout_life_ps ++ hello_environ_counter_ps.
 
-(** No object and no byte occurs twice in the seven lists. *)
+(** No object and no byte occurs twice in the eight lists. *)
 Lemma hello_start_all_nodup : NoDup hello_start_all_ps.*1.
 Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
@@ -67,7 +67,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (proj1 (proj2 (hello_image_ctors g m0 Hi)))|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_start_kept_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_lsm_agree g m0 Hi)|].
-  exact (hello_stdout_life_agree g m0 Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_stdout_life_agree g m0 Hi)|].
+  exact (hello_environ_counter_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
@@ -94,7 +95,7 @@ Definition hello_ctor_count : nat := Eval vm_compute in length (ctor_names hello
 Lemma hello_ctor_count_eq : length (ctor_names hello_image_module) = hello_ctor_count.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Every state in which the runtime can start Hello holds all seven
+(** Every state in which the runtime can start Hello holds all eight
     lists. *)
 Theorem hello_start_agree w0 m w xs :
   start_state hello_image_module w0 m w xs -> all_agree m hello_start_all_ps.
@@ -137,11 +138,11 @@ Proof.
   rewrite forallb_forall in C. specialize (C _ (proj1 (list_elem_of_In _ _) Hin)). discriminate C.
 Qed.
 
-(** ## Owning the seven lists
+(** ## Owning the eight lists
 
     The proof of a whole run begins from a heap whose points-to
     assertions are the start memory's pieces. Since no piece appears
-    twice, that heap splits into the seven lists, one separate
+    twice, that heap splits into the eight lists, one separate
     [[separation-logic]] resource each. *)
 
 Section own.
@@ -150,11 +151,11 @@ Context `{!gen_heapGS piece pval Σ}.
 Lemma hello_start_own :
   pts hello_start_all_ps ⊣⊢
   pts hello_cpu_globals_ps ∗ pts hello_early_ps ∗ pts hello_runner_ps ∗ pts hello_ctor_ps ∗
-  pts hello_start_kept_ps ∗ pts hello_lsm_ps ∗ pts hello_stdout_life_ps.
+  pts hello_start_kept_ps ∗ pts hello_lsm_ps ∗ pts hello_stdout_life_ps ∗ pts hello_environ_counter_ps.
 Proof using Type.
   unfold hello_start_all_ps.
   rewrite (pts_app hello_cpu_globals_ps) (pts_app hello_early_ps) (pts_app hello_runner_ps)
-    (pts_app hello_ctor_ps) (pts_app hello_start_kept_ps) (pts_app hello_lsm_ps).
+    (pts_app hello_ctor_ps) (pts_app hello_start_kept_ps) (pts_app hello_lsm_ps) (pts_app hello_stdout_life_ps).
   done.
 Qed.
 
@@ -162,7 +163,7 @@ End own.
 
 (** ## The first heap
 
-    When a run of Hello begins, it owns more than the seven lists. The
+    When a run of Hello begins, it owns more than the eight lists. The
     runtime has filled in the constructor table and has allocated the
     arguments, the environment and the auxiliary vector, and startup
     keeps a ghost key. [StartJoin](../startup/StartJoin.v) joins all of

@@ -997,6 +997,7 @@ hello/HelloLibFormats.v
 hello/HelloImageDisjoint.v
 startup/StartLsmHello.v
 hello/HelloImageLsm.v
+hello/HelloImageEnviron.v
 hello/HelloStartAssembly.v
 hello/HelloStartCtors.v
 hello/HelloImageLayoutRefused.v
