@@ -304,8 +304,13 @@ Proof. exact Alias.correct. Qed.
 ROCQ
 set -- "$@" "$tmp/terms/Terms.v"
 
+# The arguments of by, in Iris's proof mode where Iris is on ROCQPATH.
+# The Crane check (nix/backend-crane.nix) has no Iris and skips them.
 mkdir "$tmp/by"
-cat >"$tmp/by/By.v" <<'ROCQ'
+if echo 'From iris.proofmode Require Import proofmode.' >"$tmp/by/Probe.v" &&
+   (cd "$tmp/by" && $coqc Probe.v) >/dev/null 2>&1; then
+  rm -f "$tmp/by"/Probe.*
+  cat >"$tmp/by/By.v" <<'ROCQ'
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import iprop.
 Section by_tactics.
@@ -334,7 +339,8 @@ Lemma by_match : ⊢ (True : iProp Σ).
 Proof. by lazymatch goal with _ => iPureIntro end. Qed.
 End by_tactics.
 ROCQ
-set -- "$@" "$tmp/by/By.v"
+  set -- "$@" "$tmp/by/By.v"
+fi
 
 # Iris's notations and proof mode, where Iris is on ROCQPATH (the logic
 # spikes' check, nix/spikes.nix): each lemma fails to type-check, or its
