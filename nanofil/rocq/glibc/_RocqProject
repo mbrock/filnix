@@ -266,6 +266,7 @@ startup/CpuCache.v
 startup/CpuParts.v
 startup/CpuInit.v
 startup/CpuInitSpec.v
+startup/CpuInitTunables.v
 startup/CpuSpec.v
 hi_atexit/HiAtexitImage.v
 hi_atexit/HiAtexitPrepare.v
