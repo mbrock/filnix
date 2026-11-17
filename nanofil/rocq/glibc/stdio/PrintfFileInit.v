@@ -13,9 +13,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic PrintfBufferFileCode PrintfBufferFileSrc
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps PrintfBufferFileCode PrintfBufferFileSrc
   PrintfBufferStage PrintfBufferDirect CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.
@@ -80,30 +80,49 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
 
 (** The function `c: __printf_buffer_to_file_switch` chooses between
-    the stream's buffer and the staging array, and an older lemma
-    covers each case: [wp_printf_buffer_switch_direct] and
+    the stream's buffer and the staging array. An older lemma covers
+    each case of a stream that has a character buffer:
+    [wp_printf_buffer_switch_direct] and
     [wp_printf_buffer_switch_staging]. This lemma joins the two into
-    the contract [switch_spec]. The older lemmas take single cells, so
+    the contract [switch_spec], and it proves the case of a stream
+    without a buffer directly. The older lemmas take single cells, so
     the proof first splits the structures of the contract into their
     cells. *)
 Lemma switch_has_spec : HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_switch") switch_spec.
 Proof using Type*.
   intros i. exists glibc___printf_buffer_to_file_switch. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_args fs_pre fs_post switch_spec] in *.
-  iIntros "((%Hok & Hfl & Hd & Hfc) & Hbl & Hfp & Hb) HK". iDestruct "Hb" as (ob op oe) "Hb".
+  iIntros "((Hfl & Hfc & Hcs) & Hbl & Hfp & Hb) HK". iDestruct "Hb" as (ob op oe) "Hb".
   struct_live_open "Hbl" as "[%Hbb Hl]". struct_live_open "Hfl" as "[%Hfb Hf]".
   struct_open "Hfp" as "[Hfp _]". struct_open "Hfc" as "(Hwp & Hwe & _)".
   struct_open "Hb" as "(Hbase & Hptr & Hend & _)".
-  pose proof Hok as Hok'. unfold fwin_ok in Hok'. unfold fwin_choice.
-  destruct (Z.ltb_spec (fi_bo i) (fi_eo i)).
-  - iApply (wp_printf_buffer_switch_direct with "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); [exact Hfr | lia..|].
-    iNext. iIntros "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend". iApply "HK". iSplit; [done|].
-    iSplitL "Hf Hd Hwp Hwe"; [iSplit; [done|]; iSplitL "Hf"; [struct_live_close "Hf"|]; iFrame "Hd"; struct_close|].
-    iSplitL "Hl"; [struct_live_close "Hl"|]. iSplitL "Hfp"; struct_close.
-  - iApply (wp_printf_buffer_switch_staging with "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); [exact Hfr | lia..|].
-    iNext. iIntros "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend". iApply "HK". iSplit; [done|].
-    iSplitL "Hf Hd Hwp Hwe"; [iSplit; [done|]; iSplitL "Hf"; [struct_live_close "Hf"|]; iFrame "Hd"; struct_close|].
-    iSplitL "Hl"; [struct_live_close "Hl"|]. iSplitL "Hfp"; struct_close.
+  unfold fwin_choice. destruct (fi_chars i) as [c|] eqn:Ec; cbn [fwin_ptrs fst snd].
+  - iDestruct "Hcs" as "[%Hok Hd]". pose proof Hok as Hok'. unfold fchars_ok in Hok'.
+    destruct (Z.ltb_spec (fc_bo c) (fc_eo c)).
+    + iApply (wp_printf_buffer_switch_direct with "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); [exact Hfr | lia..|].
+      iNext. iIntros "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend". iApply "HK". iSplit; [done|]. rewrite /fwin_stream Ec.
+      iSplitL "Hf Hd Hwp Hwe"; [iSplitL "Hf"; [struct_live_close "Hf"|]; iSplitR "Hd"; [struct_close|by iFrame "Hd"]|].
+      iSplitL "Hl"; [struct_live_close "Hl"|]. iSplitL "Hfp"; struct_close.
+    + iApply (wp_printf_buffer_switch_staging with "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend"); [exact Hfr | lia..|].
+      iNext. iIntros "Hl Hf Hd Hfp Hwp Hwe Hbase Hptr Hend". iApply "HK". iSplit; [done|]. rewrite /fwin_stream Ec.
+      iSplitL "Hf Hd Hwp Hwe"; [iSplitL "Hf"; [struct_live_close "Hf"|]; iSplitR "Hd"; [struct_close|by iFrame "Hd"]|].
+      iSplitL "Hl"; [struct_live_close "Hl"|]. iSplitL "Hfp"; struct_close.
+  - (* The stream has no buffer: both pointers are null, and the staging array is chosen. *)
+    injection Hfr as <-.
+    step. step. check "Hl". load_shared "Hl Hfp Hf". step. check_shared "Hf".
+    iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ null (fi_freg i) _ _ (DfracOwn 1) with "Hf Hwp []");
+      [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; lia | done |]. iNext. iIntros "Hf Hwp _".
+    load_shared "Hl Hfp Hf". step. check_shared "Hf".
+    iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ null (fi_freg i) _ _ (DfracOwn 1) with "Hf Hwe []");
+      [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; lia | done |]. iNext. iIntros "Hf Hwe _".
+    step. step. step. branch. step. step. step. check "Hl". store "Hl" "Hptr".
+    step. step. check "Hl". store "Hl" "Hend". step. step. step. check "Hl".
+    iApply (wp_raw_load_pointer_self with "Hl Hptr"); [reflexivity | vx | reflexivity | a2 | a2 | a2 | reflexivity |].
+    iNext. iIntros "Hl Hptr". check "Hl". store "Hl" "Hbase". iApply wp_ret_void. iNext. norm.
+    iApply "HK". iSplit; [done|]. rewrite /fwin_stream Ec.
+    iSplitL "Hf Hwp Hwe"; [iSplitL "Hf"; [struct_live_close "Hf"|]; iSplitL; [struct_close|done]|].
+    iSplitL "Hl"; [struct_live_close "Hl"|]. iSplitL "Hfp"; [struct_close|].
+    replace (fi_buf i + 48 + 128) with (fi_buf i + 176) by lia. struct_close.
 Qed.
 
 End switch.

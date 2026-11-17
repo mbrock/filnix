@@ -143,37 +143,68 @@ Definition putc_spec (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
 
 (** A file-backed buffer writes into the character buffer of its
     stream when the stream has room there. Otherwise it writes into its
-    own staging array. Two functions make this choice, and the record
-    [fwin_in] is the logical input of both. It names the buffer, the
-    stream and the stream's character buffer. It also gives the offsets
-    of the stream's write pointer and write end in the character
-    buffer. *)
+    own staging array. Two functions make this choice, and they read
+    the stream's write pointer and write end to make it.
+
+    The record [fchars] describes a stream whose two pointers point
+    into a character buffer. It names the buffer's object, gives the
+    offsets of the write pointer and the write end in it, and gives
+    the share of the buffer's lifetime that the caller lends. The
+    character buffer may be the stream's own object, as it is for an
+    unbuffered stream. *)
+Record fchars : Type := FChars {
+  fc_data : Z; fc_reg : region;
+  fc_bo : Z; fc_eo : Z;
+  fc_dq : dfrac
+}.
+
+(** The record [fwin_in] is the logical input of both functions. It
+    names the buffer and the stream. Its last field is the stream's
+    character buffer. That field is empty for a stream that has no
+    buffer yet, whose write pointer and write end are null. The
+    loader leaves `c: stderr` in that state. *)
 Record fwin_in : Type := FWinIn {
   fi_buf : Z; fi_breg : region;
   fi_file : Z; fi_freg : region;
-  fi_data : Z; fi_dreg : region;
-  fi_bo : Z; fi_eo : Z;
-  fi_dqf : dfrac; fi_dqd : dfrac
+  fi_dqf : dfrac;
+  fi_chars : option fchars
 }.
 
 (** The stream's two offsets lie in its character buffer. *)
-Definition fwin_ok (i : fwin_in) : Prop :=
-  0 < fi_data i /\ 0 <= fi_bo i /\ 0 <= fi_eo i /\ fi_data i + fi_bo i <= r_end (fi_dreg i) /\
-  fi_data i + fi_eo i <= r_end (fi_dreg i) /\ r_end (fi_dreg i) <= 2 ^ 63.
+Definition fchars_ok (c : fchars) : Prop :=
+  0 < fc_data c /\ 0 <= fc_bo c /\ 0 <= fc_eo c /\ fc_data c + fc_bo c <= r_end (fc_reg c) /\
+  fc_data c + fc_eo c <= r_end (fc_reg c) /\ r_end (fc_reg c) <= 2 ^ 63.
 
-(** The choice reads the stream's write pointer and write end. The
-    predicate [fwin_stream] owns those two fields and a reader's share
-    of the lifetimes of the stream and of its character buffer. *)
+(** The function [fwin_ptrs] gives the stream's write pointer and
+    write end. *)
+Definition fwin_ptrs (cs : option fchars) : ptr * ptr :=
+  match cs with
+  | Some c => (mkPtr (fc_data c + fc_bo c) (Obj (fc_data c)), mkPtr (fc_data c + fc_eo c) (Obj (fc_data c)))
+  | None => (null, null)
+  end.
+
+(** The predicate [fwin_stream] owns what the choice reads: the
+    stream's write pointer and write end, a reader's share of the
+    stream's lifetime, and a reader's share of the lifetime of the
+    character buffer when the stream has one. *)
 Definition fwin_stream (i : fwin_in) : iProp Σ :=
-  ⌜fwin_ok i⌝ ∗ file_liveq (fi_dqf i) (fi_file i) (fi_freg i) ∗ liveq (fi_dqd i) (fi_data i) (fi_dreg i) ∗
+  file_liveq (fi_dqf i) (fi_file i) (fi_freg i) ∗
   file_cells (fi_file i)
-    [("_IO_write_ptr", VPtr (mkPtr (fi_data i + fi_bo i) (Obj (fi_data i))));
-     ("_IO_write_end", VPtr (mkPtr (fi_data i + fi_eo i) (Obj (fi_data i))))].
+    [("_IO_write_ptr", VPtr (fwin_ptrs (fi_chars i)).1); ("_IO_write_end", VPtr (fwin_ptrs (fi_chars i)).2)] ∗
+  match fi_chars i with
+  | Some c => ⌜fchars_ok c⌝ ∗ liveq (fc_dq c) (fc_data c) (fc_reg c)
+  | None => True
+  end.
 
-(** The window that is chosen. *)
+(** The function [fwin_choice] gives the window that is chosen. It is
+    the room in the stream's character buffer when there is some, and
+    the staging array otherwise. *)
 Definition fwin_choice (i : fwin_in) : pwin :=
-  if fi_bo i <? fi_eo i then data_win (fi_data i) (fi_dreg i) (fi_bo i) (fi_eo i)
-  else stage_win (fi_buf i) (fi_breg i).
+  match fi_chars i with
+  | Some c => if fc_bo c <? fc_eo c then data_win (fc_data c) (fc_reg c) (fc_bo c) (fc_eo c)
+              else stage_win (fi_buf i) (fi_breg i)
+  | None => stage_win (fi_buf i) (fi_breg i)
+  end.
 
 Definition fwin_fp (i : fwin_in) : list (string * fval) :=
   [("fp", VPtr (mkPtr (fi_file i) (Obj (fi_file i))))].
