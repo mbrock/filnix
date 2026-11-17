@@ -156,6 +156,9 @@ nptl/RdlockSrc.v
 nptl/RwunlockCode.v
 nptl/RwunlockLayout.v
 nptl/RwunlockSrc.v
+nptl/WrlockCode.v
+nptl/WrlockLayout.v
+nptl/WrlockSrc.v
 string/MallocCode.v
 string/MemFwdCode.v
 string/MemcmpCode.v
@@ -279,6 +282,7 @@ string/WordString.v
 nptl/CutoffLogic.v
 nptl/RdlockLogic.v
 nptl/RwunlockLogic.v
+nptl/WrlockLogic.v
 zsys/OsRegistry.v
 getopt/GetoptBytes.v
 getopt/GetoptState.v

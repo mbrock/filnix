@@ -4,4 +4,5 @@ fixtures = '''
 Cutoff|__libc_alloca_cutoff|nptl/alloca_cutoff.os|__GI___libc_alloca_cutoff
 Rdlock|__GI___pthread_rwlock_rdlock|nptl/pthread_rwlock_rdlock.os|___pthread_rwlock_rdlock
 Rwunlock|__GI___pthread_rwlock_unlock|nptl/pthread_rwlock_unlock.os|___pthread_rwlock_unlock
+Wrlock|__GI___pthread_rwlock_wrlock|nptl/pthread_rwlock_wrlock.os|___pthread_rwlock_wrlock
 '''
