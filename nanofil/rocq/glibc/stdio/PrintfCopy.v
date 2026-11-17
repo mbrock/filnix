@@ -17,7 +17,8 @@
 
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
 From iris.proofmode Require Import proofmode.
-From iris.base_logic.lib Require Import gen_heap.
+From iris.algebra Require Import dfrac agree gmap_view.
+From iris.base_logic.lib Require Import gen_heap ghost_map own.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
@@ -65,6 +66,69 @@ Proof using Type.
     eapply List.Forall_impl; [|exact Hch]. cbn. intros; lia. }
 
   iIntros "Hsl Hys". iApply ("Hback" with "Hsl"). iApply "Hrest". iExact "Hys".
+Qed.
+
+(** A string lends the byte at index i to a reader, and the reader
+    learns its value. The index may be the length of the string, and
+    the byte there is the terminating NUL. The formatter reads one byte
+    of its format in this way to choose what it does next. *)
+Lemma word_string_at dq p s (i : nat) x :
+  (s ++ [0]) !! i = Some x ->
+  word_string dq p s ⊢ ∃ sb sreg,
+    ⌜(ptr_cap p = Obj sb \/ ptr_cap p = Ro sb) /\ 0 < sb <= ptr_addr p /\
+     ptr_addr p + Z.of_nat i + 1 <= r_end sreg /\ r_end sreg <= 2 ^ 48⌝ ∗
+    liveq dq sb sreg ∗ bytesq dq sb (ptr_addr p + Z.of_nat i - sb) [x] ∗
+    (liveq dq sb sreg -∗ bytesq dq sb (ptr_addr p + Z.of_nat i - sb) [x] -∗ word_string dq p s).
+Proof using Type.
+  intros Hx. pose proof (lookup_lt_Some _ _ _ Hx) as Hi. rewrite length_app in Hi. cbn [length] in Hi.
+  iIntros "Hs". iDestruct (word_string_bytes with "Hs") as (sb sreg ws) "(%Hs & Hsl & Hbytes & Hback)".
+  pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp Hlen Hws Hby Hch].
+  assert (Hend : ptr_addr p + Z.of_nat (length s) + 1 <= r_end sreg).
+  { unfold wstart in Hf. pose proof (Z.div_mod (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)).
+    pose proof (Z.mod_pos_bound (ptr_addr p mod 8 + Z.of_nat (length s) + 8) 8 ltac:(lia)). lia. }
+  iDestruct (bytesq_sub dq sb (ptr_addr p - sb) (s ++ [0]) i 1 with "Hbytes") as "[Hy Hrest]";
+    [rewrite length_app; cbn [length]; lia|].
+  rewrite (drop_S _ _ _ Hx) /=. replace (ptr_addr p - sb + Z.of_nat i) with (ptr_addr p + Z.of_nat i - sb) by lia.
+  iExists sb, sreg. iFrame "Hsl Hy". iSplit; [iPureIntro; split; [exact Hc|]; lia|].
+  iIntros "Hsl Hy". iApply ("Hback" with "Hsl"). iApply "Hrest". iExact "Hy".
+Qed.
+
+(** ## Lending the rest of a string *)
+
+(** The formatter passes a pointer into the middle of its format to
+    the functions that it calls. Such a function has a contract for a
+    whole string, so the formatter lends it the rest of the format as
+    a string of its own and takes it back afterwards. The lemma
+    [word_string_borrow] of [WordString](../string/WordString.v) does
+    this for a share that is a fraction, because it keeps half of the
+    share to restore the format. A caller of the formatter may hold
+    any share, also one that is partly or wholly read-only. The lemmas
+    below cover those shares. *)
+
+(** A share that is partly read-only yields a wholly read-only copy
+    and stays what it was. *)
+Lemma ptsq_both q ps : ptsq (DfracBoth q) ps ⊢ ptsq (DfracBoth q) ps ∗ ptsq DfracDiscarded ps.
+Proof using Type.
+  rewrite /ptsq -big_sepL_sep. apply big_sepL_mono. intros _ lv _.
+  rewrite gen_heap.pointsto_unseal /gen_heap.pointsto_def ghost_map.ghost_map_elem_unseal /ghost_map.ghost_map_elem_def.
+  rewrite -own_op -gmap_view_frag_op agree_idemp. reflexivity.
+Qed.
+
+(** A string of any share lends its rest, after the prefix s1, as a
+    string at the advanced pointer. The reader gets some share of the
+    rest, and giving it back restores the whole string. *)
+Lemma word_string_borrow_any dq p s1 s2 :
+  word_string dq p (s1 ++ s2) ⊢ ∃ dq',
+    word_string dq' (ptr_add p (Z.of_nat (length s1))) s2 ∗
+    (word_string dq' (ptr_add p (Z.of_nat (length s1))) s2 -∗ word_string dq p (s1 ++ s2)).
+Proof using Type.
+  destruct dq as [q| |q].
+  - rewrite -(Qp.div_2 q). iIntros "Hs". iExists (DfracOwn (q / 2)). iApply (word_string_borrow with "Hs").
+  - iIntros "#Hs". iExists DfracDiscarded. iSplit; [iApply (word_string_suffix with "Hs")|]. iIntros "_". iExact "Hs".
+  - iIntros "(%b & %reg & %ws & %Hs & Hl & Hw)". iDestruct (ptsq_both with "Hl") as "[Hl #Hl']".
+    iDestruct (ptsq_both with "Hw") as "[Hw #Hw']". iExists DfracDiscarded. iSplitR.
+    + iApply word_string_suffix. iExists b, reg, ws. iSplit; [done|]. iFrame "Hl' Hw'".
+    + iIntros "_". iExists b, reg, ws. iSplit; [done|]. iFrame "Hl Hw".
 Qed.
 
 (** A function that meets the older contract for a copy into a window

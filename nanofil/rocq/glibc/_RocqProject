@@ -466,6 +466,7 @@ stdio/PrintfCopy.v
 stdio/PrintfWrite.v
 stdio/PrintfSmall.v
 stdio/PrintfWrap.v
+stdio/PrintfLoop.v
 stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
