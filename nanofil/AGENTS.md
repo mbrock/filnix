@@ -136,8 +136,9 @@ these steps in this order and keep the slow ones out of the loop:
 
    `warm.sh` prints how many files had cached objects. When main has
    moved past the last finished glibc CI run, many miss; build only the
-   imports of the file you work on (`one.sh` on each, or `build.sh`),
-   not the whole tree.
+   imports of the file you work on, not the whole tree:
+   `glibc-tools/imports.sh startup/StartEarlyInit.v` compiles just the
+   files it imports, in dependency order and in parallel.
 2. While you write a proof, keep a persistent session open. It holds one
    `rocq repl` with your file loaded up to the line you are working on,
    so each try costs only the time of the tactics you send, and a chunk
