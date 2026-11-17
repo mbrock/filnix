@@ -35,20 +35,27 @@ Open Scope Z_scope.
 
 (** ## The memory that startup keeps *)
 
+(** This list holds stdout's fields that no startup call touches. The stream
+    constructor returns the stream's life, and `c: check_stdfiles_vtables`
+    returns its pointer to the jump table at offset 216. *)
+Definition hi_stdout_kept_ps : list (piece * pval) :=
+  drop (S (length (hi_pointer_ps 72240 216 (mkPtr (73504 + 336) (Ro 73504))))) hi_stdout_ps.
+
 (** These are the three standard streams, stderr, stdout and stdin. *)
 Definition hi_streams : list ptr :=
   [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)].
 
-(** Most of the memory that main uses is never written during startup,
+(** Most of the memory that main uses is never touched during startup,
     so it still holds what the linker put there. This list names that
-    memory: the exit handlers, the allocator, stdout's fields and lock,
-    the vtables, main's string, and the fields of stderr and stdin. It
-    leaves out the three streams' lives, because the stream constructor
-    hands those back. Some pieces pass through a call that returns them
-    unchanged; `c: __libc_early_init`, for example, borrows the life of
-    the allocator's parameters. *)
+    memory: the exit handlers, the allocator's cache, stdout's fields
+    and lock, the jump tables' contents, main's string, and the fields
+    of stderr and stdin. A piece that some startup call owns or borrows
+    belongs to that call instead, even when the call gives it back
+    unchanged. So the list leaves out the streams' lives, stdout's
+    pointer to its jump table, the life of `c: __io_vtables` and the
+    life of the allocator's parameters `c: mp_`. *)
 Definition hi_start_kept_ps : list (piece * pval) :=
-  concat [hi_initial_exit_ps; hi_allocator_ps; tail hi_stdout_ps; hi_entry_vtables_ps;
+  concat [hi_initial_exit_ps; tail hi_allocator_ps; hi_stdout_kept_ps; tail hi_entry_vtables_ps;
     hi_entry_program_ps; tail (hi_entry_stream_ps 71760 72576 4222427270 2);
     tail (hi_entry_stream_ps 72000 72512 4222427272 0)].
 
@@ -67,26 +74,38 @@ Proof. apply hi_unique_sound. vm_compute. reflexivity. Qed.
 Lemma tail_concat_one (a : piece * pval) l : tail (concat ([a] :: l)) = concat l.
 Proof. reflexivity. Qed.
 
+(** It loses its first two groups, when the first is one piece, by
+    dropping one more element than the second group has. *)
+Lemma drop_concat_two (a : piece * pval) l1 l : drop (S (length l1)) (concat ([a] :: l1 :: l)) = concat l.
+Proof. cbn [concat app drop]. rewrite -/(concat _). apply drop_app_length. Qed.
+
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.
 
-(** When startup calls `c: main`, it holds the kept pieces, the linked
-    streams with their lives, the single-thread flag set to one and
-    `c: errno` with some value. *)
+(** Main needs the streams linked, the program marked single-threaded
+    and a place for `c: errno`, and startup sets up each of them. So when
+    startup calls `c: main`, it holds the untouched pieces, the linked
+    streams with their lives, the flag set to one and errno with some
+    value. It also holds three pieces that startup calls borrowed and
+    gave back: the allocator's parameters, the jump tables and stdout's
+    pointer into them. *)
 Definition hi_start_post : iProp Σ :=
   pts hi_start_kept_ps ∗ io_list_inv hge hi_streams ∗ ([∗ list] f ∈ hi_streams, stream_live f) ∗
-  live 76240 (mkRegion 76240 76248 GlobalData Live) ∗ ibyte 76240 0 1 ∗ errno_any 70608.
+  live 76240 (mkRegion 76240 76248 GlobalData Live) ∗ ibyte 76240 0 1 ∗ errno_any 70608 ∗
+  live 68800 hi_mp_reg ∗ live 73504 (mkRegion 73504 75856 GlobalData Live) ∗
+  pcell 72240 216 (mkPtr (73504 + 336) (Ro 73504)).
 
 (** Stdout gets its life from the stream constructor and its other
     fields from the image. *)
 Lemma hi_start_stdout_own w : In 1 (ow_fds w) ->
-  stream_live (mkPtr 72240 (Obj 72240)) -∗ pts (tail hi_stdout_ps) -∗ errno_any 70608 -∗
+  stream_live (mkPtr 72240 (Obj 72240)) -∗ pcell 72240 216 (mkPtr (73504 + 336) (Ro 73504)) -∗
+  pts hi_stdout_kept_ps -∗ errno_any 70608 -∗
   hi_stdout_before w 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None.
 Proof using Type.
-  intros Hfd. iIntros "Hlv". iDestruct "Hlv" as (fb freg (Heq & Hfb & Hal & Hend & Htop)) "Hl".
+  intros Hfd. iIntros "Hlv Hvtp". iDestruct "Hlv" as (fb freg (Heq & Hfb & Hal & Hend & Htop)) "Hl".
   injection Heq as <-.
-  rewrite /hi_stdout_ps. rewrite tail_concat_one hi_pts_concat. cbn [big_opL].
-  iIntros "(Hvtp & Hbuf & Hfl & Hf2 & Hfd & Htw & Hoff & Hcol & Hmode & Hsaved & Hlp &
+  rewrite /hi_stdout_kept_ps /hi_stdout_ps drop_concat_two hi_pts_concat. cbn [big_opL].
+  iIntros "(Hbuf & Hfl & Hf2 & Hfd & Htw & Hoff & Hcol & Hmode & Hsaved & Hlp &
     Hlk & Hlk0 & Hlk4 & Hlk8 & _) Herr".
   iExists 72240, freg, None, null, null, 72544, 4222427268, 0, 1, 0, (2 ^ 64 - 1).
   iSplitR; [iPureIntro; repeat split; assumption || lia|]. iFrame "Hl Hvtp".
@@ -136,14 +155,17 @@ Lemma hi_start_post_main w : In 1 (ow_fds w) ->
   hi_start_post -∗ tcb_cleanup_inv (ow_self w) ==∗ hi_main_state w.
 Proof using Type.
   intros Hfd. rewrite /hi_start_post /hi_start_kept_ps hi_pts_concat. cbn [big_opL].
-  iIntros "((Hex & Halloc & Hout & Hvt & Hprog & Hse & Hsi & _) & Hio & (Lse & Lso & Lsi & _) & Hsl & Hsb & Herr) Htcb".
+  iIntros "((Hex & Halloc & Hout & Hvt & Hprog & Hse & Hsi & _) & Hio & (Lse & Lso & Lsi & _) & Hsl & Hsb & Herr &
+    Lmp & Lvt & Hvtp) Htcb".
   iDestruct (hi_initial_exit_own with "Hex") as "[Hinv Hlock]".
-  iDestruct (hi_allocator_own with "Halloc") as "HM".
-  iDestruct (hi_start_stdout_own w Hfd with "Lso Hout Herr") as "Hout".
+  iDestruct (hi_allocator_own with "[Lmp Halloc]") as "HM".
+  { iDestruct (pts_app with "[$Lmp $Halloc]") as "H". iExact "H". }
+  iDestruct (hi_start_stdout_own w Hfd with "Lso Hvtp Hout Herr") as "Hout".
   iDestruct (hi_entry_program_own with "Hprog") as "(Hso & Hsoc & Hstr)".
   iDestruct (hi_start_stream_own with "Lse Hse") as "Hse"; [vm_compute; intuition congruence..|].
   iDestruct (hi_start_stream_own with "Lsi Hsi") as "Hsi"; [vm_compute; intuition congruence..|].
-  iMod (hi_entry_vtables_own with "Hvt") as "Hvt".
+  iMod (hi_entry_vtables_own with "[Lvt Hvt]") as "Hvt".
+  { rewrite /hi_entry_vtables_ps pts_app. iFrame. }
   iMod (hi_entry_single_own with "[Hsl Hsb]") as "Hs".
   { rewrite /hi_entry_single_ps (pts_app [_] [_]). iFrame. }
   iModIntro. rewrite /hi_main_state. cbn [big_opL hi_exit_streams].
