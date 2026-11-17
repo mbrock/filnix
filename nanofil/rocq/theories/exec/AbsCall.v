@@ -99,17 +99,17 @@ Qed.
 
 Lemma all2_Forall2 {X Y : Type} (f : X -> Y -> bool) xs ys :
   all2 f xs ys = true -> Forall2 (fun x y => f x y = true) xs ys.
-Proof.
+Proof using Type.
   revert ys. induction xs as [|x xs IH]; intros [|y ys]; cbn [all2]; try discriminate; [constructor|].
   intros H. apply andb_prop in H as [H1 H2]. constructor; [exact H1 | exact (IH ys H2)].
 Qed.
 
 Lemma all2_length {X Y : Type} (f : X -> Y -> bool) xs ys : all2 f xs ys = true -> length xs = length ys.
-Proof. intros H. exact (Forall2_length (all2_Forall2 f xs ys H)). Qed.
+Proof using Type. intros H. exact (Forall2_length (all2_Forall2 f xs ys H)). Qed.
 
 Lemma Forall2_impl_in {X Y : Type} (P Q : X -> Y -> Prop) l l' :
   Forall2 P l l' -> (forall a b, In a l -> P a b -> Q a b) -> Forall2 Q l l'.
-Proof.
+Proof using Type.
   induction 1 as [|a b l l' Hab _ IH]; intros HPQ; constructor.
   - apply HPQ; [left; reflexivity | exact Hab].
   - apply IH. intros a' b' Hin. apply HPQ. right. exact Hin.
@@ -291,7 +291,7 @@ Proof using Type.
 Qed.
 
 Lemma nth_error_firstn_lt {X : Type} (l : list X) n i : (i < n)%nat -> nth_error (firstn n l) i = nth_error l i.
-Proof. revert n i. induction l as [|x l IH]; intros [|n] [|i] H; cbn; try reflexivity; try lia. apply IH. lia. Qed.
+Proof using Type. revert n i. induction l as [|x l IH]; intros [|n] [|i] H; cbn; try reflexivity; try lia. apply IH. lia. Qed.
 
 Lemma objs_le_nth st : forall ts os i t,
   objs_le st os ts = true -> nth_error ts i = Some (Some t) ->
@@ -685,7 +685,7 @@ Qed.
 
 Lemma map_option_length {X Y : Type} (f : X -> option Y) : forall xs ys,
   map_option f xs = Some ys -> length ys = length xs.
-Proof.
+Proof using Type.
   induction xs as [|x xs IH]; intros ys H; cbn [map_option] in H; [injection H as <-; reflexivity|].
   destruct (f x) as [y|]; [|discriminate]. destruct (map_option f xs) as [ys'|] eqn:E; [|discriminate].
   injection H as <-. cbn [length]. rewrite (IH ys' eq_refl). reflexivity.
