@@ -63,24 +63,29 @@ Definition heap_object (m : mem) (b n : Z) : Prop :=
     r_end reg <= 2 ^ 48.
 
 (** The 8-byte slot at address a holds pointer p, with its capability in
-    the slot's [[aux]] entry. *)
+    the slot's [[aux]] entry. The runtime stores a machine word, so each
+    of the eight bytes is the matching little-endian byte of the
+    address, and the address fits in 64 bits. *)
 Definition ptr_slot (m : mem) (a : Z) (p : ptr) : Prop :=
-  load_bytes m a 8 = ptr_addr p /\ m_aux m a = ptr_cap p.
+  0 <= ptr_addr p < 2 ^ 64 /\
+  (forall i, 0 <= i < 8 -> m_bytes m (a + i) = byte_of (ptr_addr p) i) /\ m_aux m a = ptr_cap p.
 
-(** The 8-byte slot at address a holds the integer v and no capability. *)
+(** The 8-byte slot at address a holds the integer v, byte by byte, and
+    no capability. *)
 Definition int_slot (m : mem) (a v : Z) : Prop :=
-  load_bytes m a 8 = v /\ m_aux m a = CNone.
+  0 <= v < 2 ^ 64 /\ (forall i, 0 <= i < 8 -> m_bytes m (a + i) = byte_of v i) /\ m_aux m a = CNone.
 
-(** A heap object at b holds the NUL-terminated string s, which has no
-    NUL byte of its own. *)
+(** A heap object at b holds the NUL-terminated string s. Every
+    character of s is a byte other than NUL. *)
 Definition c_string (m : mem) (b : Z) (s : list Z) : Prop :=
   heap_object m b (Z.of_nat (length s) + 1) /\
-  (forall i, (i < length s)%nat -> exists x, nth_error s i = Some x /\ x <> 0 /\ m_bytes m (b + Z.of_nat i) = x) /\
+  (forall i, (i < length s)%nat -> exists x, nth_error s i = Some x /\ 0 < x < 256 /\ m_bytes m (b + Z.of_nat i) = x) /\
   m_bytes m (b + Z.of_nat (length s)) = 0.
 
-(** A heap array at b holds pointers to the n strings ss, each in its own
-    heap object, followed by a null pointer. argv and environ both have
-    this shape. *)
+(** This predicate says that a heap array at b holds one pointer for
+    each string of ss and then a null pointer, and that each string
+    lives in a heap object of its own. The argument array and the
+    environment array both have this shape. *)
 Definition string_array (m : mem) (b : Z) (ss : list (Z * list Z)) : Prop :=
   heap_object m b (8 * (Z.of_nat (length ss) + 1)) /\
   (forall i sb s, nth_error ss i = Some (sb, s) ->
@@ -148,7 +153,10 @@ Definition start_os (g : list (name * ptr)) (w0 : os_world) (w : os_world) : Pro
 (** [start_state] md m w xs holds when the runtime can start the image md
     with memory m, OS world w over the base world w0, and entry arguments
     xs for `c: __libc_start_main`. The image md must already contain the
-    constructor runner. *)
+    constructor runner. The argument array, the environment array, the
+    auxiliary vector and every string are distinct objects, because
+    `c: filc_start_program` allocates each of them with its own call of
+    `c: filc_allocate`. *)
 Definition start_state (md : module) (w0 : os_world) (m : mem) (w : os_world) (xs : list word) : Prop :=
   exists g m0 mainp tb argc argv env av ps order,
     initial_memory md = Some (g, m0) /\
@@ -164,4 +172,5 @@ Definition start_state (md : module) (w0 : os_world) (m : mem) (w : os_world) (x
     keeps_image m0 m tb (ctor_table_size (length (ctor_names md))) /\
     Permutation order (ctor_names md) /\
     ctor_table m g tb argc (mkPtr (fst argv) (Obj (fst argv))) (mkPtr (fst env) (Obj (fst env))) order /\
-    start_os g w0 w.
+    start_os g w0 w /\
+    NoDup (fst argv :: fst env :: av :: map fst (snd argv) ++ map fst (snd env)).
