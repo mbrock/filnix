@@ -3,9 +3,9 @@
     [StartState](../zsys/StartState.v) allows. The proof of the startup
     body in [StartLibcStartMain](../startup/StartLibcStartMain.v) takes
     the memory that startup reads and writes as separate resources, and
-    earlier modules list that memory for Hello as six lists of pieces
+    earlier modules list that memory for Hello as seven lists of pieces
     of the loader's image. This module shows that every start state
-    holds all six lists, and turns them into owned resources.
+    holds all seven lists, and turns them into owned resources.
 
     A start state keeps every object of the loader's image, except that
     it fills in the constructor table. The step from a kept image to
@@ -17,12 +17,12 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
-From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn HelloImageModule HelloImageLoad HelloImageCtors
+From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
   HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** ## The six lists in every start state
+(** ## The seven lists in every start state
 
     The lists are the CPU globals, the memory of early init and of the
     constructor runner, the inputs of the constructors, the frame that
@@ -30,13 +30,29 @@ Open Scope Z_scope.
     body. The loader's image holds all
     of them, and none is a byte of the constructor table. *)
 
+(** The constructor `c: _IO_stdfiles_init` links stdout into the list of
+    streams, so it needs stdout's life. No other list holds that life:
+    the list of initial streams leaves stdout's object out, and the kept
+    frame holds only its fields. *)
+Definition hello_stdout_life_ps : list (piece * pval) :=
+  [(PLive (img_a "_IO_2_1_stdout_"), VLive hello_stdout_reg)].
+
+(** The loader registers stdout's region. *)
+Lemma hello_stdout_life_agree g m0 : initial_memory hello_image_module = Some (g, m0) ->
+  all_agree m0 hello_stdout_life_ps.
+Proof.
+  intros Hi. destruct (hello_loaded_tables g m0 Hi) as [_ Hr].
+  cbn [all_agree hello_stdout_life_ps fst snd agree_piece]. split; [|exact I].
+  unfold live_at. rewrite Hr. split; vm_compute; reflexivity.
+Qed.
+
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
 Definition hello_start_all_ps : list (piece * pval) :=
   hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps ++ hello_start_kept_ps ++
-  hello_lsm_ps.
+  hello_lsm_ps ++ hello_stdout_life_ps.
 
-(** No object and no byte occurs twice in the six lists. *)
+(** No object and no byte occurs twice in the seven lists. *)
 Lemma hello_start_all_nodup : NoDup hello_start_all_ps.*1.
 Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
 
@@ -50,7 +66,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_runner_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (proj1 (proj2 (hello_image_ctors g m0 Hi)))|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_start_kept_agree g m0 Hi)|].
-  exact (hello_lsm_agree g m0 Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_lsm_agree g m0 Hi)|].
+  exact (hello_stdout_life_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
@@ -77,7 +94,7 @@ Definition hello_ctor_count : nat := Eval vm_compute in length (ctor_names hello
 Lemma hello_ctor_count_eq : length (ctor_names hello_image_module) = hello_ctor_count.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Every state in which the runtime can start Hello holds all six
+(** Every state in which the runtime can start Hello holds all seven
     lists. *)
 Theorem hello_start_agree w0 m w xs :
   start_state hello_image_module w0 m w xs -> all_agree m hello_start_all_ps.
@@ -120,89 +137,70 @@ Proof.
   rewrite forallb_forall in C. specialize (C _ (proj1 (list_elem_of_In _ _) Hin)). discriminate C.
 Qed.
 
-(** ## Owning the six lists
+(** ## Owning the seven lists
 
     The proof of a whole run begins from a heap whose points-to
     assertions are the start memory's pieces. Since no piece appears
-    twice, that heap splits into the six lists, one separate
+    twice, that heap splits into the seven lists, one separate
     [[separation-logic]] resource each. *)
 
 Section own.
 Context `{!gen_heapGS piece pval Σ}.
 
 Lemma hello_start_own :
-  ([∗ map] l ↦ v ∈ list_to_map hello_start_all_ps, pointsto l (DfracOwn 1) v) ⊣⊢
+  pts hello_start_all_ps ⊣⊢
   pts hello_cpu_globals_ps ∗ pts hello_early_ps ∗ pts hello_runner_ps ∗ pts hello_ctor_ps ∗
-  pts hello_start_kept_ps ∗ pts hello_lsm_ps.
+  pts hello_start_kept_ps ∗ pts hello_lsm_ps ∗ pts hello_stdout_life_ps.
 Proof using Type.
-  etrans; [exact (pts_map hello_start_all_ps hello_start_all_nodup)|].
   unfold hello_start_all_ps.
   rewrite (pts_app hello_cpu_globals_ps) (pts_app hello_early_ps) (pts_app hello_runner_ps)
-    (pts_app hello_ctor_ps) (pts_app hello_start_kept_ps).
+    (pts_app hello_ctor_ps) (pts_app hello_start_kept_ps) (pts_app hello_lsm_ps).
   done.
 Qed.
 
 End own.
 
-(** ## The whole start heap
+(** ## The first heap
 
-    A run of Hello owns three things when it begins: the six lists of
-    the image, the objects that the runtime allocates for the arguments,
-    the environment and the auxiliary vector, and the ghost key that
-    records which startup calls have happened. This section joins them
-    into the one heap that the adequacy theorem starts from, and shows
-    that the heap agrees with the start memory and with startup's world
-    interpretation. *)
+    When a run of Hello begins, it owns more than the seven lists. The
+    runtime has filled in the constructor table and has allocated the
+    arguments, the environment and the auxiliary vector, and startup
+    keeps a ghost key. [StartJoin](../startup/StartJoin.v) joins all of
+    these into one heap for any image. This section shows that Hello
+    meets the premises of that join. *)
 
-(** These are all the pieces of a run's first heap, for the runtime's
-    objects argv, env and av, and the ghost key k. *)
-Definition hello_heap_ps (m : mem) argv env av aps (k : Z) : list (piece * pval) :=
-  hello_start_all_ps ++ start_heap_ps m argv env av aps ++ start_key_ps k.
-
-(** A run's first heap has no repeated piece. It agrees with the start
-    memory, and the world check of startup accepts it with key k. *)
-Lemma hello_heap_ok g m0 m w0 w tb argv env av aps k :
+(** Every start state of Hello gives a first heap. The heap names each
+    piece once and agrees with the start memory, and the world check of
+    startup accepts it with any key k. *)
+Theorem hello_first_heap g m0 m w0 w tb argc argv env av aps order k :
   initial_memory hello_image_module = Some (g, m0) ->
-  keeps_image m0 m tb (ctor_table_size (length (ctor_names hello_image_module))) ->
+  lookup ctor_table_name g = Some (mkPtr tb (Ro tb)) ->
   string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av aps ->
+  live_disjoint m ->
+  keeps_image m0 m tb (ctor_table_size (length (ctor_names hello_image_module))) ->
+  Permutation order (ctor_names hello_image_module) ->
+  ctor_table m g tb argc (mkPtr argv.1 (Obj argv.1)) (mkPtr env.1 (Obj env.1)) order ->
   start_os g w0 w ->
-  List.NoDup (argv.1 :: env.1 :: av :: map fst argv.2 ++ map fst env.2) ->
-  all_agree m hello_start_all_ps ->
-  NoDup (hello_heap_ps m argv env av aps k).*1 /\
-  agrees m (list_to_map (hello_heap_ps m argv env av aps k)) /\
-  os_wi_start w0 k m w (list_to_map (hello_heap_ps m argv env av aps k)).
+  List.NoDup (fst argv :: fst env :: av :: map fst (snd argv) ++ map fst (snd env)) ->
+  let H := start_ps hello_start_all_ps m g tb argc argv env av aps order k in
+  NoDup H.*1 /\ agrees m (list_to_map H) /\ os_wi_start w0 k m w (list_to_map H).
 Proof.
-  intros Hi Hk Ha He Hv Hos Hn Hag.
-  assert (Nd : NoDup (hello_heap_ps m argv env av aps k).*1).
-  { unfold hello_heap_ps. apply nodup_join; [exact hello_start_all_nodup | apply nodup_join |].
-    - exact (start_heap_nodup m argv env av aps Hn).
-    - apply List.NoDup_cons; [intros []|apply List.NoDup_nil] || (cbn; apply NoDup_singleton).
-    - intros l Hl Hl'. apply (start_key_heap_apart k m argv env av aps l Hl' Hl).
-    - intros l Hl Hin. rewrite fmap_app in Hin. apply elem_of_app in Hin as [Hin|Hin].
-      + exact (image_heap_apart m0 m tb _ _ argv env av aps Hk (hello_no_heap_regions g m0 Hi)
-                 (hello_start_all_agree g m0 Hi) Ha He Hv l Hl Hin).
-      + exact (hello_start_key_apart k l Hin Hl). }
-  split; [exact Nd|]. split.
-  - apply all_agree_map. unfold hello_heap_ps.
-    apply (proj2 (all_agree_app _ _ _)). split; [exact Hag|].
-    apply (proj2 (all_agree_app _ _ _)). split; [exact (start_heap_agree m argv env av aps Ha He Hv)|].
-    apply start_key_agree.
-  - apply (start_os_wi g w0 w k m _ Hos). apply elem_of_list_to_map_1; [exact Nd|].
-    unfold hello_heap_ps. apply elem_of_app. right. apply elem_of_app. right. left.
+  intros Hi Ht Ha He Hv Hd Hk Hp Hc Hos Hn.
+  destruct (hello_loaded_tables g m0 Hi) as [Eg Hr]. subst g.
+  assert (Etb : tb = hello_runner_objs.2.1).
+  { vm_compute in Ht. injection Ht as E _. symmetry. exact E. }
+  subst tb.
+  assert (Lt : live_at m0 hello_runner_objs.2.1 hello_runner_objs.2.2)
+    by (unfold live_at; rewrite Hr; split; vm_compute; reflexivity).
+  assert (Et : hello_runner_objs.2.1 + ctor_table_size (length (ctor_names hello_image_module)) <=
+               r_end hello_runner_objs.2.2) by (apply Z.leb_le; vm_compute; reflexivity).
+  apply (start_ps_ok m0 m _ w0 w _ hello_runner_objs.2.2 _ argc argv env av aps order _ k Hk
+    (hello_no_heap_regions _ m0 Hi) Lt ltac:(vm_compute; discriminate)); try assumption.
+  - rewrite (Permutation_length Hp). exact Et.
+  - exact (hello_start_all_agree _ _ Hi).
+  - exact (keeps_image_agree m0 m _ _ hello_runner_objs.2.2 _ Hk Hd Lt Et (hello_start_all_agree _ _ Hi)
+      hello_start_all_off).
+  - exact hello_start_all_nodup.
+  - exact hello_start_all_off.
+  - exact (hello_start_key_apart k).
 Qed.
-
-Section heap_own.
-Context `{!gen_heapGS piece pval Σ}.
-
-(** A proof can own the first heap as three separate parts: the image
-    lists, the runtime's objects and the ghost key. *)
-Lemma hello_heap_own m argv env av aps k :
-  NoDup (hello_heap_ps m argv env av aps k).*1 ->
-  ([∗ map] l ↦ v ∈ list_to_map (hello_heap_ps m argv env av aps k), pointsto l (DfracOwn 1) v) ⊣⊢
-  pts hello_start_all_ps ∗ pts (start_heap_ps m argv env av aps) ∗ pts (start_key_ps k).
-Proof using Type.
-  intros Nd. etrans; [exact (pts_map _ Nd)|]. unfold hello_heap_ps.
-  rewrite (pts_app hello_start_all_ps) (pts_app (start_heap_ps m argv env av aps)). done.
-Qed.
-
-End heap_own.
