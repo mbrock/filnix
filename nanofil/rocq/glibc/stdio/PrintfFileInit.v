@@ -30,7 +30,7 @@ Module S := PrintfBufferFileSrc.fn___printf_buffer_to_file_init.
 (** The table [init_cuts] gives, for each label, the temporaries that
     are live there and the C variable that each one holds. *)
 Definition init_cuts : list (string * cut_sig) :=
-  Eval vm_compute in cut_table glibc___printf_buffer_to_file_init S.temp_names S.live_in.
+  Eval vm_compute in cut_table S.temp_keys S.live_in.
 
 Section init.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

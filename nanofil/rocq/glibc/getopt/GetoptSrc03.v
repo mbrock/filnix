@@ -29,6 +29,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "argc"); ((TAtom "v10"), "long_only"); ((TAtom "v12"), "posixly_correct"); ((TAtom "v17"), "optind"); ((TAtom "v2"), "argv"); ((TAtom "v21"), "opterr"); ((TAtom "v22"), "argc"); ((TAtom "v23"), "argv"); ((TAtom "v24"), "optstring"); ((TAtom "v25"), "longopts"); ((TAtom "v26"), "longind"); ((TAtom "v27"), "long_only"); ((TAtom "v29"), "posixly_correct"); ((TAtom "v30"), "result"); ((TAtom "v33"), "optind"); ((TAtom "v37"), "optarg"); ((TAtom "v4"), "optstring"); ((TAtom "v41"), "optopt"); ((TAtom "v42"), "result"); ((TAtom "v6"), "longopts"); ((TAtom "v8"), "longind")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "chk0"), ((TAtom "v16"), "&optind", 0)); ((TAtom "chk1"), ((TAtom "v15"), "&getopt_data", 0)); ((TAtom "chk2"), ((TAtom "v20"), "&opterr", 0)); ((TAtom "chk3"), ((TAtom "v18"), "&getopt_data", 4)); ((TAtom "chk4"), ((TAtom "v32"), "&getopt_data", 0)); ((TAtom "chk5"), ((TAtom "v31"), "&optind", 0)); ((TAtom "chk6"), ((TAtom "v35"), "&getopt_data", 16)); ((TAtom "chk7"), ((TAtom "v34"), "&optarg", 0)); ((TAtom "chk8"), ((TAtom "v39"), "&getopt_data", 8)); ((TAtom "chk9"), ((TAtom "v38"), "&optopt", 0)); ((TAtom "v0"), ((TAtom "v0"), "argc", 0)); ((TAtom "v10"), ((TAtom "v10"), "long_only", 0)); ((TAtom "v12"), ((TAtom "v12"), "posixly_correct", 0)); ((TAtom "v15"), ((TAtom "v15"), "&getopt_data", 0)); ((TAtom "v16"), ((TAtom "v16"), "&optind", 0)); ((TAtom "v17"), ((TAtom "v17"), "optind", 0)); ((TAtom "v18"), ((TAtom "v18"), "&getopt_data", 0)); ((TAtom "v19"), ((TAtom "v18"), "&getopt_data", 4)); ((TAtom "v2"), ((TAtom "v2"), "argv", 0)); ((TAtom "v20"), ((TAtom "v20"), "&opterr", 0)); ((TAtom "v21"), ((TAtom "v21"), "opterr", 0)); ((TAtom "v28"), ((TAtom "v28"), "&getopt_data", 0)); ((TAtom "v30"), ((TAtom "v30"), "result", 0)); ((TAtom "v31"), ((TAtom "v31"), "&optind", 0)); ((TAtom "v32"), ((TAtom "v32"), "&getopt_data", 0)); ((TAtom "v33"), ((TAtom "v33"), "optind", 0)); ((TAtom "v34"), ((TAtom "v34"), "&optarg", 0)); ((TAtom "v35"), ((TAtom "v35"), "&getopt_data", 0)); ((TAtom "v36"), ((TAtom "v35"), "&getopt_data", 16)); ((TAtom "v37"), ((TAtom "v37"), "optarg", 0)); ((TAtom "v38"), ((TAtom "v38"), "&optopt", 0)); ((TAtom "v39"), ((TAtom "v39"), "&getopt_data", 0)); ((TAtom "v4"), ((TAtom "v4"), "optstring", 0)); ((TAtom "v40"), ((TAtom "v39"), "&getopt_data", 8)); ((TAtom "v41"), ((TAtom "v41"), "optopt", 0)); ((TAtom "v6"), ((TAtom "v6"), "longopts", 0)); ((TAtom "v8"), ((TAtom "v8"), "longind", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
@@ -62,6 +70,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "argc"); ((TAtom "v10"), "argc"); ((TAtom "v11"), "argv"); ((TAtom "v12"), "options"); ((TAtom "v13"), "long_options"); ((TAtom "v14"), "opt_index"); ((TAtom "v2"), "argv"); ((TAtom "v4"), "options"); ((TAtom "v6"), "long_options"); ((TAtom "v8"), "opt_index")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "argc", 0)); ((TAtom "v2"), ((TAtom "v2"), "argv", 0)); ((TAtom "v4"), ((TAtom "v4"), "options", 0)); ((TAtom "v6"), ((TAtom "v6"), "long_options", 0)); ((TAtom "v8"), ((TAtom "v8"), "opt_index", 0))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].

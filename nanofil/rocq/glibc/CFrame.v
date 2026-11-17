@@ -8,11 +8,13 @@
 
     A cut signature lists the temporaries that are live at a label.
     For each one it gives a key and an offset. The key of a named
-    temporary is its C name. A check or an address computation is
-    followed back through the function body to the temporary it was
-    computed from, so its key is that temporary's name and its offset
+    temporary is its C name, and the key of a temporary that holds the
+    address of a variable is `&` and the variable's name. A check or
+    an address computation holds the value of the temporary it was
+    computed from, so its key is that temporary's key and its offset
     is the constant that was added. A temporary without a C name keeps
-    its own name as the key.
+    its own name as the key. The code generator works these keys out
+    and writes them to the `temp_keys` table of the function.
 
     The predicate [c_env] says that every temporary of a signature
     holds the value of its key, moved by its offset. It unfolds to the
@@ -21,50 +23,12 @@
     a false one, because [c_env] is a premise about the real
     environment. *)
 
-From Stdlib Require Import String ZArith List Bool Lia.
+From Stdlib Require Import String Ascii ZArith NArith List Bool Lia DecimalString.
+From iris.proofmode Require Import string_ident.
 From Nanofil Require Import Term Syntax Values Semantics.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
-
-(** ## Where a temporary's value comes from *)
-
-(** The instruction that defines a temporary is the first one in the
-    function's blocks that binds it. *)
-Definition inst_def (i : inst) : option name :=
-  match i with
-  | Let d _ _ _ | Flight d _ _ _ => Some d
-  | _ => None
-  end.
-
-Definition find_def (f : func) (t : name) : option inst :=
-  find (fun i => match inst_def i with Some d => name_eqb d t | None => false end)
-    (flat_map b_insts (fn_blocks f)).
-
-(** A check binds the pointer it was given as its last argument. *)
-Definition is_check (o : op) : bool :=
-  match o with
-  | Check _ _ _ _ | CheckAhead _ _ _ _ _ | Renew _ _ _ _ | RenewHull _ _ _ _ | HalfCheck _ _ _ _ _ => true
-  | _ => false
-  end.
-
-(** The function [root_of] follows a temporary back to the temporary it
-    was computed from and returns the constant that was added on the
-    way. It stops at a temporary that is defined in any other way. *)
-Fixpoint root_of (f : func) (fuel : nat) (t : name) : name * Z :=
-  match fuel with
-  | O => (t, 0)
-  | S fuel =>
-      match find_def f t with
-      | Some (Let _ A o args) =>
-          if is_check o then
-            match last args (Const 0) with Tmp r => root_of f fuel r | _ => (t, 0) end
-          else (t, 0)
-      | Some (Flight _ Add [FAddress (Tmp r); FValue (Const k)] (LowerOf (Tmp r'))) =>
-          if name_eqb r r' then let '(root, off) := root_of f fuel r in (root, off + k) else (t, 0)
-      | _ => (t, 0)
-      end
-  end.
 
 (** ## Cut signatures *)
 
@@ -74,47 +38,43 @@ Definition cut_sig : Type := list (name * (string * Z)).
 Definition name_string (n : name) : string :=
   match n with TAtom s => s | _ => "?" end.
 
-(** The key of a root temporary is its C name when the tables have
-    one, and the temporary's own name otherwise. *)
-Definition key_of (names : list (name * string)) (t : name) : string :=
-  match lookup t names with Some c => c | None => name_string t end.
+(** The source tables of a function record, for each temporary of its
+    body, the temporary it was computed from, a key and an offset. The
+    code generator follows checks and constant pointer additions to
+    find them, so this module does not search the body. A temporary
+    without a row is its own root, and its key is its own name. *)
+Definition key_table : Type := list (name * (name * string * Z)).
+
+Definition key_row (keys : key_table) (t : name) : name * string * Z :=
+  match lookup t keys with Some r => r | None => (t, name_string t, 0) end.
 
 (** Two temporaries can hold different values of one C variable at the
-    same label. The second root with a C name that is already taken
-    gets the name followed by its own name, so that no key stands for
-    two values. *)
-Fixpoint assign_keys (names : list (name * string)) (roots : list name) (seen : list (name * string))
-    : list (name * string) :=
+    same label. The second root with a key that is already taken gets
+    the key followed by its own name, so that no key stands for two
+    values. *)
+Fixpoint assign_keys (roots : list (name * string)) (seen : list (name * string)) : list (name * string) :=
   match roots with
   | [] => seen
-  | r :: rest =>
-      if existsb (fun p => name_eqb (fst p) r) seen then assign_keys names rest seen
+  | (r, k) :: rest =>
+      if existsb (fun p => name_eqb (fst p) r) seen then assign_keys rest seen
       else
-        let k := key_of names r in
         let k' := if existsb (fun p => String.eqb (snd p) k) seen then k ++ "@" ++ name_string r else k in
-        assign_keys names rest (seen ++ [(r, k')])
+        assign_keys rest (seen ++ [(r, k')])
   end.
 
-(** The signature at a label is computed from the function's body, the
-    names of its temporaries and the temporaries that are live there. *)
-Definition cut_sig_of (f : func) (names : list (name * string)) (live : list name) : cut_sig :=
-  let rs := map (root_of f 16) live in
-  let keys := assign_keys names (map fst rs) [] in
-  map (fun '(t, (r, off)) => (t, (match lookup r keys with Some k => k | None => name_string r end, off)))
+(** The signature at a label is computed from the function's key table
+    and the temporaries that are live there. *)
+Definition cut_sig_of (keys : key_table) (live : list name) : cut_sig :=
+  let rs := map (key_row keys) live in
+  let assigned := assign_keys (map (fun '(r, k, _) => (r, k)) rs) [] in
+  map (fun '(t, (r, _, off)) => (t, (match lookup r assigned with Some k => k | None => name_string r end, off)))
     (combine live rs).
-
-(** The function [cut_at] computes the signature at the label l from
-    the source tables of a function. *)
-Definition cut_at (f : func) (names : list (name * string)) (live_in : list (name * list name)) (l : string)
-    : cut_sig :=
-  cut_sig_of f names (match lookup (TAtom l) live_in with Some ts => ts | None => [] end).
 
 (** The function [cut_table] computes the signature of every label of
     a function. A proof computes this table once, and [cut_in] reads
     the signature of one label from it. *)
-Definition cut_table (f : func) (names : list (name * string)) (live_in : list (name * list name))
-    : list (string * cut_sig) :=
-  map (fun '(l, ts) => (name_string l, cut_sig_of f names ts)) live_in.
+Definition cut_table (keys : key_table) (live_in : list (name * list name)) : list (string * cut_sig) :=
+  map (fun '(l, ts) => (name_string l, cut_sig_of keys ts)) live_in.
 
 Fixpoint cut_in (table : list (string * cut_sig)) (l : string) : cut_sig :=
   match table with
@@ -122,10 +82,38 @@ Fixpoint cut_in (table : list (string * cut_sig)) (l : string) : cut_sig :=
   | (l', sig) :: rest => if String.eqb l l' then sig else cut_in rest l
   end.
 
-(** The keys that have no C name are the ones a reader cannot follow,
-    so a proof can ask for them and report them. *)
-Definition raw_keys (names : list (name * string)) (sig : cut_sig) : list string :=
-  flat_map (fun '(_, (k, _)) => if existsb (fun p => String.eqb (snd p) k) names then [] else [k]) sig.
+(** ## Names for the hypotheses of a cut *)
+
+(** A proof reads more easily when the hypothesis about a temporary is
+    named after the C value that the temporary holds. The first
+    temporary that holds a key without an offset gets the name `H` and
+    the key, such as `Hbuf`. Every other temporary gets the key, its
+    offset and its own name, such as `Hbuf_8_chk0`, so that two
+    temporaries never share a name. *)
+Definition ident_char (a : ascii) : string :=
+  let n := nat_of_ascii a in
+  if ((48 <=? n) && (n <=? 57) || (65 <=? n) && (n <=? 90) || (97 <=? n) && (n <=? 122) || (n =? 95))%nat
+  then String a EmptyString
+  else if (n =? 38)%nat then "addr_" else "_".
+
+Fixpoint ident_string (s : string) : string :=
+  match s with
+  | EmptyString => EmptyString
+  | String a rest => ident_char a ++ ident_string rest
+  end.
+
+Definition offset_string (off : Z) : string :=
+  (if off <? 0 then "m" else "") ++ NilZero.string_of_uint (N.to_uint (Z.to_N (Z.abs off))).
+
+Fixpoint hyp_names (sig : cut_sig) (seen : list string) : list string :=
+  match sig with
+  | [] => []
+  | (t, (k, off)) :: rest =>
+      if (off =? 0) && negb (existsb (String.eqb k) seen)
+      then ("H" ++ ident_string k) :: hyp_names rest (k :: seen)
+      else ("H" ++ ident_string k ++ (if off =? 0 then "" else "_" ++ offset_string off) ++ "_" ++
+            ident_string (name_string t)) :: hyp_names rest seen
+  end.
 
 (** ## The environment at a cut *)
 
@@ -181,10 +169,17 @@ Proof. intros ->. reflexivity. Qed.
 (** ## Tactics *)
 
 (** The tactic [c_env_open] turns a hypothesis H : c_env sig e vals
-    into one lookup hypothesis for each temporary. *)
-Ltac c_env_split H :=
+    into one lookup hypothesis for each temporary, named as
+    [hyp_names] says. *)
+Ltac c_env_take H rest id :=
+  let H1 := fresh id in let H2 := fresh "Henv" in destruct H as [H1 H2]; rest H2.
+
+Ltac c_env_split H ns :=
   lazymatch type of H with
-  | _ /\ _ => let H1 := fresh "Hlk" in let H2 := fresh "Henv" in destruct H as [H1 H2]; c_env_split H2
+  | _ /\ _ =>
+      lazymatch ns with
+      | ?n :: ?ns' => StringToIdent.string_to_ident_cps n ltac:(c_env_take H ltac:(fun H2 => c_env_split H2 ns'))
+      end
   | True => clear H
   | _ => idtac
   end.
@@ -198,11 +193,13 @@ Ltac c_env_sig :=
 Ltac c_env_open H :=
   lazymatch type of H with
   | c_env ?s ?e ?v =>
-      let s' := eval vm_compute in s in let v' := eval hnf in v in change (c_env s' e v') in H
-  end;
-  let T := type of H in
-  let T' := eval cbv [c_env assoc word_shift String.eqb Ascii.eqb Bool.eqb Z.eqb] in T in
-  change T' in H; cbn [ptr_addr ptr_cap] in H; c_env_split H.
+      let s' := eval vm_compute in s in let v' := eval hnf in v in
+      let ns := eval vm_compute in (hyp_names s' []) in
+      change (c_env s' e v') in H;
+      let T := type of H in
+      let T' := eval cbv [c_env assoc word_shift String.eqb Ascii.eqb Bool.eqb Z.eqb] in T in
+      change T' in H; cbn [ptr_addr ptr_cap] in H; c_env_split H ns
+  end.
 
 (** A proof that jumps to a label must show that its environment fits
     the label's signature. The tactic [c_env_close_with] shows it by

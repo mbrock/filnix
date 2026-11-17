@@ -30,6 +30,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "pr.1"), "ep"); ((TAtom "v0"), "name"); ((TAtom "v10"), "start_environ"); ((TAtom "v14"), "start_environ"); ((TAtom "v20"), "name"); ((TAtom "v28"), "name"); ((TAtom "v29"), "len"); ((TAtom "v31"), "start_environ"); ((TAtom "v37"), "ep"); ((TAtom "v38"), "entry"); ((TAtom "v42"), "entry"); ((TAtom "v50"), "name"); ((TAtom "v53"), "entry"); ((TAtom "v59"), "name"); ((TAtom "v60"), "entry"); ((TAtom "v61"), "len"); ((TAtom "v68"), "entry"); ((TAtom "v69"), "len"); ((TAtom "v7"), "__environ_counter"); ((TAtom "v75"), "entry"); ((TAtom "v76"), "len"); ((TAtom "v80"), "ep"); ((TAtom "v81"), "ep"); ((TAtom "v86"), "__environ_counter"); ((TAtom "v87"), "start_counter")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "chk0"), ((TAtom "v6"), "&__environ_counter", 0)); ((TAtom "chk1"), ((TAtom "v9"), "&__environ", 0)); ((TAtom "chk2"), ((TAtom "v0"), "name", 0)); ((TAtom "chk3"), ((TAtom "pr.1"), "ep", 0)); ((TAtom "chk4"), ((TAtom "v0"), "name", 0)); ((TAtom "chk5"), ((TAtom "v38"), "entry", 0)); ((TAtom "chk6"), ((TAtom "v70"), "v70", 0)); ((TAtom "chk7"), ((TAtom "v85"), "&__environ_counter", 0)); ((TAtom "pr.1"), ((TAtom "pr.1"), "ep", 0)); ((TAtom "v0"), ((TAtom "v0"), "name", 0)); ((TAtom "v10"), ((TAtom "v10"), "start_environ", 0)); ((TAtom "v29"), ((TAtom "v29"), "len", 0)); ((TAtom "v38"), ((TAtom "v38"), "entry", 0)); ((TAtom "v6"), ((TAtom "v6"), "&__environ_counter", 0)); ((TAtom "v7"), ((TAtom "v7"), "__environ_counter", 0)); ((TAtom "v78"), ((TAtom "v77"), "v77", 1)); ((TAtom "v81"), ((TAtom "v81"), "ep", 0)); ((TAtom "v85"), ((TAtom "v85"), "&__environ_counter", 0)); ((TAtom "v86"), ((TAtom "v86"), "__environ_counter", 0)); ((TAtom "v9"), ((TAtom "v9"), "&__environ", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L3"); (TAtom "L32")].
 

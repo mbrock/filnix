@@ -479,6 +479,10 @@ class Generator:
                 print(f"{name}Src: functions {located}/{len(facts)} located; "
                       f"blocks {locations}/{blocks} located; temps {named}/{temps} named; "
                       f"loop heads {heads}", flush=True)
+                for r in facts:
+                    k = r["key_kinds"]
+                    print(f'  {r["function"]}: temporaries {k["current"]}; named {k["named"]}; '
+                          f'addresses {k["address"]}; derived {k["derived"]}; fallback {k["raw"]}', flush=True)
             if layout == "image":
                 whole, report = self.work / "image.term", self.work / "image.report"
                 whole.write_text(linked)

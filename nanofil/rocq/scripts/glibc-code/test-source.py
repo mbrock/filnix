@@ -44,7 +44,9 @@ func(win,export,w,[],[block(start,[],[],ret)])]).
     module = tmp / 'source.term'
     module.write_text('''module([
 func(f,export,w,[param(w,tmp(arg))],[
-block(start,[],[copy(tmp(v),w,tmp(arg))],goto(loop)),
+block(start,[],[copy(tmp(v),w,tmp(arg)),let(tmp(c),a,check(0,8,read,8),[tmp(arg)]),
+flight(tmp(q),add,[address(tmp(c)),const(8)],lower(tmp(c))),
+flight(tmp(r),add,[address(tmp(u)),const(-4)],lower(tmp(u)))],goto(loop)),
 block(loop,[phi(tmp(p),w,[start-tmp(v),loop-tmp(p)])],[],branch(tmp(p),loop,done)),
 block(done,[],[],ret(tmp(p))),block(dead,[],[],ret)]),
 context(f,[origin(0,at('unit.c',4),statement(function),[]),
@@ -62,7 +64,13 @@ func(no_context,export,w,[],[block(start,[],[],ret)])]).
                           block_src=[['start', 'unit.c', 20], ['loop', 'unit.c', 20],
                                      ['done', 'unit.c', 30]],
                           temp_names=[['arg', 'count'], ['p', 'count'], ['retired', 'count']],
-                          loop_heads=['loop'], blocks=4, temps=4),
+                          temp_keys=[['arg', 'arg', 'count', 0], ['c', 'arg', 'count', 0],
+                                     ['p', 'p', 'count', 0], ['q', 'arg', 'count', 8],
+                                     ['r', 'u', 'u', -4], ['v', 'v', '&count', 0]],
+                          key_kinds=dict(current=7, named=2, address=1, derived=2, raw=2),
+                          loop_heads=['loop'], blocks=4, temps=8),
                      dict(function='no_context', source=None, block_src=[],
-                          temp_names=[], loop_heads=[], blocks=1, temps=0)], facts
-print('source tables: default bytes, local/weak/archive contexts, sites, recorded names and loop headers passed')
+                          temp_names=[], temp_keys=[],
+                          key_kinds=dict(current=0, named=0, address=0, derived=0, raw=0),
+                          loop_heads=[], blocks=1, temps=0)], facts
+print('source tables: default bytes, local/weak/archive contexts, sites, recorded names, keys and loop headers passed')

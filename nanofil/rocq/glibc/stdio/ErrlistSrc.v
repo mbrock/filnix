@@ -30,6 +30,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "errnum"); ((TAtom "v11"), "mapped"); ((TAtom "v13"), "_sys_errlist_internal_len"); ((TAtom "v19"), "mapped"); ((TAtom "v3"), "errnum"); ((TAtom "v7"), "mapped")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "chk0"), ((TAtom "v12"), "&_sys_errlist_internal_len", 0)); ((TAtom "chk1"), ((TAtom "v22"), "v22", 0)); ((TAtom "v0"), ((TAtom "v0"), "errnum", 0)); ((TAtom "v12"), ((TAtom "v12"), "&_sys_errlist_internal_len", 0)); ((TAtom "v13"), ((TAtom "v13"), "_sys_errlist_internal_len", 0)); ((TAtom "v18"), ((TAtom "v18"), "&_sys_errlist_internal", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 

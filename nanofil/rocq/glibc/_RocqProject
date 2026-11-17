@@ -135,6 +135,8 @@ intl/GettextLinkSrcFiles.v
 intl/GettextLinkSrc01.v
 intl/GettextLinkSrc02.v
 intl/GettextLinkSrc03.v
+intl/GettextLinkSrc04.v
+intl/GettextLinkSrc05.v
 intl/GettextLinkSrc.v
 stdlib/StdlibCode.v
 stdlib/GetenvCode.v

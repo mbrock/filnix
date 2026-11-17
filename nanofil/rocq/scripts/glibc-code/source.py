@@ -73,6 +73,8 @@ Definition source_module : module := Eval vm_compute in code_module {term}.
         blocks = listing(f'({atom(l)}, ({filename(f)}, {n}%N))' for l, f, n in row['block_src'])
         temps = listing(f'({atom(t)}, {string(n)})' for t, n in row['temp_names'])
         heads = listing(atom(l) for l in row['loop_heads'])
+        keys = listing(f'({atom(t)}, ({atom(r)}, {string(k)}, {o if o >= 0 else "(" + str(o) + ")"}))'
+                       for t, r, k, o in row['temp_keys'])
         groups.append(f'''
 Module {ident}.
 
@@ -86,6 +88,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   {temps}.
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  {keys}.
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := {heads}.

@@ -50,6 +50,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v3"), "fd")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0)); ((TAtom "v2"), ((TAtom "v2"), "&k_termios", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
@@ -83,6 +91,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "buf"); ((TAtom "v4"), "nbytes"); ((TAtom "v6"), "fd"); ((TAtom "v7"), "buf"); ((TAtom "v8"), "nbytes")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0)); ((TAtom "v2"), ((TAtom "v2"), "buf", 0)); ((TAtom "v4"), ((TAtom "v4"), "nbytes", 0))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
@@ -118,6 +134,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "offset"); ((TAtom "v4"), "whence"); ((TAtom "v6"), "fd"); ((TAtom "v7"), "offset"); ((TAtom "v8"), "whence")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0)); ((TAtom "v2"), ((TAtom "v2"), "offset", 0)); ((TAtom "v4"), ((TAtom "v4"), "whence", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
@@ -151,6 +175,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "buf"); ((TAtom "v4"), "fd"); ((TAtom "v5"), "buf")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0)); ((TAtom "v2"), ((TAtom "v2"), "buf", 0))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
@@ -186,6 +218,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "fd")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
@@ -219,6 +259,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "fd")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
@@ -254,6 +302,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "status"); ((TAtom "v2"), "status")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "status", 0))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].
 
@@ -287,6 +343,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "pr.1"), "cancelhandling"); ((TAtom "pr.2"), "cancelhandling"); ((TAtom "pr.3"), "cancelhandling"); ((TAtom "v0"), "buffer"); ((TAtom "v10"), "self"); ((TAtom "v12"), "cancelhandling"); ((TAtom "v16"), "cancelhandling"); ((TAtom "v25"), "cancelhandling"); ((TAtom "v28"), "newval"); ((TAtom "v29"), "self"); ((TAtom "v3"), "self"); ((TAtom "v31"), "newval"); ((TAtom "v32"), "cancelhandling"); ((TAtom "v33"), "cancelhandling"); ((TAtom "v38"), "buffer"); ((TAtom "v4"), "buffer"); ((TAtom "v43"), "cancelhandling"); ((TAtom "v47"), "self"); ((TAtom "v49"), "buffer"); ((TAtom "v6"), "self")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "chk0"), ((TAtom "v3"), "self", 776)); ((TAtom "chk1"), ((TAtom "v0"), "buffer", 24)); ((TAtom "chk2"), ((TAtom "v3"), "self", 792)); ((TAtom "chk3"), ((TAtom "v3"), "self", 792)); ((TAtom "chk4"), ((TAtom "v0"), "buffer", 16)); ((TAtom "chk5"), ((TAtom "v3"), "self", 776)); ((TAtom "pr.1"), ((TAtom "pr.1"), "cancelhandling", 0)); ((TAtom "pr.2"), ((TAtom "pr.2"), "cancelhandling", 0)); ((TAtom "pr.3"), ((TAtom "pr.3"), "cancelhandling", 0)); ((TAtom "v0"), ((TAtom "v0"), "buffer", 0)); ((TAtom "v11"), ((TAtom "v3"), "self", 792)); ((TAtom "v12"), ((TAtom "v12"), "cancelhandling", 0)); ((TAtom "v28"), ((TAtom "v28"), "newval", 0)); ((TAtom "v3"), ((TAtom "v3"), "self", 0)); ((TAtom "v30"), ((TAtom "v3"), "self", 792)); ((TAtom "v33"), ((TAtom "v33"), "cancelhandling", 0)); ((TAtom "v39"), ((TAtom "v0"), "buffer", 16)); ((TAtom "v48"), ((TAtom "v3"), "self", 776)); ((TAtom "v5"), ((TAtom "v0"), "buffer", 24)); ((TAtom "v7"), ((TAtom "v3"), "self", 776))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L22")].
@@ -322,6 +386,14 @@ Definition block_src : list (name * (string * N)) :=
 Definition temp_names : list (name * string) :=
   [((TAtom "iw_1.v0"), "value"); ((TAtom "iw_1.v2"), "value"); ((TAtom "iw_2.pr.1"), "oldval"); ((TAtom "iw_2.pr.2"), "oldval"); ((TAtom "iw_2.v0"), "result"); ((TAtom "iw_2.v10"), "oldval"); ((TAtom "iw_2.v15"), "oldval"); ((TAtom "iw_2.v19"), "newval"); ((TAtom "iw_2.v20"), "newval"); ((TAtom "iw_2.v23"), "newval"); ((TAtom "iw_2.v27"), "oldval"); ((TAtom "iw_2.v28"), "newval"); ((TAtom "iw_2.v3"), "self"); ((TAtom "iw_2.v31"), "self"); ((TAtom "iw_2.v33"), "newval"); ((TAtom "iw_2.v34"), "oldval"); ((TAtom "iw_2.v35"), "oldval"); ((TAtom "iw_2.v4"), "self"); ((TAtom "iw_2.v40"), "self"); ((TAtom "iw_2.v6"), "result"); ((TAtom "iw_2.v8"), "self"); ((TAtom "pr.1"), "cancelhandling"); ((TAtom "pr.2"), "cancelhandling"); ((TAtom "v0"), "buffer"); ((TAtom "v10"), "self"); ((TAtom "v12"), "cancelhandling"); ((TAtom "v16"), "buffer"); ((TAtom "v22"), "cancelhandling"); ((TAtom "v3"), "self"); ((TAtom "v32"), "cancelhandling"); ((TAtom "v34"), "newval"); ((TAtom "v35"), "self"); ((TAtom "v37"), "newval"); ((TAtom "v38"), "cancelhandling"); ((TAtom "v39"), "cancelhandling"); ((TAtom "v4"), "self"); ((TAtom "v47"), "cancelhandling"); ((TAtom "v6"), "buffer")].
 
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "chk0"), ((TAtom "v0"), "buffer", 24)); ((TAtom "chk1"), ((TAtom "v3"), "self", 776)); ((TAtom "chk2"), ((TAtom "v3"), "self", 792)); ((TAtom "chk3"), ((TAtom "v0"), "buffer", 16)); ((TAtom "chk4"), ((TAtom "v3"), "self", 792)); ((TAtom "chk5"), ((TAtom "iw_2.v3"), "self", 1608)); ((TAtom "chk6"), ((TAtom "iw_2.v3"), "self", 792)); ((TAtom "chk7"), ((TAtom "iw_2.v3"), "self", 792)); ((TAtom "chk8"), ((TAtom "iw_2.v3"), "self", 784)); ((TAtom "iw_2.pr.1"), ((TAtom "iw_2.pr.1"), "oldval", 0)); ((TAtom "iw_2.pr.2"), ((TAtom "iw_2.pr.2"), "oldval", 0)); ((TAtom "iw_2.v10"), ((TAtom "iw_2.v10"), "oldval", 0)); ((TAtom "iw_2.v19"), ((TAtom "iw_2.v19"), "newval", 0)); ((TAtom "iw_2.v23"), ((TAtom "iw_2.v23"), "newval", 0)); ((TAtom "iw_2.v3"), ((TAtom "iw_2.v3"), "self", 0)); ((TAtom "iw_2.v32"), ((TAtom "iw_2.v3"), "self", 792)); ((TAtom "iw_2.v35"), ((TAtom "iw_2.v35"), "oldval", 0)); ((TAtom "iw_2.v41"), ((TAtom "iw_2.v3"), "self", 784)); ((TAtom "iw_2.v5"), ((TAtom "iw_2.v3"), "self", 1608)); ((TAtom "iw_2.v9"), ((TAtom "iw_2.v3"), "self", 792)); ((TAtom "pr.1"), ((TAtom "pr.1"), "cancelhandling", 0)); ((TAtom "pr.2"), ((TAtom "pr.2"), "cancelhandling", 0)); ((TAtom "v0"), ((TAtom "v0"), "buffer", 0)); ((TAtom "v11"), ((TAtom "v3"), "self", 792)); ((TAtom "v12"), ((TAtom "v12"), "cancelhandling", 0)); ((TAtom "v17"), ((TAtom "v0"), "buffer", 16)); ((TAtom "v3"), ((TAtom "v3"), "self", 0)); ((TAtom "v34"), ((TAtom "v34"), "newval", 0)); ((TAtom "v36"), ((TAtom "v3"), "self", 792)); ((TAtom "v39"), ((TAtom "v39"), "cancelhandling", 0)); ((TAtom "v5"), ((TAtom "v3"), "self", 776)); ((TAtom "v7"), ((TAtom "v0"), "buffer", 24))].
+
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [(TAtom "L29"); (TAtom "iw_2.L12")].
 
@@ -355,6 +427,14 @@ Definition block_src : list (name * (string * N)) :=
 (** These recorded temporaries have a primary value hint naming their C declaration. *)
 Definition temp_names : list (name * string) :=
   [((TAtom "v0"), "fd"); ((TAtom "v2"), "buf"); ((TAtom "v4"), "nbytes"); ((TAtom "v6"), "fd"); ((TAtom "v7"), "buf"); ((TAtom "v8"), "nbytes")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "fd", 0)); ((TAtom "v2"), ((TAtom "v2"), "buf", 0)); ((TAtom "v4"), ((TAtom "v4"), "nbytes", 0))].
 
 (** The compiler finds these reachable natural-loop headers using dominators. *)
 Definition loop_heads : list name := [].

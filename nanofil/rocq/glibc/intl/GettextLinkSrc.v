@@ -12,12 +12,14 @@ Open Scope string_scope.
 Open Scope Z_scope.
 
 
-From Glibc Require Import GettextLinkCode GettextLinkSrcFiles GettextLinkSrc01 GettextLinkSrc02 GettextLinkSrc03.
+From Glibc Require Import GettextLinkCode GettextLinkSrcFiles GettextLinkSrc01 GettextLinkSrc02 GettextLinkSrc03 GettextLinkSrc04 GettextLinkSrc05.
 Module GettextLinkSrc.
 Include GettextLinkSrcFiles.
 Include GettextLinkSrc01.
 Include GettextLinkSrc02.
 Include GettextLinkSrc03.
+Include GettextLinkSrc04.
+Include GettextLinkSrc05.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
 Definition source_blocks : list (string * option (list name)) := Eval lazy in

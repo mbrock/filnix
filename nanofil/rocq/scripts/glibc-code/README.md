@@ -67,6 +67,18 @@ It includes only `value` records with a `named(_, value)` primary hint and
 a matching binding, even when optimization has removed the temporary.
 It excludes `history` records and address or piece hints.
 Shadowed declarations may give different temporaries the same spelling.
+The `temp_keys` table says which C value each temporary of the body holds.
+A row `(t, (root, key, offset))` says that `t` holds the value of `root`, moved
+by `offset`. A check holds the pointer it checked, and a constant pointer
+addition holds its operand moved by the constant, so both follow their operand
+to its root. The walk stops at a temporary with a hint of its own. The key of a
+root with a `named(_, value)` hint is the declaration name, and the key of a
+root with a `named(_, address)` hint is `&` and the name. A root without a hint
+has its own name as the key; these are the fallbacks. A temporary without a row
+is its own root. `CFrame.v` builds the signature of a cut from this table and
+the label's `live_in` row. For each function the generator prints the number of
+temporaries in the body and how many are named, hold an address, are derived
+from a keyed root, or fall back.
 The `loop_heads` list comes from `cfg.pl`'s dominators and natural-loop
 analysis. It covers reachable natural loops, not every irreducible cycle.
 
