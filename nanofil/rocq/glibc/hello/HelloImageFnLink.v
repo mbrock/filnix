@@ -66,7 +66,7 @@ Definition hello_image_fns : list (string * func) :=
    ("__GI___libc_cleanup_push_defer", glibc___libc_cleanup_push_defer);
    ("__GI___libc_cleanup_pop_restore", glibc___libc_cleanup_pop_restore);
    ("__GI__IO_flush_all", glibc__IO_flush_all); ("_IO_cleanup", glibc__IO_cleanup);
-   ("close_stdout", HelloClose.close_stdout_fn)]%string.
+   ("close_stdout", HelloClose.close_stdout_fn); ("proper_name", HelloVersion.proper_name_fn)]%string.
 
 (** These names must stay outside the program, so that calls to them
     reach the OS contracts or the runtime's free. *)
@@ -93,7 +93,8 @@ Proof.
     apply Forall_cons; [exact (hk_run_exit _ _ H)|]. apply Forall_cons; [exact (hk_dtors _ _ H)|].
     apply Forall_cons; [exact (hk_push _ _ H)|]. apply Forall_cons; [exact (hk_pop _ _ H)|].
     apply Forall_cons; [exact (hk_flush _ _ H)|]. apply Forall_cons; [exact (hk_cleanup _ _ H)|].
-    apply Forall_cons; [exact (hk_close_stdout _ _ H)|]. apply Forall_nil.
+    apply Forall_cons; [exact (hk_close_stdout _ _ H)|].
+    apply Forall_cons; [exact (hk_proper_name _ _ H)|]. apply Forall_nil.
   - apply Forall_cons; [exact (hk_zmemset _ _ H)|]. apply Forall_cons; [exact Hz|]. exact (hk_sys _ _ H).
 Qed.
 

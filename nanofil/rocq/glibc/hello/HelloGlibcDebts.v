@@ -212,9 +212,6 @@ Record HelloCore : Type := mkHelloCore {
     fn_triple (TAtom "setlocale") [WInt 5; WPtr null]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I
       (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I;
-  hd_proper_name : forall s, In s author_lits ->
-    fn_triple (TAtom "proper_name") [WPtr (sym_ptr ge s)] (hello_ro ∗ hello_stdio ∗ hd_priv)%I
-      (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv ∗ str_ro q)%I;
   hd_version_etc : forall q1 q2 q3 q4,
     fn_triple (TAtom "version_etc")
       [WPtr (ho_out o); WPtr (sym_ptr ge "hello#str.70"); WPtr (sym_ptr ge "hello#str.63");
@@ -287,7 +284,8 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_free : forall b reg, r_kind reg = Heap -> b <> 0 ->
     fn_triple (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I;
   hl_exit : forall n,
-    fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ hello_stdio ∗ priv ∗ names ∗ X) (fun _ => False)%I
+    fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ hello_stdio ∗ priv ∗ names ∗ X) (fun _ => False)%I;
+  hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I
 }.
 
 End debts.

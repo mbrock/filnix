@@ -108,13 +108,17 @@ Lemma wp_proper_name s f e ls lab d v rest j Ψ :
   WP (ERun (mkFrame f e ls None
        (Exec lab (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P (Tmp v)] :: rest) j)) : gexpr)
     {{ Ψ }}.
-Proof using Type.
+Proof using Lb.
   intros Hs Hv. iIntros "#Hro Hio Hpv HK".
-  iApply (wp_call_ptr w0 ge _ _ _ (fun q => hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ str_ro q)%I
-            with "[Hio Hpv]");
-    [exact (hd_proper_name _ _ _ D s Hs) | cbn; rewrite Hv; reflexivity |
-     iSplitR; [iExact "Hro" | iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]] |].
-  iNext. iIntros (q) "(Hio & Hpv & Hq)". iApply ("HK" with "Hio Hpv Hq").
+  iAssert (str_ro (sym_ptr ge s)) as "#Hs".
+  { iDestruct "Hro" as "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hl)".
+    iApply (big_sepL_elem_of with "Hl"). apply list_elem_of_In. revert Hs. cbn. tauto. }
+  iApply (wp_call_ptr w0 ge _ _ True%I (fun q => ⌜q = sym_ptr ge s⌝)%I with "[//]");
+    [|cbn; rewrite Hv; reflexivity|].
+  { destruct (hl_proper_name _ _ _ _ _ _ Lb (sym_ptr ge s)) as (gf & Hg & Hc & Ht).
+    exists gf. split; [exact Hg|]. split; [exact Hc|]. intros fr Φ Hfr.
+    iIntros "_ HK". iApply (Ht fr Φ Hfr with "[//]"). iIntros (r ->). iApply "HK". iExists _. done. }
+  iNext. iIntros (q ->). iApply ("HK" with "Hio Hpv Hs").
 Qed.
 
 (** The version branch runs from the loop exit to successful termination. *)

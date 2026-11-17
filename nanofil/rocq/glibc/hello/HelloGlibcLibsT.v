@@ -13,7 +13,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import base list fin_maps.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic HelloLeaf HelloName.
-From Nanofil Require HelloClose.
+From Nanofil Require HelloClose HelloVersion.
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic StrncmpCode MemrchrCode MemcmpCode
   MemFwdCode StrchrCode AllocLogic LeavesLogic AtexitLogic ExitRunCode LibioGenCode SysCode LibioFlushCode
   LibioCleanupCode HelloGlibcDebts.
@@ -74,6 +74,7 @@ Record hello_link (ge : genv) (o : hello_objs) : Prop := mkHelloLink {
   hk_fcp : lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some (ho_fcp o) /\
            0 <= ptr_addr (ho_fcp o) < 2 ^ 64;
   hk_close_stdout : find_fn ge (TAtom "close_stdout") = Some (Defined HelloClose.close_stdout_fn);
+  hk_proper_name : find_fn ge (TAtom "proper_name") = Some (Defined HelloVersion.proper_name_fn);
   hk_cp : ptr_cap (ho_cp o) = Fn (TAtom "close_stdout") /\ function_check_res ge (ho_cp o) = Some ok /\
           0 < ptr_addr (ho_cp o) < 2 ^ 64
 }.
