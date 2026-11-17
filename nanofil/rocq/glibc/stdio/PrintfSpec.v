@@ -178,61 +178,6 @@ Definition vfprintf_spec : fspec Σ :=
        file_tidy (vi_vb x) (ow_self w0) (vi_fp x) (vi_fd x) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
 
-(** ### The older form of the contract *)
-
-(** Two kinds of caller reach the formatter in Hello. The first kind
-    is `c: fprintf` and `c: printf`, and their proofs use the contract
-    above. The second kind is the error messages of `c: getopt`, and
-    their proofs are older than that contract. Those proofs use the
-    contract below, which describes the stream in an older way. The
-    older description leaves out a part of the stream's buffer that the
-    formatter needs when it copies text into the buffer. So the
-    contract below cannot be proved for a stream that has a buffer on
-    the heap. It stays here, under its own name, until the proofs for
-    `c: getopt` use [vfprintf_spec]. *)
-Record vfs_in : Type := VfsIn {
-  vs_vb : Z; vs_fp : ptr;
-  vs_mode : Z; vs_flags2 : Z; vs_held : option Z;
-  vs_fmt : ptr; vs_dq : dfrac; vs_bytes : list Z;
-  vs_ds : list narrow_directive;
-  vs_ap : ptr; vs_skip : Z; vs_xs : list word; vs_rest : list word;
-  vs_eb : Z
-}.
-
-(** A stream starts without an orientation, and the first narrow or
-    wide operation on it fixes one. The formatter is a narrow
-    operation. Before it does anything else it makes a stream without
-    an orientation narrow, and it leaves the orientation of any other
-    stream alone. The field `c: _mode` holds 0 for no orientation and
-    -1 for narrow, and -1 is 2^32 - 1 as an unsigned 4-byte integer.
-    The function [narrow_mode] gives the mode that the formatter
-    leaves. *)
-Definition narrow_mode (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
-
-(** A stream that is narrow or has no orientation is narrow after a
-    print, so a caller can print to it again. *)
-Lemma narrow_mode_stays mode : mode = 0 \/ mode = 2 ^ 32 - 1 -> narrow_mode mode = 2 ^ 32 - 1.
-Proof. intros [-> | ->]; reflexivity. Qed.
-
-(** The older form asks of the format and the arguments what
-    [vfprintf_spec] asks. It gives back the stream in the mode that
-    [narrow_mode] gives. *)
-Definition vfprintf_stream_spec : fspec Σ :=
-  FSpec vfs_in
-    (fun x => [WPtr (vs_fp x); WPtr (vs_fmt x); WPtr (vs_ap x); WInt 0])
-    (fun x =>
-       ⌜parse_narrow (vs_bytes x) = Some (vs_ds x) /\
-        narrow_fits (vs_ds x) (skipn (Z.to_nat (vs_skip x / 8)) (vs_xs x)) (vs_rest x) /\
-        0 <= vs_skip x /\ vs_skip x mod 8 = 0 /\
-        ow_errno w0 = Some (mkPtr (vs_eb x) (Obj (vs_eb x)))⌝ ∗
-       printf_stream (vs_vb x) (ow_self w0) (vs_fp x) (vs_mode x) (vs_flags2 x) (vs_held x) ∗
-       word_string (vs_dq x) (vs_fmt x) (vs_bytes x) ∗ va_at (vs_ap x) (vs_skip x) (vs_xs x) ∗
-       ([∗ list] a ∈ skipn (Z.to_nat (vs_skip x / 8)) (vs_xs x), str_arg a) ∗ errno_any (vs_eb x) ∗ printf_ro)%I
-    (fun x o =>
-       ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
-       printf_stream (vs_vb x) (ow_self w0) (vs_fp x) (narrow_mode (vs_mode x)) (vs_flags2 x) (vs_held x) ∗
-       word_string (vs_dq x) (vs_fmt x) (vs_bytes x) ∗ errno_any (vs_eb x))%I.
-
 (** ## The variadic wrappers *)
 
 (** A program does not call the formatter itself. It calls
