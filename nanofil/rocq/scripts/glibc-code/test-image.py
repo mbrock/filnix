@@ -64,11 +64,13 @@ with tempfile.TemporaryDirectory() as tmp:
         path.parent.mkdir(parents=True, exist_ok=True)
         path.write_text((HERE.parents[2] / name).read_text())
         names += [u for u in path.read_text().split()]
+    # The manifest's own startup units follow the listed ones.
+    names += [u for _, u in generate["units"](manifest.get("units", ""))]
     for unit in names:
         (capture / (unit + ".i")).parent.mkdir(parents=True, exist_ok=True)
         (capture / (unit + ".i")).touch()
     unit_rows = generate["manifest_units"](manifest, root)
-    assert [u for _, u in generate["units"](unit_rows)] == names and len(set(names)) == 321
+    assert [u for _, u in generate["units"](unit_rows)] == names and len(set(names)) == len(names)
     generate["check_units"](capture, "hello", unit_rows)
     siblings = root / manifest["units_files"][1]
     original = siblings.read_text()
