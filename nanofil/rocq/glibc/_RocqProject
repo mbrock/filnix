@@ -321,6 +321,7 @@ startup/CpuParts.v
 startup/CpuInit.v
 startup/CpuInitSpec.v
 startup/CpuInitTunables.v
+startup/StartTunablesEarly.v
 startup/CpuSpec.v
 startup/CpuPlace.v
 startup/CpuHiAtexit.v
