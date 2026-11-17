@@ -183,6 +183,7 @@ hi_atexit/HiAtexitBase.v
 hi_atexit/HiAtexitCode12.v
 hi_atexit/HiAtexitCode22.v
 libio/FileInv.v
+libio/FileIdle.v
 libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
@@ -597,6 +598,7 @@ libio/LibioDefaultXsputnRoom.v
 libio/LibioFlush.v
 libio/LibioFlushOverCall.v
 libio/LibioFputs.v
+libio/LibioFputsSpec.v
 libio/LibioPutsNl.v
 getopt/GetoptClamp.v
 getopt/GetoptDash.v
