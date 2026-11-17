@@ -241,23 +241,24 @@ Proof. vm_compute. reflexivity. Qed.
 Import ListNotations.
 Open Scope list_scope.
 {provenance}
-(** The module is the decoded groups, in slice order. *)
-Definition hello_image_module : module := {join("hello_image_md")}.
+(** The decoded image is the decoded groups, in slice order. HelloImageModule.v
+    appends the constructor runner to it. *)
+Definition hello_image_decoded : module := {join("hello_image_md")}.
 
 (** The linked term is the groups' item terms, in the same order. *)
 Lemma hello_image_term_groups : hello_image_term = TApp "module" [TList ({join("hello_image_terms")})].
 Proof. unfold hello_image_term, {", ".join(f"hello_image_terms_{k}" for k in ks)}. rewrite <- !app_assoc. reflexivity. Qed.
 
 (** The linked term decodes to the module. *)
-Lemma hello_image_decodes : decode_module hello_image_term = Some hello_image_module.
+Lemma hello_image_decodes : decode_module hello_image_term = Some hello_image_decoded.
 Proof.
-  rewrite hello_image_term_groups, decode_module_items. unfold hello_image_module.
+  rewrite hello_image_term_groups, decode_module_items. unfold hello_image_decoded.
 {steps}  exact hello_image_dec_{ks[-1]}.
 Qed.
 
 (** No run of zeros in the module is negative. *)
-Lemma hello_image_zero : zero_nonneg hello_image_module = true.
-Proof. unfold hello_image_module. rewrite !zero_nonneg_app, {", ".join(f"hello_image_zero_{k}" for k in ks)}. reflexivity. Qed.
+Lemma hello_image_decoded_zero : zero_nonneg hello_image_decoded = true.
+Proof. unfold hello_image_decoded. rewrite !zero_nonneg_app, {", ".join(f"hello_image_zero_{k}" for k in ks)}. reflexivity. Qed.
 """)
 
 

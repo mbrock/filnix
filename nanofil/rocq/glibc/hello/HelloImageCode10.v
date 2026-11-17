@@ -10,6 +10,16 @@ Open Scope Z_scope.
 (** These items retain their order in the linked module. *)
 Definition hello_image_items_10 : list term :=
   [
+    TApp "func" [TAtom "__GI___fortify_fail"; TAtom "export"; TAtom "void"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
+      TList [
+        TApp "block" [TAtom "start"; TList [];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v2"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_fortify_fail#str.19"]]];
+            TApp "let" [TApp "tmp" [TAtom "v3"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_fortify_fail#str.20"]]];
+            TApp "call" [TAtom "void"; TApp "global" [TAtom "__libc_message_impl"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v3"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]]];
+          TAtom "ret"]]];
+    TApp "data" [TAtom "glibc_fortify_fail#str.19"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 103]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 98]]; TApp "item" [TAtom "b"; TApp "const" [TInt 99]]; TApp "item" [TAtom "b"; TApp "const" [TInt 58]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 102]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
+    TApp "data" [TAtom "glibc_fortify_fail#str.20"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 42]]; TApp "item" [TAtom "b"; TApp "const" [TInt 58]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 109]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 100]]; TApp "item" [TAtom "b"; TApp "const" [TInt 10]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
     TApp "func" [TAtom "__readonly_area_fallback"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "l"; TApp "tmp" [TAtom "v2"]]];
       TList [
         TApp "block" [TAtom "start"; TList [];

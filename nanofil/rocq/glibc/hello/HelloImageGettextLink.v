@@ -14,7 +14,7 @@
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Values Memory Run Semantics.
 From Glibc Require Import GettextLinkCode HelloGettextImageCode HelloGettextLink HelloGettextImage.
-From Glibc Require Import HelloImageEraseMem HelloImageCode HelloImageLoad.
+From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageLoad.
 Import ListNotations.
 
 (** ## A name that no item carries has no symbol *)
@@ -81,14 +81,14 @@ Qed.
 (** ## The whole image is not the selection
 
     The agreement above would be trivial if the whole image were the
-    selection itself. It holds fifteen hundred more items, including
+    selection itself. It holds about seventeen hundred more items, including
     functions that gettext never calls, and the agreement still holds.
     HelloGettextImage.v already shows that the same agreement refuses a
     module whose stpcpy alias is retargeted or whose stpcpy body is
     replaced, so an extra unrelated definition is accepted and a changed
     one is not. *)
 Example hello_image_larger :
-  length hello_image_module = 1616 /\ length hellogettextimage_module = 13 /\
+  length hello_image_module = 1713 /\ length hellogettextimage_module = 13 /\
   find_direct (TAtom "main") hello_image_module <> None /\ find_direct (TAtom "main") hellogettextimage_module = None.
 Proof. vm_compute. split; [reflexivity | split; [reflexivity | split; [discriminate | reflexivity]]]. Qed.
 

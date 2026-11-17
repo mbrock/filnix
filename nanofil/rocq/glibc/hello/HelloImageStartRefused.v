@@ -30,10 +30,10 @@ Local Definition keep_no_data (n : name) : bool :=
 Lemma hello_start_refused :
   match initial_memory hello_start_skel with
   | Some (g, m') =>
-      negb (pieces_ok hello_start_keep hello_start_kept g m' (int_global_ps 173792 (gd 173792 173800) 0)) &&
-      negb (pieces_ok hello_start_keep hello_start_kept g m' (getopt_zero_ps 173680 (gd 173680 173744))) &&
+      negb (pieces_ok hello_start_keep hello_start_kept g m' (int_global_ps 176560 (gd 176560 176568) 0)) &&
+      negb (pieces_ok hello_start_keep hello_start_kept g m' (getopt_zero_ps 176448 (gd 176448 176512))) &&
       negb (pieces_ok hello_start_keep hello_start_kept g m' [(PAux 68672 0, VAux CNone)]) &&
-      negb (pieces_ok keep_no_data hello_start_kept g m' (getopt_zero_ps 173680 (gd 173680 173736))) &&
+      negb (pieces_ok keep_no_data hello_start_kept g m' (getopt_zero_ps 176448 (gd 176448 176504))) &&
       pieces_ok hello_start_keep hello_start_kept g m' [(PAux 68672 0, VAux (Ro 69456))]
   | None => false
   end = true.

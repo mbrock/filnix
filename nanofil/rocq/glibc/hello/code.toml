@@ -1,13 +1,20 @@
-# GNU Hello linked with the 321 user glibc units of nix/hello-glibc.nix,
+# GNU Hello linked from main and __libc_start_main with the 321 user glibc
+# units of nix/hello-glibc.nix and the 12 startup units that the real
+# libc.so's start runs (csu/libc-start.os and what it reaches),
 # restricted to the names that the gettext route calls. Both read the
 # survey's units and the siblings that Hello adds from the same two files.
 layout = "image"
 mode = "checked"
 ctors = true
-roots = "main"
+roots = "main,__libc_start_main"
 objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
 object_prefix = "libhello_a-"
 units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
+units = '''
+- csu/libc-start.os csu/libc-tls.os elf/libc_early_init.os elf/dl-tls_init_tp.os nptl/vars.os
+- nptl/nptl_deallocate_tsd.os nptl/nptl_nthreads.os nptl/pthread_mutex_conf.os stdlib/getrandom.os
+- dlfcn/libc_dlerror_result.os csu/init-first.os time/clock_gettime.os
+'''
 compare = "intl/GettextLink"
 fixtures = '''
 HelloGettextImage|||__GI_mempcpy __GI_memcpy __GI___dcgettext __dcigettext __GI_stpcpy __GI___tfind __current_locale_name __GI___pthread_rwlock_rdlock __GI___pthread_rwlock_unlock
@@ -21,10 +28,15 @@ HelloGettextImage|||__GI_mempcpy __GI_memcpy __GI___dcgettext __dcigettext __GI_
 layout = "image"
 mode = "checked"
 ctors = true
-roots = "main"
+roots = "main,__libc_start_main"
 objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
 object_prefix = "libhello_a-"
 units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
+units = '''
+- csu/libc-start.os csu/libc-tls.os elf/libc_early_init.os elf/dl-tls_init_tp.os nptl/vars.os
+- nptl/nptl_deallocate_tsd.os nptl/nptl_nthreads.os nptl/pthread_mutex_conf.os stdlib/getrandom.os
+- dlfcn/libc_dlerror_result.os csu/init-first.os time/clock_gettime.os
+'''
 compare = "string/Strchr"
 fixtures = '''
 HelloStrchrImage|||__GI_strchr __GI___strchrnul
@@ -36,10 +48,15 @@ HelloStrchrImage|||__GI_strchr __GI___strchrnul
 layout = "linked_image"
 mode = "checked"
 ctors = true
-roots = "main"
+roots = "main,__libc_start_main"
 objects = "checks.x86_64-linux.nanofil-hello-fixture.captured"
 object_prefix = "libhello_a-"
 units_files = ["survey/glibc/run/units.txt", "survey/glibc/run/hello-siblings.txt"]
+units = '''
+- csu/libc-start.os csu/libc-tls.os elf/libc_early_init.os elf/dl-tls_init_tp.os nptl/vars.os
+- nptl/nptl_deallocate_tsd.os nptl/nptl_nthreads.os nptl/pthread_mutex_conf.os stdlib/getrandom.os
+- dlfcn/libc_dlerror_result.os csu/init-first.os time/clock_gettime.os
+'''
 fixtures = '''
 HelloImage|||
 '''

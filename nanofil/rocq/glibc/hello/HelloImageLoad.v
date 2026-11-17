@@ -12,7 +12,7 @@
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Run.
-From Glibc Require Import HelloImageEraseMem HelloImageCode.
+From Glibc Require Import HelloImageEraseMem HelloImageModule.
 Import ListNotations.
 
 (** No two items of the linked image share a name. *)

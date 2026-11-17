@@ -27,13 +27,13 @@ Local Definition keep_no_domain (n : name) : bool :=
 
 (** This is the first message with its first byte changed to zero. *)
 Local Definition changed_ps : list (piece * pval) :=
-  lits_ps [(173888, gd 173888 173920)] [0 :: tail (hd [] dgx_msg_texts)].
+  lits_ps [(176656, gd 176656 176688)] [0 :: tail (hd [] dgx_msg_texts)].
 
 (** This is the first message, read at the second message's object. *)
-Local Definition moved_ps : list (piece * pval) := lits_ps [(173936, gd 173936 173984)] [hd [] dgx_msg_texts].
+Local Definition moved_ps : list (piece * pval) := lits_ps [(176704, gd 176704 176752)] [hd [] dgx_msg_texts].
 
 (** The domain read with an object that ends where it starts. *)
-Local Definition short_ps : list (piece * pval) := libc_domain_ps 164688 (gd 164688 164688).
+Local Definition short_ps : list (piece * pval) := libc_domain_ps 165008 (gd 165008 165008).
 
 Lemma hello_refused :
   match initial_memory hello_skel with

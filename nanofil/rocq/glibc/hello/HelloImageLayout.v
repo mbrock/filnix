@@ -23,7 +23,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap.
 From Glibc Require Import FileInv AtexitLogic HelloGlibcDebts.
-From Glibc Require Import HelloGetoptTable HelloImageEraseMem HelloImageCode HelloImageKept HelloImageStart.
+From Glibc Require Import HelloGetoptTable HelloImageEraseMem HelloImageModule HelloImageKept HelloImageStart.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -38,33 +38,33 @@ Open Scope Z_scope.
     streams are glibc's static FILE objects for stderr, stdout and
     stdin, and the exit objects are those of atexit and exit. *)
 Definition hello_image_objs : hello_objs :=
-  mkHelloObjs (mkPtr 91984 (Obj 91984)) (mkPtr 91504 (Obj 91504)) (mkPtr 91744 (Obj 91744))
-    93184 (gd 93184 93192) 93152 (gd 93152 93160)
-    173760 (gd 173760 173768) 173824 (gd 173824 173832)
-    93600 (gd 93600 95952) 172000 (gd 172000 172008) 70288 (gd 70288 70296)
-    (mkExitObjs 193376 (gd 193376 193384) 194720 (gd 194720 194728) 193408 (gd 193408 193416)
-       193344 (gd 193344 193352) 193440 (gd 193440 194480))
-    194752 (gd 194752 194768) (mkPtr 65568 (Fn (TAtom "close_stdout")))
-    (mkPtr 89920 (Fn (TAtom "glibc_genops#flush_cleanup")))
-    170192 (gd 170192 170328) 170352 (gd 170352 170360) 169408 (gd 169408 170176)
-    66080 171600 171568 (gd 66080 66088) (gd 171600 171608) (gd 171568 171576)
+  mkHelloObjs (mkPtr 92304 (Obj 92304)) (mkPtr 91824 (Obj 91824)) (mkPtr 92064 (Obj 92064))
+    93504 (gd 93504 93512) 93472 (gd 93472 93480)
+    176528 (gd 176528 176536) 176592 (gd 176592 176600)
+    93920 (gd 93920 96272) 174768 (gd 174768 174776) 70288 (gd 70288 70296)
+    (mkExitObjs 196144 (gd 196144 196152) 197488 (gd 197488 197496) 196176 (gd 196176 196184)
+       196112 (gd 196112 196120) 196208 (gd 196208 197248))
+    197520 (gd 197520 197536) (mkPtr 65568 (Fn (TAtom "close_stdout")))
+    (mkPtr 90240 (Fn (TAtom "glibc_genops#flush_cleanup")))
+    172848 (gd 172848 172984) 173040 (gd 173040 173048) 169936 (gd 169936 170704)
+    66080 174368 174336 (gd 66080 66088) (gd 174368 174376) (gd 174336 174344)
     (mkPtr 66112 (Ro 66112)) (mkPtr 66144 (Ro 66144)).
 
 (** These symbols name writable objects at the given bases. *)
 Definition hello_image_obj_syms : list (string * Z) :=
-  [("stdout", 93184); ("stderr", 93152); ("optarg", 173760); ("optind", 173824);
-   ("program_name", 66080); ("program_invocation_name", 171600);
-   ("program_invocation_short_name", 171568); ("__libc_errno", 70288);
-   ("glibc_malloc#mp_", 170192); ("tcache", 170352); ("__exit_funcs_lock", 193376);
-   ("__exit_funcs_done", 194720); ("__new_exitfn_called", 193408); ("__exit_funcs", 193344);
-   ("glibc_exit#__exit_lock", 194752); ("__libc_single_threaded_internal", 172000);
-   ("__GI__IO_list_all", 92224); ("_IO_2_1_stderr_", 91504); ("_IO_2_1_stdout_", 91984);
-   ("_IO_2_1_stdin_", 91744)]%string.
+  [("stdout", 93504); ("stderr", 93472); ("optarg", 176528); ("optind", 176592);
+   ("program_name", 66080); ("program_invocation_name", 174368);
+   ("program_invocation_short_name", 174336); ("__libc_errno", 70288);
+   ("glibc_malloc#mp_", 172848); ("tcache", 173040); ("__exit_funcs_lock", 196144);
+   ("__exit_funcs_done", 197488); ("__new_exitfn_called", 196176); ("__exit_funcs", 196112);
+   ("glibc_exit#__exit_lock", 197520); ("__libc_single_threaded_internal", 174768);
+   ("__GI__IO_list_all", 92544); ("_IO_2_1_stderr_", 91824); ("_IO_2_1_stdout_", 92304);
+   ("_IO_2_1_stdin_", 92064)]%string.
 
 (** These symbols name read-only objects at the given bases. *)
 Definition hello_image_ro_syms : list (string * Z) :=
-  [("progname#str.3", 66112); ("progname#str.4", 66144); ("__io_vtables", 93600);
-   ("glibc_malloc#__tcache_dummy", 169408)]%string.
+  [("progname#str.3", 66112); ("progname#str.4", 66144); ("__io_vtables", 93920);
+   ("glibc_malloc#__tcache_dummy", 169936)]%string.
 
 (** These are the literals that main passes to its callees, each with
     the base of its read-only object. *)
@@ -84,24 +84,24 @@ Proof. reflexivity. Qed.
 
 (** These symbols name functions at the given addresses. *)
 Definition hello_image_fn_syms : list (string * Z) :=
-  [("close_stdout", 65568); ("glibc_genops#flush_cleanup", 89920)]%string.
+  [("close_stdout", 65568); ("glibc_genops#flush_cleanup", 90240)]%string.
 
 (** These are the objects of the record and the three streams, each
     with the end of its region. *)
 Definition hello_image_regs : list (Z * Z) :=
-  [(93184, 93192); (93152, 93160); (173760, 173768); (173824, 173832); (93600, 95952);
-   (172000, 172008); (70288, 70296); (193376, 193384); (194720, 194728); (193408, 193416);
-   (193344, 193352); (193440, 194480); (194752, 194768); (170192, 170328); (170352, 170360);
-   (169408, 170176); (66080, 66088); (171600, 171608); (171568, 171576);
-   (91504, 91728); (91984, 92208); (91744, 91968)].
+  [(93504, 93512); (93472, 93480); (176528, 176536); (176592, 176600); (93920, 96272);
+   (174768, 174776); (70288, 70296); (196144, 196152); (197488, 197496); (196176, 196184);
+   (196112, 196120); (196208, 197248); (197520, 197536); (172848, 172984); (173040, 173048);
+   (169936, 170704); (66080, 66088); (174368, 174376); (174336, 174344);
+   (91824, 92048); (92304, 92528); (92064, 92288)].
 
 (** These words of the initialized image hold pointers, each with its
     capability: stdout and stderr hold their streams, the list of all
     streams starts at stderr, and each stream's chain field, 104 bytes
     in, points to the next one, ending with a null after stdin. *)
 Definition hello_image_cells : list (Z * Z * cap) :=
-  [(93184, 91984, Obj 91984); (93152, 91504, Obj 91504); (92224, 91504, Obj 91504);
-   (91504 + 104, 91984, Obj 91984); (91984 + 104, 91744, Obj 91744); (91744 + 104, 0, CNone)].
+  [(93504, 92304, Obj 92304); (93472, 91824, Obj 91824); (92544, 91824, Obj 91824);
+   (91824 + 104, 92304, Obj 92304); (92304 + 104, 92064, Obj 92064); (92064 + 104, 0, CNone)].
 
 (** ## The check *)
 
