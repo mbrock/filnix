@@ -15,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule HiAtexitGe CpuRules CpuSetup CpuSound
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound
   CpuTunables CpuIntelWord CpuVendors CpuCache.
 Import ListNotations.
 Open Scope string_scope.
@@ -31,14 +31,14 @@ Definition gci := Eval vm_compute in fn "glibc_libc_start#get_common_indices".
 Definition upa := Eval vm_compute in fn "glibc_libc_start#update_active".
 Definition dic := Eval vm_compute in fn "glibc_libc_start#dl_init_cacheinfo".
 
-Lemma isa_find : find_fn hge (TAtom "glibc_libc_start#get_isa_level") = Some (Defined isa).
-Proof. vm_compute. reflexivity. Qed.
-Lemma gci_find : find_fn hge (TAtom "glibc_libc_start#get_common_indices") = Some (Defined gci).
-Proof. vm_compute. reflexivity. Qed.
-Lemma upa_find : find_fn hge (TAtom "glibc_libc_start#update_active") = Some (Defined upa).
-Proof. vm_compute. reflexivity. Qed.
-Lemma dic_find : find_fn hge (TAtom "glibc_libc_start#dl_init_cacheinfo") = Some (Defined dic).
-Proof. vm_compute. reflexivity. Qed.
+Lemma isa_find : cpu_fn "glibc_libc_start#get_isa_level" isa.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma gci_find : cpu_fn "glibc_libc_start#get_common_indices" gci.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma upa_find : cpu_fn "glibc_libc_start#update_active" upa.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma dic_find : cpu_fn "glibc_libc_start#dl_init_cacheinfo" dic.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** The fifteen small globals that startup writes may hold anything. *)
 Definition small : list (string * aobj) :=
@@ -83,29 +83,29 @@ Lemma parts_counts :
 Proof. reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 Hypothesis Hends : ow_leaf4_ends w0 = true.
 
-Lemma t4_holds : table_holds w0 t4.
-Proof using Hends.
-  apply table_app; [exact (gcc_table_holds w0 Hends)|].
-  apply table_app; [exact (t3_holds w0 Hends) | exact (tun_table_holds w0 Hends)].
+Lemma t4_holds : table_holds w0 ge t4.
+Proof using Hends Hge.
+  apply table_app; [exact (gcc_table_holds w0 ge Hends)|].
+  apply table_app; [exact (t3_holds w0 ge Hends) | exact (tun_table_holds w0 ge Hends)].
 Qed.
 
-Lemma t5_holds : table_holds w0 t5.
-Proof using Hends.
-  apply table_cons; [exact (verified_holds w0 Hends [] _ isa [] isa_plans isa_find (table_nil w0) isa_checked)|].
+Lemma t5_holds : table_holds w0 ge t5.
+Proof using Hends Hge.
+  apply table_cons; [exact (verified_holds w0 ge Hends [] _ isa [] isa_plans isa_find (table_nil w0 ge) isa_checked)|].
   apply table_cons; [|exact t4_holds].
-  exact (verified_holds w0 Hends [] _ gci [] gci_plans gci_find (table_nil w0) gci_checked).
+  exact (verified_holds w0 ge Hends [] _ gci [] gci_plans gci_find (table_nil w0 ge) gci_checked).
 Qed.
 
 (** The four helpers and everything below them satisfy their
     specifications. *)
-Lemma t6_holds : table_holds w0 t6.
-Proof using Hends.
-  apply table_cons; [exact (verified_holds w0 Hends t5 _ upa [] upa_plans upa_find t5_holds upa_checked)|].
+Lemma t6_holds : table_holds w0 ge t6.
+Proof using Hends Hge.
+  apply table_cons; [exact (verified_holds w0 ge Hends t5 _ upa [] upa_plans upa_find t5_holds upa_checked)|].
   apply table_cons; [|exact t5_holds].
-  exact (verified_holds w0 Hends t5 _ dic [] dic_plans dic_find t5_holds dic_checked).
+  exact (verified_holds w0 ge Hends t5 _ dic [] dic_plans dic_find t5_holds dic_checked).
 Qed.
 
 End sound.

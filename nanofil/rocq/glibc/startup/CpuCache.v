@@ -19,15 +19,15 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule HiAtexitGe CpuRules CpuSetup CpuSound CpuIntelWord.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound CpuIntelWord.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.
 
 Definition gcc := Eval vm_compute in fn "glibc_libc_start#get_common_cache_info".
-Lemma gcc_find : find_fn hge (TAtom "glibc_libc_start#get_common_cache_info") = Some (Defined gcc).
-Proof. vm_compute. reflexivity. Qed.
+Lemma gcc_find : cpu_fn "glibc_libc_start#get_common_cache_info" gcc.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** The Intel path passes its cache record, and the Zhaoxin path
     passes a null pointer in its place. *)
@@ -60,15 +60,15 @@ Lemma gcc_needs_leaf4 :
 Proof. vm_compute. reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 Hypothesis Hends : ow_leaf4_ends w0 = true.
 
 (** `c: get_common_cache_info` satisfies both specifications. *)
-Lemma gcc_table_holds : table_holds w0 gcc_table.
-Proof using Hends.
+Lemma gcc_table_holds : table_holds w0 ge gcc_table.
+Proof using Hends Hge.
   apply table_cons; [|apply table_nil]. intros sp Hin. apply in_app_or in Hin as [Hin|Hin].
-  - exact (verified_holds w0 Hends [] _ gcc gcc_nc gcc_i_plans gcc_find (table_nil w0) gcc_i_checked sp Hin).
-  - exact (verified_holds w0 Hends [] _ gcc [] gcc_z_plans gcc_find (table_nil w0) gcc_z_checked sp Hin).
+  - exact (verified_holds w0 ge Hends [] _ gcc gcc_nc gcc_i_plans gcc_find (table_nil w0 ge) gcc_i_checked sp Hin).
+  - exact (verified_holds w0 ge Hends [] _ gcc [] gcc_z_plans gcc_find (table_nil w0 ge) gcc_z_checked sp Hin).
 Qed.
 
 End sound.

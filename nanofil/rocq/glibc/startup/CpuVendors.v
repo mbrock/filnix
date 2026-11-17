@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule HiAtexitGe CpuRules CpuSetup CpuSound CpuIntelWord.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound CpuIntelWord.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -24,14 +24,14 @@ Definition am := Eval vm_compute in fn "glibc_libc_start#handle_amd".
 Definition zh := Eval vm_compute in fn "glibc_libc_start#handle_zhaoxin".
 Definition hy := Eval vm_compute in fn "glibc_libc_start#handle_hygon".
 
-Lemma hi_find : find_fn hge (TAtom "glibc_libc_start#handle_intel") = Some (Defined hi).
-Proof. vm_compute. reflexivity. Qed.
-Lemma am_find : find_fn hge (TAtom "glibc_libc_start#handle_amd") = Some (Defined am).
-Proof. vm_compute. reflexivity. Qed.
-Lemma zh_find : find_fn hge (TAtom "glibc_libc_start#handle_zhaoxin") = Some (Defined zh).
-Proof. vm_compute. reflexivity. Qed.
-Lemma hy_find : find_fn hge (TAtom "glibc_libc_start#handle_hygon") = Some (Defined hy).
-Proof. vm_compute. reflexivity. Qed.
+Lemma hi_find : cpu_fn "glibc_libc_start#handle_intel" hi.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma am_find : cpu_fn "glibc_libc_start#handle_amd" am.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma zh_find : cpu_fn "glibc_libc_start#handle_zhaoxin" zh.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma hy_find : cpu_fn "glibc_libc_start#handle_hygon" hy.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** The Intel handler takes the parameter's number, the feature
     structure and the caller's cache record. *)
@@ -62,17 +62,17 @@ Lemma vendor_counts :
 Proof. reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 Hypothesis Hends : ow_leaf4_ends w0 = true.
 
 (** The four vendor handlers satisfy their specifications. *)
-Lemma t3_holds : table_holds w0 t3.
-Proof using Hends.
-  apply table_cons; [exact (verified_holds w0 Hends t2 _ hi [] hi_plans hi_find (t2_holds w0 Hends) hi_checked)|].
-  apply table_cons; [exact (verified_holds w0 Hends [] _ am [] am_plans am_find (table_nil w0) am_checked)|].
-  apply table_cons; [exact (verified_holds w0 Hends [] _ zh [] zh_plans zh_find (table_nil w0) zh_checked)|].
-  apply table_cons; [|exact (t2_holds w0 Hends)].
-  exact (verified_holds w0 Hends [] _ hy [] hy_plans hy_find (table_nil w0) hy_checked).
+Lemma t3_holds : table_holds w0 ge t3.
+Proof using Hends Hge.
+  apply table_cons; [exact (verified_holds w0 ge Hends t2 _ hi [] hi_plans hi_find (t2_holds w0 ge Hends) hi_checked)|].
+  apply table_cons; [exact (verified_holds w0 ge Hends [] _ am [] am_plans am_find (table_nil w0 ge) am_checked)|].
+  apply table_cons; [exact (verified_holds w0 ge Hends [] _ zh [] zh_plans zh_find (table_nil w0 ge) zh_checked)|].
+  apply table_cons; [|exact (t2_holds w0 ge Hends)].
+  exact (verified_holds w0 ge Hends [] _ hy [] hy_plans hy_find (table_nil w0 ge) hy_checked).
 Qed.
 
 End sound.

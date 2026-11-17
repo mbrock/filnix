@@ -53,14 +53,30 @@ Definition item_aux (it : data_item) : list aaux :=
   | _ => repeat XNone (Z.to_nat (item_size it))
   end.
 
-(** The function [gobj] gives the initial contents of a global object
-    of the image. *)
-Definition gobj (n : string) : option aobj :=
-  match find (fun it => match it with IData m _ _ _ => name_eqb m (TAtom n) | _ => false end) hi_module with
+(** The function [gobj_in] gives the initial contents of a global
+    object of a module, and [gobj] gives them for the hi_atexit image. *)
+Definition gobj_in (md : module) (n : string) : option aobj :=
+  match find (fun it => match it with IData m _ _ _ => name_eqb m (TAtom n) | _ => false end) md with
   | Some (IData _ lk al its) =>
       Some (mkObj (match lk with LRo _ => true | _ => false end) al (flat_map item_bytes its) (flat_map item_aux its))
   | _ => None
   end.
+Definition gobj : string -> option aobj := gobj_in hi_module.
+
+(** * The functions *)
+
+(** A call of `c: init_cpu_features` runs these sixteen functions.
+    The list names the function itself, the helpers that it calls,
+    and the four tunable functions. *)
+Definition cpu_fns : list string :=
+  ["glibc_libc_start#init_cpu_features"; "glibc_libc_start#get_isa_level"; "glibc_libc_start#get_common_indices";
+   "glibc_libc_start#update_active"; "glibc_libc_start#dl_init_cacheinfo"; "glibc_libc_start#get_common_cache_info";
+   "glibc_libc_start#handle_intel"; "glibc_libc_start#handle_amd"; "glibc_libc_start#handle_zhaoxin";
+   "glibc_libc_start#handle_hygon"; "glibc_libc_start#intel_check_word"; "glibc_libc_start#intel_02_known_compare";
+   "__tunable_get_val"; "__tunable_set_val"; "__tunable_is_initialized"; "glibc_dl_tunables#do_tunable_update_val"].
+
+(** The function f is the body of the function named n in that list. *)
+Definition cpu_fn (n : string) (f : func) : Prop := existsb (String.eqb n) cpu_fns = true /\ fn n = f.
 
 (** * The global objects *)
 

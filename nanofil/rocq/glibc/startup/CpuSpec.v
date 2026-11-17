@@ -2,9 +2,11 @@
     calling `c: init_cpu_features`. The larger proof about startup
     treats that call as one step with a contract, which says what
     memory the call needs and what it gives back. This module proves
-    the contract for the program that the larger proof is about, the
-    linked hi_atexit image. [CpuInitSpec](CpuInitSpec.v) states the
-    contract.
+    the contract, which [CpuInitSpec](CpuInitSpec.v) states. The
+    proof is not tied to one program. It holds for every linked
+    program that defines the function and its callees as the
+    hi_atexit image does. [CpuHiAtexit](CpuHiAtexit.v) applies it to
+    that image.
 
     [CpuInit](CpuInit.v) already proves that the function never
     panics. It does so with an abstract interpreter, which these
@@ -33,7 +35,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Pieces Heap Logic StringLogic MemLogic.
 From Nanofil Require Import AbsRun AbsInfer AbsDen AbsMem AbsCall AbsOwn AbsSound.
-From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsBlocks OsCpuid OsRegistry HiAtexitModule HiAtexitGe
+From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsBlocks OsCpuid OsRegistry HiAtexitModule
   FileInv LibioCloseSteps CpuRules CpuHook CpuSetup CpuSound CpuTunables CpuInit CpuInitSpec.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope string_scope.
@@ -140,12 +142,12 @@ Qed.
 End pure.
 
 Section conv.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 
 (** The contract is about one program. A program is a linked image
     together with the world of answers that the processor and the
-    kernel give. The image is hi_atexit and the world is w0. *)
-Local Instance icf_program : GlibcProgram (hlc := hlc) Σ := program_of w0 glibc_os_registry hge.
+    kernel give. The image is ge and the world is w0. *)
+Local Instance icf_program : GlibcProgram (hlc := hlc) Σ := program_of w0 glibc_os_registry ge.
 
 (** Two short names make the statements below easier to read. The
     proposition guard says that the kernel enabled XSAVE. The function
@@ -405,7 +407,7 @@ Proof using Type.
 Qed.
 
 (** The image names each global object of the checker at its place. *)
-Lemma icf_globals_ok o : icf_ok o -> globals_ok hge gobjs (icf_places o).
+Lemma icf_globals_ok o : icf_ok o -> globals_ok ge gobjs (icf_places o).
 Proof using Type.
   intros (Hcf & Htl & Hkn & _ & _ & _ & _ & _ & _ & Hsm) i g Hi.
   destruct icf_shape as (_ & _ & _ & _ & _ & Hg & _). rewrite Hg in Hi. unfold icf_places.
@@ -441,11 +443,11 @@ Qed.
     contract once every object is known to lie below 2^48. *)
 Lemma icf_triple o :
   ow_leaf4_ends w0 = true -> icf_ok o -> icf_fits o ->
-  AS.fn_triple glibc_os_registry (os_wi w0) hge (TAtom "glibc_libc_start#init_cpu_features")
+  AS.fn_triple glibc_os_registry (os_wi w0) ge (TAtom "glibc_libc_start#init_cpu_features")
     [WPtr (mkPtr (icf_cf o) (Obj (icf_cf o)))] (icf_owns o) (fun r => ⌜r = RetVoid⌝ ∗ icf_owns o)%I.
-Proof using Type.
+Proof using Hge.
   intros Hends Hok Hfit. destruct icf_shape as (Hpre & Hle & Hargs & Hg & Hret & _).
-  destruct (init_cpu_features_safe w0 Hends (icf_places o) [WPtr (mkPtr (icf_cf o) (Obj (icf_cf o)))])
+  destruct (init_cpu_features_safe w0 ge Hends (icf_places o) [WPtr (mkPtr (icf_cf o) (Obj (icf_cf o)))])
     as (gf & Hgf & Hfr & Ht).
   - rewrite Hpre. cbn [length icf_places]. rewrite !length_app !length_map. cbn [length].
     rewrite (Forall2_length (icf_small_fit o Hok)). reflexivity.
@@ -464,16 +466,16 @@ Qed.
     program, so the bounds are collected inside the call. *)
 Lemma live_fit b reg fr Φ :
   live b reg -∗
-  (⌜fits b reg⌝ -∗ live b reg -∗ WP (ERun fr : language.expr (nanofil_lang glibc_os_registry hge)) {{ Φ }}) -∗
-  WP (ERun fr : language.expr (nanofil_lang glibc_os_registry hge)) {{ Φ }}.
+  (⌜fits b reg⌝ -∗ live b reg -∗ WP (ERun fr : language.expr (nanofil_lang glibc_os_registry ge)) {{ Φ }}) -∗
+  WP (ERun fr : language.expr (nanofil_lang glibc_os_registry ge)) {{ Φ }}.
 Proof using Type. exact (wp_live_fit1 (glibc_program := icf_program) b reg fr Φ). Qed.
 
 Lemma wp_smalls_fit (gs : list (string * Z)) : forall (qs : list (Z * region)) fr Φ,
   ([∗ list] g; q ∈ gs; qs, live (fst q) (snd q) ∗ blk_u8 (fst q) (snd g)) -∗
   (⌜Forall (fun q => fits (fst q) (snd q)) qs⌝ -∗
    ([∗ list] g; q ∈ gs; qs, live (fst q) (snd q) ∗ blk_u8 (fst q) (snd g)) -∗
-   WP (ERun fr : language.expr (nanofil_lang glibc_os_registry hge)) {{ Φ }}) -∗
-  WP (ERun fr : language.expr (nanofil_lang glibc_os_registry hge)) {{ Φ }}.
+   WP (ERun fr : language.expr (nanofil_lang glibc_os_registry ge)) {{ Φ }}) -∗
+  WP (ERun fr : language.expr (nanofil_lang glibc_os_registry ge)) {{ Φ }}.
 Proof using Type.
   induction gs as [|g gs IH]; intros [|q qs] fr Φ; iIntros "H HK".
   - iApply ("HK" with "[%] H"). constructor.
@@ -487,15 +489,15 @@ Qed.
 
 (** This theorem is the result of the module. It assumes that the
     list of caches that the processor reports ends. The function
-    `c: init_cpu_features` of the linked image then satisfies the
+    `c: init_cpu_features` of the linked program then satisfies the
     contract of [CpuInitSpec](CpuInitSpec.v) in the program logic of
     the other startup proofs. *)
 Theorem init_cpu_features_has_spec :
   ow_leaf4_ends w0 = true ->
-  HasSpec glibc_os_registry (os_wi w0) hge (TAtom "glibc_libc_start#init_cpu_features")
-    (init_cpu_features_spec (glibc_program := program_of w0 glibc_os_registry hge)).
-Proof using Type.
-  intros Hends o. exists icf. split; [exact icf_find|]. split; [vm_compute; eauto|].
+  HasSpec glibc_os_registry (os_wi w0) ge (TAtom "glibc_libc_start#init_cpu_features")
+    (init_cpu_features_spec (glibc_program := program_of w0 glibc_os_registry ge)).
+Proof using Hge.
+  intros Hends o. exists icf. split; [exact (cpu_find ge _ _ icf_find)|]. split; [vm_compute; eauto|].
   intros fr Φ Hfr. cbn [fs_pre fs_post init_cpu_features_spec].
   iIntros "[%Hok Ho] HK". iDestruct "Ho" as "(Hcf & Hf & Htl & Ht & Hkn & Hk & Hsm)".
   iApply (live_fit with "Hcf"). iIntros (Fcf) "Hcf".
@@ -503,7 +505,7 @@ Proof using Type.
   iApply (live_fit with "Hkn"). iIntros (Fkn) "Hkn".
   iApply (wp_smalls_fit with "Hsm"). iIntros (Fsm) "Hsm".
   destruct (icf_triple o Hends Hok (conj Fcf (conj Ftl (conj Fkn Fsm)))) as (gf & Hgf & _ & Ht).
-  rewrite icf_find in Hgf. injection Hgf as <-.
+  rewrite (cpu_find ge _ _ icf_find) in Hgf. injection Hgf as <-.
   iApply (Ht fr Φ Hfr with "[$Hcf $Hf $Htl $Ht $Hkn $Hk $Hsm] HK").
 Qed.
 

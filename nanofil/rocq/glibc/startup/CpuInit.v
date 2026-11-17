@@ -3,8 +3,12 @@
     anything that depends on the processor. The function asks the
     processor and the kernel what they support through `c: zcpuid`,
     `c: zcpuid_count` and `c: zxgetbv`, and it computes with the
-    answers. This module proves that the function in the linked
-    hi_atexit image never panics, for every answer.
+    answers. This module proves that the function never panics, for
+    every answer.
+
+    The code of the function is taken from the hi_atexit program.
+    Other programs link the same code from glibc, and the theorem
+    covers them too. Hello is one such program.
 
     The theorem assumes one thing about the processor. The list of
     caches that CPUID leaf 4 reports must end. A processor whose list
@@ -26,7 +30,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer AbsDen AbsSound.
-From Glibc Require Import Fix OsWorld OsCpuid OsRegistry HiAtexitModule HiAtexitGe CpuRules CpuHook CpuSetup CpuSound
+From Glibc Require Import Fix OsWorld OsCpuid OsRegistry HiAtexitModule CpuRules CpuHook CpuSetup CpuSound
   CpuTunables CpuParts.
 Import ListNotations.
 Open Scope string_scope.
@@ -34,8 +38,8 @@ Open Scope list_scope.
 Open Scope Z_scope.
 
 Definition icf := Eval vm_compute in fn "glibc_libc_start#init_cpu_features".
-Lemma icf_find : find_fn hge (TAtom "glibc_libc_start#init_cpu_features") = Some (Defined icf).
-Proof. vm_compute. reflexivity. Qed.
+Lemma icf_find : cpu_fn "glibc_libc_start#init_cpu_features" icf.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** Startup calls the function with the address of the feature
     structure. The feature structure and the small globals may hold
@@ -43,13 +47,15 @@ Proof. vm_compute. reflexivity. Qed.
     the image, and the tunable table holds the type codes and the
     flags that [CpuTunables](CpuTunables.v) lists. *)
 Definition icf_pre : fspec := spec [glo cpu] gall [None].
-(** A precondition is useful only when startup can meet it. The linked
-    image meets this one. Each global object that the function
-    touches starts with contents that the precondition allows. The
-    feature structure starts as zeros, and the tunable table starts
+(** A precondition is useful only when startup can meet it. The check
+    [icf_start_ok] reads the initial data of a module and tests that
+    each global object that the function touches starts with contents
+    that the precondition allows. The hi_atexit image passes it. Its
+    feature structure starts as zeros, and its tunable table starts
     with the type codes and the cleared flags. *)
-Lemma icf_image_start :
-  forallb (fun p => match gobj (fst p) with Some ob => obj_le (st0 false) ob (snd p) | None => false end) gall = true.
+Definition icf_start_ok (md : module) : bool :=
+  forallb (fun p => match gobj_in md (fst p) with Some ob => obj_le (st0 false) ob (snd p) | None => false end) gall.
+Lemma icf_image_start : icf_start_ok hi_module = true.
 Proof. vm_compute. reflexivity. Qed.
 
 Definition icf_plans := Eval vm_compute in somes [plan_of t6 icf [] [] icf_pre].
@@ -83,20 +89,20 @@ Lemma icf_tunables_kept :
 Proof. vm_compute. eexists. split; [reflexivity|]. split; reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 
 (** This theorem is the result of the module. It assumes that the
     list of caches that the processor reports ends. A call of
-    `c: init_cpu_features` in the linked image then runs without a
+    `c: init_cpu_features` in the linked program then runs without a
     panic, whatever the processor and the kernel answer. The call may
     start from any memory that the precondition allows. When it
     returns, it gives the global objects back with the contents that
     the postcondition describes. *)
 Theorem init_cpu_features_safe :
-  ow_leaf4_ends w0 = true -> holds w0 (TAtom "glibc_libc_start#init_cpu_features") icf_spec.
-Proof using Type.
+  ow_leaf4_ends w0 = true -> holds w0 ge (TAtom "glibc_libc_start#init_cpu_features") icf_spec.
+Proof using Hge.
   intros Hends.
-  exact (verified_holds w0 Hends t6 _ icf [] icf_plans icf_find (t6_holds w0 Hends) icf_checked icf_spec icf_spec_in).
+  exact (verified_holds w0 ge Hends t6 _ icf [] icf_plans icf_find (t6_holds w0 ge Hends) icf_checked icf_spec icf_spec_in).
 Qed.
 
 End sound.

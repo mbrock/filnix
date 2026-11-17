@@ -20,7 +20,7 @@ From Nanofil Require Import Pieces Heap.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule HiAtexitGe CpuRules CpuSetup CpuSound.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -51,14 +51,14 @@ Definition setv := Eval vm_compute in fn "__tunable_set_val".
 Definition getv := Eval vm_compute in fn "__tunable_get_val".
 Definition isin := Eval vm_compute in fn "__tunable_is_initialized".
 
-Lemma upd_find : find_fn hge (TAtom "glibc_dl_tunables#do_tunable_update_val") = Some (Defined upd).
-Proof. vm_compute. reflexivity. Qed.
-Lemma setv_find : find_fn hge (TAtom "__tunable_set_val") = Some (Defined setv).
-Proof. vm_compute. reflexivity. Qed.
-Lemma getv_find : find_fn hge (TAtom "__tunable_get_val") = Some (Defined getv).
-Proof. vm_compute. reflexivity. Qed.
-Lemma isin_find : find_fn hge (TAtom "__tunable_is_initialized") = Some (Defined isin).
-Proof. vm_compute. reflexivity. Qed.
+Lemma upd_find : cpu_fn "glibc_dl_tunables#do_tunable_update_val" upd.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma setv_find : cpu_fn "__tunable_set_val" setv.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma getv_find : cpu_fn "__tunable_get_val" getv.
+Proof. vm_compute. split; reflexivity. Qed.
+Lemma isin_find : cpu_fn "__tunable_is_initialized" isin.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** Startup writes the six rows of [ids_set]. *)
 Definition ids_set : list Z := [3; 5; 6; 7; 8; 9].
@@ -98,23 +98,23 @@ Lemma tun_counts :
 Proof. reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 Hypothesis Hends : ow_leaf4_ends w0 = true.
 
-Lemma u1_holds : table_holds w0 u1.
-Proof using Hends.
+Lemma u1_holds : table_holds w0 ge u1.
+Proof using Hends Hge.
   apply table_cons; [|apply table_nil].
-  exact (verified_holds w0 Hends [] _ upd [] upd_plans upd_find (table_nil w0) upd_checked).
+  exact (verified_holds w0 ge Hends [] _ upd [] upd_plans upd_find (table_nil w0 ge) upd_checked).
 Qed.
 
 (** The three tunable functions that `c: init_cpu_features` calls
     satisfy their specifications. *)
-Lemma tun_table_holds : table_holds w0 tun_table.
-Proof using Hends.
-  apply table_cons; [exact (verified_holds w0 Hends u1 _ setv [] set_plans setv_find u1_holds set_checked)|].
-  apply table_cons; [exact (verified_holds w0 Hends [] _ getv [] get_plans getv_find (table_nil w0) get_checked)|].
+Lemma tun_table_holds : table_holds w0 ge tun_table.
+Proof using Hends Hge.
+  apply table_cons; [exact (verified_holds w0 ge Hends u1 _ setv [] set_plans setv_find u1_holds set_checked)|].
+  apply table_cons; [exact (verified_holds w0 ge Hends [] _ getv [] get_plans getv_find (table_nil w0 ge) get_checked)|].
   apply table_cons; [|apply table_nil].
-  exact (verified_holds w0 Hends [] _ isin [] isin_plans isin_find (table_nil w0) isin_checked).
+  exact (verified_holds w0 ge Hends [] _ isin [] isin_plans isin_find (table_nil w0 ge) isin_checked).
 Qed.
 
 End sound.

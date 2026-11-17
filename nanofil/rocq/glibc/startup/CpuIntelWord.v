@@ -14,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule HiAtexitGe CpuRules CpuSetup CpuSound.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -23,8 +23,8 @@ Open Scope Z_scope.
 (** * The comparison *)
 
 Definition cmp := Eval vm_compute in fn "glibc_libc_start#intel_02_known_compare".
-Lemma cmp_find : find_fn hge (TAtom "glibc_libc_start#intel_02_known_compare") = Some (Defined cmp).
-Proof. vm_compute. reflexivity. Qed.
+Lemma cmp_find : cpu_fn "glibc_libc_start#intel_02_known_compare" cmp.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** The search passes a key on its stack and a row of the table. *)
 Definition cmp_pre := spec [par 0; CP 2 0 536] [(kn, known)] [Some (loc 16)].
@@ -36,8 +36,8 @@ Definition t1 : table := [("glibc_libc_start#intel_02_known_compare", map fst cm
 (** * The descriptor word *)
 
 Definition icw := Eval vm_compute in fn "glibc_libc_start#intel_check_word".
-Lemma icw_find : find_fn hge (TAtom "glibc_libc_start#intel_check_word") = Some (Defined icw).
-Proof. vm_compute. reflexivity. Qed.
+Lemma icw_find : cpu_fn "glibc_libc_start#intel_check_word" icw.
+Proof. vm_compute. split; reflexivity. Qed.
 
 (** The caller keeps two small fields in front of its cache record: a
     flag and a count of at most sixteen. *)
@@ -61,21 +61,21 @@ Lemma icw_counts : (length cmp_plans, length icw_plans) = (1, 12)%nat.
 Proof. reflexivity. Qed.
 
 Section sound.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
 Hypothesis Hends : ow_leaf4_ends w0 = true.
 
-Lemma t1_holds : table_holds w0 t1.
-Proof using Hends.
+Lemma t1_holds : table_holds w0 ge t1.
+Proof using Hends Hge.
   apply table_cons; [|apply table_nil].
-  exact (verified_holds w0 Hends [] _ cmp [] cmp_plans cmp_find (table_nil w0) cmp_checked).
+  exact (verified_holds w0 ge Hends [] _ cmp [] cmp_plans cmp_find (table_nil w0 ge) cmp_checked).
 Qed.
 
 (** The comparison and the descriptor lookup satisfy their
     specifications. *)
-Lemma t2_holds : table_holds w0 t2.
-Proof using Hends.
+Lemma t2_holds : table_holds w0 ge t2.
+Proof using Hends Hge.
   apply table_cons; [|apply t1_holds].
-  exact (verified_holds w0 Hends t1 _ icw icw_nc icw_plans icw_find t1_holds icw_checked).
+  exact (verified_holds w0 ge Hends t1 _ icw icw_nc icw_plans icw_find t1_holds icw_checked).
 Qed.
 
 End sound.
