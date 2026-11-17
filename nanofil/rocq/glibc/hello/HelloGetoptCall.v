@@ -3,7 +3,7 @@ From Glibc Require Import GlibcProgram.
     place between calls in a private object. Hello's main loop lets each
     call borrow that object while it matches argv and optind. This file
     proves that contract from the proof of glibc's own getopt_long, so
-    Hello's safety theorem in HelloNeverPanics.v does not assume it. The
+    Hello's safety theorem in HelloStartNeverPanics.v does not assume it. The
     proof only moves resources: it lends the call what the parser rule in
     GetoptLongStr.v asks for and gives the caller back what the rule
     returns.

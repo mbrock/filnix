@@ -671,7 +671,7 @@ file_blurb('nanofil/rocq/glibc/hello/HelloGlibcMainFull.v',
     "The complete main triple joins initialization, option parsing and every exit branch.").
 file_blurb('nanofil/rocq/glibc/hello/HelloGlibcJoin.v',
     "One application of the library functor gives every Hello proof the same exit-handler state.").
-file_blurb('nanofil/rocq/glibc/hello/HelloNeverPanics.v',
+file_blurb('nanofil/rocq/glibc/hello/HelloStartNeverPanics.v',
     "Hello's one safety theorem, hello_never_panics, whose premises are the open obligations.").
 
 %  Live campaign: rocq/glibc/stdlib/

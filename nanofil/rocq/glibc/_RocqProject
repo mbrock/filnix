@@ -1096,7 +1096,6 @@ hello/HelloGlibcJoin.v
 hello/HelloGetoptCall.v
 hello/HelloGetoptStart.v
 hello/HelloGetoptBackend.v
-hello/HelloNeverPanics.v
 hello/HelloStartNeverPanics.v
 hello/HelloStartBridge.v
 hello/HelloStartMain.v

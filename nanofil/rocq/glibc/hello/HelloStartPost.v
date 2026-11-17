@@ -179,9 +179,8 @@ Definition hello_start_post (av : Z) (ar : region) (p0 : ptr) (ps : list ptr) (y
   live (ho_nb o) (ho_nreg o) ∗ pcell (ho_nb o) 0 y ∗ live (ho_nsb o) (ho_nsreg o) ∗ pcell (ho_nsb o) 0 z ∗
   ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps).
 
-(** This is the memory that main starts with. It is what the caller
-    of [HelloNeverPanics](HelloNeverPanics.v) must build today, so the
-    same proof of main can use it. *)
+(** This is the memory that main starts with. The startup run in
+    [HelloStartWp](HelloStartWp.v) builds it before main's proof uses it. *)
 Definition hello_start_main_res (w : os_world) (av : Z) (ar : region) (p0 : ptr) (ps : list ptr) (y z : ptr) : iProp Σ :=
   hello_ro_rest ge o ∗
   word_string DfracDiscarded (sym_ptr ge "glibc_getopt#str.145") [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84] ∗

@@ -216,7 +216,7 @@ let
   vo = exportVo;
   # Rebuild Hello's entire Glibc closure against one abstract runtime.
   # No interpreter Glibc object may enter this graph through an import.
-  helloNames = closure.HelloNeverPanics ++ [ "HelloNeverPanics" ];
+  helloNames = closure.HelloStartNeverPanics ++ [ "HelloStartNeverPanics" ];
   runtimeFix =
     binding:
     let
@@ -307,12 +307,12 @@ let
       }
       ''
         set -o pipefail
-        mkdir -p theories glibc/${dirOf path.HelloNeverPanics} $out
-        ${link abstractVo "HelloNeverPanics"}
-        ln -s ${abstractVo.HelloNeverPanics}/HelloNeverPanics.vo glibc/${path.HelloNeverPanics}.vo
+        mkdir -p theories glibc/${dirOf path.HelloStartNeverPanics} $out
+        ${link abstractVo "HelloStartNeverPanics"}
+        ln -s ${abstractVo.HelloStartNeverPanics}/HelloStartNeverPanics.vo glibc/${path.HelloStartNeverPanics}.vo
         cat >HelloAbstractAudit.v <<'EOF'
-        From Glibc Require Import HelloNeverPanics.
-        Print Assumptions HelloNeverPanics.hello_never_panics.
+        From Glibc Require Import HelloStartNeverPanics.
+        Print Assumptions HelloStartNeverPanics.hello_never_panics.
         EOF
         python3 ${watch} --label "glibc abstract Hello audit" --warn-after 120 --timeout 900 -- \
           rocq c -q -R theories Nanofil -R glibc Glibc HelloAbstractAudit.v | tee $out/assumptions.log

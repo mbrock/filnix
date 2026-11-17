@@ -4,7 +4,7 @@ From Glibc Require Import GlibcProgram.
     proof takes a rule for each of those calls as an assumption. Hello
     links glibc's own allocator and memset, and their proofs already
     exist, so this file proves the three rules from those proofs. Hello's
-    safety theorem in HelloNeverPanics.v uses them.
+    safety theorem in HelloStartNeverPanics.v uses them.
 
     A caller of the theorem should not have to lend the parser memory
     that Hello already shares. Malloc only reads a cache that Hello holds

@@ -4,7 +4,7 @@
     one description of glibc's list of exit handlers, or their pieces
     would not fit together. This file fixes that description once and
     builds the record of proved library calls from it. The safety theorem
-    in HelloNeverPanics.v uses both. *)
+    in HelloStartNeverPanics.v uses both. *)
 
 From Glibc Require Import GlibcTactics.
 From Glibc Require Import HelloGlibcDebts HelloGlibcLibsT HelloGlibcMainLibs.

@@ -20,8 +20,7 @@
     The proof divides the start memory into the objects that each part
     of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
     lists them, and then runs the startup body and main with
-    [HelloStartWp](HelloStartWp.v). The older theorem that starts at
-    main stays in [HelloNeverPanics](HelloNeverPanics.v) for now. *)
+    [HelloStartWp](HelloStartWp.v). *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
