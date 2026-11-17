@@ -62,8 +62,8 @@ Lemma place_ps_splice pl k xs cs ys ds :
 Proof using Type.
   intros Hk Hn Ld Lc. rewrite /place_ps /block_ps /splice /win_ps /rest_ps Ld.
   rewrite !byte_ps_app !aux_ps_app !length_take.
-  replace (0 + Z.of_nat (Z.to_nat k `min` length xs)) with k by lia.
-  replace (0 + Z.of_nat (Z.to_nat k `min` length cs)) with k by lia.
+  replace (0 + Z.of_nat (Nat.min (Z.to_nat k) (length xs))) with k by lia.
+  replace (0 + Z.of_nat (Nat.min (Z.to_nat k) (length cs))) with k by lia.
   replace (k + Z.of_nat (length ys)) with (Z.of_nat (Z.to_nat k + length ys)) by lia.
   replace (k + Z.of_nat (length ds)) with (Z.of_nat (Z.to_nat k + length ys)) by lia.
   set (A := byte_ps _ 0 _). set (W := byte_ps _ k _). set (C := byte_ps _ _ (drop _ _)).
@@ -75,7 +75,7 @@ Lemma splice_window {A : Type} k n (l : list A) :
   0 <= k -> k + Z.of_nat n <= Z.of_nat (length l) -> splice k (window k (Z.of_nat n) l) l = l.
 Proof using Type.
   intros Hk Hn. rewrite /splice /window Nat2Z.id length_take length_drop.
-  replace (Z.to_nat k + n `min` (length l - Z.to_nat k))%nat with (Z.to_nat k + n)%nat by lia.
+  replace (Z.to_nat k + Nat.min n (length l - Z.to_nat k))%nat with (Z.to_nat k + n)%nat by lia.
   rewrite -drop_drop take_drop. apply take_drop.
 Qed.
 

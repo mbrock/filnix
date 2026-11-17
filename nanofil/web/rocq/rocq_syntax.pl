@@ -650,7 +650,7 @@ std_op('!!', 20, none).
 std_op('->', 99, right). std_op('→', 99, right).
 std_op('\\/', 85, right). std_op('∨', 85, right).
 std_op('/\\', 80, right). std_op('∧', 80, right).
-std_op(Op, 70, none) :- memberchk(Op, [=, '<>', '≠', <, '<=', >, >=, '≤', '≥', '=?', '<=?', '<?', '>=?', '>?', '==', '=?=', '≡', '∈', '∉', '⊆', '⊂', '⊈', '##', '≼', '~~>']).
+std_op(Op, 70, none) :- memberchk(Op, [=, '<>', '≠', <, '<=', >, >=, '≤', '≥', '=?', '<=?', '<?', '>=?', '>?', '==', '=?=', '≡', '≡ₚ', '∈', '∉', '⊆', '⊂', '⊈', '##', '≼', '~~>']).
 std_op('::', 60, right). std_op('++', 60, right).
 std_op(+, 50, left). std_op(-, 50, left). std_op('||', 50, left).
 std_op(*, 40, left). std_op(/, 40, left). std_op(mod, 40, left). std_op('&&', 40, left). std_op('×', 40, left).
