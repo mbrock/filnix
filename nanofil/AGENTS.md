@@ -127,7 +127,9 @@ It takes the `.v` files under `rocq/theories` and `rocq/glibc` that
 differ from `origin/main` and builds them and their importers with the
 push checks' own per-file derivations. Every other object comes from
 Cachix, and an importer recompiles only when an interface it loads
-changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. The files in
+changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them. To iterate on one proof, load its file once into a persistent REPL with
+`glibc-tools/rq/start.sh FILE LINE` and try tactics with `rq/rq.py`,
+which rolls a failing chunk back; see the header of `rq/server.py`. The files in
 `glibc/runtime-concrete.txt` belong to `nanofil-glibc-concrete`, which
 runs twice daily and on pushes that touch them; build it when you edit
 one. For many edits in a row, `glibc-tools/warm.sh` copies the cached
