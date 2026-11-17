@@ -10,18 +10,20 @@
     constructors. Each of these steps takes some globals, and a list
     holds what it takes. One list holds the eighteen globals of the
     feature code. One holds the globals of early initialization, and
-    one holds the table of the constructor runner. The last holds the
+    one holds the table of the constructor runner. One holds the
     globals that the constructors read, which are the streams and the
-    program's arguments. *)
+    program's arguments. The last list is the kept frame of
+    [HelloStartKept](HelloStartKept.v). It holds the memory that no
+    startup call touches and that `c: main` needs. *)
 
 From Stdlib Require Import String ZArith List.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Pieces Heap.
-From Glibc Require Import StartImageUnique HelloImageCtors HelloImageCpu HelloImageEarly.
+From Glibc Require Import StartImageUnique HelloImageCtors HelloImageCpu HelloImageEarly HelloStartKept.
 Import ListNotations.
 
-(** No object and no byte occurs twice in the four lists taken
+(** No object and no byte occurs twice in the five lists taken
     together. *)
 Lemma hello_start_nodup :
-  NoDup (hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps).*1.
+  NoDup (hello_cpu_globals_ps ++ hello_early_ps ++ hello_runner_ps ++ hello_ctor_ps ++ hello_start_kept_ps).*1.
 Proof. apply pieces_unique_sound. vm_cast_no_check (eq_refl true). Qed.
