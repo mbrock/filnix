@@ -96,7 +96,7 @@ Proof using Hy Lb.
   { iSplitL "Hl4"; [iExact "Hl4"|]. iSplitL "Hp4"; [iExact "Hp4"|]. iSplitL "Hy4"; [iExact "Hy4" | iExact "Hc4"]. }
   iDestruct "Hio" as "[Hio Hpv]".
   iApply (wp_call_long w0 ge _ _ _
-            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 -> wide_terminated ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
+            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 -> wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
                         wbuf bd N ws)%I with "[Hio Hpv Hwb Hgc Hb6]");
     [eapply fn_triple_mono; [exact (hd_mbsrtowcs _ _ _ D bd b4 b6 g s)|];
      iIntros (r) "(%k & %ws & %Hk & Hio & Hpv & Hwb)"; destruct Hk as (-> & Hk & Hw);

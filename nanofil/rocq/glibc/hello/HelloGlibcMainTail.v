@@ -97,7 +97,7 @@ Proof using Type*.
   iNext. iIntros "_ Hb".
   step_global (hy_lits _ _ Hy "hello#str.82" ltac:(cbn; tauto)).
   iApply (wp_call_never with "[-]");
-    [eapply (hd_error_conv _ _ _ D _ X); exact (hl_exit _ _ _ _ _ _ Lb 1) | vx |].
+    [eapply (hd_error_conv _ _ _ D _ X); exact (hl_exit _ _ _ _ _ _ Lb 1 _ (hd_close_stdout _ _ _ D false)) | vx |].
   iSplitR; [iExact "Hro"|].
   iSplitR "Hpv Hn HX"; [|iSplitL "Hpv"; [iExact "Hpv" | iSplitL "Hn"; [iExact "Hn" | iExact "HX"]]].
   iSplitL "Hfo"; [iExact "Hfo"|]. iSplitL "Hfe"; [iExact "Hfe"|]. iSplitL "Hfi"; [iExact "Hfi"|].
@@ -107,9 +107,9 @@ Qed.
 
 (** `L29`, entered from `iw_1.join`: `wprintf` prints the wide
     greeting in the buffer bd, `free` frees it, and `exit (0)` is
-    called. *)
+    called with stdout now wide. *)
 Lemma join_print e bd n ws Ψ :
-  lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> wide_terminated ws ->
+  lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> wide_text ws ->
   hello_ro ge o -∗ io -∗ names o -∗ X -∗ wbuf bd n ws -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L29") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
 Proof using Type*.
@@ -124,7 +124,8 @@ Proof using Type*.
     [eapply fn_triple_mono; [exact (hl_free _ _ _ _ _ _ Lb bd (mkRegion bd (bd + req_extent (wreq n)) Heap Live) eq_refl ltac:(lia))|];
      iIntros (r) "->"; iSplit; done | vx |].
   iNext. iIntros "_".
-  iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
+  iApply (wp_exit_call_with w0 ge o D X0 X Lb (hello_stdio_wide w0 ge o (hd_wide w0 ge o D))
+    with "Hro Hio Hpv Hn HX"); [exact (hd_close_stdout _ _ _ D true) | vx].
 Qed.
 
 End tail.

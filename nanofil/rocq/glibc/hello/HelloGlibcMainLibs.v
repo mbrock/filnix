@@ -80,7 +80,7 @@ Proof using Hk Hos.
   - exact (C.ST.libs_strncmp w0 ge o Hk).
   - exact (C.ST.libs_errno w0 ge o Hk).
   - exact (SY.libs_free w0 ge o Hk).
-  - exact (EX.libs_exit w0 ge o Hk Hos debt ((c + 1) mod 2 ^ 64)).
+  - intros n S' Hc. exact (EX.libs_exit w0 ge o Hk Hos debt ((c + 1) mod 2 ^ 64) n S' Hc).
   - exact libs_proper_name.
 Qed.
 End libs.

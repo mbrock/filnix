@@ -74,6 +74,14 @@ Definition author_lits : list string := ["hello#str.72"; "hello#str.73"; "hello#
 Definition wide_terminated (ws : list Z) : Prop :=
   exists k, (4 * k + 4 <= length ws)%nat /\ take 4 (drop (4 * k) ws) = [0; 0; 0; 0].
 
+(** The wide text that `c: mbsrtowcs` produces in the C locale is a
+    run of wide characters, each four bytes, ended by a zero character.
+    Gnulib's replacement maps every byte that the C locale rejects to
+    its own value, so each character lies between 1 and 255. *)
+Definition wide_text (ws : list Z) : Prop :=
+  exists cs, Forall (fun c => 0 < c < 256) cs /\ (4 * length cs + 4 <= length ws)%nat /\
+    take (4 * length cs + 4) ws = flat_map (fun c => [c; 0; 0; 0]) cs ++ [0; 0; 0; 0].
+
 (** The wide buffer requests n bytes with sixteen-byte alignment. *)
 Definition wreq (n : Z) : alloc_req := heap_req 16 n.
 
@@ -131,6 +139,14 @@ Definition str_ro (q : ptr) : iProp Σ := ∃ s, word_string DfracDiscarded q s.
     its cleanup fields and the bytes of errno. *)
 Definition hello_stdio : iProp Σ :=
   file_inv (ho_vb o) (ow_self w0) (ho_out o) ∗ file_inv (ho_vb o) (ow_self w0) (ho_err o) ∗
+  file_inv (ho_vb o) (ow_self w0) (ho_in o) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
+  tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
+
+(** Once a call orients stdout wide, the thread owns the wide stream
+    out in place of stdout's narrow [file_inv], and the rest of
+    [hello_stdio] as before. *)
+Definition hello_stdio_wide (out : iProp Σ) : iProp Σ :=
+  out ∗ file_inv (ho_vb o) (ow_self w0) (ho_err o) ∗
   file_inv (ho_vb o) (ow_self w0) (ho_in o) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
   tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
 
@@ -199,12 +215,18 @@ Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y
 (** The remaining milestones must prove these call contracts while
     preserving the standard streams and the callees' private state.
     Milestone M6 covers locale queries, conversion and wide output.
+    Printing the greeting orients stdout wide, so close_stdout takes
+    stdout in either orientation.
     Milestone M4 covers the other calls, including the close callback.
     Fatal error reporting never returns. Error reporting and the close
     callback may read the program-name cells. glibc's option parser is
     proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
+  (* The state of stdout once `c: wprintf` has oriented it wide: its
+     wide data, its wide buffer, its mode and its conversion steps. The
+     caller chooses it, like hd_priv, and close_stdout consumes it. *)
+  hd_wide : iProp Σ;
   hd_setlocale_all :
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
@@ -241,14 +263,16 @@ Record HelloCore : Type := mkHelloCore {
        WPtr (mkPtr b6 (Obj b6))]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n (replicate (Z.to_nat (req_extent (wreq n))) 0) ∗
        gcell b4 g ∗ word_string DfracDiscarded g gs ∗ obj b6 (heap_req 4 8))%I
-      (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ (k <> 2 ^ 64 - 1 -> wide_terminated ws)⌝ ∗
+      (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ (k <> 2 ^ 64 - 1 -> wide_text ws)⌝ ∗
                   hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I;
   hd_wprintf : forall bd n ws,
-    wide_terminated ws ->
+    wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I (ret_int (hello_stdio ∗ hd_priv ∗ wbuf bd n ws))%I;
-  hd_close_stdout :
-    fn_triple (TAtom "close_stdout") [] (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names)%I
+      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
+      (ret_int (hello_stdio_wide hd_wide ∗ hd_priv ∗ wbuf bd n ws))%I;
+  hd_close_stdout : forall wide : bool,
+    fn_triple (TAtom "close_stdout") []
+      (hello_ro ∗ (if wide then hello_stdio_wide hd_wide else hello_stdio) ∗ hd_priv ∗ names)%I
       (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
 }.
 
@@ -283,8 +307,9 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
     (fun r => ⌜r = Ret (WPtr (mkPtr (ho_eb o) (Obj (ho_eb o))))⌝)%I;
   hl_free : forall b reg, r_kind reg = Heap -> b <> 0 ->
     fn_triple (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I;
-  hl_exit : forall n,
-    fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ hello_stdio ∗ priv ∗ names ∗ X) (fun _ => False)%I;
+  hl_exit : forall n (S : iProp Σ),
+    fn_triple (TAtom "close_stdout") [] (hello_ro ∗ S ∗ priv ∗ names) (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I ->
+    fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I
 }.
 

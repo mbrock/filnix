@@ -13,7 +13,8 @@ arrow's left side is one premise, except:
 - the last premise, which describes the initial heap for every ghost
   state, counts once per conjunct, plus once per field of the HelloCore
   record it chooses. The field hd_priv is the callees' private state,
-  which the caller picks rather than proves, so it is not counted.
+  which the caller picks rather than proves, so it is not counted, and
+  neither is hd_wide, the state of stdout once it is wide.
   Its body, hello_tb_contracts in HelloStartWp.v, counts three
   obligations, each with its own label: the printer of getopt's
   warnings, the printer of its long-option warnings, and the build of
@@ -44,7 +45,7 @@ RECORDS = {
     'hello_layout': GLIBC / 'hello' / 'HelloGlibcDebts.v',
     'HelloCore': GLIBC / 'hello' / 'HelloGlibcDebts.v',
 }
-NOT_PREMISES = {'hd_priv'}
+NOT_PREMISES = {'hd_priv', 'hd_wide'}
 SECTION_LABELS = {}
 # The first pattern that a premise's text matches gives its tag.
 TAGS = [
@@ -53,7 +54,8 @@ TAGS = [
     (r'ow_leaf4_ends', 'CPU'),
     (r'^R\.ready', 'adequacy'),
     (r'hd_setlocale_|hd_mbsrtowcs', 'locale'),
-    (r'hd_version_etc|hd_print|hd_emit_bug|hd_error_|hd_wprintf', 'printf'),
+    (r'hd_wprintf', 'wprintf (gap W)'),
+    (r'hd_version_etc|hd_print|hd_emit_bug|hd_error_', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'getopt_l?diag_rule|build hd_priv', 'getopt'),
 ]

@@ -1,5 +1,5 @@
 (** This file discharges Hello's call of glibc exit. The registered
-    close_stdout callback remains an M4 debt, but registration, dispatch,
+    close_stdout callback is the caller's premise, but registration, dispatch,
     TLS destructors and final stream cleanup use their concrete proofs. *)
 
 From Glibc Require Import GlibcTactics.
@@ -27,9 +27,11 @@ Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp
 (** Exit invokes the registered callback and never returns to main. *)
 Parameter libs_exit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloCore w0 ge o) c n,
+  forall (debt : D.HelloCore w0 ge o) c n (S : iProp Σ),
+  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)
+    (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
+    (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
 End HelloLibsExitSig.
 
@@ -96,15 +98,17 @@ Proof using Hk.
 Qed.
 
 (** Exit invokes the registered callback and never returns to main. *)
-Lemma libs_exit (debt : D.HelloCore w0 ge o) c n :
+Lemma libs_exit (debt : D.HelloCore w0 ge o) c n (S : iProp Σ) :
+  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)
+    (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
+    (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
 Proof using Hk Hos.
-  exists glibc_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  intros Hclose. exists glibc_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame glibc_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
     in Hfr. injection Hfr as <-.
-  set (P := (D.hello_ro ge o ∗ D.hello_stdio w0 ge o ∗ D.hd_priv w0 ge o debt ∗ D.names o)%I).
+  set (P := (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)%I).
   set (Q := fun i : nat => if Nat.eqb i 0 then D.exit_io w0 ge o else P).
   iIntros "(Hro & Hio & Hpv & Hnames & HX & Hl) _".
   iApply (ExitRun.wp_glibc_exit w0 ge (ho_x o) (ho_el o) (ho_elr o) [(ho_cp o, null, null)] c n P Q
@@ -118,7 +122,7 @@ Proof using Hk Hos.
       (invocation HelloClose.close_stdout_fn []) P (D.exit_io w0 ge o));
       [exact Hcap | exact Hcheck | exact (hk_close_stdout _ _ Hk) | lia | reflexivity | reflexivity |
        reflexivity | reflexivity |].
-    destruct (D.hd_close_stdout _ _ _ debt) as (gf & Hgf & Hcall & Hspec).
+    destruct Hclose as (gf & Hgf & Hcall & Hspec).
     rewrite (hk_close_stdout _ _ Hk) in Hgf. injection Hgf as <-.
     iIntros "HP". iApply (Hspec _ _ eq_refl with "HP"). iIntros (r) "Hr". iExact "Hr".
   - iApply hello_cleanup.

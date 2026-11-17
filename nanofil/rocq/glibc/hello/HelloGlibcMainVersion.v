@@ -86,14 +86,30 @@ Proof using Type.
   iNext. iIntros "Hl Hc". iApply ("HK" with "Hl Hc").
 Qed.
 
-(** Exit consumes the streams, private state, names and registered handler without returning. *)
+(** Exit consumes the streams Si, private state, names and registered
+    handler without returning, given a close callback that consumes Si. *)
+Lemma wp_exit_call_with (Si : iProp Σ) f e ls lab r args rest j n Ψ :
+  fn_triple w0 ge (TAtom "close_stdout") [] (hello_ro ge o ∗ Si ∗ hd_priv w0 ge o D ∗ names o)
+    (fun r => ⌜r = RetVoid⌝ ∗ exit_io w0 ge o)%I ->
+  map_option (arg_x ge e) args = Some [WInt n] ->
+  hello_ro ge o -∗ Si -∗ hd_priv w0 ge o D -∗ names o -∗ X -∗
+  WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global (TAtom "exit")) args :: rest) j)) : gexpr) {{ Ψ }}.
+Proof using Lb.
+  intros Hc Hx. iIntros "#Hro Hio Hpv Hn HX".
+  iApply (wp_call_never with "[Hio Hpv Hn HX]"); [exact (hl_exit _ _ _ _ _ _ Lb n Si Hc) | exact Hx |].
+  iSplitR; [iExact "Hro"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
+  iSplitL "Hn"; [iExact "Hn" | iExact "HX"].
+Qed.
+
+(** Exit consumes the narrow streams, private state, names and registered handler without returning. *)
 Lemma wp_exit_call f e ls lab r args rest j n Ψ :
   map_option (arg_x ge e) args = Some [WInt n] ->
   hello_ro ge o -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗ names o -∗ X -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global (TAtom "exit")) args :: rest) j)) : gexpr) {{ Ψ }}.
 Proof using Lb.
   intros Hx. iIntros "#Hro Hio Hpv Hn HX".
-  iApply (wp_call_never with "[Hio Hpv Hn HX]"); [exact (hl_exit _ _ _ _ _ _ Lb n) | exact Hx |].
+  iApply (wp_call_never with "[Hio Hpv Hn HX]");
+    [exact (hl_exit _ _ _ _ _ _ Lb n _ (hd_close_stdout _ _ _ D false)) | exact Hx |].
   iSplitR; [iExact "Hro"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
   iSplitL "Hn"; [iExact "Hn" | iExact "HX"].
 Qed.
