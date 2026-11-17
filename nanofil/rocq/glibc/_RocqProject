@@ -1097,6 +1097,7 @@ hello/HelloStartBridge.v
 hello/HelloStartMain.v
 hello/HelloStartRun.v
 hello/HelloStartPost.v
+hello/HelloStartEntry.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
 hello/HelloErrorPrefix.v
