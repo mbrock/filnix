@@ -1105,6 +1105,7 @@ getopt/GetoptLongAmbList.v
 hi_atexit/HiAtexitSafe.v
 hi_atexit/HiAtexitStartBridge.v
 startup/StartImageDisjoint.v
+startup/StartOwnHiAtexit.v
 getopt/GetoptLongAmbHead.v
 getopt/GetoptLongAmbPoss.v
 getopt/GetoptLongAmbRep.v
