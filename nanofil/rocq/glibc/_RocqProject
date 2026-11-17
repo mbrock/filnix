@@ -1060,6 +1060,7 @@ hello/HelloNeverPanics.v
 hello/HelloStartNeverPanics.v
 hello/HelloStartBridge.v
 hello/HelloStartMain.v
+hello/HelloStartRun.v
 hello/HelloStartPost.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
