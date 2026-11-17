@@ -70,6 +70,17 @@ Definition hello_init_first_ps : list (piece * pval) :=
     [(PLive (img_a "__progname_full"), VLive (img_gd "__progname_full"))];
     hello_pointer_ps (img_a "__progname_full") 0 hello_empty_name].
 
+(** This list is the one above without `c: __environ`. The body of
+    `c: __libc_start_main` stores the environment pointer there before
+    the constructors run, so a proof of startup lends that global to the
+    body first. *)
+Definition hello_init_first_core_ps : list (piece * pval) :=
+  List.concat [[(PLive (img_a "__libc_argc"), VLive (img_gd "__libc_argc"))]; byte_ps (img_a "__libc_argc") 0 (int_bytes 0);
+    [(PLive (img_a "__libc_argv"), VLive (img_gd "__libc_argv"))]; hello_pointer_ps (img_a "__libc_argv") 0 null;
+    [(PLive (img_a "__progname"), VLive (img_gd "__progname"))]; hello_pointer_ps (img_a "__progname") 0 hello_empty_name;
+    [(PLive (img_a "__progname_full"), VLive (img_gd "__progname_full"))];
+    hello_pointer_ps (img_a "__progname_full") 0 hello_empty_name].
+
 (** The streams constructor reads this list. In it, stderr points at
     stdout, stdout points at stdin, and no stream points back. The head
     of the list points at stderr, the lock is free, and the last pointer
@@ -204,6 +215,18 @@ Lemma hello_pts_concat `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} pss :
   pts (List.concat pss) ⊣⊢ [∗ list] ps ∈ pss, pts ps.
 Proof using Type. induction pss as [|ps pss IH]; cbn [List.concat]; rewrite ?pts_app ?IH; done. Qed.
 
+(** The list of `c: _init_first` is its core and `c: __environ`, which
+    starts null. *)
+Lemma hello_init_first_split `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} :
+  pts hello_init_first_ps ⊣⊢
+  pts hello_init_first_core_ps ∗ live (img_a "__environ") (img_gd "__environ") ∗ pcell (img_a "__environ") 0 null.
+Proof using Type.
+  rewrite /hello_init_first_ps /hello_init_first_core_ps !hello_pts_concat. cbn [big_opL].
+  iSplit.
+  - iIntros "(A & B & C & D & E & F & G & H & I & J & _)". iFrame.
+  - iIntros "((A & B & C & D & G & H & I & J & _) & E & F)". iFrame.
+Qed.
+
 Section image.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
 Context (g : list (name * ptr)) (m : mem) (fr : word -> mem -> option (res unit * mem)).
@@ -220,17 +243,18 @@ Proof using Hi. exact (proj1 (hello_image_ctors g m Hi)). Qed.
     argument array, whose first slot points at the name of the program.
     The count must fit in an `c: int`, and the argument array must be
     aligned and must not lie at address zero. *)
-Lemma hello_init_first_pre av avreg dq argc envp a s :
+Lemma hello_init_first_pre av avreg dq argc envp a s v :
   0 <= argc < 2 ^ 32 -> 0 < av -> av mod 8 = 0 -> av + 8 <= r_end avreg ->
-  pts hello_init_first_ps -∗ im_args (glibc_program := hello_program) (hello_init_misc_objs av avreg) dq a s -∗
+  pts hello_init_first_core_ps -∗ live (img_a "__environ") (img_gd "__environ") -∗ pcell (img_a "__environ") 0 v -∗
+  im_args (glibc_program := hello_program) (hello_init_misc_objs av avreg) dq a s -∗
   fs_pre (init_first_spec (glibc_program := hello_program))
     (hello_init_first_objs, hello_init_misc_objs av avreg, dq, argc, envp, a, s,
-     hello_empty_name, hello_empty_name, null, null).
+     hello_empty_name, hello_empty_name, null, v).
 Proof using Hi.
   intros Hargc Hav0 Hava Have. pose proof hello_ctor_lookups as L.
   unfold hello_ctor_objs in L. repeat (apply Forall_cons_1 in L as [? L]). cbn [fst snd] in *.
-  rewrite /hello_init_first_ps hello_pts_concat. cbn [big_opL fs_pre init_first_spec].
-  iIntros "(Lac & Hac & Llv & Hlv & Len & Hen & Lpn & Hpn & Lpf & Hpf & _) Ha".
+  rewrite /hello_init_first_core_ps hello_pts_concat. cbn [big_opL fs_pre init_first_spec].
+  iIntros "(Lac & Hac & Llv & Hlv & Lpn & Hpn & Lpf & Hpf & _) Len Hen Ha".
   iSplit.
   { iPureIntro. unfold if_ok, im_ok. cbn [ge_globals if_ac if_acreg if_lv if_lvreg if_en if_enreg
       im_pn im_pnreg im_pf im_pfreg im_av im_avreg hello_init_first_objs hello_init_misc_objs].

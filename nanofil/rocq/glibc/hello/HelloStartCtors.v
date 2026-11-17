@@ -72,10 +72,11 @@ Qed.
 
 (** This tuple holds the inputs of `c: _init_first`. The argument array
     lies at av in region avreg, and the call reads a share dq of it. The
-    array's first string is s, which lies at a. *)
+    array's first string is s, which lies at a. The body of
+    `c: __libc_start_main` has already stored envp in `c: __environ`. *)
 Definition hello_xf (av : Z) (avreg : region) (dq : dfrac) (argc : Z) (envp a : ptr) (s : list Z) :=
   (hello_init_first_objs, hello_init_misc_objs av avreg, dq, argc, envp, a, s,
-   hello_empty_name, hello_empty_name, null, null).
+   hello_empty_name, hello_empty_name, null, envp).
 
 (** This assertion describes Hello's memory after the constructors in
     the list have run. *)
@@ -102,19 +103,21 @@ Proof using Hi.
   rewrite Hp. exact hello_ctor_names.
 Qed.
 
-(** Before the first call, the memory of the chain comes from three
-    resources: the constructors' list, stdout's life and a share of the
-    arguments. *)
+(** Before the first call, the chain's memory comes from four sources.
+    They are the constructors' lists, stdout's life, `c: __environ` as
+    the startup body leaves it, and a share of the arguments. *)
 Lemma hello_ctor_start av avreg dq argc envp a s :
   0 <= argc < 2 ^ 32 -> 0 < av -> av mod 8 = 0 -> av + 8 <= r_end avreg ->
-  pts hello_ctor_ps -∗ live (img_a "_IO_2_1_stdout_") hello_stdout_reg -∗
+  pts hello_initial_list_ps -∗ pts hello_init_first_core_ps -∗ pts hello_vtables_ps -∗
+  live (img_a "_IO_2_1_stdout_") hello_stdout_reg -∗
+  live (img_a "__environ") (img_gd "__environ") -∗ pcell (img_a "__environ") 0 envp -∗
   im_args (glibc_program := P) (hello_init_misc_objs av avreg) dq a s -∗
   hello_ctor_mem av avreg dq argc envp a s [].
 Proof using Hi.
-  intros Hargc Hav0 Hava Have. rewrite /hello_ctor_mem ctor_mem_start /hello_ctor_ps (pts_app hello_initial_list_ps) (pts_app hello_init_first_ps).
-  iIntros "(Hl & Hf & Hv) Ho Ha".
+  intros Hargc Hav0 Hava Have. rewrite /hello_ctor_mem ctor_mem_start.
+  iIntros "Hl Hf Hv Ho Le He Ha".
   iSplitL "Hl Ho"; [iApply (hello_stdfiles_init_pre w img_globals m fr Hi with "Hl Ho")|].
-  iSplitL "Hf Ha"; [iApply (hello_init_first_pre w img_globals m fr Hi with "Hf Ha"); assumption|].
+  iSplitL "Hf Le He Ha"; [iApply (hello_init_first_pre w img_globals m fr Hi with "Hf Le He Ha"); assumption|].
   rewrite /hello_vtables_ps /vtables_cells !pts_app. iDestruct "Hv" as "(Ci & Co & Ce & Lv)".
   iFrame "Ci Co Ce". iExact "Lv".
 Qed.
