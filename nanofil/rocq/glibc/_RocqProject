@@ -204,6 +204,16 @@ zsys/OsStart.v
 zsys/StartCtors.v
 zsys/StartState.v
 locale/LocaleEnv.v
+locale/SetlocaleCode.v
+locale/SetlocaleSrc.v
+locale/SetlocaleLayout.v
+locale/FindlocaleCode.v
+locale/FindlocaleSrc.v
+locale/FindlocaleLayout.v
+locale/PostloadCtypeCode.v
+locale/PostloadCtypeSrc.v
+locale/PostloadCtypeLayout.v
+locale/SetlocaleQuery.v
 LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
@@ -959,6 +969,7 @@ hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
 hello/HelloImageCtors.v
 hello/HelloImageFnLink.v
+hello/HelloLocaleLink.v
 hello/HelloImageLayout.v
 startup/CpuHello.v
 hello/HelloImageCpu.v

@@ -1,0 +1,7 @@
+layout = "string"
+layouts = true
+fixtures = '''
+Setlocale|__GI_setlocale|locale/setlocale.os|__GI_setlocale glibc_setlocale#new_composite_name
+Findlocale|_nl_find_locale|locale/findlocale.os|_nl_find_locale
+PostloadCtype|_nl_postload_ctype|locale/lc-ctype.os|_nl_postload_ctype
+'''
