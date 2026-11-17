@@ -156,6 +156,71 @@ Definition vfprintf_spec : fspec Σ :=
        printf_stream (vi_vb x) (ow_self w0) (vi_fp x) (narrow_mode (vi_mode x)) (vi_flags2 x) (vi_held x) ∗
        word_string (vi_dq x) (vi_fmt x) (vi_bytes x) ∗ errno_any (vi_eb x))%I.
 
+(** ## The variadic wrappers *)
+
+(** A program does not call the formatter itself. It calls
+    `c: fprintf` or `c: printf`, and each of them is a few instructions
+    around one call of the formatter. A variadic function gets a
+    read-only copy of all its arguments on entry. Each wrapper points a
+    cursor past the named arguments in that copy and passes the cursor
+    on. The contracts below are therefore the formatter's contract
+    without the cursor, stated over the arguments of the call. *)
+
+(** The record [pf_in] is the logical input of a call of a wrapper.
+    Its field pf_ys holds the arguments after the format. *)
+Record pf_in : Type := PfIn {
+  pf_vb : Z;                      (* the stream jump tables *)
+  pf_fp : ptr;                    (* the stream *)
+  pf_mode : Z; pf_flags2 : Z; pf_held : option Z;
+  pf_fmt : ptr; pf_dq : dfrac; pf_bytes : list Z;
+  pf_ds : list narrow_directive;  (* the parsed format *)
+  pf_ys : list word; pf_rest : list word;
+  pf_eb : Z                       (* errno *)
+}.
+
+(** A wrapper asks of the format and its arguments what the formatter
+    asks. The format must parse in the narrow grammar. The arguments
+    after the format must fit its conversions, and each of them must be
+    an integer, null or a read-only string. The entry copy holds only
+    integers and pointers, so each argument must be one of the two. *)
+Definition pf_fits (x : pf_in) : Prop :=
+  parse_narrow (pf_bytes x) = Some (pf_ds x) /\ narrow_fits (pf_ds x) (pf_ys x) (pf_rest x) /\
+  forallb snapshot_word (pf_ys x) = true /\ ow_errno w0 = Some (mkPtr (pf_eb x) (Obj (pf_eb x))).
+
+(** A wrapper borrows the stream, the format, the string arguments,
+    errno and the formatter's read-only data. *)
+Definition pf_pre (x : pf_in) : iProp Σ :=
+  printf_stream (pf_vb x) (ow_self w0) (pf_fp x) (pf_mode x) (pf_flags2 x) (pf_held x) ∗
+  word_string (pf_dq x) (pf_fmt x) (pf_bytes x) ∗
+  ([∗ list] a ∈ pf_ys x, str_arg a) ∗ errno_any (pf_eb x) ∗ printf_ro.
+
+(** A wrapper returns the formatter's int. It gives back the stream in
+    the mode that [narrow_mode] gives, the format and errno. *)
+Definition pf_post (x : pf_in) (o : outcome) : iProp Σ :=
+  ∃ n, ⌜o = Ret (WInt n) /\ 0 <= n < 2 ^ 32⌝ ∗
+  printf_stream (pf_vb x) (ow_self w0) (pf_fp x) (narrow_mode (pf_mode x)) (pf_flags2 x) (pf_held x) ∗
+  word_string (pf_dq x) (pf_fmt x) (pf_bytes x) ∗ errno_any (pf_eb x).
+
+(** `c: fprintf (fp, fmt, ...)` formats to the stream fp. *)
+Definition fprintf_spec : fspec Σ :=
+  FSpec pf_in (fun x => WPtr (pf_fp x) :: WPtr (pf_fmt x) :: pf_ys x)
+    (fun x => ⌜pf_fits x⌝ ∗ pf_pre x)%I pf_post.
+
+(** The global `c: stdout` holds a pointer to the stream fp, and the
+    owner of this predicate may read it. *)
+Definition stdout_is (dq : dfrac) (fp : ptr) : iProp Σ :=
+  ∃ so soreg, ⌜lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) /\ so mod 8 = 0 /\
+               so + 8 <= r_end soreg⌝ ∗
+    liveq dq so soreg ∗ pcellq dq so 0 fp.
+
+(** `c: printf (fmt, ...)` formats to the stream that `c: stdout`
+    points to. It reads that global, so the caller lends a reader's
+    share of it and gets the share back. *)
+Definition printf_spec : fspec Σ :=
+  FSpec (dfrac * pf_in) (fun '(_, x) => WPtr (pf_fmt x) :: pf_ys x)
+    (fun '(dq, x) => ⌜pf_fits x⌝ ∗ stdout_is dq (pf_fp x) ∗ pf_pre x)%I
+    (fun '(dq, x) o => stdout_is dq (pf_fp x) ∗ pf_post x o)%I.
+
 (** ## Appending to a buffer *)
 
 (** Each contract below has the two parameters of the invariant
