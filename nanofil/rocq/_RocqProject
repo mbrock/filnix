@@ -127,4 +127,6 @@ theories/exec/AbsInfer.v
 theories/exec/AbsDen.v
 theories/exec/AbsMem.v
 theories/exec/AbsStep.v
+theories/exec/AbsCall.v
+theories/exec/AbsOwn.v
 theories/exec/AbsSound.v

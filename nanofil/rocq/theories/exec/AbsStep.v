@@ -288,7 +288,8 @@ Definition writes (m m' : mem) (pl : place) (xs : list Z) (cs : list cap) (xs' :
     contents. The environment does not change. *)
 Definition stores_to (pl : place) (xs : list Z) (cs : list cap) (xs' : list Z) (cs' : list cap)
     (e : env) (i : inst) : Prop :=
-  exists upd : mem -> mem, forall f ls l rest j cs0 m fuel, holds m pl xs cs ->
+  exists upd : mem -> mem, (forall m, m_regions (upd m) = m_regions m) /\
+    forall f ls l rest j cs0 m fuel, holds m pl xs cs ->
     Semantics.step ge (mkConfig (mkFrame f e ls None (Exec l (i :: rest) j)) cs0 m fuel) =
     Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs0 (upd m) fuel) /\
     writes m (upd m) pl xs cs xs' cs'.
@@ -317,7 +318,8 @@ Proof using Hfn.
   exists o, pl, xs, cs, (splice k (bytes_of z n) xs), cs. split; [exact Hpl|]. split; [exact Hx|].
   split; [apply length_splice; rewrite ?length_bytes_of; lia|]. split; [reflexivity|].
   split; [|exists ρ3; exact HM3].
-  exists (fun m => store_bytes m (pl_base pl + k) (Z.of_nat n) z). intros f ls l rest j cs0 m fuel Hm. split.
+  exists (fun m => store_bytes m (pl_base pl + k) (Z.of_nat n) z). split; [intros m; reflexivity|].
+  intros f ls l rest j cs0 m fuel Hm. split.
   - apply rule_raw_store with (vk := vk) (x := WInt z) (p := q); [exact Ek | exact Ev | exact Ea|].
     rewrite (raw_store_op m pl q w off (Z.of_nat n) z Ew (Hloc m (proj1 Hm))), Haddr. reflexivity.
   - split; [reflexivity|]. split; [apply holds_store_bytes; assumption|]. split.
@@ -344,7 +346,7 @@ Proof using Hfn.
   split; [apply length_splice; rewrite ?length_bytes_of; cbn [Z.of_nat]; lia|].
   split; [apply length_splice; cbn [length]; lia|]. split; [|exists ρ2; exact HM3].
   exists (fun m => store_bytes (store_aux m (pl_base pl + k) (ptr_cap xp)) (pl_base pl + k) 8 (ptr_addr xp)).
-  intros f ls l rest j cs0 m fuel Hm. pose proof (Hloc m (proj1 Hm)) as Hl. split.
+  split; [intros m; reflexivity|]. intros f ls l rest j cs0 m fuel Hm. pose proof (Hloc m (proj1 Hm)) as Hl. split.
   - apply rule_raw_store_pointer with (xp := xp) (p := q); [exact Ev | exact Ea | exact (located_access _ _ _ _ _ _ _ Hl)|].
     rewrite (loc_addr _ _ _ _ _ _ _ Hl), Haddr. apply pointer_store_plain.
   - split; [reflexivity|]. split; [apply holds_store_ptr; assumption|]. split.

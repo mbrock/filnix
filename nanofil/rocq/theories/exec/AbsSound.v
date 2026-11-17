@@ -15,7 +15,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
-  Pieces Heap Language Logic StringLogic MemLogic ExternalCalls AbsRun AbsInfer AbsDen.
+  Pieces Heap Language Logic StringLogic MemLogic ExternalCalls AbsRun AbsInfer AbsDen AbsMem AbsStep
+  AbsCall AbsOwn.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -61,18 +62,13 @@ Variable fnames : list (name * (list class * ret_type)).
 Variable specs : name -> list fspec.
 
 (** An object with contents is owned whole: its lifetime, all its
-    bytes and all its shadow slots. *)
-Definition own_obj (pl : place) (xs : list Z) (cs : list cap) : iProp Σ :=
-  pts (block_ps (pl_base pl) (pl_reg pl) 0 xs cs).
+    bytes and all its shadow slots. The pieces are listed by
+    [place_ps] in [AbsOwn](AbsOwn.v). *)
+Definition own_obj (pl : place) (xs : list Z) (cs : list cap) : iProp Σ := pts (place_ps pl xs cs).
 
-(** The contents of a state are owned one object at a time, each at
-    the place with its number. *)
-Definition own (B : list place) (X : cont) : iProp Σ :=
-  [∗ list] i ↦ x ∈ X,
-    match x with
-    | Some (xs, cs) => ∃ pl, ⌜nth_error B i = Some pl⌝ ∗ own_obj pl xs cs
-    | None => True
-    end.
+(** The contents of a state are owned together, as the pieces of every
+    object that has contents. *)
+Definition own (B : list place) (X : cont) : iProp Σ := pts (all_ps B X).
 
 (** A state describes a real frame when some list of places and some
     contents make it true and the contents are owned. The list [B0]
