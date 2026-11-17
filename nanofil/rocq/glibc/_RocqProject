@@ -950,6 +950,7 @@ hello/HelloImageLayout.v
 startup/CpuHello.v
 hello/HelloImageCpu.v
 hello/HelloImageEarly.v
+hello/HelloStartKeptAlloc.v
 hello/HelloImageDisjoint.v
 startup/StartLsmHello.v
 hello/HelloImageLayoutRefused.v
