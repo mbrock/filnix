@@ -1046,6 +1046,7 @@ hello/HelloGetoptBackend.v
 hello/HelloNeverPanics.v
 hello/HelloStartBridge.v
 hello/HelloStartMain.v
+hello/HelloStartPost.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
 hello/HelloErrorPrefix.v
