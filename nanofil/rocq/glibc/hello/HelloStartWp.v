@@ -112,7 +112,7 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp ∗
     getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
   HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
-    (vfprintf_spec (glibc_program := P tb)) /\
+    (vfprintf_stream_spec (glibc_program := P tb)) /\
   (file_inv (ho_vb o) (ow_self (final_world w0 tb)) (ho_err o) ⊢ hello_err_view (final_world w0 tb)) /\
   exists X : iProp Σ,
   (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ half ∗ hello_hd_getopt (final_world w0 tb) fr tb ∗ X) /\

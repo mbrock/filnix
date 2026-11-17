@@ -36,7 +36,7 @@ Context (Herr : ow_errno w = Some (mkPtr eb (Obj eb))).
 
 (** Nobody has proved glibc's formatter yet, so its contract is a
     hypothesis. *)
-Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_spec}.
+Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal") vfprintf_stream_spec}.
 Context (tb : Z).
 
 (** After a report, T holds the same resources as G. *)
