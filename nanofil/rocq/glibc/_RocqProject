@@ -244,6 +244,7 @@ startup/StartCallMain.v
 startup/StartLibcStartMain.v
 startup/StartCtorCalls.v
 startup/StartCtorChain.v
+startup/StartVtablesImage.v
 startup/StartPtmallocInitSpec.v
 startup/StartPtmallocInit.v
 startup/StartPthreadTunablesSpec.v
