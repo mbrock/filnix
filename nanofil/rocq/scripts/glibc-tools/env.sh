@@ -6,6 +6,10 @@
 #
 # The tools and the model are Nix outputs linked under PE_CACHE. Set
 # PE_REFRESH=1 after a change under rocq/theories to rebuild the model.
+#
+# To edit theories, set PE_THEORIES=1 instead: PE_MODEL is then the
+# checkout's nanofil/rocq/theories, warm.sh fills it with the compiled
+# objects of HEAD, and one.sh compiles an edited theory in place.
 pe_repo=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 PE_CACHE=${PE_CACHE:-$pe_repo/.amp/in/scratchpad/glibc-tools}
 mkdir -p "$PE_CACHE"
@@ -21,11 +25,15 @@ if [ ! -e "$PE_CACHE/tools" ]; then
       pathsToLink = [ \"/bin\" \"/lib\" ];
     }" || return 1
 fi
-if [ ! -e "$PE_CACHE/model" ] || [ -n "${PE_REFRESH:-}" ]; then
-  nix build -o "$PE_CACHE/model" "$pe_repo#checks.x86_64-linux.nanofil-glibc.model.objects" || return 1
-fi
 export PE_CACHE
-export PE_MODEL=$PE_CACHE/model/share/rocq/theories
+if [ -n "${PE_THEORIES:-}" ]; then
+  export PE_MODEL=$pe_repo/nanofil/rocq/theories
+else
+  if [ ! -e "$PE_CACHE/model" ] || [ -n "${PE_REFRESH:-}" ]; then
+    nix build -o "$PE_CACHE/model" "$pe_repo#checks.x86_64-linux.nanofil-glibc.model.objects" || return 1
+  fi
+  export PE_MODEL=$PE_CACHE/model/share/rocq/theories
+fi
 export PATH=$PE_CACHE/tools/bin:$PATH
 ROCQPATH=$(echo "$PE_CACHE"/tools/lib/coq/*/user-contrib)
 export ROCQPATH

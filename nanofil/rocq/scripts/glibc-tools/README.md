@@ -37,6 +37,14 @@ nanofil/rocq/scripts/glibc-tools/warm.sh
 nanofil/rocq/scripts/glibc-tools/build.sh nanofil/rocq/glibc 16
 ```
 
+By default the glibc files compile against the model that Nix built, which is read-only. To edit a theory under `nanofil/rocq/theories`, source `env.sh` with `PE_THEORIES=1`. `PE_MODEL` is then the checkout's theories, and `warm.sh` copies the compiled objects of HEAD into them, except for theories that differ from HEAD. `one.sh` and `rq/start.sh` take that tree as well as a glibc tree:
+
+```sh
+PE_THEORIES=1 . nanofil/rocq/scripts/glibc-tools/env.sh
+nanofil/rocq/scripts/glibc-tools/warm.sh
+nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/theories exec/AbsSound.v
+```
+
 ## Write a proof
 
 Proofs share one runtime and logic instead of creating a new instance for each importer. Import `Fix.v` to obtain the sealed runtime `R` and logic `LG0`, and name dependencies by their files. Use the runtime's public laws rather than its interpreter's integer allocator state.

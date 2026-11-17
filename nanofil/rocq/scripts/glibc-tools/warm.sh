@@ -41,6 +41,23 @@ fetch() {
   while IFS=$'\t' read -r name out; do [ -e "$out/$name.vo" ] && n=$((n + 1)); done <"$1"
   echo "$n"
 }
+# With PE_THEORIES=1 the model is the checkout's theories: copy HEAD's
+# objects into it, except those of theories that differ from HEAD, which
+# one.sh or the model's make compiles with their importers.
+if [ "$(cd "$PE_MODEL" && pwd)" = "$repo/nanofil/rocq/theories" ]; then
+  model=$(nix build --no-link --print-out-paths "${nixq[@]}" \
+    "git+file://$repo?rev=$(git rev-parse HEAD)#checks.x86_64-linux.nanofil-glibc.model.objects")/share/rocq/theories
+  mstamp=$(mktemp -p "$work")
+  (cd "$model" && find . -name '*.vo') | while read -r vo; do
+    cp -f "$model/$vo" "$model/${vo%.vo}.glob" "$PE_MODEL/$(dirname "$vo")/"
+    chmod u+w "$PE_MODEL/$vo" "$PE_MODEL/${vo%.vo}.glob"
+    touch -r "$mstamp" "$PE_MODEL/$vo" "$PE_MODEL/${vo%.vo}.glob"
+  done
+  medited=$( { git diff --name-only HEAD -- nanofil/rocq/theories; git ls-files --others --exclude-standard nanofil/rocq/theories; } |
+    { grep '\.v$' || true; })
+  for f in $medited; do rm -f "${f%.v}.vo" "${f%.v}.glob"; done
+  echo "warm.sh: copied $(cd "$model" && find . -name '*.vo' | wc -l) theory objects of HEAD; $(echo $medited | wc -w) edited theories have none" >&2
+fi
 exports . >"$work/outputs"
 total=$(wc -l <"$work/outputs")
 have=$(fetch "$work/outputs")

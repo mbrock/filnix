@@ -4,7 +4,8 @@
 # instead of recompiling the file.
 #
 #   . nanofil/rocq/scripts/glibc-tools/env.sh
-#   rq/start.sh FILE LINE [TREE]      # FILE relative to TREE (default nanofil/rocq/glibc)
+#   rq/start.sh FILE LINE [TREE]      # FILE relative to TREE (default nanofil/rocq/glibc,
+#                                     # or nanofil/rocq/theories with PE_THEORIES=1)
 #   rq/rq.py 'iIntros "H". step.'     # try tactics; an error rolls the chunk back
 #   rq/rq.py -f TREE/FILE A B         # replay lines A..B of the file after editing them
 #   kill "$(cat /tmp/rq.pid)"         # stop it; never pkill -f
@@ -18,7 +19,12 @@ tree=$(cd "${3:-$(git -C "$here" rev-parse --show-toplevel)/nanofil/rocq/glibc}"
 sock=${RQ_SOCK:-/tmp/rq.sock}
 if [ -f /tmp/rq.pid ]; then kill "$(cat /tmp/rq.pid)" 2>/dev/null; sleep 0.5; fi
 cd "$tree" || exit 1
-nohup python3 "$here/server.py" "$sock" -q -R "$PE_MODEL" Nanofil -R . Glibc >/tmp/rq.server.log 2>&1 &
+if [ "$tree" = "$(cd "$PE_MODEL" && pwd)" ]; then
+  flags=(-R . Nanofil)
+else
+  flags=(-R "$PE_MODEL" Nanofil -R . Glibc)
+fi
+nohup python3 "$here/server.py" "$sock" -q "${flags[@]}" >/tmp/rq.server.log 2>&1 &
 echo $! >/tmp/rq.pid
 sleep 1
 RQ_SOCK=$sock python3 "$here/rq.py" -f "$1" 1 "$2" >/tmp/rq.load 2>&1
