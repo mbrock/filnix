@@ -234,6 +234,8 @@ startup/StartInitMisc.v
 startup/StartInitFirstSpec.v
 startup/StartInitFirst.v
 startup/StartInitFirstImage.v
+startup/StartImageUnique.v
+startup/StartImageCpu.v
 startup/StartRawCall.v
 startup/StartCtorRunnerSpec.v
 startup/StartCtorRunner.v
