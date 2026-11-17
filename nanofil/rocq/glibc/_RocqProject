@@ -244,6 +244,7 @@ startup/StartCallMain.v
 startup/StartLibcStartMain.v
 startup/StartOwn.v
 startup/StartMainHiAtexit.v
+startup/StartRunHiAtexit.v
 startup/StartCtorCalls.v
 startup/StartCtorChain.v
 startup/StartVtablesImage.v
