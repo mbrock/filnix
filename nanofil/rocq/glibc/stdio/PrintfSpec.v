@@ -392,10 +392,12 @@ Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z 
     (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ errno_any (pb_eb x))%I.
 
-(** A literal byte and the conversion `%s` are the directives of the
-    formats that print only strings. *)
-Definition lit_or_str (d : narrow_directive) : Prop :=
-  match d with FmtLit _ | FmtStr => True | _ => False end.
+(** The formatter prints a decimal number for the conversion `%d`,
+    and the proof of its loop does not follow that code yet. The
+    predicate [not_int] holds for every other directive, and the proof
+    of the loop covers a format whose directives all satisfy it. *)
+Definition not_int (d : narrow_directive) : Prop :=
+  match d with FmtInt => False | _ => True end.
 
 (** ## The file-backed buffer *)
 

@@ -466,6 +466,13 @@ stdio/PrintfCopy.v
 stdio/PrintfWrite.v
 stdio/PrintfSmall.v
 stdio/PrintfWrap.v
+stdio/VaArgRound.v
+stdio/PrintfLoopState.v
+stdio/PrintfLoopStart.v
+stdio/PrintfLoopHead.v
+stdio/PrintfLoopStr.v
+stdio/PrintfLoopChar.v
+stdio/PrintfLoopNext.v
 stdio/PrintfLoop.v
 stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v
