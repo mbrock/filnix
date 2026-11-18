@@ -659,6 +659,9 @@ hello/HelloEmitBug.v
 hello/HelloVersionEtc.v
 hello/HelloVersionEtcVa.v
 hello/HelloVersionEtcCall.v
+hello/HelloVfxprintfFl.v
+hello/HelloVfxprintfIdle.v
+hello/HelloErrorOpen.v
 libio/LibioCleanupFpLock.v
 libio/LibioDefaultXsputn.v
 libio/LibioFlushOver.v
