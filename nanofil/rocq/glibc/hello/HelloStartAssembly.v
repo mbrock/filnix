@@ -52,9 +52,10 @@ Qed.
     start, and this list names them. It holds what getopt's warnings
     read, what close_stdout and its error report read, and the cells of
     the global locale that setlocale writes, and the constant data that
-    the conversion to wide characters reads. *)
+    the conversion to wide characters reads. It also holds the two
+    globals of `c: error` for now. *)
 Definition hello_priv_ps : list (piece * pval) :=
-  hello_getopt_priv_ps ++ hello_close_objs_ps ++ hello_locale_objs_ps ++ hello_mbs_objs_ps.
+  hello_getopt_priv_ps ++ hello_close_objs_ps ++ hello_locale_objs_ps ++ hello_mbs_objs_ps ++ hello_error_objs_ps.
 
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
@@ -82,7 +83,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_getopt_priv_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_close_objs_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_locale_objs_agree g m0 Hi)|].
-  exact (hello_mbs_objs_agree g m0 Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_mbs_objs_agree g m0 Hi)|].
+  exact (hello_error_objs_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the

@@ -29,15 +29,22 @@ Definition hello_close_rw_names : list string :=
    "error_print_progname"; "__gconv_lock"; "_nl_msg_cat_cntr"]%string.
 
 (** Each writable global fills its own region. Only `c: exit_failure`
-    starts with a nonzero byte. *)
+    starts with a nonzero byte. The two globals of `c: error` form their
+    own list, because every report of an error uses them, not only the
+    reports that Hello's private state makes. *)
 Definition hello_close_rw_ps : list (piece * pval) :=
   obj_ps (img_ob "exit_failure") [1; 0; 0; 0] ++
   obj_ps (img_ob "closeout#ignore_EPIPE") [0] ++
   obj_ps (img_ob "closeout#file_name") (repeat 0 8%nat) ++
-  obj_ps (img_ob "error_message_count") (repeat 0 4%nat) ++
-  obj_ps (img_ob "error_print_progname") (repeat 0 8%nat) ++
   obj_ps (img_ob "__gconv_lock") (repeat 0 4%nat) ++
   obj_ps (img_ob "_nl_msg_cat_cntr") (repeat 0 4%nat).
+
+(** `c: error` counts its reports in `c: error_message_count`, and it
+    calls `c: error_print_progname` instead of printing the program's
+    name when that pointer is not null. Hello never sets it. *)
+Definition hello_error_objs_ps : list (piece * pval) :=
+  obj_ps (img_ob "error_message_count") (repeat 0 4%nat) ++
+  obj_ps (img_ob "error_print_progname") (repeat 0 8%nat).
 
 (** These are the text and the format of the message that close_stdout
     reports when it cannot write. *)
@@ -50,8 +57,11 @@ Definition hello_close_ro_ps : list (piece * pval) :=
   lit_ps (img_a "closeout#str.53") (img_gd "closeout#str.53") (lit_words hello_write_error_text) ++
   lit_ps (img_a "closeout#str.55") (img_gd "closeout#str.55") (lit_words hello_percent_s_text).
 
-(** This is the whole list of the module. *)
+(** This is the list of close_stdout's own objects. *)
 Definition hello_close_objs_ps : list (piece * pval) := hello_close_rw_ps ++ hello_close_ro_ps.
+
+(** The check covers both lists. *)
+Definition hello_close_all_ps : list (piece * pval) := hello_close_objs_ps ++ hello_error_objs_ps.
 
 (** ## The check on a smaller copy *)
 
@@ -71,7 +81,7 @@ Qed.
 
 Lemma hello_close_objs_check :
   match initial_memory hello_close_objs_skel with
-  | Some (g, m') => pieces_ok hello_close_objs_keep hello_close_objs_kept g m' hello_close_objs_ps
+  | Some (g, m') => pieces_ok hello_close_objs_keep hello_close_objs_kept g m' hello_close_all_ps
   | None => false
   end = true.
 Proof. vm_cast_no_check (eq_refl true). Qed.
@@ -80,11 +90,19 @@ Proof. vm_cast_no_check (eq_refl true). Qed.
 
 (** Hello starts with these objects as listed, in whatever memory the
     loader builds for it. *)
-Lemma hello_close_objs_agree g m : initial_memory hello_image_module = Some (g, m) ->
-  all_agree m hello_close_objs_ps.
+Lemma hello_close_all_agree g m : initial_memory hello_image_module = Some (g, m) ->
+  all_agree m hello_close_all_ps.
 Proof.
   intros E.
-  destruct (image_pieces hello_close_objs_keep hello_close_objs_kept hello_image_module g m hello_close_objs_ps
+  destruct (image_pieces hello_close_objs_keep hello_close_objs_kept hello_image_module g m hello_close_all_ps
     hello_close_objs_kept_incl E hello_image_names hello_image_zero) as (m' & E' & _ & P).
   pose proof hello_close_objs_check as C. rewrite <- hello_close_objs_skel_eq, E' in C. exact (P C).
 Qed.
+
+Lemma hello_close_objs_agree g m : initial_memory hello_image_module = Some (g, m) ->
+  all_agree m hello_close_objs_ps.
+Proof. intros E. exact (proj1 (proj1 (all_agree_app _ _ _) (hello_close_all_agree g m E))). Qed.
+
+Lemma hello_error_objs_agree g m : initial_memory hello_image_module = Some (g, m) ->
+  all_agree m hello_error_objs_ps.
+Proof. intros E. exact (proj2 (proj1 (all_agree_app _ _ _) (hello_close_all_agree g m E))). Qed.

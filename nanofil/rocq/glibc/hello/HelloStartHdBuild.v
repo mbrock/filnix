@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs StartEarlyInitSpec
+  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs StartEarlyInitSpec StartImageCpu
   AllocRo LibioFputsSpec.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -80,22 +80,22 @@ Qed.
     include the thread's three table pointers, which early init has set. *)
 Definition hello_hd_rest : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ hello_getopt_ro ∗ pts hello_close_objs_ps ∗ pts hello_locale_objs_ps ∗
-  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps.
+  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps ∗ pts hello_error_objs_ps.
 
 (** Startup leaves these objects, and they become the reports' part of
     the private state and the rest. *)
 Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ pts hello_close_objs_ps -∗ pts hello_locale_objs_ps -∗
-  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
+  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗ pts hello_error_objs_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
 Proof using Hself Hfd2.
-  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
+  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Her Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
   iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb)]";
     [reflexivity|].
-  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb".
+  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb Her".
   2: { iSplitL "Pgl"; [iExact "Pgl"|]. iSplitR; [iExact "Ro"|]. iSplitL "Hco"; [iExact "Hco"|].
-       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc" | iExact "Hmb"]. }
+       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iSplitL "Hmb"; [iExact "Hmb" | iExact "Her"]. }
   iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & (%cbb & %creg & %cws & %Csh & Cl & _) & _)".
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
@@ -138,3 +138,44 @@ Proof using Hself Hfd2.
 Qed.
 
 End build.
+
+(** ## The globals of `c: error`
+
+    Every report of an error reads the hook `c: error_print_progname`
+    and counts itself in `c: error_message_count`. Hello never sets the
+    hook, so its null pointer can be shared read-only for good. The
+    count changes with each report, so it stays owned whole. *)
+
+Section error_objs.
+Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
+
+Lemma hello_error_objs_own (ge : genv) : ge_globals ge = img_globals ->
+  pts hello_error_objs_ps ==∗
+  (∃ pb preg, ⌜lookup (TAtom "error_print_progname") (ge_globals ge) = Some (mkPtr pb (Obj pb)) /\
+      pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 63⌝ ∗
+    liveq DfracDiscarded pb preg ∗ pcellq DfracDiscarded pb 0 null) ∗
+  (∃ cb creg n, ⌜lookup (TAtom "error_message_count") (ge_globals ge) = Some (mkPtr cb (Obj cb)) /\
+      cb mod 4 = 0 /\ cb + 4 <= r_end creg /\ r_end creg <= 2 ^ 63⌝ ∗
+    live cb creg ∗ int_cell cb 0 n).
+Proof using Type.
+  intros Hg. rewrite /hello_error_objs_ps pts_app. iIntros "[Hc Hp]".
+  iAssert (live (img_ob "error_print_progname").1 (img_ob "error_print_progname").2 ∗
+    pcell (img_ob "error_print_progname").1 0 null)%I with "[Hp]" as "[Lp Pp]".
+  { rewrite obj_ps_own. cbn [fst snd].
+    assert (E1 : forall b, byte_ps b 0 (repeat 0 8%nat) = cell b 0 (ptr_addr null)) by reflexivity.
+    assert (E2 : forall b, aux_ps b 0 (repeat CNone 8%nat) =
+      (PAux b 0, VAux (ptr_cap null)) :: aux_ps b 1 (repeat CNone 7%nat)) by reflexivity.
+    rewrite /bytes /auxes /pcell E1 E2 (pts_app [_] (aux_ps _ _ _)) (pts_app [_] (cell _ _ _)).
+    iDestruct "Hp" as "($ & H & [A _])". iFrame. }
+  rewrite /live /pcell /pcellq /liveq !pts_ptsq.
+  iMod (ptsq_persist with "Lp") as "#Lp". iMod (ptsq_persist with "Pp") as "#Pp". iModIntro.
+  iSplitR.
+  - iExists (img_ob "error_print_progname").1, (img_ob "error_print_progname").2.
+    iSplit; [iPureIntro; rewrite Hg; vm_compute; split_and!; first [reflexivity | discriminate]|].
+    iFrame "Lp Pp".
+  - rewrite -pts_ptsq obj_ps_own. iDestruct "Hc" as "(Lc & Bc & _)".
+    iExists (img_ob "error_message_count").1, (img_ob "error_message_count").2, 0. iSplit; [iPureIntro; rewrite Hg; vm_compute; split_and!; first [reflexivity | discriminate]|].
+    iFrame "Lc". rewrite /int_cell. iSplit; [iPureIntro; lia | iExact "Bc"].
+Qed.
+
+End error_objs.

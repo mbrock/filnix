@@ -76,13 +76,13 @@ STATUS = [
     (r'hd_setlocale_all', 'unsatisfiable: X lacks __libc_setlocale_lock as rw_state and the read-only C-locale data'),
     (r'hd_setlocale_query', SAT),
     (r'hd_print|hd_error_operand', SAT),
-    (r'hd_mbsrtowcs', 'unsatisfiable: reads C-locale conversion objects (_nl_C_LC_CTYPE, __wcsmbs_gconv_fcts_c) '
-                      'that no start list owns'),
-    (r'hd_wprintf', 'unsatisfiable (likely): __wcsmbs_clone_conv reads the same unowned conversion objects'),
+    (r'hd_mbsrtowcs', 'unknown: X now owns the conversion constants (84ff6e13), but the __libc_tsd_LOCALE '
+                      'cell it reads sits inside the getopt wand, not yet as a read share'),
+    (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
     (r'vfprintf_has_spec|fputs_has_spec', SAT),
-    (r'build X', 'unsatisfiable: X lacks the setlocale lock and the C-locale objects that setlocale and mbsrtowcs read'),
+    (r'build X', 'unsatisfiable: X lacks the setlocale lock as rw_state and the read-only C-locale data that setlocale reads'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
