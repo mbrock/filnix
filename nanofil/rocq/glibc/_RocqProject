@@ -690,6 +690,7 @@ hello/HelloVersionEtc.v
 hello/HelloVersionEtcVa.v
 hello/HelloPrintSites.v
 hello/HelloVersionEtcCall.v
+hello/HelloVfprintfImage.v
 hello/HelloVfxprintfIdle.v
 hello/HelloErrorOpen.v
 libio/LibioCleanupFpLock.v
