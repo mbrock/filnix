@@ -63,8 +63,8 @@ about it.
   concrete surprises in glibc, Fil-C and our specifications that
   turned up while proving the real C library code.
 - [Proving glibc at scale](glibc-proofs.md): a diagnosis of the four
-  proof styles in `rocq/glibc/` and a design for specification testing,
-  region lifting with registered ownership rules, and compiler-resilient proofs.
+  proof styles in `rocq/glibc/` and a design for shared-assertion spec
+  testing, field-keyed region lifting, and `--checks=reference` proof linking.
 - [Poison and constant time in Rocq](poison.md): zegarmistrz's poison
   rules over checked IR, the double-store sanitizer bug, two-run
   constant-time noninterference, and the AES S-box spikes.
