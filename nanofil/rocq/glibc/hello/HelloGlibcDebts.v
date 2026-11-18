@@ -104,14 +104,6 @@ End SW.
 Module AL := HelloGlibcMainAllocOn.
 Import FB SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI.
 
-(** Main carries the library's private state between calls. Startup
-    chooses that state for the loaded image; all call contracts live
-    in [HelloLibs]. *)
-Record HelloCore `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-    (w0 : os_world) (ge : genv) (o : hello_objs) : Type := mkHelloCore {
-  hd_priv : iProp Σ
-}.
-
 Section debts.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).

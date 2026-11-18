@@ -80,23 +80,21 @@ Definition hello_entry_state (av : Z) (ar : region) (sz : Z) : list ptr -> Z -> 
 Definition hello_main_x (av : Z) (ar : region) (p0 : ptr) (ps : list ptr) (y z : ptr) (sz : Z) : hello_main_binder :=
   (av, ar, p0, ps, null, y, z, null, 1, hello_entry_state av ar sz).
 
-(** When startup calls main, it holds what main's contract asks for,
-    once the open contracts supply Hello's private state. The option
-    parser also needs to borrow half of what `c: getenv` reads, together
-    with some resource E that the open contracts choose. That bundle can
-    lend the thread's cleanup fields, and Hello's streams and private
-    state can lend the bundle. *)
-Lemma hello_main_entry debt (E : iProp Σ) T dom envp es sz tb av ar p0 ps y z :
+(** When startup calls main, it owns the streams and private state that
+    main uses. The option parser borrows half of what `c: getenv` reads
+    along with the resources for its diagnostics. The parser can lend
+    the thread's cleanup fields from that share. *)
+Lemma hello_main_entry priv (E : iProp Σ) T dom envp es sz tb av ar p0 ps y z :
   let G := (getenv_globals (glibc_program := Pw) (DfracOwn (1/2)) (img_a "__environ_counter") (img_gd "__environ_counter")
       (img_a "__environ") (img_gd "__environ") 0 envp ∗ getenv_storage (DfracOwn (1/2)) DfracDiscarded envp es ∗ E)%I in
   ow_self w = mkPtr tb (Obj tb) ->
   getopt_diag_rule w glibc_os_registry hge G T (ho_err o) dom ->
   getopt_ldiag_rule w glibc_os_registry hge G T (ho_err o) dom ->
   (G ⊢ tcb_cleanup_inv (ow_self w) ∗ (tcb_cleanup_inv (ow_self w) -∗ G)) ->
-  (hello_stdio w hge o ∗ hd_priv w hge o debt ⊢ G ∗ (G -∗ hello_stdio w hge o ∗ hd_priv w hge o debt)) ->
+  (hello_stdio w hge o ∗ priv ⊢ G ∗ (G -∗ hello_stdio w hge o ∗ priv)) ->
   hello_start_main_res img_globals fr w av ar p0 ps y z -∗ icell tb CutoffLogic.off_stackblock_size sz -∗
-  hd_priv w hge o debt -∗ hello_printf_ro hge ==∗
-  fs_pre (hello_main_spec w hge o debt hello_exit0) (hello_main_x av ar p0 ps y z sz).
+  priv -∗ hello_printf_ro hge ==∗
+  fs_pre (hello_main_spec w hge o priv hello_exit0) (hello_main_x av ar p0 ps y z sz).
 Proof using Hi Hk.
   intros G Hself Hdg Hld Hln Hg.
   pose proof (hello_image_layout img_globals m fr Hi) as Hy.
@@ -126,14 +124,14 @@ Proof using Hi Hk.
   { iIntros "[[HG #HN] #HC]". iDestruct (Hln with "HG") as "[Ht Hb]".
     iSplitL "Ht"; [iFrame "Ht"; iExists sz; iExact "HC"|].
     iIntros "[Ht _]". iSplitL; [iSplitL; [iApply ("Hb" with "Ht")|iExact "HN"]|iExact "HC"]. }
-  assert (HgC : hello_stdio w hge o ∗ hd_priv w hge o debt ∗ □ (N ∗ C) ⊢
-    ((G ∗ N) ∗ □ C) ∗ (((G ∗ N) ∗ □ C) -∗ hello_stdio w hge o ∗ hd_priv w hge o debt ∗ □ (N ∗ C))).
+  assert (HgC : hello_stdio w hge o ∗ priv ∗ □ (N ∗ C) ⊢
+    ((G ∗ N) ∗ □ C) ∗ (((G ∗ N) ∗ □ C) -∗ hello_stdio w hge o ∗ priv ∗ □ (N ∗ C))).
   { iIntros "(Hio & Hpv & #HX)". iDestruct "HX" as "[#HN #HC]".
     iDestruct (Hg with "[$Hio $Hpv]") as "[HG Hb]".
     iSplitL "HG"; [iFrame "HG HN HC"|]. iIntros "[[HG _] _]".
     iDestruct ("Hb" with "HG") as "[Hio Hpv]". iFrame "Hio Hpv". iModIntro. iFrame "HN HC". }
-  assert (Hloop : loop_getopt w hge o debt av ar (hello_entry_state av ar sz)).
-  { exact (hello_getopt_ix_ro_sep_at w hge o debt Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hlen
+  assert (Hloop : loop_getopt w hge o priv av ar (hello_entry_state av ar sz)).
+  { exact (hello_getopt_ix_ro_sep_at w hge o priv Hy Hgl Hgi Hgr Hplo Hcmp Hchr Hchrn Hncmp Hlen
       (img_a "glibc_getopt#getopt_data") (img_gd "glibc_getopt#getopt_data") ltac:(num) ltac:(num) ltac:(num)
       ltac:(num) ltac:(num)
       (img_a "opterr") (img_gd "opterr") (img_a "optopt") (img_gd "optopt") ltac:(num) ltac:(num) ltac:(num)

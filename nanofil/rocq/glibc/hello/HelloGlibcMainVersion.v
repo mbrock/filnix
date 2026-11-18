@@ -27,8 +27,8 @@ Import HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcM
 
 Section version.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o)
   (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
   (S : list ptr -> Z -> iProp Σ).
 
@@ -89,10 +89,10 @@ Qed.
 (** Exit consumes the streams Si, private state, names and registered
     handler without returning, given a close callback that consumes Si. *)
 Lemma wp_exit_call_with (Si : iProp Σ) f e ls lab r args rest j n Ψ :
-  fn_triple w0 ge (TAtom "close_stdout") [] (hello_ro ge o ∗ Si ∗ hd_priv w0 ge o D ∗ names o)
+  fn_triple w0 ge (TAtom "close_stdout") [] (hello_ro ge o ∗ Si ∗ priv ∗ names o)
     (fun r => ⌜r = RetVoid⌝ ∗ exit_io w0 ge o)%I ->
   map_option (arg_x ge e) args = Some [WInt n] ->
-  hello_ro ge o -∗ Si -∗ hd_priv w0 ge o D -∗ names o -∗ X -∗
+  hello_ro ge o -∗ Si -∗ priv -∗ names o -∗ X -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global (TAtom "exit")) args :: rest) j)) : gexpr) {{ Ψ }}.
 Proof using Lb.
   intros Hc Hx. iIntros "#Hro Hio Hpv Hn HX".
@@ -104,7 +104,7 @@ Qed.
 (** Exit consumes the narrow streams, private state, names and registered handler without returning. *)
 Lemma wp_exit_call f e ls lab r args rest j n Ψ :
   map_option (arg_x ge e) args = Some [WInt n] ->
-  hello_ro ge o -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗ names o -∗ X -∗
+  hello_ro ge o -∗ hello_stdio w0 ge o -∗ priv -∗ names o -∗ X -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global (TAtom "exit")) args :: rest) j)) : gexpr) {{ Ψ }}.
 Proof using Lb.
   intros Hx. iIntros "#Hro Hio Hpv Hn HX".
@@ -118,8 +118,8 @@ Qed.
     a read-only string, and the stdio state is kept. *)
 Lemma wp_proper_name s f e ls lab d v rest j Ψ :
   In s author_lits -> lookup v e = Some (WPtr (sym_ptr ge s)) ->
-  hello_ro ge o -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗
-  ▷ (∀ q, hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗ str_ro q -∗
+  hello_ro ge o -∗ hello_stdio w0 ge o -∗ priv -∗
+  ▷ (∀ q, hello_stdio w0 ge o -∗ priv -∗ str_ro q -∗
        WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None
        (Exec lab (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P (Tmp v)] :: rest) j)) : gexpr)
@@ -139,7 +139,7 @@ Qed.
 
 (** The version branch runs from the loop exit to successful termination. *)
 Lemma main_version Φ :
-  hello_ro ge o -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L21" "iw_1.L19" Φ.
+  hello_ro ge o -∗ loop_exit w0 ge o priv X av ar b4 b6 pn sn S "iw_1.L21" "iw_1.L19" Φ.
 Proof using Hy Lb.
   iIntros "#Hro" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   iDestruct "Hr" as "(Hav & #Hps & Hgo & Hgc & #Hg & Hnc & #Hpn & #Hsn & HX & Hio & Hpv & Hb6 & HS)".

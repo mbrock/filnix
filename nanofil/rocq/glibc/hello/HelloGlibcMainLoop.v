@@ -30,7 +30,7 @@ Import HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibc
 
 Section loop.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X : iProp Σ)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X : iProp Σ)
   (Hy : hello_layout ge o) (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
   (S : list ptr -> Z -> iProp Σ).
 
@@ -42,9 +42,9 @@ Local Instance loop_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation selects the loop's owned resources. *)
-Local Notation res := (loop_res w0 ge o D X av ar b4 b6 pn sn S).
+Local Notation res := (loop_res w0 ge o priv X av ar b4 b6 pn sn S).
 (** This notation selects the loop's exit continuations. *)
-Local Notation exits := (loop_exits w0 ge o D X av ar b4 b6 pn sn S).
+Local Notation exits := (loop_exits w0 ge o priv X av ar b4 b6 pn sn S).
 
 (** This tactic reads the error flag preserved on a loop back edge. *)
 Ltac phi_kept H := cbn -[put]; rewrite H; cbn -[put]; rewrite Z.mod_small; [reflexivity | lia].
@@ -63,11 +63,11 @@ Definition loop_getopt : Prop := forall ps a i,
   fn_triple w0 ge (TAtom "getopt_long")
     [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
      WPtr (sym_ptr ge "hello#parse_options.longopts.64"); WPtr null]
-    (hello_ro ge o ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗
+    (hello_ro ge o ∗ hello_stdio w0 ge o ∗ priv ∗ argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗
      getopt_cells o a i ∗ S ps i)%I
     (fun r => ∃ code ps' a' i', ⌜r = Ret (WInt code) /\ 0 <= code < 2 ^ 32 /\ Permutation ps ps' /\
                                  0 <= i' <= Z.of_nat (length ps)⌝ ∗
-                hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗ S ps' i' ∗
+                hello_stdio w0 ge o ∗ priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗ S ps' i' ∗
                 (if code =? 103 then str_ro a' else True))%I.
 
 (** The option loop reaches version, help or operand processing.
@@ -98,7 +98,7 @@ Proof using Hy.
   iAssert (argv_own av ar ps) with "[Havl Havs]" as "Hav"; [iFrame; iPureIntro; exact Havp|].
   iApply (wp_call_intn _ _ _ _ _
             (fun code => ∃ ps' a' i', ⌜Permutation ps ps' /\ 0 <= i' <= Z.of_nat (length ps)⌝ ∗
-               hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗ S ps' i' ∗
+               hello_stdio w0 ge o ∗ priv ∗ argv_own av ar ps' ∗ getopt_cells o a' i' ∗ S ps' i' ∗
                (if code =? 103 then str_ro a' else True))%I with "[Hav Hgo Hio Hpv HS]");
     [eapply fn_triple_mono; [exact (Hgr ps a i)|];
      iIntros (r) "(%code & %ps' & %a' & %i' & %Hp & Hio & Hpv & Hav & Hgo & HS & Hga)";
@@ -124,7 +124,7 @@ Proof using Hy.
     split; [rewrite -Hlen; unfold start_vars; repeat split; lk_prove | split; [exact Hb4 | split; [exact Hb6 | lia]]]. }
   (* Any other code: the dispatch, with the loop as its way back. *)
   (branch_symbolic; LeavesLogic.decide_branch). iPoseProof (loop_res_fold with "Hav Hps' Hgo Hgc Hg Hnc Hpn Hsn HX Hio Hpv Hb6 HS") as "Hr".
-  iApply (loop_dispatch w0 ge o D X Hy av ar b4 b6 pn sn S Φ _ lose ps' a' i' g code with "Hro Hr Hga IH HK");
+  iApply (loop_dispatch w0 ge o priv X Hy av ar b4 b6 pn sn S Φ _ lose ps' a' i' g code with "Hro Hr Hga IH HK");
     [| lk_prove | exact Hlose | lk_prove | exact Hcode | exact Hn1].
   split; [rewrite -Hlen; unfold start_vars; repeat split; lk_prove | split; [exact Hb4 | split; [exact Hb6 | lia]]].
 Qed.

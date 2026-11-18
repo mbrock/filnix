@@ -7,10 +7,8 @@
     the hi_atexit image. This module proves early init, the
     constructor runner and the call of main for Hello, in the world that startup ends in.
 
-    Some library calls that Hello's main makes, such as the locale calls,
-    are not proved yet. Main's contract in
-    [HelloStartBridge](HelloStartBridge.v) takes their contracts as
-    parameters, and so does this module. The facts about the program
+    Main's contract in [HelloStartBridge](HelloStartBridge.v) takes
+    the library proofs as parameters, and so does this module. The facts about the program
     are computed from the linked module, whatever memory the loader
     builds for it. *)
 
@@ -144,13 +142,13 @@ Qed.
 (** ## The call of main
 
     Startup does not know in advance which thread it will make, and the
-    world after startup names that thread. The open library calls must
+    world after startup names that thread. The library calls must
     therefore have contracts for every thread, but they need to hold
     only for the threads that startup can make, which fit below 2^48. *)
 
-Context (o : hello_objs) (debt : forall tb, HelloCore (final_world w0 tb) hello_ge o) (X0 X : iProp Σ)
+Context (o : hello_objs) (priv : Z -> iProp Σ) (X0 X : iProp Σ)
   (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
-     HelloLibs (final_world w0 tb) hello_ge o (hd_priv (final_world w0 tb) hello_ge o (debt tb)) X0 X)
+     HelloLibs (final_world w0 tb) hello_ge o (priv tb) X0 X)
   (Hy : hello_layout hello_ge o).
 
 Local Abbreviation P tb := (program_of (final_world w0 tb) glibc_os_registry hello_ge).
@@ -160,7 +158,7 @@ Local Abbreviation P tb := (program_of (final_world w0 tb) glibc_os_registry hel
     exit status is ever allowed. *)
 Definition hello_cm_spec (tb : Z) : fspec Σ :=
   start_call_main_spec (glibc_program := P tb) (TAtom "main")
-    (hello_main_spec (final_world w0 tb) hello_ge o (debt tb) X0) (fun _ => False%I).
+    (hello_main_spec (final_world w0 tb) hello_ge o (priv tb) X0) (fun _ => False%I).
 
 (** Whatever thread startup makes, calling main through
     `c: __libc_start_call_main` is safe and meets this contract. *)
@@ -169,7 +167,7 @@ Lemma hello_call_main_has_spec tb : 0 < tb -> tb + 2496 <= 2 ^ 48 ->
     (TAtom "glibc_libc_start#__libc_start_call_main") (hello_cm_spec tb).
 Proof using Hi Lb Hy.
   intros Ht0 Ht1.
-  pose proof (hello_main_has_spec (final_world w0 tb) hello_ge o (debt tb) X0 X (Lb tb Ht0 Ht1) Hy
+  pose proof (hello_main_has_spec (final_world w0 tb) hello_ge o (priv tb) X0 X (Lb tb Ht0 Ht1) Hy
     (hello_image_main g fr)) as Hmain.
   pose proof (hello_exit_never_false (final_world w0 tb)) as Hexit.
   assert (Hdef : Defines hello_ge "glibc_libc_start#__libc_start_call_main" start_call_main_fn)
@@ -178,7 +176,7 @@ Proof using Hi Lb Hy.
   { assert (C : absent_ok hello_image_module "zthread_self_cookie" = true) by (vm_compute; reflexivity).
     exact (absent_ok_sound _ _ _ fr _ Hi C). }
   exact (start_call_main_has_spec (glibc_program := P tb) (TAtom "main")
-    (hello_main_spec (final_world w0 tb) hello_ge o (debt tb) X0) (fun _ => False%I) eq_refl Hext).
+    (hello_main_spec (final_world w0 tb) hello_ge o (priv tb) X0) (fun _ => False%I) eq_refl Hext).
 Qed.
 
 End hello.

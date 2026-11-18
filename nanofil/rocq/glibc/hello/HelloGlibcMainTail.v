@@ -28,8 +28,8 @@ Import HelloGlibcMainOperands HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlib
 
 Section tail.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o)
   (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
@@ -40,7 +40,7 @@ Local Instance tail_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation combines the stream state and the callees' private state. *)
-Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
+Local Notation io := (hello_stdio w0 ge o ∗ priv)%I.
 
 (** A string's length is below 2^48: its words fit the address space. *)
 Lemma str_len_bound dq p s : word_string dq p s ⊢ ⌜Z.of_nat (length s) < 2 ^ 48⌝.
@@ -95,9 +95,9 @@ Proof using Type*.
      iIntros (r) "->"; iSplit; done | vx |].
   iNext. iIntros "_".
   iDestruct "Hio" as "([Hout | Hout] & Hrest)".
-  - iApply (wp_exit_call_with w0 ge o D X0 X Lb (hello_stdio w0 ge o)
+  - iApply (wp_exit_call_with w0 ge o priv X0 X Lb (hello_stdio w0 ge o)
       with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout _ _ _ _ _ _ Lb) | vx | iFrame].
-  - iApply (wp_exit_call_with w0 ge o D X0 X Lb
+  - iApply (wp_exit_call_with w0 ge o priv X0 X Lb
       (hello_stdio_wide w0 ge o (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1))
       with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout_wide _ _ _ _ _ _ Lb) | vx | iFrame].
 Qed.
