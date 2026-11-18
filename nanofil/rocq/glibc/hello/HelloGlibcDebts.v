@@ -151,6 +151,12 @@ Definition error_progname_ro : iProp Σ :=
       pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 63⌝ ∗
     liveq DfracDiscarded pb preg ∗ pcellq DfracDiscarded pb 0 null.
 
+(** Hello reports an extra operand with the format `"%s: %s"`. The
+    formatter's contract reads the format, so the read-only promise
+    holds that string with its exact bytes. *)
+Definition error_fmt_ro : iProp Σ :=
+  word_string DfracDiscarded (sym_ptr ge "hello#str.77") [37; 115; 58; 32; 37; 115].
+
 (** The callback global is persistent. Stating the instance here keeps
     proof search from unfolding the program's globals. *)
 Global Instance error_progname_ro_persistent : Persistent error_progname_ro.
@@ -204,11 +210,12 @@ Definition hello_ro : iProp Σ :=
   liveq DfracDiscarded (ho_eb o) (ho_ereg o) ∗
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
-  ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro.
+  ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro ∗
+  error_fmt_ro.
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /error_fmt_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)

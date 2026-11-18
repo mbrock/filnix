@@ -3,8 +3,10 @@
     formats and fixed arguments are read-only strings of Hello's image.
     The proofs of those two functions need each string's exact bytes,
     because the formatter's contract reads the format to see which
-    arguments it takes. This module lists the strings that Hello's calls
-    reach, with their bytes, without importing the image. The start
+    arguments it takes. glibc's `c: error` formats two strings of its
+    own the same way, the program-name prefix and the final newline.
+    This module lists the strings that Hello's calls reach, with their
+    bytes, without importing the image. The start
     proof checks the list against the image in
     [HelloStartKept](HelloStartKept.v). *)
 
@@ -58,5 +60,9 @@ Definition version_lits : list (string * list Z) := [
      71; 78; 85; 32; 115; 111; 102; 116; 119; 97; 114; 101; 58; 32; 60; 37; 115; 62; 10]);
   ("version-etc#str.64"%string,
     [104; 116; 116; 112; 115; 58; 47; 47; 119; 119; 119; 46; 103; 110; 117; 46; 111; 114; 103;
-     47; 103; 101; 116; 104; 101; 108; 112; 47])
+     47; 103; 101; 116; 104; 101; 108; 112; 47]);
+  ("glibc_error#str.255"%string,
+    [37; 115; 58; 32]);
+  ("glibc_error#str.254"%string,
+    [10])
 ].

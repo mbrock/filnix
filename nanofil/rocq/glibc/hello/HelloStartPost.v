@@ -315,7 +315,11 @@ Proof using Hi.
     iSplit.
     { rewrite -hello_lit_rest_names big_sepL_fmap. iApply (big_sepL_mono with "Hlr").
       iIntros (k ns _) "H". iExists _. iExact "H". }
-    iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iExact "Hepn". }
+    iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iSplitR; [iExact "Hepn"|].
+    iAssert ([∗ list] ns ∈ (fun ns : string * list Z * list Z => (ns.1.1, ns.1.2)) <$> take 24 (drop 3 hello_lit_strs),
+      word_string DfracDiscarded (sym_ptr ge ns.1) ns.2)%I as "#Hlf"; [rewrite big_sepL_fmap; iExact "Hlr"|].
+    iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 17
+      ("hello#str.77"%string, [37; 115; 58; 32; 37; 115]) with "Hlf"). vm_compute. reflexivity. }
   iSplitR; [iExact "Hkey"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
   iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Lpn Hpn Lnb Hnb Lns Hns".
