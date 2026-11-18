@@ -61,7 +61,7 @@ Lemma error_message_resources fb freg eb ereg r en md :
   error_message_returned fb freg eb ereg r en md ∗ error_message_residual fb eb ereg r en md ⊢
   live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ int_cell fb 192 md.
 Proof using Type.
-  unfold error_message_returned, error_message_residual, error_mode_own.
+  unfold error_message_returned_q, error_message_residual, error_mode_own.
   destruct (decide (2 ^ 31 <= r mod 2 ^ 32)); [destruct (decide (en = 12)) |].
   - iIntros "[(_ & Hl & Hnow & _ & Hmode) _]". iFrame.
   - iIntros "[(_ & Hl & Hnow & _) Hmode]". iFrame.

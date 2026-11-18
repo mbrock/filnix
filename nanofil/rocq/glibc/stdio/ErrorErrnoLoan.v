@@ -44,7 +44,7 @@ Lemma error_message_errno_loan fb freg eb ereg r en md :
   ∃ now, ⌜0 <= now < 2 ^ 32 /\ (r mod 2 ^ 32 < 2 ^ 31 -> now = en)⌝ ∗
     live eb ereg ∗ errno_own eb (le_bytes now 4) ∗ int_cell fb 192 md.
 Proof using Type.
-  rewrite /error_message_returned /error_message_spare /error_mode_own.
+  rewrite /error_message_returned_q /error_message_spare /error_mode_own.
   destruct (decide (2 ^ 31 <= r mod 2 ^ 32)) as [Hneg | Hpos].
   - iIntros "(_ & Hl & [%now Hnow] & Hmode) Hsp Ha".
     iAssert (⌜0 <= now < 2 ^ 32⌝ ∗ errno_own eb (le_bytes now 4))%I with "[Hnow Ha]" as "[%Hrange He]".

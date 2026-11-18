@@ -24,7 +24,7 @@ Definition error_mode_own fb freg en md : iProp Σ :=
     ⌜0 < fb /\ fb + 196 <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗ int_cell fb 192 md
    else emp)%I.
 
-Lemma wp_error_failure {dqs : dfrac} e status errnum fmt ap mode cb sb sreg fb freg dq eb ereg en md
+Lemma wp_error_failure {dqs dqe : dfrac} e status errnum fmt ap mode cb sb sreg fb freg dq eb ereg en md
     wide widefn wideframe (R E : iProp Σ) Φ :
   error_inputs e status errnum fmt ap mode cb ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
@@ -35,15 +35,15 @@ Lemma wp_error_failure {dqs : dfrac} e status errnum fmt ap mode cb sb sreg fb f
   find_fn ge (TAtom "__GI_fputws_unlocked") = Some (Defined widefn) ->
   call_frame widefn [WPtr wide;WPtr (mkPtr fb (Obj fb))] = Some wideframe ->
   (0 < md < 2 ^ 31 -> ⊢ liveq dq fb freg -∗ int_cell fb 192 md -∗
-    (live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R) -∗
+    (liveq dqe eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R) -∗
     WP (ERun wideframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
       liveq dq fb freg ∗ int_cell fb 192 md ∗
-      (live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R) }}) ->
+      (liveq dqe eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R) }}) ->
   liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
-  live eb ereg -∗ int_cell eb 0 en -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
+  liveq dqe eb ereg -∗ int_cell eb 0 en -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
-    live eb ereg -∗ (∃ now, int_cell eb 0 now) -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
+    liveq dqe eb ereg -∗ (∃ now, int_cell eb 0 now) -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
     WP (ERun (mkFrame glibc_error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
@@ -52,14 +52,14 @@ Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Herrno Heb Hee Her Hwide Hfn Hframe Hcall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hsl Hsp Hfl Hel [%Hen Hebytes] Hmd HR HE HK".
-  iApply (wp_live_fit1 with "Hel"). iIntros ([He0 He48]) "Hel".
-  step. step. check "Hel". load_s32 "Hel" "Hebytes". step. step. step.
+  iApply (wp_live_fit with "Hel"). iIntros ([He0 He48]) "Hel".
+  step. step. check_read_dq "Hel" by a2. iNext. iIntros "Hel". load_s32 "Hel" "Hebytes". step. step. step.
   destruct (Z.eq_dec en 12) as [Hen12 | Hen12].
   - branch_as false.
     unfold error_mode_own. rewrite decide_True; [|done].
     iDestruct "Hmd" as "(%Hfb & Hmd)". destruct Hfb as (Hfb & Hfe & Hfr).
     iApply (wp_error_fallback _ status errnum fmt ap mode cb sb sreg fb freg dq md wide widefn wideframe
-      (live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R)%I E
+      (liveq dqe eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R)%I E
       with "Hsl Hsp Hfl Hmd [Hel Hebytes HR] HE"); try assumption.
     { unfold error_inputs. repeat split; lk_prove. }
     { iFrame "Hel HR". iExists en. iSplit; [done | iExact "Hebytes"]. }

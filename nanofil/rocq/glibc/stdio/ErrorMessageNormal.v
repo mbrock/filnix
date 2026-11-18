@@ -86,7 +86,7 @@ Proof using Hext Hregistry sb sreg.
   intros Hinputs Hg Hgb Hga Hge Hgr Hfb Hal Hend Hreg Huser Hfmt Hmd Hself Hselfr
     Hstring Herrno Hfn Hwide Hwidefn Hwideframe Hformat Hfallback.
   iIntros "Hgl Hgp Hl HV HR HE HK".
-  iApply (wp_error_message e from status errnum fmt ap flags cb gb greg fb freg (DfracOwn 1) eb ereg
+  iApply (wp_error_message (dqe := DfracOwn 1) e from status errnum fmt ap flags cb gb greg fb freg (DfracOwn 1) eb ereg
     glibc_vfxprintf (vfxprintf_frame (mkPtr fb (Obj fb)) fmt ap (flags mod 2 ^ 32))
     wide widefn wideframe
     (fun p => error_va p (WInt status :: WInt errnum :: WPtr fmt :: ys)) ready fields E

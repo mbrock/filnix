@@ -71,7 +71,7 @@ Proof using Type.
   iNext. iIntros (r) "Hl Hfl Hlp Hlk Hfmt HV (Hbytes & Hout) HE".
   iDestruct "Hout" as (en md') "(Hel & Hen & Hmd & HQ)".
   iExists r, en, md'. iSplit; [done |]. iFrame "Hl HV Hfl Hlp Hlk Hfmt Hbytes HQ HE".
-  unfold error_message_pending, error_message_spare, error_mode_own.
+  unfold error_message_pending_q, error_message_spare, error_mode_own.
   destruct (decide (2 ^ 31 <= r mod 2 ^ 32));
     destruct (decide (en = 12)); iFrame; try done.
   iSplit; [iPureIntro; exact Herrno |]. iPureIntro. lia.

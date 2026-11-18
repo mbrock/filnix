@@ -95,7 +95,7 @@ Lemma wp_error_report_zero_loans (RP RQ : iProp Σ)
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready Hfmtfn Hfmtframe Hformat.
   iIntros "Hnl Hcount Ht Hflag Hcl Hsaved Hsl Hsp Hfl HV HP HE HK".
-  iApply (wp_error_message _ _ 0 errnum fmt ap mode cb sb sreg fb freg dq eb ereg
+  iApply (wp_error_message (dqe := DfracOwn 1) _ _ 0 errnum fmt ap mode cb sb sreg fb freg dq eb ereg
     formatter formatterframe wide widefn wideframe V P U
     (live nb nreg ∗ int_cell nb 0 count ∗ live tb treg ∗ int_cell tb 792 1 ∗
       live cb (mkRegion cb (cb + 16) Heap Live) ∗ int_cell cb 0 old ∗ E)%I
