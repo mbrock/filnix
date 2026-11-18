@@ -60,7 +60,7 @@ TAGS = [
     (r'start_c_locale', 'environment'),
     (r'ow_leaf4_ends', 'CPU'),
     (r'^R\.ready', 'adequacy'),
-    (r'hd_setlocale_|hd_mbsrtowcs', 'locale'),
+    (r'hd_setlocale_', 'locale'),
     (r'hd_wprintf', 'wprintf (gap W)'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
@@ -76,8 +76,6 @@ STATUS = [
     (r'^R\.ready', SAT + ' for the interpreter\'s runtime, InterpRuntime.ready (checked: hello_start_witness)'),
     (r'hd_setlocale_all', 'unknown: locale_c (HelloLocaleState.v) holds every cell setlocale writes and the constants it '
                           'reads, and the lock is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
-    (r'hd_mbsrtowcs', 'unknown: hello_conv_ro holds the conversion constants, and __libc_tsd_LOCALE is reachable '
-                      'by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_wprintf', 'unknown: the private state holds the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),

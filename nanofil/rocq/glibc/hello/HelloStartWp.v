@@ -30,7 +30,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery
-  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall.
+  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -150,6 +150,7 @@ Proof using Hi.
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
+      (hello_mbsrtowcs (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) Herr _ _ Hpv)
       (hello_prints_image (final_world w0 tb) fr _ Hy (hello_link_all fr Hfree) Herr
          ltac:(rewrite Hfds; exact Hfd1) ltac:(rewrite Hfds; exact Hfd2) (hello_os_layout_final w0 tb He ltac:(lia))
          Hvf Hfputs)). }

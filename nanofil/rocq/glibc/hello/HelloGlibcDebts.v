@@ -283,12 +283,25 @@ Definition setlocale_query (priv : iProp Σ) : Prop :=
     (hello_ro ∗ hello_stdio ∗ priv)%I
     (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I.
 
-(** The remaining milestones must prove these call contracts while
-    preserving the standard streams and the callees' private state.
-    Milestone M6 covers locale queries, conversion and wide output.
+(** The greeting fits in the freshly allocated destination, including
+    its terminator. Gnulib widens every input byte in the C locale,
+    so main gets a wide string and never takes the error branch. *)
+Definition mbsrtowcs (priv : iProp Σ) : Prop := forall bd b4 b6 g gs,
+  let n := 4 * (Z.of_nat (length gs) + 1) in
+  (0 < b4 /\ b4 mod 16 = 0 /\ b4 + 16 <= 2 ^ 48) ->
+  (0 < b6 /\ b6 mod 16 = 0 /\ b6 + 16 <= 2 ^ 48) ->
+  (0 < bd /\ bd mod 16 = 0 /\ bd + req_extent (wreq n) <= 2 ^ 48) ->
+  fn_triple (TAtom "rpl_mbsrtowcs")
+    [WPtr (mkPtr bd (Obj bd)); WPtr (mkPtr b4 (Obj b4)); WInt (Z.of_nat (length gs) + 1); WPtr (mkPtr b6 (Obj b6))]
+    (hello_ro ∗ hello_stdio ∗ priv ∗ wbuf bd n (replicate (Z.to_nat (req_extent (wreq n))) 0) ∗
+     gcell b4 g ∗ word_string DfracDiscarded g gs ∗ obj b6 (heap_req 4 8))%I
+    (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗
+                hello_stdio ∗ priv ∗ wbuf bd n ws)%I.
+
+(** Setting the locale and printing the wide greeting must preserve
+    the callees' private state and the parts of the streams they share.
     Printing the greeting orients stdout wide, so close_stdout takes
     stdout in either orientation.
-    Milestone M4 covers the other calls, including the close callback.
     In the C locale the conversion of the greeting cannot fail, so main
     never reaches its fatal error report. The close callback may read
     the program-name cells, and so may an error report. glibc's option parser is
@@ -302,18 +315,6 @@ Record HelloCore : Type := mkHelloCore {
   hd_setlocale_all :
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
-  hd_mbsrtowcs : forall bd b4 b6 g gs,
-    let n := 4 * (Z.of_nat (length gs) + 1) in
-    (0 < b4 /\ b4 mod 16 = 0 /\ b4 + 16 <= 2 ^ 48) ->
-    (0 < b6 /\ b6 mod 16 = 0 /\ b6 + 16 <= 2 ^ 48) ->
-    (0 < bd /\ bd mod 16 = 0 /\ bd + req_extent (wreq n) <= 2 ^ 48) ->
-    fn_triple (TAtom "rpl_mbsrtowcs")
-      [WPtr (mkPtr bd (Obj bd)); WPtr (mkPtr b4 (Obj b4)); WInt (Z.of_nat (length gs) + 1);
-       WPtr (mkPtr b6 (Obj b6))]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n (replicate (Z.to_nat (req_extent (wreq n))) 0) ∗
-       gcell b4 g ∗ word_string DfracDiscarded g gs ∗ obj b6 (heap_req 4 8))%I
-      (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗
-                  hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I;
   hd_wprintf : forall bd n ws,
     wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
@@ -390,6 +391,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
     fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
   hl_setlocale_query : setlocale_query priv;
+  hl_mbsrtowcs : mbsrtowcs priv;
   hl_prints : HelloPrints priv
 }.
 

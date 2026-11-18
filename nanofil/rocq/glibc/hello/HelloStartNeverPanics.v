@@ -14,7 +14,7 @@
     expects. Its runtime also has a ready allocator.
 
     The rest are promises about glibc calls that nobody has proved yet.
-    They cover the calls that print, convert text or read the locale.
+    They cover setting the locale, printing and closing standard output.
     A script in nanofil/tests lists these assumptions, says which ones
     can hold, and counts them for CI.
 

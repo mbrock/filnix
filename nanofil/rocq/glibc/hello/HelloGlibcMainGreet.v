@@ -98,7 +98,7 @@ Proof using Hy Lb.
   iApply (wp_call_long w0 ge _ _ _
             (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
                         wbuf bd N ws)%I with "[Hio Hpv Hwb Hgc Hb6]");
-    [eapply fn_triple_mono; [exact (hd_mbsrtowcs _ _ _ D bd b4 b6 g s Hb4 Hb6 (conj Hbd0 (conj Hbd16 Hbde)))|];
+    [eapply fn_triple_mono; [exact (hl_mbsrtowcs _ _ _ _ _ _ Lb bd b4 b6 g s Hb4 Hb6 (conj Hbd0 (conj Hbd16 Hbde)))|];
      iIntros (r) "(%k & %ws & %Hk & Hio & Hpv & Hwb)"; destruct Hk as (-> & Hk & Hk1 & Hw);
      iExists k; iSplit; [iPureIntro; split; [reflexivity | exact Hk]|];
      iExists ws; iSplit; [iPureIntro; split; [exact Hk1 | exact Hw]|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |
