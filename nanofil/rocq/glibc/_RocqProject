@@ -1028,6 +1028,7 @@ hello/HelloImageMbsObjs.v
 locale/AsciiConvert.v
 locale/Mbrtowc.v
 hello/HelloConvHardLocale.v
+hello/HelloConvByte.v
 hello/HelloImageCLocaleObjs.v
 hello/HelloStartGetopt.v
 hello/HelloStartGetoptRules.v
