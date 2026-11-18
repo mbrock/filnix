@@ -24,7 +24,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic HelloLeaf.
-From Glibc Require Import LocaleEnv GlibcProgram OsWorld OsRegistry OsStart OsCpuid FileInv GetoptDiag GetoptLongDiag
+From Glibc Require Import LocaleEnv GlibcProgram GlibcLogic OsWorld OsRegistry OsStart OsCpuid FileInv GetoptDiag GetoptLongDiag
   HelloGlibcDebts StartCode StartState StartJoin StartLibcStartMain HelloImageModule HelloImageLoad HelloImageLayout
   HelloImageEarly HelloStartAssembly HelloStartFacts HelloStartWp.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
@@ -44,22 +44,17 @@ Proof. eexists. reflexivity. Qed.
 
 (** Every run of Hello from a state in which the runtime can start it
     avoids panics, stuck steps and contract failures, and it never
-    returns. The last premise chooses the library's private state for
-    each thread and relates it to the environment array. *)
-Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
-    w0 m s w xs fuel :
+    returns. Startup builds the library's private state from the
+    environment array and the loaded image. *)
+Theorem hello_never_panics w0 m s w xs fuel :
   start_state hello_image_module w0 m w xs ->
   In 1 (ow_fds w0) -> In 2 (ow_fds w0) -> start_c_locale m xs ->
   ow_leaf4_ends w0 = true ->
   R.ready s m ->
-  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : forall tb, HelloCore (final_world w0 tb) hello_start_ge hello_image_objs),
-    forall b ss, nth_error xs 3 = Some (WPtr (mkPtr b (Obj b))) -> string_array m b ss ->
-    forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts w0 m R.free debt (b, ss) tb) ->
   labelled_safe glibc_os_registry hello_start_ge (invocation start_libc_start_main_fn xs)
     m s w fuel (fun _ => False).
 Proof.
-  intros Hst Hfd1 Hfd2 Hloc Hleaf Hr Hc.
+  intros Hst Hfd1 Hfd2 Hloc Hleaf Hr.
   destruct Hst as (g & m0 & mainp & tb & argc & argv & env & av & aps & order & Hi & Hm & Ht & Hxs & Hargc & Hargc2 &
     Ha & He & Hv & Hd & Hk & Hord & Hct & Hos & Hnd).
   destruct (hello_first_heap g m0 m w0 w tb argc argv env av aps order 0 Hi Ht Ha He Hv Hd Hk Hord Hct Hos Hnd)
@@ -70,11 +65,10 @@ Proof.
   destruct (hello_start_frame (mkPtr (img_a "main") (Fn (TAtom "main"))) argc (mkPtr argv.1 (Obj argv.1))
     (mkPtr env.1 (Obj env.1)) (mkPtr av (Obj av))) as [fr Hfr].
   unfold invocation. rewrite Hfr. destruct Hos as (Herr & _ & _).
-  apply (heap_labelled_safe Σ glibc_os_registry (os_wi_start w0 0) hello_start_ge fr m s w _ (fun _ => False)
+  apply (heap_labelled_safe glibcΣ glibc_os_registry (os_wi_start w0 0) hello_start_ge fr m s w _ (fun _ => False)
     Hr Hd Agr Wi).
-  intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
+  intros HinvG HheapG. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m R.free Hi debt fr argv env av aps order argc Hleaf eq_refl Hfd2 Hfd1 Herr Hfr Ha He (Hloc env.1 env.2 eq_refl He) Hv
+  iApply (hello_start_wp w0 0 m0 m Hi fr argv env av aps order argc Hleaf Hfd2 Hfd1 Herr Hfr Ha He (Hloc env.1 env.2 eq_refl He) Hv
     Hargc Hargc2 Hord with "L T A E V K").
-  intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.
