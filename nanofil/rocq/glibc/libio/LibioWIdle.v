@@ -9,9 +9,7 @@
 
     A wide stream still has the narrow fields that the close path reads,
     and they obey the same rules as before, except that the mode is 1
-    and the jump table is the wide one. The narrow buffer holds no
-    pending bytes, because glibc writes the bytes of every conversion
-    out at once. The wide data object now holds the wide buffer's
+    and the jump table is the wide one. The wide data object now holds the wide buffer's
     pointers and the two conversion descriptors that glibc fills in when
     it first makes the stream wide. *)
 
@@ -203,8 +201,9 @@ Definition with_mode0 (st : fstate) : fstate :=
     fields, its free lock, its narrow buffer and its wide data. The
     stream's mode is 1, its jump table is the wide one, and its codecvt
     pointer names the descriptors inside its wide data. The narrow
-    buffer holds no pending bytes, so its write pointer equals its
-    write base. Its `c: _flags2` says whether it owns its wide
+    buffer may still hold bytes written before the stream became wide,
+    because [file_idle] does not rule them out, and the first wide
+    output writes them together with its own. Its `c: _flags2` says whether it owns its wide
     buffer, as [wbuf_user_ok] states. The descriptors run the C locale's conversion steps,
     which glibc calls `c: to_wc` and `c: to_mb`. *)
 Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
@@ -213,7 +212,7 @@ Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\
      idle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
      fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
-     short_idle nb st /\ fs_ptr st 4 = fs_ptr st 3 /\ wbuf_user_ok w (fs_flags2 st) /\
+     short_idle nb st /\ wbuf_user_ok w (fs_flags2 st) /\
      fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
      lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
      lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm⌝ ∗
