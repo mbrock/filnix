@@ -49,6 +49,14 @@ Printf|__printf|stdio-common/printf.os|__printf
 '''
 
 [[batch]]
+layout = "string"
+mode = "checked"
+names = true
+fixtures = '''
+ItoaWord|_itoa_word|stdio-common/_fitoa_word.os|_itoa_word
+'''
+
+[[batch]]
 layout = "libio"
 mode = "checked"
 fixtures = '''
