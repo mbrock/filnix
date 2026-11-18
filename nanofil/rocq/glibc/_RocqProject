@@ -493,6 +493,8 @@ stdio/ItoaWordSpec.v
 stdio/ItoaWord.v
 stdio/PrintfPutc.v
 stdio/PrintfPutcSlow.v
+stdio/PrintfFill.v
+stdio/PrintfPad.v
 stdio/PrintfCopy.v
 stdio/PrintfWrite.v
 stdio/PrintfSmall.v
