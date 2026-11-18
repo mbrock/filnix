@@ -77,16 +77,16 @@ Lemma wp_wdefault_room e fb fr wd wr fl w i j s so n t Φ :
   0 <= i <= window_size w -> 0 <= j <= window_size w -> n < 2^63 ->
   wsource_regs e (mkPtr fb (Obj fb)) s so n t "pr.7" "pr.2" ->
   write_window fb fr wd wr fl w i j -∗
-  (∀ e', ⌜wsource_regs e' (mkPtr fb (Obj fb)) s so n t "pr.8" "pr.3"⌝ -∗ write_window fb fr wd wr fl w i j -∗
-      WP (ERun (mkFrame wdefault_xsputn_fn e' [] None (body_at wdefault_xsputn_fn "L37")) : sexpr) {{ Φ }}) -∗
+  ((∀ e', ⌜wsource_regs e' (mkPtr fb (Obj fb)) s so n t "pr.8" "pr.3"⌝ -∗ write_window fb fr wd wr fl w i j -∗
+      WP (ERun (mkFrame wdefault_xsputn_fn e' [] None (body_at wdefault_xsputn_fn "L37")) : sexpr) {{ Φ }}) ∧
   (∀ e', ⌜wsource_regs e' (mkPtr fb (Obj fb)) s so n t "pr.7" "pr.2" /\
       reg e' "chk0" (WPtr (mkPtr (fb+160) (Obj fb))) /\ reg e' "v34" (WInt (j-i)) /\ 0 < j-i⌝ -∗
     write_window fb fr wd wr fl w i j -∗
-      WP (ERun (mkFrame wdefault_xsputn_fn e' [] None (body_at wdefault_xsputn_fn "L35")) : sexpr) {{ Φ }}) -∗
+      WP (ERun (mkFrame wdefault_xsputn_fn e' [] None (body_at wdefault_xsputn_fn "L35")) : sexpr) {{ Φ }})) -∗
     WP (ERun (mkFrame wdefault_xsputn_fn e [] None (body_at wdefault_xsputn_fn "L16")) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hfa Hfe Hfr Hwd Hwa Hwe Hwr B Hi Hj Hn (Hfp & Hcnt & Ht & Hsrc & R).
-  iIntros "(Hf & Hfl & Hwd & Hl & Hbase & Hcur & Hend & Hstop & Hshort & Hb) HK0 HK".
+  iIntros "(Hf & Hfl & Hwd & Hl & Hbase & Hcur & Hend & Hstop & Hshort & Hb) HKs".
   body_start wdefault_xsputn_fn "L16"%string. step. check "Hf". load "Hf" "Hwd" "Hl". step. check "Hl".
   load_wpos "Hl" "Hend" "Hb". load "Hf" "Hwd" "Hl". step. check "Hl". load_wpos "Hl" "Hcur" "Hb".
   do 3 step. step_named. step_named.
@@ -99,10 +99,10 @@ Proof using Type.
   rewrite wpos_signed in E; [|lia]. rewrite Z.quot_mul in E; [|lia].
   change (sign_extension (2^64) (2^63) (0 mod 2^64)) with 0 in E0. rewrite E Z.mod_mod in E0; [|lia].
   rewrite wpos_signed in E0; [|lia]. destruct (Z.ltb_spec 0 (j-i)); subst x0; branch; step.
-  - iApply ("HK" with "[%] [-]").
+  - iDestruct "HKs" as "[_ HK]". iApply ("HK" with "[%] [-]").
     + subst x. unfold wsource_regs. split_and!; try (lookups; cbn [ptr_addr ptr_cap]; unwrap2; reflexivity); lia.
     + rewrite /write_window. by iFrame.
-  - iApply ("HK0" with "[%] [-]").
+  - iDestruct "HKs" as "[HK0 _]". iApply ("HK0" with "[%] [-]").
     + unfold wsource_regs. split_and!; try (lookups; unwrap2; reflexivity); lia.
     + rewrite /write_window. by iFrame.
 Qed.
