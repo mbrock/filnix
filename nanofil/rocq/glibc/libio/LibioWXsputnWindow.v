@@ -84,27 +84,61 @@ Local Lemma bound_from_storage w : wbuf_idle w -∗ ⌜window_bound w⌝.
 Proof using Type. destruct w; [by iIntros "_"|by iIntros "_"|]. iIntros "(%r & %xs & %cs & %H & _)".
   iPureIntro. unfold window_bound. lia. Qed.
 
+(** Conversion takes a base and a count from the wide stream. Keeping
+    its cursor index until the call ties both arguments to the buffer
+    whose bytes the converter reads. *)
+Definition file_pending ge vb self fp fd wd w i : iProp Σ := ∃ fb fr st nb tw tm wr j,
+  ⌜window_bound w /\ 0 <= i <= window_size w /\ 0 <= j <= window_size w⌝ ∗
+  file_wide_at ge vb self fp fd fb fr st nb wd w tw tm (wide_data_at vb tw tm wd w wr (window_slots wd w i j)).
+
+Lemma wide_pending ge vb self fp fd : file_wide ge vb self fp fd -∗ ∃ wd w i, file_pending ge vb self fp fd wd w i.
+Proof using Type.
+  iIntros "(%fb & %fr & %st & %nb & %wd & %w & %tw & %tm & %Hp & Hf & Hfields & Hlock & Hnb & Hwide)".
+  iDestruct "Hwide" as (wr ps ib ie ob oe ifl icnt ofl ocnt sb scs H) "(Hl & Hps & Hst & Ha & Hin & Hout & Hsb & Hpad & Hslots & Hwvt & Hwb)".
+  iDestruct (bound_from_storage with "Hwb") as %B. pose proof H as (_ & _ & _ & _ & Hps & _).
+  destruct (window_indices wd w ps B Hps) as (i & j & Hi & Hj & ->).
+  iExists wd, w, i, fb, fr, st, nb, tw, tm, wr, j. iSplit; [iPureIntro; tauto|]. rewrite /file_wide_at. iFrame "Hf Hfields Hlock Hnb". iSplit; [done|].
+  iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. by iFrame.
+Qed.
+
+Lemma pending_wide ge vb self fp fd wd w i : file_pending ge vb self fp fd wd w i -∗ file_wide ge vb self fp fd.
+Proof using Type.
+  iIntros "(%fb & %fr & %st & %nb & %tw & %tm & %wr & %j & _ & %H & Hf & Hfields & Hlock & Hnb & Hd)".
+  iExists fb, fr, st, nb, wd, w, tw, tm. rewrite /file_wide_at. iFrame "Hf Hfields Hlock Hnb". iSplit; [done|]. iExists wr, (window_slots wd w i j). done.
+Qed.
+
+Lemma pending_write_window ge vb self fp fd wd w i : file_pending ge vb self fp fd wd w i -∗ ∃ fb fr wr fl j,
+  ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb+224 <= r_end fr /\ r_end fr <= 2^63 /\
+    0 < wd /\ wd mod 8 = 0 /\ wd+232 <= r_end wr /\ r_end wr <= 2^63 /\ 0 <= fl < 2^32 /\
+    window_bound w /\ 0 <= i <= window_size w /\ 0 <= j <= window_size w⌝ ∗ write_window fb fr wd wr fl w i j ∗
+  (∀ k, ⌜0 <= k <= window_size w⌝ -∗ write_window fb fr wd wr fl w k j -∗ file_pending ge vb self fp fd wd w k).
+Proof using Type.
+  iIntros "(%fb & %fr & %st & %nb & %tw & %tm & %wr & %j & (%B & %Hi & %Hj) & %Hp & Hf & Hfields & Hlock & Hnb & Hwide)".
+  pose proof Hp as (Hfp & Hfa & Hfb & He & Hr & Hfl & _ & _ & _ & _ & _ & _ & Hwd & _).
+  iDestruct "Hfields" as "(%L & Hfl & Hptrs & Hfd & Hf2 & Ho & %Hcol & Hc & Hlk & Hof & Hcv & Hwd & Hfr & Hbuf & Hm & Htw & Hvt)".
+  iDestruct "Hwide" as (ib ie ob oe ifl icnt ofl ocnt sb scs H) "(Hl & Hps & Hst & Ha & Hin & Hout & Hsb & Hpad & Hslots & Hwvt & Hwb)".
+  destruct H as (Hwd0 & Hwa & Hwe & Hwr & Hps & Hif & Hofl & Lsb & Vsb & Lscs).
+  unfold window_slots. cbn [big_sepL]. iDestruct "Hps" as "(H0 & H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & _)".
+  iExists fb, fr, wr, (fs_flags st), j. iSplit; [iPureIntro; unfold wflags_ok, file_size in *; tauto|].
+  rewrite Hwd. iSplitL "Hf Hfl Hwd Hl H3 H4 H5 H7 Hsb Hwb".
+  { rewrite /write_window. by iFrame. }
+  iIntros (k Hk) "(Hf & Hfl & Hwd & Hl & H3 & H4 & H5 & H7 & (%sb' & (%Lsb' & %Vsb') & Hsb) & Hwb)".
+  iExists fb, fr, st, nb, tw, tm, wr, j. iSplit; [iPureIntro; tauto|]. rewrite /file_wide_at. iFrame "Hf Hlock Hnb". iSplit; [done|].
+  iSplitR "Hl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 Hst Ha Hin Hout Hsb Hpad Hslots Hwvt Hwb".
+  { rewrite /file_fields Hwd. by iFrame. }
+  iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb', scs.
+  iSplit; [iPureIntro; split_and!; try assumption; by apply window_ptrs_ok|]. rewrite /window_slots /=. by iFrame.
+Qed.
+
 Lemma wide_write_window ge vb self fp fd : file_wide ge vb self fp fd -∗ ∃ fb fr wd wr fl w i j,
   ⌜fp = mkPtr fb (Obj fb) /\ 0 < fb /\ fb mod 8 = 0 /\ fb+224 <= r_end fr /\ r_end fr <= 2^63 /\
     0 < wd /\ wd mod 8 = 0 /\ wd+232 <= r_end wr /\ r_end wr <= 2^63 /\ 0 <= fl < 2^32 /\
     window_bound w /\ 0 <= i <= window_size w /\ 0 <= j <= window_size w⌝ ∗ write_window fb fr wd wr fl w i j ∗
   (∀ k, ⌜0 <= k <= window_size w⌝ -∗ write_window fb fr wd wr fl w k j -∗ file_wide ge vb self fp fd).
 Proof using Type.
-  iIntros "(%fb & %fr & %st & %nb & %wd & %w & %tw & %tm & %Hp & Hf & Hfields & Hlock & Hnb & Hwide)".
-  pose proof Hp as (Hfp & Hfa & Hfb & He & Hr & Hfl & _ & _ & _ & _ & _ & _ & Hwd & _).
-  iDestruct "Hfields" as "(%L & Hfl & Hptrs & Hfd & Hf2 & Ho & %Hcol & Hc & Hlk & Hof & Hcv & Hwd & Hfr & Hbuf & Hm & Htw & Hvt)".
-  iDestruct "Hwide" as (wr ps ib ie ob oe ifl icnt ofl ocnt sb scs H) "(Hl & Hps & Hst & Ha & Hin & Hout & Hsb & Hpad & Hslots & Hwvt & Hwb)".
-  destruct H as (Hwd0 & Hwa & Hwe & Hwr & Hps & Hif & Hofl & Lsb & Vsb & Lscs).
-  iDestruct (bound_from_storage with "Hwb") as %B. destruct (window_indices _ _ _ B Hps) as (i & j & Hi & Hj & ->).
-  unfold window_slots. cbn [big_sepL]. iDestruct "Hps" as "(H0 & H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & H9 & H10 & _)".
-  iExists fb, fr, wd, wr, (fs_flags st), w, i, j. iSplit; [iPureIntro; unfold wflags_ok, file_size in *; tauto|].
-  rewrite Hwd. iSplitL "Hf Hfl Hwd Hl H3 H4 H5 H7 Hsb Hwb".
-  { rewrite /write_window. by iFrame. }
-  iIntros (k Hk) "(Hf & Hfl & Hwd & Hl & H3 & H4 & H5 & H7 & (%sb' & (%Lsb' & %Vsb') & Hsb) & Hwb)".
-  iExists fb, fr, st, nb, wd, w, tw, tm. iFrame "Hf Hlock Hnb". iSplit; [done|].
-  iSplitR "Hl H0 H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 Hst Ha Hin Hout Hsb Hpad Hslots Hwvt Hwb".
-  { rewrite /file_fields Hwd. by iFrame. }
-  iExists wr, (window_slots wd w k j), ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb', scs.
-  iSplit; [iPureIntro; split_and!; try assumption; by apply window_ptrs_ok|]. rewrite /window_slots /=. by iFrame.
+  iIntros "HF". iDestruct (wide_pending with "HF") as (wd w i) "HP".
+  iDestruct (pending_write_window with "HP") as (fb fr wr fl j H) "[Hwin Hclose]".
+  iExists fb, fr, wd, wr, fl, w, i, j. iFrame. iSplit; [done|].
+  iIntros (k Hk) "Hwin". iApply pending_wide. by iApply ("Hclose" with "[%] Hwin").
 Qed.
 End view.
