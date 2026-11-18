@@ -10,11 +10,10 @@
     return to_do == 0 ? 0 : WEOF;
     ```
 
-    Hello's image tests the line-buffered and unbuffered bits of the
-    flags here, as the source above does, rather than the mode. So the
-    write end goes back to the base on a line-buffered or unbuffered
-    stream and to the buffer's end otherwise. This file proves that
-    tail, which starts at block `c: L12`. *)
+    A fully buffered stream can accept more characters after the flush,
+    so its write end points to the end of the buffer. A line-buffered
+    or unbuffered stream puts the write end at the start instead. The
+    next character will then go through the overflow handler. *)
 
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -31,6 +30,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).
 Local Abbreviation objp b := (mkPtr b (Obj b)).
+
+Local Typeclasses Opaque pcell.
 
 Section tail.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
