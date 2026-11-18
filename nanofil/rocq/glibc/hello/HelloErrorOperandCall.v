@@ -85,7 +85,7 @@ Proof using Type*.
   iDestruct "Hy" as (pbytes) "#Hy".
   iDestruct "Hec" as (cnb cnreg n [Hcn [Hcm [Hce Hcr]]]) "[Hcl Hcnt]".
   iPoseProof "Hro" as "(#Hv & #Hsg & #Hsol & #Hsoc & #Hsel & #Hsec & #Hel & #Htc & _ & _ & #Hlits & #Hver &
-    #Hpr & #Hprog & #Hfmts)".
+    #Hpr & #Hprog & #Hfmts & _)".
   iAssert (word_string DfracDiscarded (sym_ptr ge "hello#str.77") [37; 115; 58; 32; 37; 115]) as "#Hfmt".
   { iEval (rewrite /print_fmt_ro /print_fmts big_sepL_cons) in "Hfmts". iDestruct "Hfmts" as "[#H77 _]".
     iExact "H77". }

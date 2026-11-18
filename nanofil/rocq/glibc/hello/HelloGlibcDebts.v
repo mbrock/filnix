@@ -213,7 +213,8 @@ Proof using Type. apply printf_ro_persistent. Qed.
 
 (** Calls share read-only ownership of the linked constants, stream
     pointers, errno lifetime, allocator prelude, program literals and
-    the null callback of the error reporter. *)
+    the null callback of the error reporter. They also share the slots
+    of the wide jump table, which a stream reads once it is wide. *)
 Definition hello_ro : iProp Σ :=
   vtables_ro ge (ho_vb o) (ho_vreg o) ∗ single_ro ge (ho_sb o) (ho_sreg o) ∗
   liveq DfracDiscarded (ho_so o) (ho_soreg o) ∗ pcellq DfracDiscarded (ho_so o) 0 (ho_out o) ∗
@@ -222,11 +223,14 @@ Definition hello_ro : iProp Σ :=
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
   ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro ∗
-  print_fmt_ro.
+  print_fmt_ro ∗ wvtables_ro ge (ho_vb o).
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /print_fmt_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type.
+  rewrite /hello_ro /version_ro /str_ro /error_progname_ro /print_fmt_ro /AL.tcache_idle /liveq /pcellq /icellq
+    /wvtables_ro. apply _.
+Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)

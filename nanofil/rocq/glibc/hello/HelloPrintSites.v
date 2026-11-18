@@ -58,7 +58,7 @@ Qed.
     [hello_ro] holds it with those bytes. *)
 Lemma print_fmt n bs : In (n, bs) print_fmts -> hello_ro ge o ⊢ word_string DfracDiscarded (sym_ptr ge n) bs.
 Proof using Type.
-  intros Hin. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hf)".
+  intros Hin. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hf & _)".
   iApply (big_sepL_elem_of (fun ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ (n, bs) with "Hf").
   apply list_elem_of_In. exact Hin.
 Qed.

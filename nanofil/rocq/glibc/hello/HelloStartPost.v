@@ -28,7 +28,7 @@ From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic HelloName.
-From Glibc Require Import OsBlocks OsWorld FileInv FileIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
+From Glibc Require Import OsBlocks OsWorld FileInv FileIdle LibioWIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
 From Glibc Require AllocLogic AtexitLogic ExitRun HelloGlibcJoin.
@@ -261,6 +261,14 @@ Proof using Hi.
   vm_compute. reflexivity.
 Qed.
 
+(** The wide jump table of the frame holds ge's wide file functions. *)
+Lemma hello_wjumps_syms : hello_wjumps_kept_ps =
+  List.concat ((fun sl : Z * string => hello_pointer_ps (ho_vb o) (vt_wfile + sl.1) (sym_ptr ge sl.2)) <$> wfile_jumps).
+Proof using Hi.
+  destruct (hello_loaded_tables g m Hi) as [Eg _]. unfold sym_ptr. cbn [ge_globals]. rewrite Eg.
+  vm_compute. reflexivity.
+Qed.
+
 (** We want main to start from what startup leaves behind. This lemma
     shows that startup's memory and the thread's cleanup fields are
     enough. *)
@@ -290,7 +298,7 @@ Proof using Hi.
   iDestruct "Hl3" as "(#Hlp & #Htp & #Hkey & _)". iEval (rewrite E3) in "Hlp". iEval (rewrite E4) in "Htp".
   iEval (rewrite /hello_io_kept_ps pts_concat; cbn [big_opL]) in "Hio".
   iDestruct "Hio" as "(Ser & Sout & Sin & Lso & Hso & Lse & Hse & Hjmp & Lpn & Hpn & Loa & Hoa & Loi & Hoi &
-    Wer & Wout & _)".
+    Wer & Wout & Hwj & _)".
   iDestruct (hello_start_file_own _ _ _ _ _ _ _ _ (ow_self w) with "Lo Vo Sout Wout") as "Fo";
     [vm_compute; intuition congruence..|].
   iDestruct (hello_start_stdin_own with "Li Sin") as "Fi";
@@ -301,8 +309,9 @@ Proof using Hi.
   iMod (ptsq_persist with "Lse") as "#Lse". iMod (ptsq_persist with "Hse") as "#Hse".
   iMod (ptsq_persist with "Lvt") as "#Lvt". iMod (ptsq_persist with "Hjmp") as "#Hjmp".
   iMod (ptsq_persist with "Lsb") as "#Lsb". iMod (ptsq_persist with "Hsb") as "#Hsb".
-  iMod (ptsq_persist with "Leb") as "#Leb".
+  iMod (ptsq_persist with "Leb") as "#Leb". iMod (ptsq_persist with "Hwj") as "#Hwj".
   iEval (rewrite Ej ptsq_concat big_sepL_fmap) in "Hjmp".
+  iEval (rewrite hello_wjumps_syms ptsq_concat big_sepL_fmap) in "Hwj".
   iModIntro. rewrite /hello_start_main_res.
   iSplitR.
   { rewrite /hello_ro_rest.
@@ -320,6 +329,7 @@ Proof using Hi.
     iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iSplitR; [iExact "Hepn"|].
     iAssert ([∗ list] ns ∈ (fun ns : string * list Z * list Z => (ns.1.1, ns.1.2)) <$> take 24 (drop 3 hello_lit_strs),
       word_string DfracDiscarded (sym_ptr ge ns.1) ns.2)%I as "#Hlf"; [rewrite big_sepL_fmap; iExact "Hlr"|].
+    iSplitR; [|iExact "Hwj"].
     rewrite /print_fmt_ro /print_fmts. cbn [big_opL].
     iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 17
       ("hello#str.77"%string, [37; 115; 58; 32; 37; 115]) with "Hlf"); vm_compute; reflexivity|].
