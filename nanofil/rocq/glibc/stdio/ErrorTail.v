@@ -18,6 +18,82 @@ Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
+Section tail_lend.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+Context (Hreg : holds_os registry) (Hext : sys_external ge).
+
+(** Before the flush, error reads the stderr pointer, and that read
+    needs the stream object to be alive. A caller may hold stderr in a
+    form that hides its region, such as an idle stream. This rule lets
+    such a caller lend the lifetime for the read alone and hand the
+    whole stream to the newline and the flush. *)
+Lemma wp_error_tail_lend {dqs : dfrac} tb treg old sb sreg stderr
+    newline newlinefn newlineframe flushfn flushframe (O R S Q E : iProp Σ)
+    e from status errnum fmt ap mode cb Φ :
+  old = 0 \/ old = 1 -> ow_self w0 = mkPtr tb (Obj tb) ->
+  0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
+  0 < sb -> sb mod 8 = 0 -> sb + 8 <= r_end sreg ->
+  0 <= ptr_addr stderr < 2 ^ 64 ->
+  lookup (TAtom "glibc_error#str.254") (ge_globals ge) = Some newline ->
+  find_fn ge (TAtom "__fxprintf") = Some (Defined newlinefn) ->
+  call_frame newlinefn [WPtr null;WPtr newline] = Some newlineframe ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined flushfn) ->
+  call_frame flushfn [WPtr stderr] = Some flushframe ->
+  (⊢ liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ O -∗ R -∗
+    WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
+      liveq dqs sb sreg ∗ pcellq dqs sb 0 stderr ∗ O ∗ S }}) ->
+  (O ⊢ ∃ dq rreg, live_capq dq (ptr_cap stderr) rreg ∗ (live_capq dq (ptr_cap stderr) rreg -∗ O)) ->
+  (⊢ O -∗ S -∗ WP (ERun flushframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ O ∗ Q }}) ->
+  error_inputs e status errnum fmt ap mode cb -> 0 <= status < 2 ^ 32 ->
+  live tb treg -∗ int_cell tb 792 1 -∗
+  live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ O -∗ R -∗ E -∗
+  ((live tb treg -∗ int_cell tb 792 old -∗
+      live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ O -∗ Q -∗ E -∗ Φ RetVoid) ∧
+    (∀ e', ⌜status <> 0⌝ -∗ ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
+      live tb treg -∗ int_cell tb 792 1 -∗
+      live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ O -∗ Q -∗ E -∗
+      WP (ERun (mkFrame glibc_error_internal e' [] None
+        (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame glibc_error_internal e [] None
+    (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
+Proof using Hext Hreg.
+  intros Hold Hself Htb Hta Hte Htr Hcancel Hgstderr Hsb Hsa Hse Hptr Hnewline Hfx Hfxframe
+    Hflush Hfframe Hnewline_loan Hopen Hflushcall Hinputs Hstatusrange.
+  destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
+  iIntros "Ht Hflag Hcl Hsaved Hsl Hsp HO HR HE HK".
+  step. step.
+  iApply wp_call_bind; [vx | exact Hfx | exact Hfxframe |]. iNext.
+  iApply (wp_wand with "[Hsl Hsp HO HR]"); [iApply (Hnewline_loan with "Hsl Hsp HO HR") |].
+  iIntros (v) "H". iDestruct "H" as (r ->) "(Hsl & Hsp & HO & HS)". resume.
+  step. iApply (wp_live_fit with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
+  check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
+  iDestruct (Hopen with "HO") as (dq rreg) "[Hr Hclose]".
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hr");
+    [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hptr |].
+  iNext. iIntros "Hsl Hsp Hr". iSpecialize ("Hclose" with "Hr").
+  iApply wp_call_bind; [vx | exact Hflush | exact Hfframe |]. iNext.
+  iApply (wp_wand with "[Hclose HS]"); [iApply (Hflushcall with "Hclose HS") |].
+  iIntros (v) "H". iDestruct "H" as (r' ->) "[HO HQ]". resume.
+  destruct (Z.eq_dec status 0) as [Hz | Hz].
+  - branch_as true. iDestruct "HK" as "[HK _]".
+    iApply (wp_error_restore Hreg Hext _ _ status errnum fmt ap mode cb old tb treg
+      (liveq dqs sb sreg ∗ pcellq dqs sb 0 stderr ∗ O ∗ Q ∗ E)%I
+      with "Ht Hflag Hcl Hsaved [$Hsl $Hsp $HO $HQ $HE]"); try assumption.
+    { unfold error_inputs. repeat split; lk_prove. }
+    iIntros "Ht Hflag Hcl Hsaved (Hsl & Hsp & HO & HQ & HE)".
+    iApply ("HK" with "Ht Hflag Hcl Hsaved Hsl Hsp HO HQ HE").
+  - branch_as false. iDestruct "HK" as "[_ HK]".
+    iApply ("HK" with "[%] [%] Ht Hflag Hcl Hsaved Hsl Hsp HO HQ HE"); [exact Hz |].
+    unfold error_inputs. repeat split; lk_prove.
+Qed.
+End tail_lend.
+
 Section tail.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
@@ -72,31 +148,10 @@ Lemma wp_error_tail_loan
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
-  intros Hinputs Hstatusrange. destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
-  iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
-  step. step.
-  iApply wp_call_bind; [vx | exact Hfx | exact Hfxframe |]. iNext.
-  iApply (wp_wand with "[Hsl Hsp Hr HR]"); [iApply (Hnewline_loan with "Hsl Hsp Hr HR") |].
-  iIntros (v) "H". iDestruct "H" as (r ->) "(Hsl & Hsp & Hr & HS)". resume.
-  step. iApply (wp_live_fit with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
-  check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hr");
-    [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hptr |].
-  iNext. iIntros "Hsl Hsp Hr".
-  iApply wp_call_bind; [vx | exact Hflush | exact Hfframe |]. iNext.
-  iApply (wp_wand with "[Hr HS]"); [iApply (Hflushcall with "Hr HS") |].
-  iIntros (v) "H". iDestruct "H" as (r' ->) "[Hr HQ]". resume.
-  destruct (Z.eq_dec status 0) as [Hz | Hz].
-  - branch_as true. iDestruct "HK" as "[HK _]".
-    iApply (wp_error_restore Hreg Hext _ _ status errnum fmt ap mode cb old tb treg
-      (liveq dqs sb sreg ∗ pcellq dqs sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ Q ∗ E)%I
-      with "Ht Hflag Hcl Hsaved [$Hsl $Hsp $Hr $HQ $HE]"); try assumption.
-    { unfold error_inputs. repeat split; lk_prove. }
-    iIntros "Ht Hflag Hcl Hsaved (Hsl & Hsp & Hr & HQ & HE)".
-    iApply ("HK" with "Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ HE").
-  - branch_as false. iDestruct "HK" as "[_ HK]".
-    iApply ("HK" with "[%] [%] Ht Hflag Hcl Hsaved Hsl Hsp Hr HQ HE"); [exact Hz |].
-    unfold error_inputs. repeat split; lk_prove.
+  intros Hinputs Hstatusrange.
+  iApply (wp_error_tail_lend Hreg Hext (dqs := dqs) tb treg old sb sreg stderr newline newlinefn newlineframe
+    flushfn flushframe (live_capq dq (ptr_cap stderr) rreg)); try eassumption.
+  iIntros "H". iExists dq, rreg. iFrame "H". iIntros "H". iExact "H".
 Qed.
 
 (** A newline contract that does not use stderr can keep the same ownership

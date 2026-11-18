@@ -1160,6 +1160,7 @@ hello/HelloErrorEnoent.v
 hello/HelloCloseStreamRetain.v
 hello/HelloCloseStream.v
 hello/HelloCloseErrno.v
+hello/HelloErrorOperand.v
 hello/HelloCloseRetain.v
 hello/HelloCloseShort.v
 hello/HelloCloseDispatch.v
