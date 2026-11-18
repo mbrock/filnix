@@ -66,23 +66,24 @@ TAGS = [
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
     (r'fputs_has_spec', 'libio'),
-    (r'build X', 'locale'),
+    (r'build X', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
 SAT = 'satisfiable'
 STATUS = [
     (r'^In [12] |frees_heap|start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
-    (r'hd_setlocale_all', 'unsatisfiable: X lacks __libc_setlocale_lock as rw_state and the read-only C-locale data'),
+    (r'hd_setlocale_all', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads; its lock '
+                          'is reachable by opening the getopt state with hello_stdio (hello_hd_lend)'),
     (r'hd_setlocale_query', SAT),
     (r'hd_print|hd_error_operand', SAT),
-    (r'hd_mbsrtowcs', 'unknown: X now owns the conversion constants (84ff6e13), but the __libc_tsd_LOCALE '
-                      'cell it reads sits inside the getopt wand, not yet as a read share'),
+    (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
+                      'by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
     (r'vfprintf_has_spec|fputs_has_spec', SAT),
-    (r'build X', 'unsatisfiable: X lacks the setlocale lock as rw_state and the read-only C-locale data that setlocale reads'),
+    (r'build X', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',

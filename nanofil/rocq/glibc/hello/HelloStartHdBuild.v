@@ -99,7 +99,7 @@ Proof using Hself Hfd2.
   iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & (%cbb & %creg & %cws & %Csh & Cl & _) & _)".
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
-  iExists (v mod 2 ^ 32, t, creg). iSplit; [iPureIntro; cbn; apply Z.mod_pos_bound; lia|].
+  iExists (v mod 2 ^ 32, t, creg). iSplit; [iPureIntro; cbn; split; [apply Z.mod_pos_bound | ]; lia|].
   iIntros "((%tb2 & %tbreg & %jb & %Hc & Hl & Hcl & Hj & Hx) & (%bs & He) & Hps)".
   destruct Hc as (Hs & Hc). rewrite Hself in Hs. injection Hs as <-.
   iPoseProof (dtx_live_split (glibc_program := hb_program) tb tbreg) as "[Hb _]".

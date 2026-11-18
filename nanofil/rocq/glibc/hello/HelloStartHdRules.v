@@ -41,7 +41,7 @@ Context (tb : Z).
 
 (** After a report, T holds the same resources as G. *)
 Definition hello_getopt_T : ptr -> ptr -> iProp Σ := fun mid q =>
-  (∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32⌝ ∗
+  (∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32 /\ 0 < x.1.2⌝ ∗
     hello_dg_T w fr (ct_lt hello_ct_objs) 0 (ct_ltreg hello_ct_objs) (DfracOwn 1) (mkPtr gl (Obj gl)) gl
       (ct_glreg hello_ct_objs) (DfracOwn 1) DfracDiscarded DfracDiscarded x.2
       (mkPtr (img_a "_nl_C_name") (Ro (img_a "_nl_C_name"))) (DfracOwn (1/2)) (DfracOwn (1/2/2)) (DfracOwn (1/2/2))
@@ -59,12 +59,12 @@ Theorem hello_hd_rules (N : iProp Σ) :
 Proof using Hfr Herr Hvf.
   pose proof hello_locale_cells as Hloc.
   split; [apply getopt_diag_rule_sep_l|split; [apply getopt_ldiag_rule_sep_l|]].
-  - apply (getopt_diag_rule_ex w glibc_os_registry hge (fun x : Z * Z * region => 0 <= x.1.1 < 2 ^ 32) _ _ _ _
-      (0, 0, mkRegion 0 0 Heap Live)); [cbn; lia|].
-    intros [[v tid] treg] Hv. exact (hello_dg_diag w fr Hfr Herr _ _ _ _ _ _ _ _ _ _ _ _ Hloc _ _ _ _ _ v tid Hv).
-  - apply (getopt_ldiag_rule_ex w glibc_os_registry hge (fun x : Z * Z * region => 0 <= x.1.1 < 2 ^ 32) _ _ _ _
-      (0, 0, mkRegion 0 0 Heap Live)); [cbn; lia|].
-    intros [[v tid] treg] Hv. exact (hello_dg_ldiag w fr Hfr Herr _ _ _ _ _ _ _ _ _ _ _ _ Hloc _ _ _ _ _ v tid Hv).
+  - apply (getopt_diag_rule_ex w glibc_os_registry hge (fun x : Z * Z * region => 0 <= x.1.1 < 2 ^ 32 /\ 0 < x.1.2) _ _ _ _
+      (0, 1, mkRegion 0 0 Heap Live)); [cbn; lia|].
+    intros [[v tid] treg] Hv. exact (hello_dg_diag w fr Hfr Herr _ _ _ _ _ _ _ _ _ _ _ _ Hloc _ _ _ _ _ v tid (proj1 Hv)).
+  - apply (getopt_ldiag_rule_ex w glibc_os_registry hge (fun x : Z * Z * region => 0 <= x.1.1 < 2 ^ 32 /\ 0 < x.1.2) _ _ _ _
+      (0, 1, mkRegion 0 0 Heap Live)); [cbn; lia|].
+    intros [[v tid] treg] Hv. exact (hello_dg_ldiag w fr Hfr Herr _ _ _ _ _ _ _ _ _ _ _ _ Hloc _ _ _ _ _ v tid (proj1 Hv)).
   - iIntros "[HN (%x & %Hx & HG)]". iDestruct (hello_dg_lend with "HG") as "[Hc Hb]". iFrame "Hc".
     iIntros "Hc". iFrame "HN". iExists x. iSplit; [done | iApply ("Hb" with "Hc")].
 Qed.

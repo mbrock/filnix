@@ -62,14 +62,17 @@ Local Abbreviation err_idle := (file_idle (ho_vb ob) self (ho_err ob) 2).
 (** Between two calls, Hello's open streams keep the thread's cleanup
     fields, errno and stderr. The private state keeps everything else
     that a warning needs, and it gets those three back for each
-    warning. *)
+    warning. Every call that receives the private state also receives
+    the streams, so it can open this state the same way; setlocale does
+    so to take the write lock. The thread's id is positive, so a lock
+    that setlocale leaves with no writer is again ready for a reader. *)
 Definition hello_hd_getopt : iProp Σ :=
-  ∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32⌝ ∗
+  ∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32 /\ 0 < x.1.2⌝ ∗
     (tcb_cleanup_inv self ∗ errno_any eb ∗ err_idle -∗ hello_dgx x.1.1 x.1.2 x.2).
 
 (** A caller does not know the flag, the id or that region, so the
     resource that the warnings borrow hides all three. *)
-Definition hello_getopt_E : iProp Σ := ∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32⌝ ∗ hello_dgx x.1.1 x.1.2 x.2.
+Definition hello_getopt_E : iProp Σ := ∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32 /\ 0 < x.1.2⌝ ∗ hello_dgx x.1.1 x.1.2 x.2.
 
 (** ## Lending the streams *)
 
