@@ -263,7 +263,8 @@ Qed.
     shows that startup's memory and the thread's cleanup fields are
     enough. *)
 Lemma hello_start_post_main w av ar p0 ps y z :
-  hello_start_post av ar p0 ps y z -∗ tcb_cleanup_inv (ow_self w) ==∗ hello_start_main_res w av ar p0 ps y z.
+  hello_start_post av ar p0 ps y z -∗ tcb_cleanup_inv (ow_self w) -∗ error_progname_ro ge -∗ error_count ge ==∗
+  hello_start_main_res w av ar p0 ps y z.
 Proof using Hi.
   pose proof hello_jumps_syms as Ej.
   assert (E3 : sym_ptr ge "progname#str.3" = ho_lp o /\ sym_ptr ge "progname#str.4" = ho_tp o).
@@ -276,7 +277,7 @@ Proof using Hi.
   destruct E3 as [E3 E4]. destruct Pv as [Pv Ps].
   rewrite /hello_start_post /hello_start_kept_ps.
   iIntros "(Hk & Hlist & (Le & Lo & Li & _) & Vi & Vo & Ve & Lvt & Lsb & Hsb & Leb & Herr & Lmp &
-    Lnb & Hnb & Lns & Hns & #Hargs & Hav) Htcb".
+    Lnb & Hnb & Lns & Hns & #Hargs & Hav) Htcb #Hepn Hec".
   iDestruct (pts_app with "Hk") as "[Hal Hk]". iDestruct (pts_app with "Hk") as "[Hex Hk]".
   iDestruct (pts_app with "Hk") as "[Hst Hk]". iDestruct (pts_app with "Hk") as "[Hio Hlit]".
   iDestruct (hello_alloc_kept_own with "Lmp Hal") as "HM". iMod (tcache_idle_discard with "HM") as "#HM".
@@ -314,7 +315,7 @@ Proof using Hi.
     iSplit.
     { rewrite -hello_lit_rest_names big_sepL_fmap. iApply (big_sepL_mono with "Hlr").
       iIntros (k ns _) "H". iExists _. iExact "H". }
-    rewrite /version_ro -hello_lit_version big_sepL_fmap. iExact "Hlv". }
+    iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iExact "Hepn". }
   iSplitR; [iExact "Hkey"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
   iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Lpn Hpn Lnb Hnb Lns Hns".
@@ -323,7 +324,7 @@ Proof using Hi.
   iSplitL "Hxi Hxl"; [iSplitL "Hxi"; [iExact "Hxi"|iExact "Hxl"]|].
   iSplitR "Loa Hoa Loi Hoi".
   { rewrite /hello_stdio. iSplitL "Fo"; [iExact "Fo"|]. iSplitL "Fe"; [iExact "Fe"|].
-    iSplitL "Fi"; [iExact "Fi"|]. iSplitL "Hlist"; [iExact "Hlist"|]. iSplitL "Htcb"; [iExact "Htcb"|iExact "Herr"]. }
+    iSplitL "Fi"; [iExact "Fi"|]. iSplitL "Hlist"; [iExact "Hlist"|]. iSplitL "Htcb"; [iExact "Htcb"|]. iSplitL "Herr"; [iExact "Herr"|iExact "Hec"]. }
   rewrite /getopt_cells. iSplitL "Loa"; [iExact "Loa"|]. iSplitL "Hoa"; [iExact "Hoa"|].
   iSplitL "Loi"; [iExact "Loi"|]. rewrite /int_cell. iSplitR; [iPureIntro; lia|iExact "Hoi"].
 Qed.

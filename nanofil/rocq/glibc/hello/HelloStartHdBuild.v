@@ -80,22 +80,22 @@ Qed.
     include the thread's three table pointers, which early init has set. *)
 Definition hello_hd_rest : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ hello_getopt_ro ∗ pts hello_close_objs_ps ∗ pts hello_locale_objs_ps ∗
-  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps ∗ pts hello_error_objs_ps.
+  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps.
 
 (** Startup leaves these objects, and they become the reports' part of
     the private state and the rest. *)
 Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ pts hello_close_objs_ps -∗ pts hello_locale_objs_ps -∗
-  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗ pts hello_error_objs_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
+  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
 Proof using Hself Hfd2.
-  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Her Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
+  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
   iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb)]";
     [reflexivity|].
-  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb Her".
+  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb".
   2: { iSplitL "Pgl"; [iExact "Pgl"|]. iSplitR; [iExact "Ro"|]. iSplitL "Hco"; [iExact "Hco"|].
-       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iSplitL "Hmb"; [iExact "Hmb" | iExact "Her"]. }
+       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iExact "Hmb". }
   iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & (%cbb & %creg & %cws & %Csh & Cl & _) & _)".
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
@@ -150,15 +150,9 @@ Section error_objs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 
 Lemma hello_error_objs_own (ge : genv) : ge_globals ge = img_globals ->
-  pts hello_error_objs_ps ==∗
-  (∃ pb preg, ⌜lookup (TAtom "error_print_progname") (ge_globals ge) = Some (mkPtr pb (Obj pb)) /\
-      pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 63⌝ ∗
-    liveq DfracDiscarded pb preg ∗ pcellq DfracDiscarded pb 0 null) ∗
-  (∃ cb creg n, ⌜lookup (TAtom "error_message_count") (ge_globals ge) = Some (mkPtr cb (Obj cb)) /\
-      cb mod 4 = 0 /\ cb + 4 <= r_end creg /\ r_end creg <= 2 ^ 63⌝ ∗
-    live cb creg ∗ int_cell cb 0 n).
+  pts hello_error_objs_ps ==∗ error_progname_ro ge ∗ error_count ge.
 Proof using Type.
-  intros Hg. rewrite /hello_error_objs_ps pts_app. iIntros "[Hc Hp]".
+  intros Hg. rewrite /error_progname_ro /error_count /hello_error_objs_ps pts_app. iIntros "[Hc Hp]".
   iAssert (live (img_ob "error_print_progname").1 (img_ob "error_print_progname").2 ∗
     pcell (img_ob "error_print_progname").1 0 null)%I with "[Hp]" as "[Lp Pp]".
   { rewrite obj_ps_own. cbn [fst snd].

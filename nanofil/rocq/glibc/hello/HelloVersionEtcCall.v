@@ -63,21 +63,21 @@ Proof using Type*.
   destruct (version_etc_triple w0 ge o Hk Hl Hv Herr Hfd (sym_ptr ge "hello#str.70") (sym_ptr ge "hello#str.63")
     (sym_ptr ge "hello#str.71") q1 q2 q3 q4
     ((file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗ (HelloGlibcDebts.FB.stream_life (ho_in o) ∗ HelloGlibcDebts.FB.exit_stream false (ho_in o)) ∗
-      io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗ tcb_cleanup_inv (ow_self w0)) ∗ P)%I)
+      io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗ tcb_cleanup_inv (ow_self w0) ∗ error_count ge) ∗ P)%I)
     as (f & Hg & Hfr & Ht).
   exists f. split; [exact Hg|]. split; [exact Hfr|]. intros fr Φ Hf.
-  iIntros "(#Hro & (Hout & Hse & Hin & Hio & Htcb & He) & HP & #Q1 & #Q2 & #Q3 & #Q4) HK".
-  iApply (Ht fr Φ Hf with "[Hout Hse Hin Hio Htcb He HP]").
+  iIntros "(#Hro & (Hout & Hse & Hin & Hio & Htcb & He & Hec) & HP & #Q1 & #Q2 & #Q3 & #Q4) HK".
+  iApply (Ht fr Φ Hf with "[Hout Hse Hin Hio Htcb He Hec HP]").
   - iSplitR; [iExact "Hro"|]. iSplitL "Hout"; [iExact "Hout"|]. iSplitL "He"; [iExact "He"|].
     iSplitR; [iApply (hello_lit_ro with "Hro"); cbn; tauto|].
     iSplitR; [iApply (hello_lit_ro with "Hro"); cbn; tauto|].
     iSplitR; [iApply (hello_lit_ro with "Hro"); cbn; tauto|].
     iSplitR; [iExact "Q1"|]. iSplitR; [iExact "Q2"|]. iSplitR; [iExact "Q3"|]. iSplitR; [iExact "Q4"|].
     iSplitR "HP"; [|iExact "HP"]. iSplitL "Hse"; [iExact "Hse"|]. iSplitL "Hin"; [iExact "Hin"|].
-    iSplitL "Hio"; [iExact "Hio" | iExact "Htcb"].
-  - iIntros (r) "(-> & Hout & He & (Hse & Hin & Hio & Htcb) & HP)". iApply "HK".
+    iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb" | iExact "Hec"].
+  - iIntros (r) "(-> & Hout & He & (Hse & Hin & Hio & Htcb & Hec) & HP)". iApply "HK".
     iSplitR; [done|]. iSplitR "HP"; [|iExact "HP"]. iSplitL "Hout"; [iExact "Hout"|]. iSplitL "Hse"; [iExact "Hse"|].
-    iSplitL "Hin"; [iExact "Hin"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb" | iExact "He"].
+    iSplitL "Hin"; [iExact "Hin"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb"|]. iSplitL "He"; [iExact "He" | iExact "Hec"].
 Qed.
 
 (** The bug-report address is printed in the same way. *)
@@ -88,17 +88,17 @@ Proof using Type*.
   destruct (emit_bug_triple w0 ge o Hy Hk Hl Herr Hfd
     ((file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗
       (HelloGlibcDebts.FB.stream_life (ho_in o) ∗ HelloGlibcDebts.FB.exit_stream false (ho_in o)) ∗
-      io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗ tcb_cleanup_inv (ow_self w0)) ∗ P)%I)
+      io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗ tcb_cleanup_inv (ow_self w0) ∗ error_count ge) ∗ P)%I)
     as (f & Hg & Hfr & Ht).
   exists f. split; [exact Hg|]. split; [exact Hfr|]. intros fr Φ Hf.
-  iIntros "(#Hro & (Hout & Hse & Hin & Hio & Htcb & He) & HP) HK".
-  iApply (Ht fr Φ Hf with "[Hout Hse Hin Hio Htcb He HP]").
+  iIntros "(#Hro & (Hout & Hse & Hin & Hio & Htcb & He & Hec) & HP) HK".
+  iApply (Ht fr Φ Hf with "[Hout Hse Hin Hio Htcb He Hec HP]").
   - iSplitR; [iExact "Hro"|]. iSplitL "Hout"; [iExact "Hout"|]. iSplitL "He"; [iExact "He"|].
     iSplitR "HP"; [|iExact "HP"]. iSplitL "Hse"; [iExact "Hse"|]. iSplitL "Hin"; [iExact "Hin"|].
-    iSplitL "Hio"; [iExact "Hio" | iExact "Htcb"].
-  - iIntros (r) "(-> & Hout & He & (Hse & Hin & Hio & Htcb) & HP)". iApply "HK".
+    iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb" | iExact "Hec"].
+  - iIntros (r) "(-> & Hout & He & (Hse & Hin & Hio & Htcb & Hec) & HP)". iApply "HK".
     iSplitR; [done|]. iSplitR "HP"; [|iExact "HP"]. iSplitL "Hout"; [iExact "Hout"|]. iSplitL "Hse"; [iExact "Hse"|].
-    iSplitL "Hin"; [iExact "Hin"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb" | iExact "He"].
+    iSplitL "Hin"; [iExact "Hin"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb"|]. iSplitL "He"; [iExact "He" | iExact "Hec"].
 Qed.
 
 (** Both print calls hold for any private state of the callees. *)

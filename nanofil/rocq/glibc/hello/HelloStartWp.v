@@ -303,8 +303,12 @@ Proof using Hi.
   rewrite /ei_lives /pm_lives /pm_fields /im_names. cbn [im_pn im_pnreg im_pf im_pfreg hello_init_misc_objs].
   iDestruct "Ei" as "(Lst & _)". iDestruct "Pf" as "(_ & Eb & _)".
   iDestruct "Pml" as "(_ & Leb & _ & _ & _ & _ & Lmp & _)". iDestruct "Nms" as "(Lpn & Hpn & Lpf & Hpf)".
+  iEval (rewrite /hello_priv_ps) in "Hpriv". iDestruct (pts_app with "Hpriv") as "[Hpriv Hco]".
+  iDestruct (pts_app with "Hco") as "[Hco Hlo]". iDestruct (pts_app with "Hlo") as "[Hlo Hmb]". iDestruct (pts_app with "Hmb") as "[Hmb Her]".
+  (* The globals of error go to the read-only promise and to the streams. *)
+  iMod (hello_error_objs_own hge eq_refl with "Her") as "[#Hepn Hec]".
   iMod (hello_start_post_main img_globals m0 fr Hi (final_world w0 tb) avb (reg_of m avb) p0 ps p0 (short_name p0 q0s)
-    with "[Hkept Io Sl Ci Co Ce Lv Lst St Leb Eb Lmp Lpn Hpn Lpf Hpf Hav] Tci") as "Hres".
+    with "[Hkept Io Sl Ci Co Ce Lv Lst St Leb Eb Lmp Lpn Hpn Lpf Hpf Hav] Tci Hepn Hec") as "Hres".
   { rewrite /hello_start_post.
     iSplitL "Hkept"; [iExact "Hkept"|]. iSplitL "Io"; [iExact "Io"|]. iSplitL "Sl"; [iExact "Sl"|]. iSplitL "Ci"; [iExact "Ci"|]. iSplitL "Co"; [iExact "Co"|]. iSplitL "Ce"; [iExact "Ce"|]. iSplitL "Lv"; [iExact "Lv"|]. iSplitL "Lst"; [iExact "Lst"|].
     iSplitL "St"; [iExact "St"|]. iSplitL "Leb"; [iExact "Leb"|]. iSplitL "Eb"; [iExact "Eb"|]. iSplitL "Lmp"; [iExact "Lmp"|]. iSplitL "Lpf"; [iExact "Lpf"|]. iSplitL "Hpf"; [iExact "Hpf"|]. iSplitL "Lpn"; [iExact "Lpn"|]. iSplitL "Hpn"; [iExact "Hpn"|].
@@ -322,9 +326,7 @@ Proof using Hi.
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
   iDestruct "Hes" as (sv) "Hes".
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
-  iEval (rewrite /hello_priv_ps) in "Hpriv". iDestruct (pts_app with "Hpriv") as "[Hpriv Hco]".
-  iDestruct (pts_app with "Hco") as "[Hco Hlo]". iDestruct (pts_app with "Hlo") as "[Hlo Hmb]". iDestruct (pts_app with "Hmb") as "[Hmb Her]".
-  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco Hlo Cl Ccells Hmb Her [Les] [Hes] Htid Hrr Loc")
+  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco Hlo Cl Ccells Hmb [Les] [Hes] Htid Hrr Loc")
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
   iDestruct "Hrest" as "(Hgl & #Hgro & Hcr)".
   iAssert (hello_printf_ro hge) as "#Hpr".

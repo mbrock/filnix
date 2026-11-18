@@ -135,15 +135,36 @@ Qed.
 (** The pointer identifies a read-only string whose bytes need not be specified. *)
 Definition str_ro (q : ptr) : iProp Σ := ∃ s, word_string DfracDiscarded q s.
 
+(** glibc's `c: error` counts the errors it reports in the global
+    `c: error_message_count`. Each report adds one, so the thread owns
+    the cell at whatever count it holds. *)
+Definition error_count : iProp Σ :=
+  ∃ cb creg n, ⌜lookup (TAtom "error_message_count") (ge_globals ge) = Some (mkPtr cb (Obj cb)) /\
+      cb mod 4 = 0 /\ cb + 4 <= r_end creg /\ r_end creg <= 2 ^ 63⌝ ∗
+    live cb creg ∗ int_cell cb 0 n.
+
+(** glibc's `c: error` prints the program name itself unless the
+    global `c: error_print_progname` names a function to do it. Hello
+    never sets that global, so it stays null and is read-only. *)
+Definition error_progname_ro : iProp Σ :=
+  ∃ pb preg, ⌜lookup (TAtom "error_print_progname") (ge_globals ge) = Some (mkPtr pb (Obj pb)) /\
+      pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 63⌝ ∗
+    liveq DfracDiscarded pb preg ∗ pcellq DfracDiscarded pb 0 null.
+
+(** The callback global is persistent. Stating the instance here keeps
+    proof search from unfolding the program's globals. *)
+Global Instance error_progname_ro_persistent : Persistent error_progname_ro.
+Proof using Type. rewrite /error_progname_ro /liveq /pcellq. apply _. Qed.
+
 (** Between two library calls, the thread owns the three standard
     streams and the list that links them. It also owns its cleanup
-    fields and errno. Stdout and stderr are idle on descriptors 1 and 2.
-    Hello never reads stdin, so stdin stays in the form that the exit
-    path's cleanup reads. *)
+    fields, errno and the count of reported errors. Stdout and stderr
+    are idle on descriptors 1 and 2. Hello never reads stdin, so stdin
+    stays in the form that the exit path's cleanup reads. *)
 Definition hello_stdio : iProp Σ :=
   file_idle (ho_vb o) (ow_self w0) (ho_out o) 1 ∗ file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗
   (stream_life (ho_in o) ∗ exit_stream false (ho_in o)) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
-  tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
+  tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o) ∗ error_count.
 
 (** Once a call orients stdout wide, the thread owns the wide stream
     out in place of stdout's narrow [file_idle], and the rest of
@@ -151,7 +172,7 @@ Definition hello_stdio : iProp Σ :=
 Definition hello_stdio_wide (out : iProp Σ) : iProp Σ :=
   out ∗ file_idle (ho_vb o) (ow_self w0) (ho_err o) 2 ∗
   (stream_life (ho_in o) ∗ exit_stream false (ho_in o)) ∗ io_list_inv ge [ho_err o; ho_out o; ho_in o] ∗
-  tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o).
+  tcb_cleanup_inv (ow_self w0) ∗ errno_any (ho_eb o) ∗ error_count.
 
 (** The strings of gnulib's version text and bug-report lines, listed
     in [HelloVersionLits](HelloVersionLits.v), are read-only and hold
@@ -174,7 +195,8 @@ Global Instance hello_printf_ro_persistent : Persistent hello_printf_ro.
 Proof using Type. apply printf_ro_persistent. Qed.
 
 (** Calls share read-only ownership of the linked constants, stream
-    pointers, errno lifetime, allocator prelude and program literals. *)
+    pointers, errno lifetime, allocator prelude, program literals and
+    the null callback of the error reporter. *)
 Definition hello_ro : iProp Σ :=
   vtables_ro ge (ho_vb o) (ho_vreg o) ∗ single_ro ge (ho_sb o) (ho_sreg o) ∗
   liveq DfracDiscarded (ho_so o) (ho_soreg o) ∗ pcellq DfracDiscarded (ho_so o) 0 (ho_out o) ∗
@@ -182,11 +204,11 @@ Definition hello_ro : iProp Σ :=
   liveq DfracDiscarded (ho_eb o) (ho_ereg o) ∗
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
-  ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro.
+  ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro.
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof using Type. rewrite /hello_ro /version_ro /str_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)

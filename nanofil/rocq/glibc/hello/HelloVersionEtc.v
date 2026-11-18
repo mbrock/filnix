@@ -125,7 +125,7 @@ Proof using Herr Hfd Hk Hfprintf.
     cbn [pf_vb pf_fp pf_fd pf_fmt pf_dq pf_bytes pf_ds pf_ys pf_rest pf_eb ve_program program_of program_world program_ge].
     iSplit; [iPureIntro; split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | exact Hs | exact Herr | exact Hfd |
       exact (hk_errno_at _ _ Hk)]|].
-    iPoseProof "Hro" as "(Hvt & Hsg & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hpr)".
+    iPoseProof "Hro" as "(Hvt & Hsg & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hpr & _)".
     iFrame "Hout He Hys". iSplitR; [iApply (version_lit _ _ _ Hin with "Hro")|].
     iSplitR; [iExact "Hpr"|]. iSplitR; [iExists _, _, _; iFrame "Hvt Hsg"|].
     iApply (malloc_ro_of_hello_ro with "Hro"); exact Hk. }

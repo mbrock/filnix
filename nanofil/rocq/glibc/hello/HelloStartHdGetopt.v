@@ -113,13 +113,14 @@ Lemma hello_hd_lend (N X : iProp Σ) :
   hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X) ⊢
     (N ∗ hello_getopt_E) ∗ (N ∗ hello_getopt_E -∗ hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X)).
 Proof using Hfd2.
-  iIntros "[(Ho & He & Hi & Hl & Ht & Hn) (HN & (%x & %Hx & Hw) & HX)]".
+  iIntros "[(Ho & He & Hi & Hl & Ht & Hn & Hc) (HN & (%x & %Hx & Hw) & HX)]".
   iDestruct ("Hw" with "[Ht Hn He]") as "HG"; [iFrame "Ht He"; iExact "Hn"|].
   iSplitL "HN HG"; [iFrame "HN"; iExists x; iSplit; [done | iExact "HG"]|].
   iIntros "[HN (%y & %Hy & HG)]". iDestruct (hello_dgx_lend with "HG") as "(Ht & Hn & Hv & Hb)".
   iSplitR "HN Hb HX".
   { iSplitL "Ho"; [iExact "Ho"|]. iSplitL "Hv"; [iExact "Hv"|].
-    iSplitL "Hi"; [iExact "Hi"|]. iSplitL "Hl"; [iExact "Hl"|]. iSplitL "Ht"; [iExact "Ht" | iExact "Hn"]. }
+    iSplitL "Hi"; [iExact "Hi"|]. iSplitL "Hl"; [iExact "Hl"|]. iSplitL "Ht"; [iExact "Ht"|].
+    iSplitL "Hn"; [iExact "Hn" | iExact "Hc"]. }
   iSplitL "HN"; [iExact "HN"|]. iSplitR "HX"; [iExists y; iSplit; [done | iExact "Hb"] | iExact "HX"].
 Qed.
 
