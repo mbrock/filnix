@@ -51,7 +51,7 @@ Local Lemma wide_flags fp : file_wide ge vb self fp 1 ⊢ ∃ fb fr fl f2,
 Proof using Type.
   iIntros "(%fb & %fr & %st & %nb & %wd & %w & %tw & %tm & %Hp & Hl & Hfields & Hrest)".
   pose proof Hp as (Hfp & Ha & Hb & He & Hr & Hok & Hid & _).
-  destruct Hok as (_ & _ & _ & _ & _ & Hnl & _).
+  destruct Hok as (_ & _ & _ & _ & _ & Hnl).
   destruct Hid as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hnw & _).
   specialize (Hnw ltac:(lia)). change (negb (Z.land (fs_flags st) 8 =? 0) = false) in Hnw.
   apply Bool.negb_false_iff, Z.eqb_eq in Hnw.

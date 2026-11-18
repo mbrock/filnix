@@ -99,26 +99,37 @@ Inductive wbuf : Type :=
 | WbShort
 | WbHeap (wb wsz : Z).
 
-(** [wbuf_ptrs_ok] wd w ps says where the eleven wide pointers ps may
-    point for the wide buffer w. The base and end are the buffer's, and
-    the read and write pointers stay inside it. The read pointer, the
-    read end and the write base coincide, because the wide write path
-    never reads and resets all three to the same place. The write base,
-    write pointer and write end are in order, so the pending wide
-    characters lie between the first two. The save, backup and save-end
-    pointers stay null. *)
+(** A wide cursor must stay inside its buffer and on a character
+    boundary, because `c: _IO_wfile_overflow` stores four bytes at the
+    write pointer after testing only that it differs from the buffer's
+    end. The predicate [wcursor] b e c p says that the pointer p into the
+    buffer [b, e) with capability c lies between b and e, a whole number
+    of wide characters past b. *)
+Definition wcursor (b e : Z) (c : cap) (p : ptr) : Prop :=
+  ptr_cap p = c /\ b <= ptr_addr p <= e /\ (ptr_addr p - b) mod 4 = 0.
+
+(** Every path that touches the wide pointers sets the read pointer,
+    the read end, the read base and the write base to the buffer's
+    base, and only the write pointer and the write end move. The write
+    end is the base on a line-buffered or unbuffered stream, so the
+    write pointer can pass it, and is the buffer's end otherwise. The
+    predicate [wbuf_at] b e c ps says this for the buffer [b, e). *)
+Definition wbuf_at (b e : Z) (c : cap) (ps : list ptr) : Prop :=
+  take 4 ps = replicate 4 (mkPtr b c) /\ wcursor b e c (nth 4 ps null) /\ wcursor b e c (nth 5 ps null) /\
+  nth 6 ps null = mkPtr b c /\ nth 7 ps null = mkPtr e c.
+
+(** The predicate [wbuf_ptrs_ok] wd w ps says where the eleven wide
+    pointers ps point for the wide buffer w of the wide data object wd.
+    A stream without a wide buffer has them all null. The short buffer
+    holds one character at wd + 216, and a heap buffer is the object wb
+    of wsz bytes. The save, backup and save-end pointers stay null,
+    because the wide write path never backs up. *)
 Definition wbuf_ptrs_ok (wd : Z) (w : wbuf) (ps : list ptr) : Prop :=
   length ps = 11%nat /\ drop 8 ps = replicate 3 null /\
-  nth 0 ps null = nth 1 ps null /\ nth 1 ps null = nth 3 ps null /\
-  ptr_addr (nth 3 ps null) <= ptr_addr (nth 4 ps null) <= ptr_addr (nth 5 ps null) /\
   match w with
   | WbNone => take 8 ps = replicate 8 null
-  | WbShort =>
-      nth 6 ps null = mkPtr (wd + woff_shortbuf) (Obj wd) /\ nth 7 ps null = mkPtr (wd + woff_shortbuf + 4) (Obj wd) /\
-      Forall (fun p => ptr_cap p = Obj wd /\ wd + woff_shortbuf <= ptr_addr p <= wd + woff_shortbuf + 4) (take 8 ps)
-  | WbHeap wb wsz =>
-      nth 6 ps null = mkPtr wb (Obj wb) /\ nth 7 ps null = mkPtr (wb + wsz) (Obj wb) /\
-      Forall (fun p => ptr_cap p = Obj wb /\ wb <= ptr_addr p <= wb + wsz) (take 8 ps)
+  | WbShort => wbuf_at (wd + woff_shortbuf) (wd + woff_shortbuf + 4) (Obj wd) ps
+  | WbHeap wb wsz => wbuf_at wb (wb + wsz) (Obj wb) ps
   end.
 
 (** Closing a wide stream frees its wide buffer with `c: _IO_wsetb`,
@@ -195,45 +206,84 @@ Definition with_mode0 (st : fstate) : fstate :=
     (fs_lock st) (fs_offset st) (fs_codecvt st) (fs_wide st) (fs_freeres_list st) (fs_freeres_buf st)
     0 (fs_total st) (fs_vtable st).
 
+(** The narrow buffer of a wide stream follows the rules of wide mode,
+    which are not those of an idle narrow stream. The first wide output
+    rewinds the narrow cursors to the buffer's base but sets the narrow
+    write end to the buffer's end, and only a write of converted bytes
+    moves it back, so a wide output that ends without writing leaves it
+    there. And `c: _IO_doallocbuf` calls the wide stream's allocator
+    even when the stream is unbuffered, so an unbuffered wide stream can
+    own a narrow heap buffer, and the terminal test inside
+    `c: _IO_file_doallocate` can make it line-buffered as well. No wide
+    call stores into the narrow buffer through the extra room:
+    `c: _IO_wdo_write` converts through a stack buffer whenever the
+    narrow buffer has fewer than sixteen bytes free.
+
+    The predicate [wflags_ok] st keeps the parts of [flags_ok] that do
+    not concern buffering: the magic, the file-buffer bit, no backup
+    area, and the user-lock and need-lock bits clear. *)
+Definition wflags_ok (st : fstate) : Prop :=
+  0 <= fs_flags st < 2 ^ 32 /\ Z.land (fs_flags st) 4294901760 = io_magic /\
+  has (fs_flags st) io_is_filebuf = true /\ has (fs_flags st) io_in_backup = false /\
+  has (fs_flags st) io_user_lock = false /\ Z.land (fs_flags2 st) io_need_lock = 0.
+
+(** The predicate [wshort_ok] nb st states what wide mode keeps of the
+    narrow buffer nb. A stream that cannot write is not putting. The
+    one-byte short buffer, which only a stream unbuffered before it
+    became wide can have, is marked as a user buffer, so that closing
+    the stream does not free it, and its write pointer is its base. A
+    heap buffer is not a user buffer, so that closing frees it, and its
+    read base and write base are its base. *)
+Definition wshort_ok (nb : nbuf) (st : fstate) : Prop :=
+  (has (fs_flags st) io_no_writes = true -> has (fs_flags st) io_currently_putting = false) /\
+  match nb with
+  | NbShort => has (fs_flags st) io_user_buf = true /\ fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 3 = fs_ptr st 6
+  | NbHeap _ _ => has (fs_flags st) io_user_buf = false /\ fs_ptr st 2 = fs_ptr st 6 /\ fs_ptr st 3 = fs_ptr st 6
+  | NbNone => has (fs_flags st) io_currently_putting = false
+  | NbFreeres _ => True
+  end.
+
+(** An idle narrow stream meets the wide-mode rules, so orienting a
+    stream keeps them. The short buffer's user-buffer mark comes from
+    [flags_ok], since only an unbuffered stream has that buffer. *)
+Lemma idle_wide_rules fb nb st : flags_ok st -> buf_ptrs_ok fb nb (fs_ptrs st) ->
+  short_idle nb st -> wflags_ok st /\ wshort_ok nb st.
+Proof using Type.
+  unfold flags_ok, wflags_ok, short_idle, wshort_ok. intros (? & ? & ? & ? & ? & ? & Hub) Hb Hs.
+  split; [tauto|]. destruct nb; try tauto.
+  destruct Hs as (? & Hu & ? & _ & ?). destruct (Hub Hu) as [|Hn]; [tauto|]. exfalso.
+  destruct Hb as (Hsix & _). unfold fs_ptr in *.
+  rewrite <- (take_drop 8 (fs_ptrs st)), app_nth1, Hn in Hsix;
+    [| rewrite length_take; destruct (Nat.min_spec 8 (length (fs_ptrs st))) as [[? ->]|[? ->]]; try lia;
+       apply (f_equal (@length ptr)) in Hn; rewrite length_take length_replicate in Hn; lia].
+  cbn in Hsix. discriminate.
+Qed.
+
 (** A caller that holds a wide stream between two calls owns all of it,
     as it would own a narrow one. The predicate [file_wide] ge vb self
     fp fd owns the wide stream fp on the descriptor fd: its object, its
     fields, its free lock, its narrow buffer and its wide data. The
-    stream's mode is 1, its jump table is the wide one, and its codecvt
-    pointer names the descriptors inside its wide data. The narrow
-    buffer may still hold bytes written before the stream became wide,
-    because [file_idle] does not rule them out, and the first wide
-    output writes them together with its own. Its `c: _flags2` says whether it owns its wide
-    buffer, as [wbuf_user_ok] states. The descriptors run the C locale's conversion steps,
-    which glibc calls `c: to_wc` and `c: to_mb`. *)
+    narrow buffer obeys the wide-mode rules of [wshort_ok]. It may still
+    hold bytes written before the stream became wide, because
+    [file_idle] does not rule them out, and the first wide output
+    drops them when it rewinds the narrow cursors. The stream's mode is
+    1, its jump table is the wide one, and its codecvt pointer names the
+    descriptors inside its wide data. Its `c: _flags2` says whether it
+    owns its wide buffer, as [wbuf_user_ok] states. The descriptors run
+    the C locale's conversion steps, which glibc calls `c: to_wc` and
+    `c: to_mb`. *)
 Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
   ∃ fb freg st nb wd w tw tm,
     ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
-     fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\
+     fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ wflags_ok st /\
      idle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
      fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
-     short_idle nb st /\ wbuf_user_ok w (fs_flags2 st) /\
+     wshort_ok nb st /\ wbuf_user_ok w (fs_flags2 st) /\
      fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
      lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
      lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗
     wide_data vb tw tm wd w.
-
-(** Several libio proofs, such as the exit path's cleanup, accept any
-    stream that has a valid jump table for its mode. A wide stream is
-    such a stream, because its mode 1 goes with the wide table. This
-    lemma gives the weaker form [file_inv] and forgets the wide data
-    and the buffer's capability slots. *)
-Lemma file_wide_inv ge vb self fp fd : file_wide ge vb self fp fd ⊢ file_inv vb self fp.
-Proof using Type.
-  iIntros "(%fb & %freg & %st & %nb & %wd & %w & %tw & %tm & %Hp & Hl & Hf & Hlk & Hb & _)".
-  destruct Hp as (? & ? & ? & ? & ? & ? & _ & Hm & Hvt & ? & _).
-  iExists fb, freg, st, nb, vt_wfile, None. iFrame "Hl Hf Hlk". iSplit.
-  { iPureIntro. unfold mode_vtable. eauto 20. }
-  destruct nb; cbn; try done.
-  iDestruct "Hb" as (breg xs cs (? & ? & ? & _ & _ & ? & ? & _ & _)) "(Hl & Hx & _)".
-  iExists breg, xs. iFrame. done.
-Qed.
 
 (** ## The wide jump table
 
