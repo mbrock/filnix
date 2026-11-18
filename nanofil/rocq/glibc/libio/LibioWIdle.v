@@ -271,7 +271,9 @@ Qed.
     descriptors inside its wide data. Its `c: _flags2` says whether it
     owns its wide buffer, as [wbuf_user_ok] states. The descriptors run
     the C locale's conversion steps, which glibc calls `c: to_wc` and
-    `c: to_mb`. *)
+    `c: to_mb`. A stream without a narrow buffer has no wide buffer
+    either, because orientation leaves the wide buffer empty and the
+    wide allocation gives the stream a narrow buffer first. *)
 Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
   ∃ fb freg st nb wd w tw tm,
     ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
@@ -281,7 +283,8 @@ Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
      wshort_ok nb st /\ wbuf_user_ok w (fs_flags2 st) /\
      fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
      lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
-     lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm⌝ ∗
+     lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm /\
+     (nb = NbNone -> w = WbNone)⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗
     wide_data vb tw tm wd w.
 
