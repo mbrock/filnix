@@ -74,8 +74,9 @@ Definition hello_wjumps_kept_ps : list (piece * pval) := Eval vm_compute in
     and stderr that point at two of them. It also holds the jump table,
     gnulib's program name, which starts null, and the parser's globals
     optarg, which starts null, and optind, which starts at one. Last
-    come the wide data objects of stderr and stdout, and the slots of
-    the wide jump table. *)
+    come the wide data objects of stderr and stdout, the slots of the
+    wide jump table and the bytes of the greeting's wide format that
+    follow its first word. *)
 Definition hello_io_kept_ps : list (piece * pval) :=
   List.concat [
     hello_stream_kept_ps (img_a "_IO_2_1_stderr_") 4222427270 2 (img_a "glibc_stdfiles#_IO_stdfile_2_lock")
@@ -96,7 +97,8 @@ Definition hello_io_kept_ps : list (piece * pval) :=
       (img_a "__io_vtables");
     hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_1") (img_gd "glibc_stdfiles#_IO_wide_data_1")
       (img_a "__io_vtables");
-    hello_wjumps_kept_ps].
+    hello_wjumps_kept_ps;
+    byte_ps (img_a "hello#str.83") 8 [115; 0; 0; 0; 10; 0; 0; 0; 0; 0; 0; 0]].
 
 (** ## The strings *)
 
