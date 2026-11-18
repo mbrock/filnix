@@ -623,6 +623,7 @@ libio/LibioFlush.v
 libio/LibioFlushOverCall.v
 libio/LibioFputs.v
 libio/LibioFputsSpec.v
+libio/LibioFflushSpec.v
 libio/LibioPutsNl.v
 getopt/GetoptClamp.v
 getopt/GetoptDash.v
