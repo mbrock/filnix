@@ -99,7 +99,7 @@ Proof using Type*.
       with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout _ _ _ _ _ _ Lb) | vx | iFrame].
   - iApply (wp_exit_call_with w0 ge o D X0 X Lb
       (hello_stdio_wide w0 ge o (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1))
-      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hd_close_stdout_wide _ _ _ D) | vx | iFrame].
+      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout_wide _ _ _ _ _ _ Lb) | vx | iFrame].
 Qed.
 
 End tail.
