@@ -47,7 +47,8 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     the n bytes xs at offset o of b, owned at the share dq, left to
     write through a pointer of capability c of b: LibioWrite.v's
     [wp_file_write_loop] at a share. *)
-Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb Φ :
+Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb {src keep} Φ :
+  write_source_life fb freg dq b reg src keep ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
     Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
@@ -61,15 +62,15 @@ Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb Φ :
             lookup (TAtom "pr.1") e = Some (WPtr (mkPtr (b + o + (Z.of_nat (length xs) - t)) c)) /\
             0 <= t <= Z.of_nat (length xs)⌝ -∗
     live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
-    icell fb off_total_written tw -∗ icell fb off_offset off -∗ liveq dq b reg -∗ bytesq dq b o xs -∗ errno_any eb -∗
+    icell fb off_total_written tw -∗ icell fb off_offset off -∗ src -∗ bytesq dq b o xs -∗ errno_any eb -∗
     ▷ (∀ r fl' tw' off', ⌜fw_post (Z.of_nat (length xs)) fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
        live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
-       icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ liveq dq b reg -∗ bytesq dq b o xs -∗ errno_any eb -∗
+       icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ src -∗ bytesq dq b o xs -∗ errno_any eb -∗
        Φ (Ret (WInt r))) -∗
     WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
           : sexpr) {{ Φ }}.
 Proof using Type*.
-  intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hc Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
+  intros Hloan Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hc Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
   iLöb as "IH". iIntros (e t tw off (Hv0 & Hv4 & Ht & Hp & Htr)) "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.
   cbn [fw_L8 b_insts b_jump]. step. destruct (Z.eq_dec t 0) as [-> | Ht0].
@@ -77,7 +78,7 @@ Proof using Type*.
     rewrite Z.sub_0_r. iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr").
     split; [left; split; reflexivity | exact Hflr]. }
   branch_as false.
-  iApply (wp_file_write_join_dq Hreg Hext fb freg f2 fd dq b reg c o xs eb t with "Hl Hfl2 Hfd Hbl Hxs Herr");
+  iApply (wp_file_write_join_dq Hreg Hext fb freg f2 fd dq b reg c o xs eb t _ _ Hloan with "Hl Hfl2 Hfd Hbl Hxs Herr");
     try wside.
   iNext. iIntros (e' k (Hsame & Hc0 & Hk37 & Hk)) "Hl Hfl2 Hfd Hbl Hxs Herr". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   pose proof (Hsame (TAtom "v0") ltac:(auto)) as Hv0'. pose proof (Hsame (TAtom "v4") ltac:(auto)) as Hv4'.
@@ -129,9 +130,41 @@ Lemma wp_glibc__IO_new_file_write_dq fr fb freg fl f2 fd tw off dq b reg c o xs 
 Proof using Type*.
   intros Hfr. injection Hfr as <-. intros. iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK".
   step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
-  iApply (wp_file_write_loop_dq with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try eassumption.
+  iApply (wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb (keep := live fb freg)
+    with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hbl Hxs Herr HK"); try eassumption.
+  { apply bi.sep_comm. }
   assert (Z.of_nat (length xs) < 2 ^ 63) by lia.
   split_and!; try reflexivity; cbn; try (unwrap; lia). do 3 f_equal. arith.
+Qed.
+
+(** An unbuffered stream passes a byte inside its own FILE to the write
+    function. Its lifetime covers both the field accesses and the syscall
+    source. Even an error returns the byte and the same stream lifetime. *)
+Lemma wp_file_write_short fr fb freg fl f2 fd tw off ch eb Φ :
+  call_frame glibc__IO_new_file_write
+    [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (fb + off_shortbuf) (Obj fb)); WInt 1] = Some fr ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  (Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
+  ow_errno w0 = Some (mkPtr eb (Obj eb)) -> 0 <= ch < 256 ->
+  live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+  icell fb off_total_written tw -∗ icell fb off_offset off -∗ bytes fb off_shortbuf [ch] -∗ errno_any eb -∗
+  ▷ (∀ r fl' tw' off', ⌜fw_post 1 fl r fl' /\ 0 <= fl' < 2 ^ 32⌝ -∗
+     live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
+     icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ bytes fb off_shortbuf [ch] -∗ errno_any eb -∗
+     Φ (Ret (WInt r))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hfr. injection Hfr as <-. intros. iIntros "Hl Hfl Hfl2 Hfd Htw Hoff Hch Herr HK".
+  step. step. iApply wp_enter; [reflexivity | reflexivity | iNext].
+  iApply (wp_file_write_loop_dq fb freg fl f2 fd (DfracOwn 1) fb freg (Obj fb) off_shortbuf [ch] eb
+    (src := emp%I) (keep := emp%I) with "[%] Hl Hfl Hfl2 Hfd Htw Hoff [] Hch Herr [HK]");
+    try first [assumption | left; reflexivity | done | unfold file_size, off_shortbuf in *; cbn; lia].
+  - constructor; [assumption | constructor].
+  - split_and!; try reflexivity; cbn; change (1 mod 2^64) with 1; try lia. do 3 f_equal. lia.
+  - iNext. iIntros (r fl' tw' off' Hr) "Hl Hfl Hfl2 Hfd Htw Hoff _ Hch Herr".
+    iApply ("HK" with "[%] Hl Hfl Hfl2 Hfd Htw Hoff Hch Herr"). exact Hr.
 Qed.
 
 End rules.
