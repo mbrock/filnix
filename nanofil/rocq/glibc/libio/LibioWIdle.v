@@ -220,4 +220,42 @@ Proof using Type.
   iExists breg, xs. iFrame. done.
 Qed.
 
+(** ## The wide jump table
+
+    A wide stream's calls go through the wide jump table of
+    `c: __io_vtables`, which starts at [vt_wfile]. The wide printf
+    proof calls the table's xsputn slot directly, so it needs to know
+    which function that slot holds. *)
+
+(** The slots of the wide jump table that Hello's wide path reads, with
+    the function each holds in Hello's image. The table shares its
+    finish, write, close and stat functions with the narrow one. *)
+Definition wfile_jumps : list (Z * string) :=
+  [(slot_finish, "_IO_new_file_finish"); (slot_overflow, "__GI__IO_wfile_overflow");
+   (slot_xsputn, "__GI__IO_wfile_xsputn"); (slot_sync, "__GI__IO_wfile_sync");
+   (slot_doallocate, "_IO_wfile_doallocate");
+   (slot_write, "_IO_new_file_write"); (slot_close, "__GI__IO_file_close");
+   (slot_stat, "__GI__IO_file_stat")].
+
+(** The predicate [wvtables_ro] ge vb holds a persistent read-only
+    share of each slot in [wfile_jumps], as [vtables_ro] does for the
+    narrow table. The share of the table's life comes from
+    [vtables_ro]. *)
+Definition wvtables_ro (ge : genv) (vb : Z) : iProp Σ :=
+  [∗ list] sl ∈ wfile_jumps, pcellq DfracDiscarded vb (vt_wfile + sl.1) (sym_ptr ge sl.2).
+
+(** A caller keeps the shares across every call, because nobody writes
+    the table. *)
+Global Instance wvtables_ro_persistent ge vb : Persistent (wvtables_ro ge vb).
+Proof using Type. rewrite /wvtables_ro /pcellq. apply _. Qed.
+
+(** One slot of the wide table, read from [wvtables_ro]. *)
+Lemma wvtables_slot ge vb sl n :
+  In (sl, n) wfile_jumps -> wvtables_ro ge vb -∗ pcellq DfracDiscarded vb (vt_wfile + sl) (sym_ptr ge n).
+Proof using Type.
+  iIntros (Hin) "Hs". apply list_elem_of_In in Hin.
+  iApply (big_sepL_elem_of (fun sl => pcellq DfracDiscarded vb (vt_wfile + sl.1) (sym_ptr ge sl.2)) _ (sl, n)
+            with "Hs"). exact Hin.
+Qed.
+
 End wide.
