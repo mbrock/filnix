@@ -53,4 +53,13 @@ mapfile -t attrs <"${TMPDIR:-/tmp}/affected.$$"
 rm -f "${TMPDIR:-/tmp}/affected.$$"
 echo "affected.sh: ${#files[@]} edited files; they and their importers are $(grep -c 'model\.vo' <(printf '%s\n' "${attrs[@]}") || true) model and $(grep -c 'glibc.check' <(printf '%s\n' "${attrs[@]}") || true) glibc files, of which Nix compiles those whose inputs changed" >&2
 if [ -n "$list" ]; then printf '%s\n' "${attrs[@]}"; exit 0; fi
-exec nix build -L --no-link --keep-going "${attrs[@]}"
+# Hello's large files take several GB each, and the default parallelism
+# ran a 32 GB orb out of memory. Allow one build per 10 GB of RAM unless
+# NIX_CONFIG already sets max-jobs.
+jobs=()
+if [[ "${NIX_CONFIG:-}" != *max-jobs* ]]; then
+  gb=$(( $(awk '/^MemTotal:/ {print $2}' /proc/meminfo) / 1048576 ))
+  n=$(( gb / 10 )); [ "$n" -ge 1 ] || n=1
+  jobs=(--max-jobs "$n")
+fi
+exec nix build -L --no-link --keep-going "${jobs[@]}" "${attrs[@]}"
