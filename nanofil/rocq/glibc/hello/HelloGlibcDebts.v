@@ -271,8 +271,8 @@ Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y
     stdout in either orientation.
     Milestone M4 covers the other calls, including the close callback.
     In the C locale the conversion of the greeting cannot fail, so main
-    never reaches its fatal error report. Error reporting and the close
-    callback may read the program-name cells. glibc's option parser is
+    never reaches its fatal error report. The close callback may read
+    the program-name cells, and so may an error report. glibc's option parser is
     proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
@@ -290,11 +290,6 @@ Record HelloCore : Type := mkHelloCore {
   hd_print : forall g xs, print_site g xs ->
     fn_triple g xs (hello_ro ∗ hello_stdio ∗ hd_priv ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
       (ret_int (hello_stdio ∗ hd_priv))%I;
-  hd_error_operand : forall q,
-    fn_triple (TAtom "error")
-      [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ names ∗ str_arg (WPtr q))%I
-      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv ∗ names)%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
     fn_triple (TAtom "rpl_mbsrtowcs")
@@ -316,10 +311,12 @@ Record HelloCore : Type := mkHelloCore {
 }.
 
 (** The version text and the bug-report address are printed with
-    `c: fprintf`, `c: printf` and `c: fputs`, and these two calls are
-    proved from the image's code over those contracts. The record
-    [HelloPrints] states them for any private state priv of the
-    callees, because the calls do not touch it. *)
+    `c: fprintf`, `c: printf` and `c: fputs`. An extra operand is
+    reported with `c: error`, which reads the program-name cells and
+    flushes both streams with `c: fflush`. These three calls are proved
+    from the image's code over the contracts of the calls they make.
+    The record [HelloPrints] states them for any private state priv of
+    the callees, because the calls do not touch it. *)
 Record HelloPrints (priv : iProp Σ) : Prop := mkHelloPrints {
   hp_version_etc : forall q1 q2 q3 q4,
     fn_triple (TAtom "version_etc")
@@ -329,7 +326,12 @@ Record HelloPrints (priv : iProp Σ) : Prop := mkHelloPrints {
       (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv)%I;
   hp_emit_bug :
     fn_triple (TAtom "emit_bug_reporting_address") [] (hello_ro ∗ hello_stdio ∗ priv)%I
-      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv)%I
+      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv)%I;
+  hp_error_operand : forall q,
+    fn_triple (TAtom "error")
+      [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
+      (hello_ro ∗ hello_stdio ∗ priv ∗ names ∗ str_arg (WPtr q))%I
+      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv ∗ names)%I
 }.
 
 (** The record [HelloLibs] holds the contracts of the library calls

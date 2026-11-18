@@ -223,7 +223,7 @@ Proof using Hy Lb S.
     iApply (wp_optind_load with "Hoil Hoic"); [lk_prove | exact Hi31 |]. iIntros "Hoil Hoic".
     iApply (wp_operand_load false with "Hav Hps"); [lk_prove | lk_prove | exact Hi |]. iNext. iIntros "Hav".
     iApply (wp_call_void with "[Hio Hpv Hn]");
-      [exact (hd_error_operand _ _ _ D (nth (Z.to_nat i) (ps ++ [null]) null)) | vx |
+      [exact (hp_error_operand _ _ _ _ (hl_prints _ _ _ _ _ _ Lb) (nth (Z.to_nat i) (ps ++ [null]) null)) | vx |
        iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv"|];
        iSplitL "Hn"; [iExact "Hn" | iExact "Hq"] |].
     iNext. iIntros "(Hio & Hpv & Hn)". step.
