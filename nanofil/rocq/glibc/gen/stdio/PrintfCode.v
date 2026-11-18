@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,20 +12,20 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition printf_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "printf_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__printf"; TInt 0]]]];
-    TApp "func" [TAtom "__printf"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v2"]; TAtom "p"; TApp "alloc" [TInt 8]; TList [TApp "const" [TInt 24]]];
-            TApp "let" [TApp "tmp" [TAtom "va_args"]; TAtom "p"; TAtom "va_args"; TList [TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v2"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "va_args"]; TApp "tmp" [TAtom "chk0"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v4"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "stdout"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "v5"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v7"]; TAtom "w"]; TApp "global" [TAtom "__vfprintf_internal"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v5"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 0]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v7"]]]]]
+    cap{ op "data"("printf_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__printf", int 0))]) };
+    cap_fn{ "export" "__printf" [param "p" %"v0"] -> "w"
+      {
+        @"start":
+          %"v2" : "p" = op "alloc"(int 8) #24;
+          %"va_args" : "p" = "va_args" #8;
+          %"chk0" : "a" = op "check"(int 0, int 8, "write", int 8) %"v2";
+          store.ptr [%"chk0" + 0] <- %"va_args";
+          %"v4" : "p" = "copy" $"stdout";
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v4";
+          %"v5" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1";
+          call %"v7" : "w" = $"__vfprintf_internal"("p" %"v5", "p" %"v0", "p" %"v2", "w" #0)
+          => ret %"v7"
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,21 +12,21 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition localename_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "localename_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__current_locale_name"; TInt 0]]]];
-    TApp "func" [TAtom "__current_locale_name"; TAtom "export"; TAtom "p"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v2"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v3"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v4"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v3"]]; TApp "const" [TInt 128]]; TApp "lower" [TApp "tmp" [TAtom "v3"]]];
-            TApp "let" [TApp "tmp" [TAtom "v6"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v7"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "v6"]; TApp "const" [TInt 3]]];
-            TApp "flight" [TApp "tmp" [TAtom "v8"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v4"]]; TApp "tmp" [TAtom "v7"]]; TApp "lower" [TApp "tmp" [TAtom "v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v8"]]];
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v9"]]]]]
+    cap{ op "data"("localename_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__current_locale_name", int 0))]) };
+    cap_fn{ "export" "__current_locale_name" [param "w" %"v0"] -> "p"
+      {
+        @"start":
+          %"v2" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"v2";
+          %"v3" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v4" = %"v3" +p #128;
+          %"v6" : "l" = op "ext"("sw") %"v0";
+          %"v7" : "l" = "shl" %"v6", #3;
+          %"v8" = %"v4" +p %"v7";
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v8";
+          %"v9" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1"
+          => ret %"v9"
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

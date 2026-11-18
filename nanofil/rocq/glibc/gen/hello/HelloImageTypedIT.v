@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,47 +12,69 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn__itoa_word : func :=
-  mkFunc (a "_itoa_word") (a "export") (RClass P) [(L, (a "v0")); (P, (a "v2")); (W, (a "v4")); (W, (a "v6"))] [(mkBlock (a "start") [] [] (JBranch (t "v6") (To (a "L9")) (To (a "L10"))));
-  (mkBlock (a "L9") [] [(Let (a "v13") P Copy [(Global (a "__GI__itoa_upper_digits"))])] (JGoto (To (a "L11"))));
-  (mkBlock (a "L10") [] [(Let (a "v14") P Copy [(Global (a "__GI__itoa_lower_digits"))])] (JGoto (To (a "L11"))));
-  (mkBlock (a "L11") [(Phi (a "v15") P [((a "L9"), (t "v13")); ((a "L10"), (t "v14"))])] [(Let (a "v79") W (Cmp Eq W) [(t "v4"); (Const 10)])] (JBranch (t "v79") (To (a "L20")) (To (a "L80"))));
-  (mkBlock (a "L20") [(Phi (a "pr.6") P [((a "L20"), (t "v24")); ((a "L11"), (t "v2"))]); (Phi (a "pr.1") L [((a "L20"), (t "v31")); ((a "L11"), (t "v0"))])] [(Flight (a "v24") Sub [(FAddress (t "pr.6")); (FValue (Const 1))] (LowerOf (t "pr.6")));
-      (Let (a "v27") L Urem [(t "pr.1"); (Const 10)]);
-      (Flight (a "v28") Add [(FAddress (t "v15")); (FValue (t "v27"))] (LowerOf (t "v15")));
-      (Let (a "chk0") A (Check 0 1 Read 1) [(t "v28")]);
-      (Let (a "v29") W (RawLoad (LdNarrow Sb) 0) [(t "chk0")]);
-      (Let (a "chk1") A (Check 0 1 Write 1) [(t "v24")]);
-      (RawStore Wb 0 (t "v29") (t "chk1"));
-      (Let (a "v31") L Udiv [(t "pr.1"); (Const 10)]);
-      (Let (a "v32") W (Cmp Ne L) [(t "v31"); (Const 0)])] (JBranch (t "v32") (Poll (a "L20")) (To (a "L18"))));
-  (mkBlock (a "L34") [(Phi (a "pr.7") P [((a "L34"), (t "v38")); ((a "L80"), (t "v2"))]); (Phi (a "pr.2") L [((a "L34"), (t "v45")); ((a "L80"), (t "v0"))])] [(Flight (a "v38") Sub [(FAddress (t "pr.7")); (FValue (Const 1))] (LowerOf (t "pr.7")));
-      (Let (a "v41") L And [(t "pr.2"); (Const 15)]);
-      (Flight (a "v42") Add [(FAddress (t "v15")); (FValue (t "v41"))] (LowerOf (t "v15")));
-      (Let (a "chk2") A (Check 0 1 Read 1) [(t "v42")]);
-      (Let (a "v43") W (RawLoad (LdNarrow Sb) 0) [(t "chk2")]);
-      (Let (a "chk3") A (Check 0 1 Write 1) [(t "v38")]);
-      (RawStore Wb 0 (t "v43") (t "chk3"));
-      (Let (a "v45") L Shr [(t "pr.2"); (Const 4)]);
-      (Let (a "v46") W (Cmp Ne L) [(t "v45"); (Const 0)])] (JBranch (t "v46") (Poll (a "L34")) (To (a "L18"))));
-  (mkBlock (a "L48") [(Phi (a "pr.8") P [((a "L48"), (t "v52")); ((a "L82"), (t "v2"))]); (Phi (a "pr.3") L [((a "L48"), (t "v59")); ((a "L82"), (t "v0"))])] [(Flight (a "v52") Sub [(FAddress (t "pr.8")); (FValue (Const 1))] (LowerOf (t "pr.8")));
-      (Let (a "v55") L And [(t "pr.3"); (Const 7)]);
-      (Flight (a "v56") Add [(FAddress (t "v15")); (FValue (t "v55"))] (LowerOf (t "v15")));
-      (Let (a "chk4") A (Check 0 1 Read 1) [(t "v56")]);
-      (Let (a "v57") W (RawLoad (LdNarrow Sb) 0) [(t "chk4")]);
-      (Let (a "chk5") A (Check 0 1 Write 1) [(t "v52")]);
-      (RawStore Wb 0 (t "v57") (t "chk5"));
-      (Let (a "v59") L Shr [(t "pr.3"); (Const 3)]);
-      (Let (a "v60") W (Cmp Ne L) [(t "v59"); (Const 0)])] (JBranch (t "v60") (Poll (a "L48")) (To (a "L18"))));
-  (mkBlock (a "L62") [(Phi (a "pr.9") P [((a "L62"), (t "v66")); ((a "L82"), (t "v2"))]); (Phi (a "pr.4") L [((a "L62"), (t "v77")); ((a "L82"), (t "v0"))])] [(Flight (a "v66") Sub [(FAddress (t "pr.9")); (FValue (Const 1))] (LowerOf (t "pr.9")));
-      (Let (a "v70") L (Ext Uw) [(t "v4")]);
-      (Let (a "v71") L Urem [(t "pr.4"); (t "v70")]);
-      (Flight (a "v72") Add [(FAddress (t "v15")); (FValue (t "v71"))] (LowerOf (t "v15")));
-      (Let (a "chk6") A (Check 0 1 Read 1) [(t "v72")]);
-      (Let (a "v73") W (RawLoad (LdNarrow Sb) 0) [(t "chk6")]);
-      (Let (a "chk7") A (Check 0 1 Write 1) [(t "v66")]);
-      (RawStore Wb 0 (t "v73") (t "chk7"));
-      (Let (a "v77") L Udiv [(t "pr.4"); (t "v70")]);
-      (Let (a "v78") W (Cmp Ne L) [(t "v77"); (Const 0)])] (JBranch (t "v78") (Poll (a "L62")) (To (a "L18"))));
-  (mkBlock (a "L80") [] [(Let (a "v81") W (Cmp Eq W) [(t "v4"); (Const 16)])] (JBranch (t "v81") (Poll (a "L34")) (To (a "L82"))));
-  (mkBlock (a "L82") [] [(Let (a "v83") W (Cmp Eq W) [(t "v4"); (Const 8)])] (JBranch (t "v83") (Poll (a "L48")) (Poll (a "L62"))));
-  (mkBlock (a "L18") [(Phi (a "pr.5") P [((a "L20"), (t "v24")); ((a "L34"), (t "v38")); ((a "L48"), (t "v52")); ((a "L62"), (t "v66"))])] [] (JRet (t "pr.5")))].
+  ir_fn{ "export" "_itoa_word"(L %"v0", P %"v2", W %"v4", W %"v6") -> (RClass P) {
+  @"start":
+    => br %"v6" ? "L9" : "L10";
+  @"L9":
+    %"v13" : P = Copy $"__GI__itoa_upper_digits"
+    => goto "L11";
+  @"L10":
+    %"v14" : P = Copy $"__GI__itoa_lower_digits"
+    => goto "L11";
+  @"L11" [%"v15" : P = phi("L9" => %"v13", "L10" => %"v14")]:
+    %"v79" : W = (Cmp Eq W) %"v4", #10
+    => br %"v79" ? "L20" : "L80";
+  @"L20" [%"pr.6" : P = phi("L20" => %"v24", "L11" => %"v2"); %"pr.1" : L = phi("L20" => %"v31", "L11" => %"v0")]:
+    (Flight (a "v24") Sub [(FAddress (t "pr.6")); (FValue (Const 1))] (LowerOf (t "pr.6")));
+    %"v27" : L = Urem %"pr.1", #10;
+    %"v28" = %"v15" +p %"v27";
+    %"chk0" : A = (Check 0 1 Read 1) %"v28";
+    %"v29" : W = (RawLoad (LdNarrow Sb) 0) %"chk0";
+    %"chk1" : A = (Check 0 1 Write 1) %"v24";
+    store Wb [%"chk1" + 0] <- %"v29";
+    %"v31" : L = Udiv %"pr.1", #10;
+    %"v32" : W = (Cmp Ne L) %"v31", #0
+    => br %"v32" ? poll "L20" : "L18";
+  @"L34" [%"pr.7" : P = phi("L34" => %"v38", "L80" => %"v2"); %"pr.2" : L = phi("L34" => %"v45", "L80" => %"v0")]:
+    (Flight (a "v38") Sub [(FAddress (t "pr.7")); (FValue (Const 1))] (LowerOf (t "pr.7")));
+    %"v41" : L = And %"pr.2", #15;
+    %"v42" = %"v15" +p %"v41";
+    %"chk2" : A = (Check 0 1 Read 1) %"v42";
+    %"v43" : W = (RawLoad (LdNarrow Sb) 0) %"chk2";
+    %"chk3" : A = (Check 0 1 Write 1) %"v38";
+    store Wb [%"chk3" + 0] <- %"v43";
+    %"v45" : L = Shr %"pr.2", #4;
+    %"v46" : W = (Cmp Ne L) %"v45", #0
+    => br %"v46" ? poll "L34" : "L18";
+  @"L48" [%"pr.8" : P = phi("L48" => %"v52", "L82" => %"v2"); %"pr.3" : L = phi("L48" => %"v59", "L82" => %"v0")]:
+    (Flight (a "v52") Sub [(FAddress (t "pr.8")); (FValue (Const 1))] (LowerOf (t "pr.8")));
+    %"v55" : L = And %"pr.3", #7;
+    %"v56" = %"v15" +p %"v55";
+    %"chk4" : A = (Check 0 1 Read 1) %"v56";
+    %"v57" : W = (RawLoad (LdNarrow Sb) 0) %"chk4";
+    %"chk5" : A = (Check 0 1 Write 1) %"v52";
+    store Wb [%"chk5" + 0] <- %"v57";
+    %"v59" : L = Shr %"pr.3", #3;
+    %"v60" : W = (Cmp Ne L) %"v59", #0
+    => br %"v60" ? poll "L48" : "L18";
+  @"L62" [%"pr.9" : P = phi("L62" => %"v66", "L82" => %"v2"); %"pr.4" : L = phi("L62" => %"v77", "L82" => %"v0")]:
+    (Flight (a "v66") Sub [(FAddress (t "pr.9")); (FValue (Const 1))] (LowerOf (t "pr.9")));
+    %"v70" : L = (Ext Uw) %"v4";
+    %"v71" : L = Urem %"pr.4", %"v70";
+    %"v72" = %"v15" +p %"v71";
+    %"chk6" : A = (Check 0 1 Read 1) %"v72";
+    %"v73" : W = (RawLoad (LdNarrow Sb) 0) %"chk6";
+    %"chk7" : A = (Check 0 1 Write 1) %"v66";
+    store Wb [%"chk7" + 0] <- %"v73";
+    %"v77" : L = Udiv %"pr.4", %"v70";
+    %"v78" : W = (Cmp Ne L) %"v77", #0
+    => br %"v78" ? poll "L62" : "L18";
+  @"L80":
+    %"v81" : W = (Cmp Eq W) %"v4", #16
+    => br %"v81" ? poll "L34" : "L82";
+  @"L82":
+    %"v83" : W = (Cmp Eq W) %"v4", #8
+    => br %"v83" ? poll "L48" : poll "L62";
+  @"L18" [%"pr.5" : P = phi("L20" => %"v24", "L34" => %"v38", "L48" => %"v52", "L62" => %"v66")]:
+    => ret %"pr.5"
+} }.

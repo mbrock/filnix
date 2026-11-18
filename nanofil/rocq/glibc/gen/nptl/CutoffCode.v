@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,42 +12,37 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition cutoff_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "cutoff_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__libc_alloca_cutoff"; TInt 0]]]];
-    TApp "func" [TAtom "__GI___libc_alloca_cutoff"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "l"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v6"]; TAtom "p"]; TApp "global" [TAtom "zthread_self_cookie"]; TList []];
-            TApp "flight" [TApp "tmp" [TAtom "v7"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v6"]]; TApp "const" [TInt 1720]]; TApp "lower" [TApp "tmp" [TAtom "v6"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v7"]]];
-            TApp "let" [TApp "tmp" [TAtom "v8"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "l"; TAtom "shr"; TList [TApp "tmp" [TAtom "v8"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v9"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v10"]; TAtom "L13"; TAtom "L12"]];
-        TApp "block" [TAtom "L12"; TList [];
-          TList [];
-          TApp "goto" [TAtom "L13"]];
-        TApp "block" [TAtom "L13"; TList [TApp "phi" [TApp "tmp" [TAtom "v16"]; TAtom "l"; TList [TApp "-" [TAtom "L12"; TApp "const" [TInt 262144]]; TApp "-" [TAtom "start"; TApp "tmp" [TAtom "v9"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v17"]; TAtom "w"; TApp "cmp" [TAtom "ugt"; TAtom "l"]; TList [TApp "tmp" [TAtom "v16"]; TApp "const" [TInt 65536]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v17"]; TAtom "L5"; TAtom "L4"]];
-        TApp "block" [TAtom "L4"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v18"]; TAtom "p"]; TApp "global" [TAtom "zthread_self_cookie"]; TList []];
-            TApp "flight" [TApp "tmp" [TAtom "v19"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v18"]]; TApp "const" [TInt 1720]]; TApp "lower" [TApp "tmp" [TAtom "v18"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v19"]]];
-            TApp "let" [TApp "tmp" [TAtom "v20"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "l"; TAtom "shr"; TList [TApp "tmp" [TAtom "v20"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "v22"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v21"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v22"]; TAtom "L5"; TAtom "L24"]];
-        TApp "block" [TAtom "L24"; TList [];
-          TList [];
-          TApp "goto" [TAtom "L5"]];
-        TApp "block" [TAtom "L5"; TList [TApp "phi" [TApp "tmp" [TAtom "v29"]; TAtom "l"; TList [TApp "-" [TAtom "L13"; TApp "const" [TInt 65536]]; TApp "-" [TAtom "L24"; TApp "const" [TInt 262144]]; TApp "-" [TAtom "L4"; TApp "tmp" [TAtom "v21"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v30"]; TAtom "w"; TApp "cmp" [TAtom "ule"; TAtom "l"]; TList [TApp "tmp" [TAtom "v0"]; TApp "tmp" [TAtom "v29"]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v30"]]]]];
-    TApp "alias" [TAtom "__libc_alloca_cutoff"; TAtom "export"; TAtom "__GI___libc_alloca_cutoff"]
+    cap{ op "data"("cutoff_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__libc_alloca_cutoff", int 0))]) };
+    cap_fn{ "export" "__GI___libc_alloca_cutoff" [param "l" %"v0"] -> "w"
+      {
+        @"start":
+          call %"v6" : "p" = $"zthread_self_cookie"();
+          %"v7" = %"v6" +p #1720;
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 1) %"v7";
+          %"v8" : "l" = op "raw_load"("l", int 0) %"chk0";
+          %"v9" : "l" = "shr" %"v8", #2;
+          %"v10" : "w" = op "cmp"("ne", "l") %"v9", #0
+          => br %"v10" ? "L13" : "L12";
+        @"L12":
+          => goto "L13";
+        @"L13" [phi %"v16" : "l" = ("L12" => #262144, "start" => %"v9")]:
+          %"v17" : "w" = op "cmp"("ugt", "l") %"v16", #65536
+          => br %"v17" ? "L5" : "L4";
+        @"L4":
+          call %"v18" : "p" = $"zthread_self_cookie"();
+          %"v19" = %"v18" +p #1720;
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 1) %"v19";
+          %"v20" : "l" = op "raw_load"("l", int 0) %"chk1";
+          %"v21" : "l" = "shr" %"v20", #2;
+          %"v22" : "w" = op "cmp"("ne", "l") %"v21", #0
+          => br %"v22" ? "L5" : "L24";
+        @"L24":
+          => goto "L5";
+        @"L5" [phi %"v29" : "l" = ("L13" => #65536, "L24" => #262144, "L4" => %"v21")]:
+          %"v30" : "w" = op "cmp"("ule", "l") %"v0", %"v29"
+          => ret %"v30"
+      } };
+    cap{ op "alias"("__libc_alloca_cutoff", "export", "__GI___libc_alloca_cutoff") }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

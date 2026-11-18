@@ -3,10 +3,11 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
-From Glibc Require Import FormatterCode01 FormatterCode07 FormatterCode12 FormatterCode13.
+From Nanofil Require Import CaptureNotation.
+From Glibc Require Import FormatterCode01 FormatterCode06 FormatterCode10 FormatterCode11.
 Import ListNotations.
 Open Scope string_scope.
 
 (** The linked module joins every generated item without changing its order. *)
 Definition formatter_term : term :=
-  TApp "module" [TList (formatter_items_01 ++ formatter_items_07 ++ formatter_items_12 ++ formatter_items_13)].
+  TApp "module" [TList (formatter_items_01 ++ formatter_items_06 ++ formatter_items_10 ++ formatter_items_11)].

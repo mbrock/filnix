@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRBytes.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -10,23 +11,20 @@ Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
-Definition hello_image_item_glibc_gconv_conf'23builtin_aliases : item :=
-  (IData (a "glibc_gconv_conf#builtin_aliases") (LRo (a "local")) 1 [(Str (app (app (app (app [85; 67; 83; 52; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 85; 67; 83; 45; 52; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 85; 67; 83; 45; 52; 66; 69; 47; 47; 0; 73; 83; 79; 45; 49] [48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 67; 83; 85; 67; 83; 52; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52]) (app [47; 0; 49; 48; 54; 52; 54; 45; 49; 58; 49; 57; 57; 51; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 49; 48; 54; 52; 54; 45; 49; 58; 49; 57; 57; 51; 47; 85; 67; 83; 52; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47] [85; 67; 83; 52; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 52; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 53; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83])) (app (app [52; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 54; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 52; 47; 0; 87; 67; 72; 65; 82; 95; 84; 47; 47; 0; 73; 78; 84; 69; 82; 78; 65; 76; 0; 85; 84; 70; 56; 47; 47; 0; 73; 83; 79] [45; 49; 48; 54; 52; 54; 47; 85; 84; 70; 56; 47; 0; 85; 84; 70; 45; 56; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 84; 70; 56; 47; 0; 73; 83; 79; 45; 73; 82; 45; 49; 57; 51; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 84; 70]) (app [56; 47; 0; 79; 83; 70; 48; 53; 48; 49; 48; 48; 48; 49; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 84; 70; 56; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 84; 70; 45; 56; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 84] [70; 56; 47; 0; 85; 67; 83; 50; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 85; 67; 83; 45; 50; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 48; 47]))) (app (app (app [47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 49; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 49; 48; 50; 47; 47; 0] [73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 73; 83; 79; 45; 73; 82; 45; 54; 47; 47; 0; 65; 78; 83; 73; 95; 88]) (app [51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 56; 54; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 73; 83; 79; 95; 54; 52; 54; 46; 73; 82; 86; 58; 49; 57; 57; 49; 47] [47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 65; 83; 67; 73; 73; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 73; 83; 79; 54; 52; 54; 45; 85; 83; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51])) (app (app [46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 85; 83; 45; 65; 83; 67; 73; 73; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 85; 83; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 73; 66] [77; 51; 54; 55; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 67; 80; 51; 54; 55; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 67; 83; 65; 83; 67; 73; 73; 47; 47; 0; 65; 78; 83; 73]) (app [95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 79; 83; 70; 48; 48; 48; 49; 48; 48; 50; 48; 47; 47; 0; 65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56; 47; 47; 0; 85; 78; 73; 67; 79; 68; 69; 76; 73; 84; 84; 76; 69; 47; 47; 0; 73; 83] [79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 85; 67; 83; 45; 50; 76; 69; 47; 47; 0; 73; 83; 79; 45; 49; 48; 54; 52; 54; 47; 85; 67; 83; 50; 47; 0; 85; 67; 83; 45; 50; 66; 69; 47; 47; 0; 85; 78; 73; 67; 79; 68; 69; 66; 73; 71; 47; 47; 0]))))); (Zero 1)]).
-
 Definition hello_image_item_glibc_gconv_conf'23builtin_modules : item :=
   (IData (a "glibc_gconv_conf#builtin_modules") LLocal 8 (app [(Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.284") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.285") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.284") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.286") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.287") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.288") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.287") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.289") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.290") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.291") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.290") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.292") 0); (Zero 24)] [(Sym (a "glibc_gconv_conf#str.293") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.294") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.293") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.295") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.296") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.297") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.296") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.298") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.299") 0); (Sym (a "glibc_gconv_conf#str.283") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.300") 0); (Zero 24); (Sym (a "glibc_gconv_conf#str.283") 0); (Sym (a "glibc_gconv_conf#str.299") 0); (Item Ww 1); (Item Ww 2147483647); (Sym (a "glibc_gconv_conf#str.301") 0); (Zero 24)])).
 
 Definition hello_image_item_glibc_gconv_conf'23default_gconv_path : item :=
-  (IData (a "glibc_gconv_conf#default_gconv_path") (LRo (a "local")) 1 [(Str (app [47; 110; 105; 120; 47; 115; 116; 111; 114; 101; 47; 55; 104; 104; 52; 53; 99; 118; 119; 122; 114; 113; 121; 113; 118; 112; 107; 110; 110; 108; 106; 56; 50; 118; 114; 113] [100; 109; 103; 54; 107; 120; 119; 45; 102; 105; 108; 99; 45; 103; 108; 105; 98; 99; 45; 112; 112; 45; 50; 46; 52; 52; 47; 108; 105; 98; 47; 103; 99; 111; 110; 118])); (Zero 1)]).
+  (IData (a "glibc_gconv_conf#default_gconv_path") (LRo (a "local")) 1 ["/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44/lib/gconv"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_gconv_conf'23empty_path_elem : item :=
   (IData (a "glibc_gconv_conf#empty_path_elem") (LRo (a "local")) 8 [(Item Wl 0); (Item Wl 0)]).
 
 Definition hello_image_item_glibc_gconv_conf'23gconv_conf_filename : item :=
-  (IData (a "glibc_gconv_conf#gconv_conf_filename") (LRo (a "local")) 1 [(Str [103; 99; 111; 110; 118; 45; 109; 111; 100; 117; 108; 101; 115]); (Zero 1)]).
+  (IData (a "glibc_gconv_conf#gconv_conf_filename") (LRo (a "local")) 1 ["gconv-modules"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_gconv_conf'23gconv_module_ext : item :=
-  (IData (a "glibc_gconv_conf#gconv_module_ext") (LRo (a "local")) 1 [(Str [46; 115; 111]); (Zero 1)]).
+  (IData (a "glibc_gconv_conf#gconv_module_ext") (LRo (a "local")) 1 [".so"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_gconv_conf'23once : item :=
   (IData (a "glibc_gconv_conf#once") LLocal 4 [(Zero 4)]).
@@ -296,10 +294,10 @@ Definition hello_image_item__nl_current_default_domain : item :=
   (IData (a "_nl_current_default_domain") LExport 8 [(Sym (a "_nl_default_default_domain") 0)]).
 
 Definition hello_image_item__nl_default_default_domain : item :=
-  (IData (a "_nl_default_default_domain") (LRo (a "export")) 1 [(Str [109; 101; 115; 115; 97; 103; 101; 115]); (Zero 1)]).
+  (IData (a "_nl_default_default_domain") (LRo (a "export")) 1 ["messages"%irbytes; (Zero 1)]).
 
 Definition hello_image_item___GI__nl_default_dirname : item :=
-  (IData (a "__GI__nl_default_dirname") (LRo (a "export")) 1 [(Str (app [47; 110; 105; 120; 47; 115; 116; 111; 114; 101; 47; 55; 104; 104; 52; 53; 99; 118; 119; 122; 114; 113; 121; 113; 118; 112; 107; 110; 110; 108; 106; 56; 50; 118; 114; 113; 100] [109; 103; 54; 107; 120; 119; 45; 102; 105; 108; 99; 45; 103; 108; 105; 98; 99; 45; 112; 112; 45; 50; 46; 52; 52; 47; 115; 104; 97; 114; 101; 47; 108; 111; 99; 97; 108; 101])); (Zero 1)]).
+  (IData (a "__GI__nl_default_dirname") (LRo (a "export")) 1 ["/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44/share/locale"%irbytes; (Zero 1)]).
 
 Definition hello_image_item__nl_domain_bindings : item :=
   (IData (a "_nl_domain_bindings") LExport 8 [(Zero 8)]).
@@ -467,7 +465,7 @@ Definition hello_image_item_glibc_localealias'23nmap : item :=
   (IData (a "glibc_localealias#nmap") LLocal 8 [(Zero 8)]).
 
 Definition hello_image_item_glibc_localealias'23read_alias_file'2ealiasfile'2e268 : item :=
-  (IData (a "glibc_localealias#read_alias_file.aliasfile.268") (LRo (a "local")) 1 [(Str [47; 108; 111; 99; 97; 108; 101; 46; 97; 108; 105; 97; 115]); (Zero 1)]).
+  (IData (a "glibc_localealias#read_alias_file.aliasfile.268") (LRo (a "local")) 1 ["/locale.alias"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_localealias'23string_space : item :=
   (IData (a "glibc_localealias#string_space") LLocal 8 [(Zero 8)]).
@@ -549,3 +547,48 @@ Definition hello_image_item_glibc_plural'23str'2e129 : item :=
 
 Definition hello_image_item_glibc_plural'23str'2e130 : item :=
   (IData (a "glibc_plural#str.130") (LRo (a "local")) 1 [(Item Wb 67); (Item Wb 108); (Item Wb 101); (Item Wb 97); (Item Wb 110); (Item Wb 117); (Item Wb 112); (Item Wb 58); (Item Wb 32); (Item Wb 100); (Item Wb 105); (Item Wb 115); (Item Wb 99); (Item Wb 97); (Item Wb 114); (Item Wb 100); (Item Wb 105); (Item Wb 110); (Item Wb 103); (Item Wb 32); (Item Wb 108); (Item Wb 111); (Item Wb 111); (Item Wb 107); (Item Wb 97); (Item Wb 104); (Item Wb 101); (Item Wb 97); (Item Wb 100); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_plural'23str'2e131 : item :=
+  (IData (a "glibc_plural#str.131") (LRo (a "local")) 1 [(Item Wb 67); (Item Wb 108); (Item Wb 101); (Item Wb 97); (Item Wb 110); (Item Wb 117); (Item Wb 112); (Item Wb 58); (Item Wb 32); (Item Wb 112); (Item Wb 111); (Item Wb 112); (Item Wb 112); (Item Wb 105); (Item Wb 110); (Item Wb 103); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e242 : item :=
+  (IData (a "glibc_getcwd#str.242") (LRo (a "local")) 1 [(Item Wb 83); (Item Wb 104); (Item Wb 111); (Item Wb 117); (Item Wb 108); (Item Wb 100); (Item Wb 32); (Item Wb 110); (Item Wb 111); (Item Wb 116); (Item Wb 32); (Item Wb 103); (Item Wb 101); (Item Wb 116); (Item Wb 32); (Item Wb 104); (Item Wb 101); (Item Wb 114); (Item Wb 101); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e243 : item :=
+  (IData (a "glibc_getcwd#str.243") (LRo (a "local")) 1 [(Item Wb 37); (Item Wb 115); (Item Wb 58); (Item Wb 37); (Item Wb 100); (Item Wb 58); (Item Wb 32); (Item Wb 37); (Item Wb 115); (Item Wb 58); (Item Wb 32); (Item Wb 97); (Item Wb 115); (Item Wb 115); (Item Wb 101); (Item Wb 114); (Item Wb 116); (Item Wb 105); (Item Wb 111); (Item Wb 110); (Item Wb 32); (Item Wb 37); (Item Wb 115); (Item Wb 32); (Item Wb 102); (Item Wb 97); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 100); (Item Wb 46); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e244 : item :=
+  (IData (a "glibc_getcwd#str.244") (LRo (a "local")) 1 [(Item Wb 46); (Item Wb 46); (Item Wb 47); (Item Wb 115); (Item Wb 121); (Item Wb 115); (Item Wb 100); (Item Wb 101); (Item Wb 112); (Item Wb 115); (Item Wb 47); (Item Wb 117); (Item Wb 110); (Item Wb 105); (Item Wb 120); (Item Wb 47); (Item Wb 115); (Item Wb 121); (Item Wb 115); (Item Wb 118); (Item Wb 47); (Item Wb 108); (Item Wb 105); (Item Wb 110); (Item Wb 117); (Item Wb 120); (Item Wb 47); (Item Wb 103); (Item Wb 101); (Item Wb 116); (Item Wb 99); (Item Wb 119); (Item Wb 100); (Item Wb 46); (Item Wb 99); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e245 : item :=
+  (IData (a "glibc_getcwd#str.245") (LRo (a "local")) 1 [(Item Wb 95); (Item Wb 95); (Item Wb 103); (Item Wb 101); (Item Wb 116); (Item Wb 99); (Item Wb 119); (Item Wb 100); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e246 : item :=
+  (IData (a "glibc_getcwd#str.246") (LRo (a "local")) 1 [(Item Wb 33); (Item Wb 34); (Item Wb 83); (Item Wb 104); (Item Wb 111); (Item Wb 117); (Item Wb 108); (Item Wb 100); (Item Wb 32); (Item Wb 110); (Item Wb 111); (Item Wb 116); (Item Wb 32); (Item Wb 103); (Item Wb 101); (Item Wb 116); (Item Wb 32); (Item Wb 104); (Item Wb 101); (Item Wb 114); (Item Wb 101); (Item Wb 34); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_getcwd'23str'2e247 : item :=
+  (IData (a "glibc_getcwd#str.247") (LRo (a "local")) 1 [(Item Wb 101); (Item Wb 114); (Item Wb 114); (Item Wb 110); (Item Wb 111); (Item Wb 32); (Item Wb 33); (Item Wb 61); (Item Wb 32); (Item Wb 69); (Item Wb 82); (Item Wb 65); (Item Wb 78); (Item Wb 71); (Item Wb 69); (Item Wb 32); (Item Wb 124); (Item Wb 124); (Item Wb 32); (Item Wb 98); (Item Wb 117); (Item Wb 102); (Item Wb 32); (Item Wb 33); (Item Wb 61); (Item Wb 32); (Item Wb 78); (Item Wb 85); (Item Wb 76); (Item Wb 76); (Item Wb 32); (Item Wb 124); (Item Wb 124); (Item Wb 32); (Item Wb 115); (Item Wb 105); (Item Wb 122); (Item Wb 101); (Item Wb 32); (Item Wb 33); (Item Wb 61); (Item Wb 32); (Item Wb 48); (Item Wb 0)]).
+
+Definition hello_image_item___GI___open : item :=
+  (IAlias (a "__GI___open") (a "export") (a "__libc_open64")).
+
+Definition hello_image_item___GI___open_nocancel : item :=
+  (IAlias (a "__GI___open_nocancel") (a "export") (a "__GI___open64_nocancel")).
+
+Definition hello_image_item___GI___read : item :=
+  (IAlias (a "__GI___read") (a "export") (a "__GI___libc_read")).
+
+Definition hello_image_item___GI___write : item :=
+  (IAlias (a "__GI___write") (a "export") (a "__GI___libc_write")).
+
+Definition hello_image_item___GI_write : item :=
+  (IAlias (a "__GI_write") (a "export") (a "__GI___libc_write")).
+
+Definition hello_image_item_ferror : item :=
+  (IAlias (a "ferror") (a "weak") (a "_IO_ferror")).
+
+Definition hello_image_item_glibc_fileops'23str'2e265 : item :=
+  (IData (a "glibc_fileops#str.265") (LRo (a "local")) 1 [(Item Wb 44); (Item Wb 99); (Item Wb 99); (Item Wb 115); (Item Wb 61); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_fileops'23str'2e266 : item :=
+  (IData (a "glibc_fileops#str.266") (LRo (a "local")) 1 [(Item Wb 102); (Item Wb 99); (Item Wb 116); (Item Wb 115); (Item Wb 46); (Item Wb 116); (Item Wb 111); (Item Wb 119); (Item Wb 99); (Item Wb 95); (Item Wb 110); (Item Wb 115); (Item Wb 116); (Item Wb 101); (Item Wb 112); (Item Wb 115); (Item Wb 32); (Item Wb 61); (Item Wb 61); (Item Wb 32); (Item Wb 49); (Item Wb 0)]).

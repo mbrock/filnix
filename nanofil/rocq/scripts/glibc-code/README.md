@@ -4,7 +4,7 @@
 prints the code fixtures used by the glibc proofs. Each directory's
 `code.toml` lists its units, roots and selected functions. The shell drivers
 delegate to this generator; `stdio/buffer-code.sh` now checks all of `stdio`.
-`gallina.pl` is unchanged.
+`gallina.pl` prints the transport terms that the smaller fixtures decode.
 
 ## Regenerate or check
 
@@ -38,7 +38,7 @@ nanofil/rocq/glibc/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/gen
 `--directory string` selects one directory; `--directory .` selects only
 the top-level fixtures. Repeat the option to select several directories.
 `--tree` selects the comparison or update destination. `--output` writes only
-generated sources and, in shared form, the prelude; it never reads the comparison tree.
+generated sources and the shared prelude and notation modules; it never reads the comparison tree.
 If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
 builds `survey/glibc/capture.nix`.
 
@@ -336,8 +336,23 @@ the complete GNU Hello image, the generator runs the linked term through
 `nanofil-model --gallina`. It builds the extracted driver through Nix on Linux.
 Set `MODEL` to the path of a locally built driver on another platform.
 
-The driver prints the constructors returned by [Transport.v](../../theories/core/Transport.v),
-including the raw term carried by an outside function. The layout script groups
+The driver prints the functions returned by the Rocq decoder in SSA notation.
+For example, a loop can branch to `poll "L10"`, and a zero-argument
+indirect call can read `rawcall void %"fn"()`. A block lists its phis
+after its label and its instructions before `=>`. In a proof session,
+import `IRNotation` to see the same spelling when Rocq prints a function
+or a block. Parentheses preserve an instruction that needs its full Gallina
+spelling. For example, `store.ptr` requires the standard ordered pointer-store
+effects. A different effect list prints in full. An outside function retains
+its original transport term.
+
+The smaller fixtures, including the program and spike examples, use
+`cap_fn{` and `cap_blk{` from `CaptureNotation`. Their definitions still
+have type `term`, and their existing witnesses check the result of decoding
+that term. The printer's `--constructors` option emits the constructor
+spelling for comparison.
+
+The layout script groups
 function definitions by the first two letters of their C symbol after removing
 the unit qualifier, the glibc internal prefix and leading underscores. For
 example, `HelloImageTypedIO` exports `hello_image_fn___GI__IO_wfile_overflow`.

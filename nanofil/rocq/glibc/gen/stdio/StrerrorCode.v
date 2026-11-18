@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,32 +12,30 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition strerror_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "strerror_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__GI___strerror_r"; TInt 0]]]];
-    TApp "func" [TAtom "__GI___strerror_r"; TAtom "export"; TAtom "p"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "param" [TAtom "l"; TApp "tmp" [TAtom "v4"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v8"]; TAtom "p"]; TApp "global" [TAtom "__get_errlist"]; TList [TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "v0"]]]];
-            TApp "let" [TApp "tmp" [TAtom "v13"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v8"]]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "l"; TAtom "ptoi"; TList [TApp "const" [TInt 0]]];
-            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "l"]; TList [TApp "tmp" [TAtom "v13"]; TApp "tmp" [TAtom "v14"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v15"]; TAtom "L9"; TAtom "L11"]];
-        TApp "block" [TAtom "L9"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v20"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc__strerror#str.136"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__GI__libc_intl_domainname"]]];
-            TApp "let" [TApp "tmp" [TAtom "v22"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc__strerror#str.137"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v23"]; TAtom "p"]; TApp "global" [TAtom "__GI___dcgettext"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v21"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v22"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 5]]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v25"]; TAtom "w"]; TApp "global" [TAtom "__GI___snprintf"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "arg" [TAtom "l"; TApp "tmp" [TAtom "v4"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v20"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v23"]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "v0"]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v2"]]];
-        TApp "block" [TAtom "L11"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v28"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__GI__libc_intl_domainname"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v30"]; TAtom "p"]; TApp "global" [TAtom "__GI___dcgettext"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v28"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v8"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 5]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v30"]]]]];
-    TApp "data" [TAtom "glibc__strerror#str.136"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 100]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
-    TApp "data" [TAtom "glibc__strerror#str.137"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 85]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 107]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 111]]; TApp "item" [TAtom "b"; TApp "const" [TInt 119]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 111]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
-    TApp "data" [TAtom "__GI__libc_intl_domainname"; TApp "ro" [TAtom "export"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "str" [TList [TAtom "l"; TAtom "i"; TAtom "b"; TAtom "c"]]]; TApp "zero" [TInt 1]]]
+    cap{ op "data"("strerror_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__GI___strerror_r", int 0))]) };
+    cap_fn{ "export" "__GI___strerror_r" [param "w" %"v0"; param "p" %"v2"; param "l" %"v4"] -> "p"
+      {
+        @"start":
+          call %"v8" : "p" = $"__get_errlist"("w" %"v0");
+          %"v13" : "l" = "ptoi" %"v8";
+          %"v14" : "l" = "ptoi" #0;
+          %"v15" : "w" = op "cmp"("eq", "l") %"v13", %"v14"
+          => br %"v15" ? "L9" : "L11";
+        @"L9":
+          %"v20" : "p" = "copy" $"glibc__strerror#str.136";
+          %"v21" : "p" = "copy" $"__GI__libc_intl_domainname";
+          %"v22" : "p" = "copy" $"glibc__strerror#str.137";
+          call %"v23" : "p" = $"__GI___dcgettext"("p" %"v21", "p" %"v22", "w" #5);
+          call %"v25" : "w" = $"__GI___snprintf"("p" %"v2", "l" %"v4", "p" %"v20", "p" %"v23", "w" %"v0")
+          => ret %"v2";
+        @"L11":
+          %"v28" : "p" = "copy" $"__GI__libc_intl_domainname";
+          call %"v30" : "p" = $"__GI___dcgettext"("p" %"v28", "p" %"v8", "w" #5)
+          => ret %"v30"
+      } };
+    cap{ op "data"("glibc__strerror#str.136", op "ro"("local"), int 1, [op "item"("b", #37); op "item"("b", #115); op "item"("b", #37); op "item"("b", #100); op "item"("b", #0)]) };
+    cap{ op "data"("glibc__strerror#str.137", op "ro"("local"), int 1, [op "item"("b", #85); op "item"("b", #110); op "item"("b", #107); op "item"("b", #110); op "item"("b", #111); op "item"("b", #119); op "item"("b", #110); op "item"("b", #32); op "item"("b", #101); op "item"("b", #114); op "item"("b", #114); op "item"("b", #111); op "item"("b", #114); op "item"("b", #32); op "item"("b", #0)]) };
+    cap{ op "data"("__GI__libc_intl_domainname", op "ro"("export"), int 1, [op "item"("b", op "str"(["l"; "i"; "b"; "c"])); op "zero"(int 1)]) }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

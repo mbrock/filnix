@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -14,34 +15,32 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition ctlt_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "constant_time_msb"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v5"]; TAtom "w"; TAtom "shr"; TList [TApp "tmp" [TAtom "v0"]; TApp "const" [TInt 31]]];
-            TApp "let" [TApp "tmp" [TAtom "v6"]; TAtom "w"; TAtom "sub"; TList [TApp "const" [TInt 0]; TApp "tmp" [TAtom "v5"]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v6"]]]]];
-    TApp "func" [TAtom "constant_time_lt"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v2"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v7"]; TAtom "w"; TAtom "xor"; TList [TApp "tmp" [TAtom "v0"]; TApp "tmp" [TAtom "v2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "w"; TAtom "sub"; TList [TApp "tmp" [TAtom "v0"]; TApp "tmp" [TAtom "v2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "w"; TAtom "xor"; TList [TApp "tmp" [TAtom "v10"]; TApp "tmp" [TAtom "v2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v13"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "v7"]; TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "w"; TAtom "xor"; TList [TApp "tmp" [TAtom "v0"]; TApp "tmp" [TAtom "v13"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v15"]; TAtom "w"]; TApp "global" [TAtom "constant_time_msb"]; TList [TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "v14"]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v15"]]]]];
-    TApp "func" [TAtom "leaky_lt"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v2"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "w"; TApp "cmp" [TAtom "ult"; TAtom "w"]; TList [TApp "tmp" [TAtom "v0"]; TApp "tmp" [TAtom "v2"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v9"]; TAtom "L4"; TAtom "L6"]];
-        TApp "block" [TAtom "L4"; TList [];
-          TList [];
-          TApp "ret" [TApp "const" [TInt 4294967295]]];
-        TApp "block" [TAtom "L6"; TList [];
-          TList [];
-          TApp "ret" [TApp "const" [TInt 0]]]]]
+    cap_fn{ "export" "constant_time_msb" [param "w" %"v0"] -> "w"
+      {
+        @"start":
+          %"v5" : "w" = "shr" %"v0", #31;
+          %"v6" : "w" = "sub" #0, %"v5"
+          => ret %"v6"
+      } };
+    cap_fn{ "export" "constant_time_lt" [param "w" %"v0"; param "w" %"v2"] -> "w"
+      {
+        @"start":
+          %"v7" : "w" = "xor" %"v0", %"v2";
+          %"v10" : "w" = "sub" %"v0", %"v2";
+          %"v12" : "w" = "xor" %"v10", %"v2";
+          %"v13" : "w" = "or" %"v7", %"v12";
+          %"v14" : "w" = "xor" %"v0", %"v13";
+          call %"v15" : "w" = $"constant_time_msb"("w" %"v14")
+          => ret %"v15"
+      } };
+    cap_fn{ "export" "leaky_lt" [param "w" %"v0"; param "w" %"v2"] -> "w"
+      {
+        @"start":
+          %"v9" : "w" = op "cmp"("ult", "w") %"v0", %"v2"
+          => br %"v9" ? "L4" : "L6";
+        @"L4":
+          => ret #4294967295;
+        @"L6":
+          => ret #0
+      } }
   ]].

@@ -71,34 +71,44 @@ def typed_image(output, name, records, provenance='', budget=64_000):
             continue
         kind, spelling, body = row.split('\t', 2)
         raw = bytes.fromhex(spelling)
-        if block_owner is not None and (raw != block_owner or kind not in ('block', 'func')):
+        if block_owner is not None and (raw != block_owner or kind not in ('block', 'func', 'func_raw')):
             raise ValueError('block owner differs from the enclosing function')
         if kind == 'block':
             block_owner = raw
             blocks.append(body)
             continue
-        if kind not in ('func', 'item') or (blocks and kind != 'func'):
+        if kind not in ('func', 'func_raw', 'item') or (blocks and kind == 'item'):
             raise ValueError(f'invalid Gallina record {kind!r}')
+        structured = kind == 'func'
+        if kind == 'func_raw':
+            kind = 'func'
         tag = 'fn' if kind == 'func' else 'item'
         ident = f'{prefix}_{tag}_{identifier(raw)}'
         if ident in seen or not raw:
             ident += f"'n{len(order)}"
         seen.add(ident)
         stem = name + 'Typed' + (family(raw) if kind == 'func' else 'Objects')
-        imports = []
+        imports = ['IRBytes'] if kind == 'item' and '%irbytes' in body else []
         if kind == 'func':
             parts = list(packs(blocks, len, budget))
-            if len(parts) <= 1:
-                body += ' ' + listing(blocks)
+            def block_list(part):
+                return listing(['ir_blk{ ' + b + ' }' for b in part])
+            imports.append('IRNotation')
+            if structured and len(parts) <= 1 and len(blocks) <= 64:
+                body += ' {\n  ' + ';\n  '.join(blocks) + '\n} }'
+            elif len(parts) <= 1:
+                expression = block_list(blocks)
+                body += ' blocks (' + expression + ') }' if structured else ' ' + expression
             else:
                 refs = []
                 for i, part in enumerate(parts, 1):
                     ref = f"{ident}'blocks{i}"
                     file = f'{stem}Blocks{len(order)}x{i}'
-                    write(file, f'Definition {ref} : list block :=\n  {listing(part)}.\n')
+                    write(file, f'Definition {ref} : list block :=\n  {block_list(part)}.\n', ['IRNotation'])
                     refs.append(ref)
                     imports.append(file)
-                body += ' (' + ' ++ '.join(refs) + ')'
+                expression = '(' + ' ++ '.join(refs) + ')'
+                body += ' blocks ' + expression + ' }' if structured else ' ' + expression
             blocks = []
             block_owner = None
         definition = f'Definition {ident} : {kind} :=\n  {body}.\n'

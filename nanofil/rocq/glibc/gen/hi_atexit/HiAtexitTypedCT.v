@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,41 +12,45 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn___GI___ctype_init : func :=
-  mkFunc (a "__GI___ctype_init") (a "export") RVoid [] [(mkBlock (a "start") [] [(Let (a "v0") P Copy [(Global (a "__libc_tsd_CTYPE_B"))]);
-      (Let (a "v1") P Copy [(Global (a "__libc_tsd_LOCALE"))]);
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v1")]);
-      (Let (a "v2") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "chk1") A (Check 0 8 Read 8) [(t "v2")]);
-      (Let (a "v4") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Flight (a "v5") Add [(FAddress (t "v4")); (FValue (Const 56))] (LowerOf (t "v4")));
-      (Let (a "chk2") A (Check 0 8 Read 8) [(t "v5")]);
-      (Let (a "v10") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Flight (a "v11") Add [(FAddress (t "v10")); (FValue (Const 256))] (LowerOf (t "v10")));
-      (Let (a "chk3") A (Check 0 8 Write 8) [(t "v0")]);
-      (RawStorePointer 0 (t "v11") (t "chk3") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v12") P Copy [(Global (a "__libc_tsd_CTYPE_TOUPPER"))]);
-      (Let (a "v13") P Copy [(Global (a "__libc_tsd_LOCALE"))]);
-      (Let (a "chk4") A (Check 0 8 Read 8) [(t "v13")]);
-      (Let (a "v14") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk4")]);
-      (Let (a "chk5") A (Check 0 8 Read 8) [(t "v14")]);
-      (Let (a "v16") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk5")]);
-      (Flight (a "v17") Add [(FAddress (t "v16")); (FValue (Const 56))] (LowerOf (t "v16")));
-      (Flight (a "v21") Add [(FAddress (t "v17")); (FValue (Const 8))] (LowerOf (t "v17")));
-      (Let (a "chk6") A (Check 0 8 Read 8) [(t "v21")]);
-      (Let (a "v22") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk6")]);
-      (Flight (a "v23") Add [(FAddress (t "v22")); (FValue (Const 512))] (LowerOf (t "v22")));
-      (Let (a "chk7") A (Check 0 8 Write 8) [(t "v12")]);
-      (RawStorePointer 0 (t "v23") (t "chk7") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v24") P Copy [(Global (a "__libc_tsd_CTYPE_TOLOWER"))]);
-      (Let (a "v25") P Copy [(Global (a "__libc_tsd_LOCALE"))]);
-      (Let (a "chk8") A (Check 0 8 Read 8) [(t "v25")]);
-      (Let (a "v26") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk8")]);
-      (Let (a "chk9") A (Check 0 8 Read 8) [(t "v26")]);
-      (Let (a "v28") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk9")]);
-      (Flight (a "v29") Add [(FAddress (t "v28")); (FValue (Const 56))] (LowerOf (t "v28")));
-      (Flight (a "v33") Add [(FAddress (t "v29")); (FValue (Const 24))] (LowerOf (t "v29")));
-      (Let (a "chk10") A (Check 0 8 Read 8) [(t "v33")]);
-      (Let (a "v34") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk10")]);
-      (Flight (a "v35") Add [(FAddress (t "v34")); (FValue (Const 512))] (LowerOf (t "v34")));
-      (Let (a "chk11") A (Check 0 8 Write 8) [(t "v24")]);
-      (RawStorePointer 0 (t "v35") (t "chk11") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] JRetVoid)].
+  ir_fn{ "export" "__GI___ctype_init"() -> RVoid {
+  @"start":
+    %"v0" : P = Copy $"__libc_tsd_CTYPE_B";
+    %"v1" : P = Copy $"__libc_tsd_LOCALE";
+    %"chk0" : A = (Check 0 8 Read 8) %"v1";
+    %"v2" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk1" : A = (Check 0 8 Read 8) %"v2";
+    %"v4" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v5" = %"v4" +p #56;
+    %"chk2" : A = (Check 0 8 Read 8) %"v5";
+    %"v10" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v11" = %"v10" +p #256;
+    %"chk3" : A = (Check 0 8 Write 8) %"v0";
+    store.ptr [%"chk3" + 0] <- %"v11";
+    %"v12" : P = Copy $"__libc_tsd_CTYPE_TOUPPER";
+    %"v13" : P = Copy $"__libc_tsd_LOCALE";
+    %"chk4" : A = (Check 0 8 Read 8) %"v13";
+    %"v14" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"chk5" : A = (Check 0 8 Read 8) %"v14";
+    %"v16" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v17" = %"v16" +p #56;
+    %"v21" = %"v17" +p #8;
+    %"chk6" : A = (Check 0 8 Read 8) %"v21";
+    %"v22" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"v23" = %"v22" +p #512;
+    %"chk7" : A = (Check 0 8 Write 8) %"v12";
+    store.ptr [%"chk7" + 0] <- %"v23";
+    %"v24" : P = Copy $"__libc_tsd_CTYPE_TOLOWER";
+    %"v25" : P = Copy $"__libc_tsd_LOCALE";
+    %"chk8" : A = (Check 0 8 Read 8) %"v25";
+    %"v26" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"chk9" : A = (Check 0 8 Read 8) %"v26";
+    %"v28" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    %"v29" = %"v28" +p #56;
+    %"v33" = %"v29" +p #24;
+    %"chk10" : A = (Check 0 8 Read 8) %"v33";
+    %"v34" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v35" = %"v34" +p #512;
+    %"chk11" : A = (Check 0 8 Write 8) %"v24";
+    store.ptr [%"chk11" + 0] <- %"v35"
+    => ret void
+} }.

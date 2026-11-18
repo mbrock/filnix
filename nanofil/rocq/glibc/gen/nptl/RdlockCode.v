@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,340 +12,272 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition rdlock_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "rdlock_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__GI___pthread_rwlock_rdlock"; TInt 0]]]];
-    TApp "func" [TAtom "___pthread_rwlock_rdlock"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v4"]; TAtom "copy"; TList [TApp "address" [TApp "const" [TInt 0]]]; TApp "lower" [TApp "const" [TInt 0]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v11"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "iw_1.v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v12"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "iw_1.v11"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v12"]; TAtom "iw_1.L18"; TAtom "iw_1.L14"]];
-        TApp "block" [TAtom "iw_1.L18"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v21"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "iw_1.v4"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "iw_1.v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "iw_1.v21"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v22"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_2.v3"]; TAtom "w"; TApp "cmp" [TAtom "sge"; TAtom "l"]; TList [TApp "tmp" [TAtom "iw_1.v22"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_2.v3"]; TAtom "iw_1.iw_2.L4"; TAtom "iw_1.iw_2.L5"]];
-        TApp "block" [TAtom "iw_1.iw_2.L4"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_2.v7"]; TAtom "w"; TApp "cmp" [TAtom "slt"; TAtom "l"]; TList [TApp "tmp" [TAtom "iw_1.v22"]; TApp "const" [TInt 1000000000]]]];
-          TApp "goto" [TAtom "iw_1.iw_2.L5"]];
-        TApp "block" [TAtom "iw_1.iw_2.L5"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_2.v9"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L18"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_2.L4"; TApp "tmp" [TAtom "iw_1.iw_2.v7"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v25"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_2.v9"]; TApp "const" [TInt 0]]]];
-          TApp "goto" [TAtom "iw_1.L14"]];
-        TApp "block" [TAtom "iw_1.L14"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v31"]; TAtom "w"; TList [TApp "-" [TAtom "start"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_2.L5"; TApp "tmp" [TAtom "iw_1.v25"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v31"]; TAtom "iw_1.join"; TAtom "iw_1.L9"]];
-        TApp "block" [TAtom "iw_1.L9"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v37"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 24]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "iw_1.v37"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v38"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "iw_1.v39"]; TAtom "p"]; TApp "global" [TAtom "zthread_self_cookie"]; TList []];
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v40"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "iw_1.v39"]]; TApp "const" [TInt 720]]; TApp "lower" [TApp "tmp" [TAtom "iw_1.v39"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "check" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "iw_1.v40"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v41"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk2"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v42"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v38"]; TApp "tmp" [TAtom "iw_1.v41"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v42"]; TAtom "iw_1.join"; TAtom "iw_1.L35"]];
-        TApp "block" [TAtom "iw_1.L35"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v50"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 48]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk3"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.v50"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v51"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk3"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v52"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v51"]; TApp "const" [TInt 2]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v52"]; TAtom "iw_1.L46"; TAtom "iw_1.L48"]];
-        TApp "block" [TAtom "iw_1.L46"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk4"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v54"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk4"]]]];
-          TApp "goto" [TAtom "iw_1.L55"]];
-        TApp "block" [TAtom "iw_1.L55"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.7"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L46"; TApp "tmp" [TAtom "iw_1.v54"]]; TApp "-" [TAtom "iw_1.L86"; TApp "tmp" [TAtom "iw_1.v90"]]; TApp "-" [TAtom "iw_1.L85"; TApp "tmp" [TAtom "iw_1.pr.9"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v59"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.7"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v59"]; TAtom "iw_1.L62"; TAtom "iw_1.L61"]];
-        TApp "block" [TAtom "iw_1.L61"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v64"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.7"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v65"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v64"]; TApp "const" [TInt 0]]]];
-          TApp "goto" [TAtom "iw_1.L62"]];
-        TApp "block" [TAtom "iw_1.L62"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v67"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L55"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L61"; TApp "tmp" [TAtom "iw_1.v65"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v67"]; TAtom "iw_1.L68"; TAtom "iw_1.L69"]];
-        TApp "block" [TAtom "iw_1.L68"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v71"]; TAtom "w"; TAtom "shr"; TList [TApp "tmp" [TAtom "iw_1.pr.7"]; TApp "const" [TInt 3]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v72"]; TAtom "w"; TApp "cmp" [TAtom "ugt"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v71"]; TApp "const" [TInt 0]]]];
-          TApp "goto" [TAtom "iw_1.L69"]];
-        TApp "block" [TAtom "iw_1.L69"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v74"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L62"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L68"; TApp "tmp" [TAtom "iw_1.v72"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v74"]; TAtom "iw_1.L56"; TAtom "iw_1.L48"]];
-        TApp "block" [TAtom "iw_1.L56"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v80"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "iw_1.pr.7"]; TApp "const" [TInt 4]]];
-            TApp "let" [TApp "tmp" [TAtom "chk5"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v82"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk5"]; TApp "tmp" [TAtom "iw_1.pr.7"]; TApp "tmp" [TAtom "iw_1.v80"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v83"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v82"]; TApp "tmp" [TAtom "iw_1.pr.7"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v83"]; TAtom "iw_1.L85"; TAtom "iw_1.L84"]];
-        TApp "block" [TAtom "iw_1.L84"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L85"]];
-        TApp "block" [TAtom "iw_1.L85"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.9"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L56"; TApp "tmp" [TAtom "iw_1.pr.7"]]; TApp "-" [TAtom "iw_1.L84"; TApp "tmp" [TAtom "iw_1.v82"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v83"]; TAtom "iw_1.L86"; TApp "poll" [TAtom "iw_1.L55"]]];
-        TApp "block" [TAtom "iw_1.L86"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk6"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk4"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v90"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk6"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v91"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.v90"]; TApp "const" [TInt 4]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v92"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v91"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v92"]; TAtom "iw_1.iw_3.start"; TApp "poll" [TAtom "iw_1.L55"]]];
-        TApp "block" [TAtom "iw_1.iw_3.start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.iw_3.v6"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 28]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk7"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.iw_3.v6"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_3.v7"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk7"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_3.v8"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_3.v7"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_3.v8"]; TAtom "iw_1.iw_3.L4"; TAtom "iw_1.iw_3.L3"]];
-        TApp "block" [TAtom "iw_1.iw_3.L3"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.iw_3.L4"]];
-        TApp "block" [TAtom "iw_1.iw_3.L4"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_3.v9"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_3.L3"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_3.start"; TApp "const" [TInt 128]]]]];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "iw_1.v102"]; TAtom "w"]; TApp "global" [TAtom "__GI___futex_abstimed_wait64"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "iw_1.v90"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 0]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.v4"]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "iw_1.iw_3.v9"]]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v107"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v102"]; TApp "const" [TInt 110]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v107"]; TAtom "iw_1.L109"; TAtom "iw_1.L108"]];
-        TApp "block" [TAtom "iw_1.L108"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v111"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v102"]; TApp "const" [TInt 75]]]];
-          TApp "goto" [TAtom "iw_1.L109"]];
-        TApp "block" [TAtom "iw_1.L109"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v113"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_3.L4"; TApp "const" [TInt 1]]; TApp "-" [TAtom "iw_1.L108"; TApp "tmp" [TAtom "iw_1.v111"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v113"]; TAtom "iw_1.join"; TApp "poll" [TAtom "iw_1.L86"]]];
-        TApp "block" [TAtom "iw_1.L48"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk8"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v118"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk8"]]]];
-          TApp "goto" [TAtom "iw_1.L119"]];
-        TApp "block" [TAtom "iw_1.L119"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v121"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L48"; TApp "tmp" [TAtom "iw_1.v118"]]; TApp "-" [TAtom "iw_1.L119"; TApp "tmp" [TAtom "iw_1.v123"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v122"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "iw_1.v121"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "chk9"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v123"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk9"]; TApp "tmp" [TAtom "iw_1.v121"]; TApp "tmp" [TAtom "iw_1.v122"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v124"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v123"]; TApp "tmp" [TAtom "iw_1.v121"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v124"]; TAtom "iw_1.L127"; TApp "poll" [TAtom "iw_1.L119"]]];
-        TApp "block" [TAtom "iw_1.L127"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.1"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L119"; TApp "tmp" [TAtom "iw_1.v122"]]; TApp "-" [TAtom "iw_1.L148"; TApp "tmp" [TAtom "iw_1.pr.2"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v134"]; TAtom "w"; TApp "cmp" [TAtom "uge"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.pr.1"]; TApp "const" [TInt 2147483648]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v134"]; TAtom "iw_1.L128"; TAtom "iw_1.L129"]];
-        TApp "block" [TAtom "iw_1.L128"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v143"]; TAtom "w"; TAtom "sub"; TList [TApp "tmp" [TAtom "iw_1.pr.1"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "chk10"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v145"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk10"]; TApp "tmp" [TAtom "iw_1.pr.1"]; TApp "tmp" [TAtom "iw_1.v143"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v146"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v145"]; TApp "tmp" [TAtom "iw_1.pr.1"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v146"]; TAtom "iw_1.L148"; TAtom "iw_1.L147"]];
-        TApp "block" [TAtom "iw_1.L147"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L148"]];
-        TApp "block" [TAtom "iw_1.L148"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.2"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L128"; TApp "tmp" [TAtom "iw_1.pr.1"]]; TApp "-" [TAtom "iw_1.L147"; TApp "tmp" [TAtom "iw_1.v145"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v146"]; TAtom "iw_1.join"; TApp "poll" [TAtom "iw_1.L127"]]];
-        TApp "block" [TAtom "iw_1.L129"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v154"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.1"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v154"]; TAtom "iw_1.L159"; TAtom "iw_1.join"]];
-        TApp "block" [TAtom "iw_1.L159"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.3"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L129"; TApp "tmp" [TAtom "iw_1.pr.1"]]; TApp "-" [TAtom "iw_1.L182"; TApp "tmp" [TAtom "iw_1.pr.4"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v163"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.3"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v163"]; TAtom "iw_1.L165"; TAtom "iw_1.L166"]];
-        TApp "block" [TAtom "iw_1.L165"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v168"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.3"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v169"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v168"]; TApp "const" [TInt 0]]]];
-          TApp "goto" [TAtom "iw_1.L166"]];
-        TApp "block" [TAtom "iw_1.L166"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v171"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L159"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L165"; TApp "tmp" [TAtom "iw_1.v169"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v171"]; TAtom "iw_1.L160"; TAtom "iw_1.L206"]];
-        TApp "block" [TAtom "iw_1.L160"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v177"]; TAtom "w"; TAtom "xor"; TList [TApp "tmp" [TAtom "iw_1.pr.3"]; TApp "const" [TInt 1]]];
-            TApp "let" [TApp "tmp" [TAtom "chk11"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v179"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk11"]; TApp "tmp" [TAtom "iw_1.pr.3"]; TApp "tmp" [TAtom "iw_1.v177"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v180"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v179"]; TApp "tmp" [TAtom "iw_1.pr.3"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v180"]; TAtom "iw_1.L182"; TAtom "iw_1.L181"]];
-        TApp "block" [TAtom "iw_1.L181"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L182"]];
-        TApp "block" [TAtom "iw_1.L182"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.4"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L160"; TApp "tmp" [TAtom "iw_1.pr.3"]]; TApp "-" [TAtom "iw_1.L181"; TApp "tmp" [TAtom "iw_1.v179"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v180"]; TAtom "iw_1.L172"; TApp "poll" [TAtom "iw_1.L159"]]];
-        TApp "block" [TAtom "iw_1.L172"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v187"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk12"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.v187"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v188"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk12"]]]];
-          TApp "goto" [TAtom "iw_1.L189"]];
-        TApp "block" [TAtom "iw_1.L189"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v191"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L172"; TApp "tmp" [TAtom "iw_1.v188"]]; TApp "-" [TAtom "iw_1.L189"; TApp "tmp" [TAtom "iw_1.v192"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk13"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk12"]; TApp "tmp" [TAtom "iw_1.v187"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v192"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk13"]; TApp "tmp" [TAtom "iw_1.v191"]; TApp "const" [TInt 0]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v193"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v192"]; TApp "tmp" [TAtom "iw_1.v191"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v193"]; TAtom "iw_1.L190"; TApp "poll" [TAtom "iw_1.L189"]]];
-        TApp "block" [TAtom "iw_1.L190"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v194"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.v191"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v195"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v194"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v195"]; TAtom "iw_1.iw_4.start"; TAtom "iw_1.join"]];
-        TApp "block" [TAtom "iw_1.iw_4.start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.iw_4.v6"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 28]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk14"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.iw_4.v6"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_4.v7"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk14"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_4.v8"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_4.v7"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_4.v8"]; TAtom "iw_1.iw_4.L4"; TAtom "iw_1.iw_4.L3"]];
-        TApp "block" [TAtom "iw_1.iw_4.L3"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.iw_4.L4"]];
-        TApp "block" [TAtom "iw_1.iw_4.L4"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_4.v9"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_4.L3"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_4.start"; TApp "const" [TInt 128]]]]];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v200"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v16"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_4.v9"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_5.v16"]; TAtom "iw_1.iw_5.L18"; TAtom "iw_1.iw_5.L17"]];
-        TApp "block" [TAtom "iw_1.iw_5.L17"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v20"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_4.v9"]; TApp "const" [TInt 128]]]];
-          TApp "goto" [TAtom "iw_1.iw_5.L18"]];
-        TApp "block" [TAtom "iw_1.iw_5.L18"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_5.v22"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_4.L4"; TApp "const" [TInt 1]]; TApp "-" [TAtom "iw_1.iw_5.L17"; TApp "tmp" [TAtom "iw_1.iw_5.v20"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_5.v22"]; TAtom "iw_1.iw_5.L11"; TAtom "iw_1.iw_5.L14"]];
-        TApp "block" [TAtom "iw_1.iw_5.L14"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v24"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_pthread_rwlock_rdlock#str.286"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v25"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_pthread_rwlock_rdlock#str.287"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v26"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_pthread_rwlock_rdlock#str.288"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_5.v27"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "glibc_pthread_rwlock_rdlock#str.289"]]];
-            TApp "call" [TAtom "void"; TApp "global" [TAtom "zerrorf"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.iw_5.v24"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.iw_5.v25"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 173]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.iw_5.v26"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.iw_5.v27"]]]]];
-          TApp "goto" [TAtom "iw_1.iw_5.L11"]];
-        TApp "block" [TAtom "iw_1.iw_5.L11"; TList [];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_5.v16"]; TAtom "iw_1.iw_5.L30"; TAtom "iw_1.iw_5.L29"]];
-        TApp "block" [TAtom "iw_1.iw_5.L29"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.iw_5.L30"]];
-        TApp "block" [TAtom "iw_1.iw_5.L30"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_5.v33"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_5.L29"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_5.L11"; TApp "const" [TInt 1]]]]];
-          TList [
-            TApp "call" [TAtom "void"; TApp "global" [TAtom "zsys_futex_wake"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.v200"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 2147483647]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "iw_1.iw_5.v33"]]]]];
-          TApp "goto" [TAtom "iw_1.join"]];
-        TApp "block" [TAtom "iw_1.L206"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.10"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L166"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L297"; TApp "const" [TInt 1]]; TApp "-" [TAtom "iw_1.L301"; TApp "tmp" [TAtom "iw_1.pr.11"]]]]];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L210"]];
-        TApp "block" [TAtom "iw_1.L210"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v214"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk15"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.v214"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v215"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk15"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v216"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "iw_1.v215"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v218"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v216"]; TApp "const" [TInt 3]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v218"]; TAtom "iw_1.iw_6.start"; TAtom "iw_1.L212"]];
-        TApp "block" [TAtom "iw_1.iw_6.start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.iw_6.v6"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 28]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk16"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.iw_6.v6"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_6.v7"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk16"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.iw_6.v8"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.iw_6.v7"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.iw_6.v8"]; TAtom "iw_1.iw_6.L4"; TAtom "iw_1.iw_6.L3"]];
-        TApp "block" [TAtom "iw_1.iw_6.L3"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.iw_6.L4"]];
-        TApp "block" [TAtom "iw_1.iw_6.L4"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.iw_6.v9"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_6.L3"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_6.start"; TApp "const" [TInt 128]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v226"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.v215"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v227"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v226"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v227"]; TAtom "iw_1.L228"; TAtom "iw_1.L229"]];
-        TApp "block" [TAtom "iw_1.L228"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v231"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk17"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "iw_1.v231"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v235"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk17"]; TApp "tmp" [TAtom "iw_1.v215"]; TApp "tmp" [TAtom "iw_1.v216"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v236"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v235"]; TApp "tmp" [TAtom "iw_1.v215"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v236"]; TAtom "iw_1.L238"; TAtom "iw_1.L237"]];
-        TApp "block" [TAtom "iw_1.L237"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L238"]];
-        TApp "block" [TAtom "iw_1.L238"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v239"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v235"]; TApp "tmp" [TAtom "iw_1.v215"]]]];
-          TApp "goto" [TAtom "iw_1.L229"]];
-        TApp "block" [TAtom "iw_1.L229"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v241"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.iw_6.L4"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L238"; TApp "tmp" [TAtom "iw_1.v239"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v241"]; TApp "poll" [TAtom "iw_1.L210"]; TAtom "iw_1.L224"]];
-        TApp "block" [TAtom "iw_1.L224"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v245"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "iw_1.v250"]; TAtom "w"]; TApp "global" [TAtom "__GI___futex_abstimed_wait64"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.v245"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 3]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 0]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "iw_1.v4"]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "iw_1.iw_6.v9"]]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v255"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v250"]; TApp "const" [TInt 110]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v255"]; TAtom "iw_1.L257"; TAtom "iw_1.L256"]];
-        TApp "block" [TAtom "iw_1.L256"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v259"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v250"]; TApp "const" [TInt 75]]]];
-          TApp "goto" [TAtom "iw_1.L257"]];
-        TApp "block" [TAtom "iw_1.L257"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.v261"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L224"; TApp "const" [TInt 1]]; TApp "-" [TAtom "iw_1.L256"; TApp "tmp" [TAtom "iw_1.v259"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v261"]; TAtom "iw_1.L251"; TApp "poll" [TAtom "iw_1.L210"]]];
-        TApp "block" [TAtom "iw_1.L251"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk18"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk8"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v263"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk18"]]]];
-          TApp "goto" [TAtom "iw_1.L264"]];
-        TApp "block" [TAtom "iw_1.L264"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.5"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L251"; TApp "tmp" [TAtom "iw_1.v263"]]; TApp "-" [TAtom "iw_1.L281"; TApp "tmp" [TAtom "iw_1.pr.6"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v268"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.pr.5"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v268"]; TAtom "iw_1.L265"; TAtom "iw_1.L284"]];
-        TApp "block" [TAtom "iw_1.L265"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v276"]; TAtom "w"; TAtom "sub"; TList [TApp "tmp" [TAtom "iw_1.pr.5"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "chk19"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "write"; TInt 4]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v278"]; TAtom "w"; TApp "raw_cas" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk19"]; TApp "tmp" [TAtom "iw_1.pr.5"]; TApp "tmp" [TAtom "iw_1.v276"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v279"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v278"]; TApp "tmp" [TAtom "iw_1.pr.5"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v279"]; TAtom "iw_1.L281"; TAtom "iw_1.L280"]];
-        TApp "block" [TAtom "iw_1.L280"; TList [];
-          TList [];
-          TApp "goto" [TAtom "iw_1.L281"]];
-        TApp "block" [TAtom "iw_1.L281"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.6"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L265"; TApp "tmp" [TAtom "iw_1.pr.5"]]; TApp "-" [TAtom "iw_1.L280"; TApp "tmp" [TAtom "iw_1.v278"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v279"]; TAtom "iw_1.join"; TApp "poll" [TAtom "iw_1.L264"]]];
-        TApp "block" [TAtom "iw_1.L284"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "iw_1.v288"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk20"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk15"]; TApp "tmp" [TAtom "iw_1.v288"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v289"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk20"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v290"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "iw_1.v289"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v292"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "iw_1.v290"]; TApp "const" [TInt 3]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v292"]; TApp "poll" [TAtom "iw_1.L284"]; TAtom "iw_1.L212"]];
-        TApp "block" [TAtom "iw_1.L212"; TList [TApp "phi" [TApp "tmp" [TAtom "iw_1.pr.11"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L210"; TApp "tmp" [TAtom "iw_1.pr.10"]]; TApp "-" [TAtom "iw_1.L284"; TApp "const" [TInt 1]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v298"]; TAtom "w"; TApp "ext" [TAtom "ub"]; TList [TApp "tmp" [TAtom "iw_1.pr.11"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v298"]; TAtom "iw_1.join"; TAtom "iw_1.L297"]];
-        TApp "block" [TAtom "iw_1.L297"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk21"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk8"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v304"]; TAtom "w"; TApp "raw_load" [TAtom "uw"; TInt 0]; TList [TApp "tmp" [TAtom "chk21"]]];
-            TApp "let" [TApp "tmp" [TAtom "iw_1.v305"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "iw_1.v304"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "iw_1.v305"]; TAtom "iw_1.L301"; TApp "poll" [TAtom "iw_1.L206"]]];
-        TApp "block" [TAtom "iw_1.L301"; TList [];
-          TList [];
-          TApp "goto" [TApp "poll" [TAtom "iw_1.L206"]]];
-        TApp "block" [TAtom "iw_1.join"; TList [TApp "phi" [TApp "tmp" [TAtom "v7"]; TAtom "w"; TList [TApp "-" [TAtom "iw_1.L14"; TApp "const" [TInt 22]]; TApp "-" [TAtom "iw_1.L9"; TApp "const" [TInt 35]]; TApp "-" [TAtom "iw_1.L109"; TApp "tmp" [TAtom "iw_1.v102"]]; TApp "-" [TAtom "iw_1.L148"; TApp "const" [TInt 11]]; TApp "-" [TAtom "iw_1.L129"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L190"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.iw_5.L30"; TApp "const" [TInt 0]]; TApp "-" [TAtom "iw_1.L281"; TApp "tmp" [TAtom "iw_1.v250"]]; TApp "-" [TAtom "iw_1.L212"; TApp "const" [TInt 0]]]]];
-          TList [];
-          TApp "ret" [TApp "tmp" [TAtom "v7"]]]]];
-    TApp "alias" [TAtom "__GI___pthread_rwlock_rdlock"; TAtom "export"; TAtom "___pthread_rwlock_rdlock"];
-    TApp "data" [TAtom "glibc_pthread_rwlock_rdlock#str.286"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 58]]; TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 100]]; TApp "item" [TAtom "b"; TApp "const" [TInt 58]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 58]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 111]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 37]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 102]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 100]]; TApp "item" [TAtom "b"; TApp "const" [TInt 46]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
-    TApp "data" [TAtom "glibc_pthread_rwlock_rdlock#str.287"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 46]]; TApp "item" [TAtom "b"; TApp "const" [TInt 46]]; TApp "item" [TAtom "b"; TApp "const" [TInt 47]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 121]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 100]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 112]]; TApp "item" [TAtom "b"; TApp "const" [TInt 115]]; TApp "item" [TAtom "b"; TApp "const" [TInt 47]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 112]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 47]]; TApp "item" [TAtom "b"; TApp "const" [TInt 102]]; TApp "item" [TAtom "b"; TApp "const" [TInt 117]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 120]]; TApp "item" [TAtom "b"; TApp "const" [TInt 45]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 110]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 46]]; TApp "item" [TAtom "b"; TApp "const" [TInt 104]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
-    TApp "data" [TAtom "glibc_pthread_rwlock_rdlock#str.288"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 102]]; TApp "item" [TAtom "b"; TApp "const" [TInt 117]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 120]]; TApp "item" [TAtom "b"; TApp "const" [TInt 95]]; TApp "item" [TAtom "b"; TApp "const" [TInt 119]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 107]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]];
-    TApp "data" [TAtom "glibc_pthread_rwlock_rdlock#str.289"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 112]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 118]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 61]]; TApp "item" [TAtom "b"; TApp "const" [TInt 61]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 95]]; TApp "item" [TAtom "b"; TApp "const" [TInt 80]]; TApp "item" [TAtom "b"; TApp "const" [TInt 82]]; TApp "item" [TAtom "b"; TApp "const" [TInt 73]]; TApp "item" [TAtom "b"; TApp "const" [TInt 86]]; TApp "item" [TAtom "b"; TApp "const" [TInt 65]]; TApp "item" [TAtom "b"; TApp "const" [TInt 84]]; TApp "item" [TAtom "b"; TApp "const" [TInt 69]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 124]]; TApp "item" [TAtom "b"; TApp "const" [TInt 124]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 112]]; TApp "item" [TAtom "b"; TApp "const" [TInt 114]]; TApp "item" [TAtom "b"; TApp "const" [TInt 105]]; TApp "item" [TAtom "b"; TApp "const" [TInt 118]]; TApp "item" [TAtom "b"; TApp "const" [TInt 97]]; TApp "item" [TAtom "b"; TApp "const" [TInt 116]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 61]]; TApp "item" [TAtom "b"; TApp "const" [TInt 61]]; TApp "item" [TAtom "b"; TApp "const" [TInt 32]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 76]]; TApp "item" [TAtom "b"; TApp "const" [TInt 95]]; TApp "item" [TAtom "b"; TApp "const" [TInt 83]]; TApp "item" [TAtom "b"; TApp "const" [TInt 72]]; TApp "item" [TAtom "b"; TApp "const" [TInt 65]]; TApp "item" [TAtom "b"; TApp "const" [TInt 82]]; TApp "item" [TAtom "b"; TApp "const" [TInt 69]]; TApp "item" [TAtom "b"; TApp "const" [TInt 68]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]]
+    cap{ op "data"("rdlock_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__GI___pthread_rwlock_rdlock", int 0))]) };
+    cap_fn{ "export" "___pthread_rwlock_rdlock" [param "p" %"v0"] -> "w"
+      {
+        @"start":
+          (op "flight"(%"iw_1.v4", "copy", [op "address"(#0)], op "lower"(#0)));
+          %"iw_1.v11" : "l" = "ptoi" %"iw_1.v4";
+          %"iw_1.v12" : "w" = op "cmp"("ne", "l") %"iw_1.v11", #0
+          => br %"iw_1.v12" ? "iw_1.L18" : "iw_1.L14";
+        @"iw_1.L18":
+          %"iw_1.v21" = %"iw_1.v4" +p #8;
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 1) %"iw_1.v21";
+          %"iw_1.v22" : "l" = op "raw_load"("l", int 0) %"chk0";
+          %"iw_1.iw_2.v3" : "w" = op "cmp"("sge", "l") %"iw_1.v22", #0
+          => br %"iw_1.iw_2.v3" ? "iw_1.iw_2.L4" : "iw_1.iw_2.L5";
+        @"iw_1.iw_2.L4":
+          %"iw_1.iw_2.v7" : "w" = op "cmp"("slt", "l") %"iw_1.v22", #1000000000
+          => goto "iw_1.iw_2.L5";
+        @"iw_1.iw_2.L5" [phi %"iw_1.iw_2.v9" : "w" = ("iw_1.L18" => #0, "iw_1.iw_2.L4" => %"iw_1.iw_2.v7")]:
+          %"iw_1.v25" : "w" = op "cmp"("eq", "w") %"iw_1.iw_2.v9", #0
+          => goto "iw_1.L14";
+        @"iw_1.L14" [phi %"iw_1.v31" : "w" = ("start" => #0, "iw_1.iw_2.L5" => %"iw_1.v25")]:
+          => br %"iw_1.v31" ? "iw_1.join" : "iw_1.L9";
+        @"iw_1.L9":
+          %"iw_1.v37" = %"v0" +p #24;
+          %"chk1" : "a" = op "check"(int 0, int 4, "read", int 1) %"iw_1.v37";
+          %"iw_1.v38" : "w" = op "raw_load"("sw", int 0) %"chk1";
+          call %"iw_1.v39" : "p" = $"zthread_self_cookie"();
+          %"iw_1.v40" = %"iw_1.v39" +p #720;
+          %"chk2" : "a" = op "check"(int 0, int 4, "read", int 1) %"iw_1.v40";
+          %"iw_1.v41" : "w" = op "raw_load"("sw", int 0) %"chk2";
+          %"iw_1.v42" : "w" = op "cmp"("eq", "w") %"iw_1.v38", %"iw_1.v41"
+          => br %"iw_1.v42" ? "iw_1.join" : "iw_1.L35";
+        @"iw_1.L35":
+          %"iw_1.v50" = %"v0" +p #48;
+          %"chk3" : "a" = op "half_check"("upper", int 0, int 4, "read", int 1) %"chk1", %"iw_1.v50";
+          %"iw_1.v51" : "w" = op "raw_load"("uw", int 0) %"chk3";
+          %"iw_1.v52" : "w" = op "cmp"("eq", "w") %"iw_1.v51", #2
+          => br %"iw_1.v52" ? "iw_1.L46" : "iw_1.L48";
+        @"iw_1.L46":
+          %"chk4" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk1", %"v0";
+          %"iw_1.v54" : "w" = op "raw_load"("uw", int 0) %"chk4"
+          => goto "iw_1.L55";
+        @"iw_1.L55" [phi %"iw_1.pr.7" : "w" = ("iw_1.L46" => %"iw_1.v54", "iw_1.L86" => %"iw_1.v90", "iw_1.L85" => %"iw_1.pr.9")]:
+          %"iw_1.v59" : "w" = "and" %"iw_1.pr.7", #1
+          => br %"iw_1.v59" ? "iw_1.L62" : "iw_1.L61";
+        @"iw_1.L61":
+          %"iw_1.v64" : "w" = "and" %"iw_1.pr.7", #2;
+          %"iw_1.v65" : "w" = op "cmp"("ne", "w") %"iw_1.v64", #0
+          => goto "iw_1.L62";
+        @"iw_1.L62" [phi %"iw_1.v67" : "w" = ("iw_1.L55" => #0, "iw_1.L61" => %"iw_1.v65")]:
+          => br %"iw_1.v67" ? "iw_1.L68" : "iw_1.L69";
+        @"iw_1.L68":
+          %"iw_1.v71" : "w" = "shr" %"iw_1.pr.7", #3;
+          %"iw_1.v72" : "w" = op "cmp"("ugt", "w") %"iw_1.v71", #0
+          => goto "iw_1.L69";
+        @"iw_1.L69" [phi %"iw_1.v74" : "w" = ("iw_1.L62" => #0, "iw_1.L68" => %"iw_1.v72")]:
+          => br %"iw_1.v74" ? "iw_1.L56" : "iw_1.L48";
+        @"iw_1.L56":
+          %"iw_1.v80" : "w" = "or" %"iw_1.pr.7", #4;
+          %"chk5" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"v0";
+          %"iw_1.v82" : "w" = op "raw_cas"("uw", int 0) %"chk5", %"iw_1.pr.7", %"iw_1.v80";
+          %"iw_1.v83" : "w" = op "cmp"("eq", "w") %"iw_1.v82", %"iw_1.pr.7"
+          => br %"iw_1.v83" ? "iw_1.L85" : "iw_1.L84";
+        @"iw_1.L84":
+          => goto "iw_1.L85";
+        @"iw_1.L85" [phi %"iw_1.pr.9" : "w" = ("iw_1.L56" => %"iw_1.pr.7", "iw_1.L84" => %"iw_1.v82")]:
+          => br %"iw_1.v83" ? "iw_1.L86" : poll "iw_1.L55";
+        @"iw_1.L86":
+          %"chk6" : "a" = op "renew"(int 0, int 4, "read", int 1) %"chk4", %"v0";
+          %"iw_1.v90" : "w" = op "raw_load"("uw", int 0) %"chk6";
+          %"iw_1.v91" : "w" = "and" %"iw_1.v90", #4;
+          %"iw_1.v92" : "w" = op "cmp"("ne", "w") %"iw_1.v91", #0
+          => br %"iw_1.v92" ? "iw_1.iw_3.start" : poll "iw_1.L55";
+        @"iw_1.iw_3.start":
+          %"iw_1.iw_3.v6" = %"v0" +p #28;
+          %"chk7" : "a" = op "half_check"("upper", int 0, int 4, "read", int 1) %"chk1", %"iw_1.iw_3.v6";
+          %"iw_1.iw_3.v7" : "w" = op "raw_load"("sw", int 0) %"chk7";
+          %"iw_1.iw_3.v8" : "w" = op "cmp"("ne", "w") %"iw_1.iw_3.v7", #0
+          => br %"iw_1.iw_3.v8" ? "iw_1.iw_3.L4" : "iw_1.iw_3.L3";
+        @"iw_1.iw_3.L3":
+          => goto "iw_1.iw_3.L4";
+        @"iw_1.iw_3.L4" [phi %"iw_1.iw_3.v9" : "w" = ("iw_1.iw_3.L3" => #0, "iw_1.iw_3.start" => #128)]:
+          call %"iw_1.v102" : "w" = $"__GI___futex_abstimed_wait64"("p" %"v0", "w" %"iw_1.v90", "w" #0, "p" %"iw_1.v4", "w" %"iw_1.iw_3.v9");
+          %"iw_1.v107" : "w" = op "cmp"("eq", "w") %"iw_1.v102", #110
+          => br %"iw_1.v107" ? "iw_1.L109" : "iw_1.L108";
+        @"iw_1.L108":
+          %"iw_1.v111" : "w" = op "cmp"("eq", "w") %"iw_1.v102", #75
+          => goto "iw_1.L109";
+        @"iw_1.L109" [phi %"iw_1.v113" : "w" = ("iw_1.iw_3.L4" => #1, "iw_1.L108" => %"iw_1.v111")]:
+          => br %"iw_1.v113" ? "iw_1.join" : poll "iw_1.L86";
+        @"iw_1.L48":
+          %"chk8" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk1", %"v0";
+          %"iw_1.v118" : "w" = op "raw_load"("uw", int 0) %"chk8"
+          => goto "iw_1.L119";
+        @"iw_1.L119" [phi %"iw_1.v121" : "w" = ("iw_1.L48" => %"iw_1.v118", "iw_1.L119" => %"iw_1.v123")]:
+          %"iw_1.v122" : "w" = "add" %"iw_1.v121", #8;
+          %"chk9" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"v0";
+          %"iw_1.v123" : "w" = op "raw_cas"("uw", int 0) %"chk9", %"iw_1.v121", %"iw_1.v122";
+          %"iw_1.v124" : "w" = op "cmp"("eq", "w") %"iw_1.v123", %"iw_1.v121"
+          => br %"iw_1.v124" ? "iw_1.L127" : poll "iw_1.L119";
+        @"iw_1.L127" [phi %"iw_1.pr.1" : "w" = ("iw_1.L119" => %"iw_1.v122", "iw_1.L148" => %"iw_1.pr.2")]:
+          %"iw_1.v134" : "w" = op "cmp"("uge", "w") %"iw_1.pr.1", #2147483648
+          => br %"iw_1.v134" ? "iw_1.L128" : "iw_1.L129";
+        @"iw_1.L128":
+          %"iw_1.v143" : "w" = "sub" %"iw_1.pr.1", #8;
+          %"chk10" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"v0";
+          %"iw_1.v145" : "w" = op "raw_cas"("uw", int 0) %"chk10", %"iw_1.pr.1", %"iw_1.v143";
+          %"iw_1.v146" : "w" = op "cmp"("eq", "w") %"iw_1.v145", %"iw_1.pr.1"
+          => br %"iw_1.v146" ? "iw_1.L148" : "iw_1.L147";
+        @"iw_1.L147":
+          => goto "iw_1.L148";
+        @"iw_1.L148" [phi %"iw_1.pr.2" : "w" = ("iw_1.L128" => %"iw_1.pr.1", "iw_1.L147" => %"iw_1.v145")]:
+          => br %"iw_1.v146" ? "iw_1.join" : poll "iw_1.L127";
+        @"iw_1.L129":
+          %"iw_1.v154" : "w" = "and" %"iw_1.pr.1", #1
+          => br %"iw_1.v154" ? "iw_1.L159" : "iw_1.join";
+        @"iw_1.L159" [phi %"iw_1.pr.3" : "w" = ("iw_1.L129" => %"iw_1.pr.1", "iw_1.L182" => %"iw_1.pr.4")]:
+          %"iw_1.v163" : "w" = "and" %"iw_1.pr.3", #1
+          => br %"iw_1.v163" ? "iw_1.L165" : "iw_1.L166";
+        @"iw_1.L165":
+          %"iw_1.v168" : "w" = "and" %"iw_1.pr.3", #2;
+          %"iw_1.v169" : "w" = op "cmp"("eq", "w") %"iw_1.v168", #0
+          => goto "iw_1.L166";
+        @"iw_1.L166" [phi %"iw_1.v171" : "w" = ("iw_1.L159" => #0, "iw_1.L165" => %"iw_1.v169")]:
+          => br %"iw_1.v171" ? "iw_1.L160" : "iw_1.L206";
+        @"iw_1.L160":
+          %"iw_1.v177" : "w" = "xor" %"iw_1.pr.3", #1;
+          %"chk11" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"v0";
+          %"iw_1.v179" : "w" = op "raw_cas"("uw", int 0) %"chk11", %"iw_1.pr.3", %"iw_1.v177";
+          %"iw_1.v180" : "w" = op "cmp"("eq", "w") %"iw_1.v179", %"iw_1.pr.3"
+          => br %"iw_1.v180" ? "iw_1.L182" : "iw_1.L181";
+        @"iw_1.L181":
+          => goto "iw_1.L182";
+        @"iw_1.L182" [phi %"iw_1.pr.4" : "w" = ("iw_1.L160" => %"iw_1.pr.3", "iw_1.L181" => %"iw_1.v179")]:
+          => br %"iw_1.v180" ? "iw_1.L172" : poll "iw_1.L159";
+        @"iw_1.L172":
+          %"iw_1.v187" = %"v0" +p #8;
+          %"chk12" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk1", %"iw_1.v187";
+          %"iw_1.v188" : "w" = op "raw_load"("uw", int 0) %"chk12"
+          => goto "iw_1.L189";
+        @"iw_1.L189" [phi %"iw_1.v191" : "w" = ("iw_1.L172" => %"iw_1.v188", "iw_1.L189" => %"iw_1.v192")]:
+          %"chk13" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk12", %"iw_1.v187";
+          %"iw_1.v192" : "w" = op "raw_cas"("uw", int 0) %"chk13", %"iw_1.v191", #0;
+          %"iw_1.v193" : "w" = op "cmp"("eq", "w") %"iw_1.v192", %"iw_1.v191"
+          => br %"iw_1.v193" ? "iw_1.L190" : poll "iw_1.L189";
+        @"iw_1.L190":
+          %"iw_1.v194" : "w" = "and" %"iw_1.v191", #2;
+          %"iw_1.v195" : "w" = op "cmp"("ne", "w") %"iw_1.v194", #0
+          => br %"iw_1.v195" ? "iw_1.iw_4.start" : "iw_1.join";
+        @"iw_1.iw_4.start":
+          %"iw_1.iw_4.v6" = %"v0" +p #28;
+          %"chk14" : "a" = op "half_check"("upper", int 0, int 4, "read", int 1) %"chk1", %"iw_1.iw_4.v6";
+          %"iw_1.iw_4.v7" : "w" = op "raw_load"("sw", int 0) %"chk14";
+          %"iw_1.iw_4.v8" : "w" = op "cmp"("ne", "w") %"iw_1.iw_4.v7", #0
+          => br %"iw_1.iw_4.v8" ? "iw_1.iw_4.L4" : "iw_1.iw_4.L3";
+        @"iw_1.iw_4.L3":
+          => goto "iw_1.iw_4.L4";
+        @"iw_1.iw_4.L4" [phi %"iw_1.iw_4.v9" : "w" = ("iw_1.iw_4.L3" => #0, "iw_1.iw_4.start" => #128)]:
+          %"iw_1.v200" = %"v0" +p #8;
+          %"iw_1.iw_5.v16" : "w" = op "cmp"("eq", "w") %"iw_1.iw_4.v9", #0
+          => br %"iw_1.iw_5.v16" ? "iw_1.iw_5.L18" : "iw_1.iw_5.L17";
+        @"iw_1.iw_5.L17":
+          %"iw_1.iw_5.v20" : "w" = op "cmp"("eq", "w") %"iw_1.iw_4.v9", #128
+          => goto "iw_1.iw_5.L18";
+        @"iw_1.iw_5.L18" [phi %"iw_1.iw_5.v22" : "w" = ("iw_1.iw_4.L4" => #1, "iw_1.iw_5.L17" => %"iw_1.iw_5.v20")]:
+          => br %"iw_1.iw_5.v22" ? "iw_1.iw_5.L11" : "iw_1.iw_5.L14";
+        @"iw_1.iw_5.L14":
+          %"iw_1.iw_5.v24" : "p" = "copy" $"glibc_pthread_rwlock_rdlock#str.286";
+          %"iw_1.iw_5.v25" : "p" = "copy" $"glibc_pthread_rwlock_rdlock#str.287";
+          %"iw_1.iw_5.v26" : "p" = "copy" $"glibc_pthread_rwlock_rdlock#str.288";
+          %"iw_1.iw_5.v27" : "p" = "copy" $"glibc_pthread_rwlock_rdlock#str.289";
+          call void $"zerrorf"("p" %"iw_1.iw_5.v24", "p" %"iw_1.iw_5.v25", "w" #173, "p" %"iw_1.iw_5.v26", "p" %"iw_1.iw_5.v27")
+          => goto "iw_1.iw_5.L11";
+        @"iw_1.iw_5.L11":
+          => br %"iw_1.iw_5.v16" ? "iw_1.iw_5.L30" : "iw_1.iw_5.L29";
+        @"iw_1.iw_5.L29":
+          => goto "iw_1.iw_5.L30";
+        @"iw_1.iw_5.L30" [phi %"iw_1.iw_5.v33" : "w" = ("iw_1.iw_5.L29" => #0, "iw_1.iw_5.L11" => #1)]:
+          call void $"zsys_futex_wake"("p" %"iw_1.v200", "w" #2147483647, "w" %"iw_1.iw_5.v33")
+          => goto "iw_1.join";
+        @"iw_1.L206" [phi %"iw_1.pr.10" : "w" = ("iw_1.L166" => #0, "iw_1.L297" => #1, "iw_1.L301" => %"iw_1.pr.11")]:
+          => goto "iw_1.L210";
+        @"iw_1.L210":
+          %"iw_1.v214" = %"v0" +p #8;
+          %"chk15" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk1", %"iw_1.v214";
+          %"iw_1.v215" : "w" = op "raw_load"("uw", int 0) %"chk15";
+          %"iw_1.v216" : "w" = "or" %"iw_1.v215", #2;
+          %"iw_1.v218" : "w" = op "cmp"("eq", "w") %"iw_1.v216", #3
+          => br %"iw_1.v218" ? "iw_1.iw_6.start" : "iw_1.L212";
+        @"iw_1.iw_6.start":
+          %"iw_1.iw_6.v6" = %"v0" +p #28;
+          %"chk16" : "a" = op "half_check"("upper", int 0, int 4, "read", int 1) %"chk1", %"iw_1.iw_6.v6";
+          %"iw_1.iw_6.v7" : "w" = op "raw_load"("sw", int 0) %"chk16";
+          %"iw_1.iw_6.v8" : "w" = op "cmp"("ne", "w") %"iw_1.iw_6.v7", #0
+          => br %"iw_1.iw_6.v8" ? "iw_1.iw_6.L4" : "iw_1.iw_6.L3";
+        @"iw_1.iw_6.L3":
+          => goto "iw_1.iw_6.L4";
+        @"iw_1.iw_6.L4" [phi %"iw_1.iw_6.v9" : "w" = ("iw_1.iw_6.L3" => #0, "iw_1.iw_6.start" => #128)]:
+          %"iw_1.v226" : "w" = "and" %"iw_1.v215", #2;
+          %"iw_1.v227" : "w" = op "cmp"("eq", "w") %"iw_1.v226", #0
+          => br %"iw_1.v227" ? "iw_1.L228" : "iw_1.L229";
+        @"iw_1.L228":
+          %"iw_1.v231" = %"v0" +p #8;
+          %"chk17" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"iw_1.v231";
+          %"iw_1.v235" : "w" = op "raw_cas"("uw", int 0) %"chk17", %"iw_1.v215", %"iw_1.v216";
+          %"iw_1.v236" : "w" = op "cmp"("eq", "w") %"iw_1.v235", %"iw_1.v215"
+          => br %"iw_1.v236" ? "iw_1.L238" : "iw_1.L237";
+        @"iw_1.L237":
+          => goto "iw_1.L238";
+        @"iw_1.L238":
+          %"iw_1.v239" : "w" = op "cmp"("ne", "w") %"iw_1.v235", %"iw_1.v215"
+          => goto "iw_1.L229";
+        @"iw_1.L229" [phi %"iw_1.v241" : "w" = ("iw_1.iw_6.L4" => #0, "iw_1.L238" => %"iw_1.v239")]:
+          => br %"iw_1.v241" ? poll "iw_1.L210" : "iw_1.L224";
+        @"iw_1.L224":
+          %"iw_1.v245" = %"v0" +p #8;
+          call %"iw_1.v250" : "w" = $"__GI___futex_abstimed_wait64"("p" %"iw_1.v245", "w" #3, "w" #0, "p" %"iw_1.v4", "w" %"iw_1.iw_6.v9");
+          %"iw_1.v255" : "w" = op "cmp"("eq", "w") %"iw_1.v250", #110
+          => br %"iw_1.v255" ? "iw_1.L257" : "iw_1.L256";
+        @"iw_1.L256":
+          %"iw_1.v259" : "w" = op "cmp"("eq", "w") %"iw_1.v250", #75
+          => goto "iw_1.L257";
+        @"iw_1.L257" [phi %"iw_1.v261" : "w" = ("iw_1.L224" => #1, "iw_1.L256" => %"iw_1.v259")]:
+          => br %"iw_1.v261" ? "iw_1.L251" : poll "iw_1.L210";
+        @"iw_1.L251":
+          %"chk18" : "a" = op "renew"(int 0, int 4, "read", int 1) %"chk8", %"v0";
+          %"iw_1.v263" : "w" = op "raw_load"("uw", int 0) %"chk18"
+          => goto "iw_1.L264";
+        @"iw_1.L264" [phi %"iw_1.pr.5" : "w" = ("iw_1.L251" => %"iw_1.v263", "iw_1.L281" => %"iw_1.pr.6")]:
+          %"iw_1.v268" : "w" = "and" %"iw_1.pr.5", #1
+          => br %"iw_1.v268" ? "iw_1.L265" : "iw_1.L284";
+        @"iw_1.L265":
+          %"iw_1.v276" : "w" = "sub" %"iw_1.pr.5", #8;
+          %"chk19" : "a" = op "half_check"("lower", int 0, int 4, "write", int 4) %"chk1", %"v0";
+          %"iw_1.v278" : "w" = op "raw_cas"("uw", int 0) %"chk19", %"iw_1.pr.5", %"iw_1.v276";
+          %"iw_1.v279" : "w" = op "cmp"("eq", "w") %"iw_1.v278", %"iw_1.pr.5"
+          => br %"iw_1.v279" ? "iw_1.L281" : "iw_1.L280";
+        @"iw_1.L280":
+          => goto "iw_1.L281";
+        @"iw_1.L281" [phi %"iw_1.pr.6" : "w" = ("iw_1.L265" => %"iw_1.pr.5", "iw_1.L280" => %"iw_1.v278")]:
+          => br %"iw_1.v279" ? "iw_1.join" : poll "iw_1.L264";
+        @"iw_1.L284":
+          %"iw_1.v288" = %"v0" +p #8;
+          %"chk20" : "a" = op "renew"(int 0, int 4, "read", int 1) %"chk15", %"iw_1.v288";
+          %"iw_1.v289" : "w" = op "raw_load"("uw", int 0) %"chk20";
+          %"iw_1.v290" : "w" = "or" %"iw_1.v289", #2;
+          %"iw_1.v292" : "w" = op "cmp"("eq", "w") %"iw_1.v290", #3
+          => br %"iw_1.v292" ? poll "iw_1.L284" : "iw_1.L212";
+        @"iw_1.L212" [phi %"iw_1.pr.11" : "w" = ("iw_1.L210" => %"iw_1.pr.10", "iw_1.L284" => #1)]:
+          %"iw_1.v298" : "w" = op "ext"("ub") %"iw_1.pr.11"
+          => br %"iw_1.v298" ? "iw_1.join" : "iw_1.L297";
+        @"iw_1.L297":
+          %"chk21" : "a" = op "renew"(int 0, int 4, "read", int 1) %"chk8", %"v0";
+          %"iw_1.v304" : "w" = op "raw_load"("uw", int 0) %"chk21";
+          %"iw_1.v305" : "w" = "and" %"iw_1.v304", #1
+          => br %"iw_1.v305" ? "iw_1.L301" : poll "iw_1.L206";
+        @"iw_1.L301":
+          => goto poll "iw_1.L206";
+        @"iw_1.join" [phi %"v7" : "w" = ("iw_1.L14" => #22, "iw_1.L9" => #35, "iw_1.L109" => %"iw_1.v102", "iw_1.L148" => #11, "iw_1.L129" => #0, "iw_1.L190" => #0, "iw_1.iw_5.L30" => #0, "iw_1.L281" => %"iw_1.v250", "iw_1.L212" => #0)]:
+          => ret %"v7"
+      } };
+    cap{ op "alias"("__GI___pthread_rwlock_rdlock", "export", "___pthread_rwlock_rdlock") };
+    cap{ op "data"("glibc_pthread_rwlock_rdlock#str.286", op "ro"("local"), int 1, [op "item"("b", #37); op "item"("b", #115); op "item"("b", #58); op "item"("b", #37); op "item"("b", #100); op "item"("b", #58); op "item"("b", #32); op "item"("b", #37); op "item"("b", #115); op "item"("b", #58); op "item"("b", #32); op "item"("b", #97); op "item"("b", #115); op "item"("b", #115); op "item"("b", #101); op "item"("b", #114); op "item"("b", #116); op "item"("b", #105); op "item"("b", #111); op "item"("b", #110); op "item"("b", #32); op "item"("b", #37); op "item"("b", #115); op "item"("b", #32); op "item"("b", #102); op "item"("b", #97); op "item"("b", #105); op "item"("b", #108); op "item"("b", #101); op "item"("b", #100); op "item"("b", #46); op "item"("b", #0)]) };
+    cap{ op "data"("glibc_pthread_rwlock_rdlock#str.287", op "ro"("local"), int 1, [op "item"("b", #46); op "item"("b", #46); op "item"("b", #47); op "item"("b", #115); op "item"("b", #121); op "item"("b", #115); op "item"("b", #100); op "item"("b", #101); op "item"("b", #112); op "item"("b", #115); op "item"("b", #47); op "item"("b", #110); op "item"("b", #112); op "item"("b", #116); op "item"("b", #108); op "item"("b", #47); op "item"("b", #102); op "item"("b", #117); op "item"("b", #116); op "item"("b", #101); op "item"("b", #120); op "item"("b", #45); op "item"("b", #105); op "item"("b", #110); op "item"("b", #116); op "item"("b", #101); op "item"("b", #114); op "item"("b", #110); op "item"("b", #97); op "item"("b", #108); op "item"("b", #46); op "item"("b", #104); op "item"("b", #0)]) };
+    cap{ op "data"("glibc_pthread_rwlock_rdlock#str.288", op "ro"("local"), int 1, [op "item"("b", #102); op "item"("b", #117); op "item"("b", #116); op "item"("b", #101); op "item"("b", #120); op "item"("b", #95); op "item"("b", #119); op "item"("b", #97); op "item"("b", #107); op "item"("b", #101); op "item"("b", #0)]) };
+    cap{ op "data"("glibc_pthread_rwlock_rdlock#str.289", op "ro"("local"), int 1, [op "item"("b", #112); op "item"("b", #114); op "item"("b", #105); op "item"("b", #118); op "item"("b", #97); op "item"("b", #116); op "item"("b", #101); op "item"("b", #32); op "item"("b", #61); op "item"("b", #61); op "item"("b", #32); op "item"("b", #76); op "item"("b", #76); op "item"("b", #76); op "item"("b", #95); op "item"("b", #80); op "item"("b", #82); op "item"("b", #73); op "item"("b", #86); op "item"("b", #65); op "item"("b", #84); op "item"("b", #69); op "item"("b", #32); op "item"("b", #124); op "item"("b", #124); op "item"("b", #32); op "item"("b", #112); op "item"("b", #114); op "item"("b", #105); op "item"("b", #118); op "item"("b", #97); op "item"("b", #116); op "item"("b", #101); op "item"("b", #32); op "item"("b", #61); op "item"("b", #61); op "item"("b", #32); op "item"("b", #76); op "item"("b", #76); op "item"("b", #76); op "item"("b", #95); op "item"("b", #83); op "item"("b", #72); op "item"("b", #65); op "item"("b", #82); op "item"("b", #69); op "item"("b", #68); op "item"("b", #0)]) }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

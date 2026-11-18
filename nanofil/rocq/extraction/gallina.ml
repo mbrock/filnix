@@ -8,11 +8,11 @@ open Nanofil_model
 let app constructor arguments =
   "(" ^ String.concat " " (constructor :: arguments) ^ ")"
 
-let list ?(sep="; ") render xs =
+let list ?(sep="; ") ?(opening="[") render xs =
   let values = Array.of_list (List.map render xs) in
   let rec range start length =
     if length <= 64 then
-      "[" ^ String.concat sep (Array.to_list (Array.sub values start length)) ^ "]"
+      opening ^ String.concat sep (Array.to_list (Array.sub values start length)) ^ "]"
     else
       let left = length / 2 in
       app "app" [range start left; range (start + left) (length - left)]
@@ -237,14 +237,93 @@ let linkage = function
 
 let data_item = function
   | Item (size, bits) -> app "Item" [width size; integer bits]
+  | Str xs when xs <> [] && List.for_all (fun z ->
+        Big_int_Z.ge_big_int z (Big_int_Z.big_int_of_int 32) &&
+        Big_int_Z.le_big_int z (Big_int_Z.big_int_of_int 126)) xs ->
+      let chars = List.map (fun z -> Char.chr (Big_int_Z.int_of_big_int z)) xs in
+      string (String.of_seq (List.to_seq chars)) ^ "%irbytes"
   | Str x -> app "Str" [list integer x]
   | Sym (symbol, offset) -> app "Sym" [term symbol; integer offset]
   | Zero x -> app "Zero" [integer x]
   | ItemOther x -> app "ItemOther" [term x]
 
+(* Layout receives complete Gallina expressions. A custom entry admits a
+   parenthesized constructor for shapes without a dedicated spelling. *)
+let operand = function
+  | Tmp (TAtom s) -> "%" ^ string s
+  | Global (TAtom s) -> "$" ^ string s
+  | Const z -> "#" ^ integer z
+  | x -> "val(" ^ value x ^ ")"
+
+let edge = function
+  | To (TAtom s) -> string s
+  | Poll (TAtom s) -> "poll " ^ string s
+  | x -> "edge(" ^ target x ^ ")"
+
+let operation = function
+  | RawLoadPointer (n, [AuxRead; LowerResolve; AddressRead]) ->
+      app "RawLoadPointer" [integer n; "load_effects"]
+  | RawLoadPointer (n, [AuxRead; AddressRead]) ->
+      app "RawLoadPointer" [integer n; "local_load_effects"]
+  | x -> op x
+
+let instruction i =
+  let call kw result fn args =
+    let actual (Arg (k,v)) = cls k ^ " " ^ operand v in
+    let invoke binding = kw ^ " " ^ binding ^ operand fn ^ "("
+      ^ String.concat ", " (List.map actual args) ^ ")" in
+    match result with
+    | CVoid -> invoke "void "
+    | CResult (TAtom d,k) -> invoke ("%" ^ string d ^ " : " ^ cls k ^ " = ")
+    | _ -> inst i in
+  match i with
+  | Let (TAtom d,k,o,args) when List.length args <= 3 ->
+      let head = "%" ^ string d ^ " : " ^ cls k ^ " = " ^ operation o in
+      if args = [] then head else head ^ " " ^ String.concat ", " (List.map operand args)
+  | Flight (TAtom d,Add,[FAddress base; FValue off],LowerOf donor) when value_eqb base donor ->
+      "%" ^ string d ^ " = " ^ operand base ^ " +p " ^ operand off
+  | RawStore (size,off,src,addr) ->
+      "store " ^ width size ^ " [" ^ operand addr ^ " + " ^ integer off ^ "] <- " ^ operand src
+  | RawStorePointer (off,src,addr,[AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]) ->
+      "store.ptr [" ^ operand addr ^ " + " ^ integer off ^ "] <- " ^ operand src
+  | LocalAlloc (TAtom x,n) -> "alloca " ^ string x ^ " " ^ integer n
+  | Call (result,fn,args) when List.length args <= 64 -> call "call" result fn args
+  | RawCall (result,fn,args) when List.length args <= 64 -> call "rawcall" result fn args
+  | _ -> inst i
+
+let terminator = function
+  | JGoto t -> "goto " ^ edge t
+  | JBranch (v,y,n) -> "br " ^ operand v ^ " ? " ^ edge y ^ " : " ^ edge n
+  | JRet v -> "ret " ^ operand v
+  | JRetVoid -> "ret void"
+  | JUnreachable -> "unreachable"
+  | JRets _ as j -> jump j
+
+let ir_phi p = match p with
+  | Phi (TAtom d,k,pairs) when pairs <> [] && List.length pairs <= 64 ->
+      let incoming = function
+        | TAtom l,v -> Some (string l ^ " => " ^ operand v)
+        | _ -> None in
+      let inputs = List.filter_map incoming pairs in
+      if List.length inputs <> List.length pairs then phi p else
+      "%" ^ string d ^ " : " ^ cls k ^ " = phi(" ^ String.concat ", " inputs ^ ")"
+  | _ -> phi p
+
 let block b =
-  app "mkBlock" [term b.b_label; list phi b.b_phis;
-    list ~sep:";\n      " inst b.b_insts; jump b.b_jump]
+  let instructions = List.map instruction b.b_insts in
+  match b.b_label with
+  | TAtom label when List.length b.b_phis <= 64 ->
+      let phis = if b.b_phis = [] then "" else
+        " [" ^ String.concat "; " (List.map ir_phi b.b_phis) ^ "]" in
+      let code = match instructions with
+        | [] -> ""
+        | xs when List.length xs <= 64 -> String.concat ";\n    " xs ^ "\n    "
+        | xs -> "code (" ^ list ~opening:"ir[ " ~sep:";\n      " Fun.id xs ^ ")\n    " in
+      "@" ^ string label ^ phis ^ ":\n    " ^ code ^ "=> " ^ terminator b.b_jump
+  | _ ->
+      let wrapped x = "ir{ " ^ x ^ " }" in
+      app "mkBlock" [term b.b_label; list phi b.b_phis;
+        list ~sep:";\n      " wrapped instructions; wrapped (terminator b.b_jump)]
 
 (* Each record begins with its kind and hex-encoded symbol spelling. An
    arbitrary term is a legal name too; the layout pass names it by position.
@@ -261,8 +340,16 @@ let record kind name body =
 let item = function
   | IFunc f ->
       List.iter (fun b -> record "block" f.fn_name (block b)) f.fn_blocks;
-      record "func" f.fn_name (String.concat " " ["mkFunc"; term f.fn_name;
-        term f.fn_linkage; ret_type f.fn_ret; list (pair cls term) f.fn_params])
+      (match f.fn_name, f.fn_linkage with
+       | TAtom name, TAtom linkage when List.length f.fn_params <= 64
+          && List.for_all (function _,TAtom _ -> true | _ -> false) f.fn_params ->
+           let formal = function
+             | k,TAtom n -> cls k ^ " %" ^ string n
+             | _ -> assert false in
+           record "func" f.fn_name ("ir_fn{ " ^ string linkage ^ " " ^ string name ^
+             "(" ^ String.concat ", " (List.map formal f.fn_params) ^ ") -> " ^ ret_type f.fn_ret)
+       | _ -> record "func_raw" f.fn_name (String.concat " " ["mkFunc"; term f.fn_name;
+           term f.fn_linkage; ret_type f.fn_ret; list (pair cls term) f.fn_params]))
   | IOutside (n, t) -> record "item" n (app "IOutside" [term n; term t])
   | IData (n, lk, align, items) ->
       record "item" n (app "IData" [term n; linkage lk; integer align; list data_item items])

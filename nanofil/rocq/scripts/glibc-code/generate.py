@@ -24,7 +24,7 @@ layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
 block_definitions = runpy.run_path(str(HERE / "block-facts.py"))["block_definitions"]
 name_tables = runpy.run_path(str(HERE / "names.py"))["name_tables"]
 typed_image = runpy.run_path(str(HERE / "typed.py"))["typed_image"]
-PRELUDE = GLIBC / "CodePrelude.v"
+PRELUDES = ("CodePrelude.v", "IRNotation.v", "IRBytes.v")
 
 
 def run(args, *, cwd=NF, data=None, env=None):
@@ -505,14 +505,17 @@ def main():
         if len(manifests) != len(set(args.directory)):
             parser.error("unknown directory")
     status = 0
-    prelude = (args.output / "CodePrelude.v" if args.output
-               else (PRELUDE if args.tree.resolve() == GEN.resolve() else args.tree / "CodePrelude.v"))
-    if args.output or (args.update and prelude.resolve() != PRELUDE.resolve()):
-        prelude.parent.mkdir(parents=True, exist_ok=True)
-        prelude.write_bytes(PRELUDE.read_bytes())
-    elif not prelude.exists() or prelude.read_bytes() != PRELUDE.read_bytes():
-        print(f"shared prelude differs or is missing: {prelude}")
-        status = 1
+    prelude_dir = args.output or (GLIBC if args.tree.resolve() == GEN.resolve() else args.tree)
+    for name in PRELUDES:
+        source, destination = GLIBC / name, prelude_dir / name
+        if source.resolve() == destination.resolve():
+            continue
+        if args.output or args.update:
+            destination.parent.mkdir(parents=True, exist_ok=True)
+            destination.write_bytes(source.read_bytes())
+        elif not destination.is_file() or destination.read_bytes() != source.read_bytes():
+            print(f"shared prelude differs or is missing: {destination}")
+            status = 1
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
         work = Path(tmp)
         generator = Generator(args.capture.resolve(), work, sources=True)

@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRBytes.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -467,19 +468,19 @@ Definition hello_image_item_glibc_C_time'23str'2e99 : item :=
   (IData (a "glibc_C_time#str.99") (LRo (a "local")) 4 [(Item Ww 70); (Item Ww 101); (Item Ww 98); (Item Ww 0)]).
 
 Definition hello_image_item__nl_C_codeset : item :=
-  (IData (a "_nl_C_codeset") (LRo (a "export")) 1 [(Str [65; 78; 83; 73; 95; 88; 51; 46; 52; 45; 49; 57; 54; 56]); (Zero 1)]).
+  (IData (a "_nl_C_codeset") (LRo (a "export")) 1 ["ANSI_X3.4-1968"%irbytes; (Zero 1)]).
 
 Definition hello_image_item__nl_C_name : item :=
-  (IData (a "_nl_C_name") (LRo (a "export")) 1 [(Str [67]); (Zero 1)]).
+  (IData (a "_nl_C_name") (LRo (a "export")) 1 ["C"%irbytes; (Zero 1)]).
 
 Definition hello_image_item__nl_POSIX_name : item :=
-  (IData (a "_nl_POSIX_name") (LRo (a "export")) 1 [(Str [80; 79; 83; 73; 88]); (Zero 1)]).
+  (IData (a "_nl_POSIX_name") (LRo (a "export")) 1 ["POSIX"%irbytes; (Zero 1)]).
 
 Definition hello_image_item___GI__libc_intl_domainname : item :=
-  (IData (a "__GI__libc_intl_domainname") (LRo (a "export")) 1 [(Str [108; 105; 98; 99]); (Zero 1)]).
+  (IData (a "__GI__libc_intl_domainname") (LRo (a "export")) 1 ["libc"%irbytes; (Zero 1)]).
 
 Definition hello_image_item__nl_default_locale_path : item :=
-  (IData (a "_nl_default_locale_path") (LRo (a "export")) 1 [(Str (app [47; 110; 105; 120; 47; 115; 116; 111; 114; 101; 47; 55; 104; 104; 52; 53; 99; 118; 119; 122; 114; 113; 121; 113; 118; 112; 107; 110; 110; 108; 106; 56; 50; 118; 114; 113] [100; 109; 103; 54; 107; 120; 119; 45; 102; 105; 108; 99; 45; 103; 108; 105; 98; 99; 45; 112; 112; 45; 50; 46; 52; 52; 47; 108; 105; 98; 47; 108; 111; 99; 97; 108; 101])); (Zero 1)]).
+  (IData (a "_nl_default_locale_path") (LRo (a "export")) 1 ["/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44/lib/locale"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_findlocale'23_nl_find_locale'2ecodeset_idx'2e245 : item :=
   (IData (a "glibc_findlocale#_nl_find_locale.codeset_idx.245") (LRo (a "local")) 4 [(Item Ww 14); (Item Ww 5); (Item Ww 110); (Item Ww 18); (Item Ww 45); (Item Ww 4); (Zero 4); (Item Ww 2); (Item Ww 6); (Item Ww 12); (Item Ww 4); (Item Ww 1); (Item Ww 15)]).
@@ -488,7 +489,7 @@ Definition hello_image_item__nl_locale_file_list : item :=
   (IData (a "_nl_locale_file_list") LExport 8 [(Zero 104)]).
 
 Definition hello_image_item_glibc_findlocale'23valid_locale_name'2eslashdot'2e250 : item :=
-  (IData (a "glibc_findlocale#valid_locale_name.slashdot.250") (LRo (a "local")) 1 [(Str [47; 46; 46; 47])]).
+  (IData (a "glibc_findlocale#valid_locale_name.slashdot.250") (LRo (a "local")) 1 ["/../"%irbytes]).
 
 Definition hello_image_item_glibc_findlocale'23str'2e243 : item :=
   (IData (a "glibc_findlocale#str.243") (LRo (a "local")) 1 [(Item Wb 76); (Item Wb 67); (Item Wb 95); (Item Wb 65); (Item Wb 76); (Item Wb 76); (Item Wb 0)]).
@@ -515,7 +516,7 @@ Definition hello_image_item__nl_global_locale : item :=
   (IData (a "_nl_global_locale") LExport 8 [(Sym (a "_nl_C_LC_CTYPE") 0); (Sym (a "_nl_C_LC_NUMERIC") 0); (Sym (a "_nl_C_LC_TIME") 0); (Sym (a "_nl_C_LC_COLLATE") 0); (Sym (a "_nl_C_LC_MONETARY") 0); (Sym (a "_nl_C_LC_MESSAGES") 0); (Zero 8); (Sym (a "_nl_C_LC_PAPER") 0); (Sym (a "_nl_C_LC_NAME") 0); (Sym (a "_nl_C_LC_ADDRESS") 0); (Sym (a "_nl_C_LC_TELEPHONE") 0); (Sym (a "_nl_C_LC_MEASUREMENT") 0); (Sym (a "_nl_C_LC_IDENTIFICATION") 0); (Sym (a "_nl_C_LC_CTYPE_class") 256); (Sym (a "_nl_C_LC_CTYPE_tolower") 512); (Sym (a "_nl_C_LC_CTYPE_toupper") 512); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0); (Sym (a "_nl_C_name") 0)]).
 
 Definition hello_image_item_glibc_loadarchive'23archfname : item :=
-  (IData (a "glibc_loadarchive#archfname") (LRo (a "local")) 1 [(Str (app [47; 110; 105; 120; 47; 115; 116; 111; 114; 101; 47; 55; 104; 104; 52; 53; 99; 118; 119; 122; 114; 113; 121; 113; 118; 112; 107; 110; 110; 108; 106; 56; 50; 118; 114; 113; 100; 109; 103; 54; 107; 120; 119; 45] [102; 105; 108; 99; 45; 103; 108; 105; 98; 99; 45; 112; 112; 45; 50; 46; 52; 52; 47; 108; 105; 98; 47; 108; 111; 99; 97; 108; 101; 47; 108; 111; 99; 97; 108; 101; 45; 97; 114; 99; 104; 105; 118; 101])); (Zero 1)]).
+  (IData (a "glibc_loadarchive#archfname") (LRo (a "local")) 1 ["/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44/lib/locale/locale-archive"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_loadarchive'23archive_stat : item :=
   (IData (a "glibc_loadarchive#archive_stat") LLocal 8 [(Zero 144)]).
@@ -612,3 +613,6 @@ Definition hello_image_item__nl_category_name_idxs : item :=
 
 Definition hello_image_item__nl_category_name_sizes : item :=
   (IData (a "_nl_category_name_sizes") (LRo (a "export")) 1 [(Item Wb 8); (Item Wb 10); (Item Wb 7); (Item Wb 10); (Item Wb 11); (Item Wb 11); (Item Wb 6); (Item Wb 8); (Item Wb 7); (Item Wb 10); (Item Wb 12); (Item Wb 14); (Item Wb 17)]).
+
+Definition hello_image_item__nl_category_names : item :=
+  (IData (a "_nl_category_names") (LRo (a "export")) 1 ["LC_COLLATE"%irbytes; (Zero 1); "LC_CTYPE"%irbytes; (Zero 1); "LC_MONETARY"%irbytes; (Zero 1); "LC_NUMERIC"%irbytes; (Zero 1); "LC_TIME"%irbytes; (Zero 1); "LC_MESSAGES"%irbytes; (Zero 1); "LC_PAPER"%irbytes; (Zero 1); "LC_NAME"%irbytes; (Zero 1); "LC_ADDRESS"%irbytes; (Zero 1); "LC_TELEPHONE"%irbytes; (Zero 1); "LC_MEASUREMENT"%irbytes; (Zero 1); "LC_IDENTIFICATION"%irbytes; (Zero 1)]).

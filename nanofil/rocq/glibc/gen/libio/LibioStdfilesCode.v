@@ -5,6 +5,7 @@
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -12,33 +13,30 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition libiostdfiles_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "glibc_stdfiles#_IO_stdfiles_init"; TAtom "local"; TAtom "void"; TList [];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v1"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__GI__IO_list_all"]]]];
-          TApp "goto" [TAtom "L2"]];
-        TApp "block" [TAtom "L2"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "p"; TList [TApp "-" [TAtom "L3"; TApp "tmp" [TAtom "v17"]]; TApp "-" [TAtom "start"; TApp "tmp" [TAtom "v1"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "pr.1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v7"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v8"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v7"]]];
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "l"; TAtom "ptoi"; TList [TApp "const" [TInt 0]]];
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v8"]; TApp "tmp" [TAtom "v9"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v10"]; TAtom "L3"; TAtom "L5"]];
-        TApp "block" [TAtom "L3"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v13"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v12"]]; TApp "const" [TInt 184]]; TApp "lower" [TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v13"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "pr.1"]; TApp "tmp" [TAtom "chk2"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "chk3"]; TAtom "a"; TApp "renew" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "pr.1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v16"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk3"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v17"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v16"]]; TApp "const" [TInt 104]]; TApp "lower" [TApp "tmp" [TAtom "v16"]]]];
-          TApp "goto" [TApp "poll" [TAtom "L2"]]];
-        TApp "block" [TAtom "L5"; TList [];
-          TList [];
-          TAtom "ret"]]]
+    cap_fn{ "local" "glibc_stdfiles#_IO_stdfiles_init" [] -> "void"
+      {
+        @"start":
+          %"v1" : "p" = "copy" $"__GI__IO_list_all"
+          => goto "L2";
+        @"L2" [phi %"pr.1" : "p" = ("L3" => %"v17", "start" => %"v1")]:
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"pr.1";
+          %"v7" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v8" : "l" = "ptoi" %"v7";
+          %"v9" : "l" = "ptoi" #0;
+          %"v10" : "w" = op "cmp"("ne", "l") %"v8", %"v9"
+          => br %"v10" ? "L3" : "L5";
+        @"L3":
+          %"v12" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v13" = %"v12" +p #184;
+          %"chk2" : "a" = op "check"(int 0, int 8, "write", int 8) %"v13";
+          store.ptr [%"chk2" + 0] <- %"pr.1";
+          %"chk3" : "a" = op "renew"(int 0, int 8, "read", int 8) %"chk0", %"pr.1";
+          %"v16" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk3";
+          %"v17" = %"v16" +p #104
+          => goto poll "L2";
+        @"L5":
+          => ret void
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

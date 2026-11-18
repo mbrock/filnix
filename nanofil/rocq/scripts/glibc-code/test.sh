@@ -20,12 +20,12 @@ source.write_text('''From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
 Definition formatter_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "f"; TAtom "export"; TAtom "void"; TList [];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-''' + '            TAtom "instruction";\n' * 501 + '''            TAtom "instruction"];
-          TAtom "ret"]]]
+    cap_fn{ "export" "f" [] -> "void"
+      {
+        @"start":
+''' + '          ("instruction");\n' * 501 + '''          ("instruction")
+          => ret void
+      } }
   ]].
 ''')
 out = work / 'oversized'
@@ -49,7 +49,7 @@ from pathlib import Path
 import sys
 tree = Path(sys.argv[1])
 p = tree / 'stdio/PrintfStateCode.v'
-p.write_text(p.read_text().replace('TAtom "__printf_buffer_done"', 'TAtom "wrong_body"', 1))
+p.write_text(p.read_text().replace('cap_fn{ "export" "__printf_buffer_done"', 'cap_fn{ "export" "wrong_body"', 1))
 p = tree / 'stdio/PrintfBufferFileCode.v'
 p.write_text(p.read_text().replace('Proof. vm_compute. reflexivity. Qed.', 'Proof. exact I. Qed.', 1))
 (tree / 'stdio/PrintfBufferIoCode.v').unlink()
@@ -71,7 +71,7 @@ import re
 import sys
 hello = Path(sys.argv[1])
 p = hello / 'HelloImageTypedVE.v'
-p.write_text(re.sub(r'\(a "([^"]+)"', r'(a "\1_changed"', p.read_text(), count=1))
+p.write_text(re.sub(r'ir_fn\{ "([^"]+)" "([^"]+)"', r'ir_fn{ "\1" "\2_changed"', p.read_text(), count=1))
 (hello / 'HelloImageTypedItems03.v').unlink()
 p = hello / 'HelloImageCode.v'
 first, second = re.findall(r'hello_image_items_\d+', p.read_text().split('Definition hello_image_decoded')[1])[:2]
@@ -148,7 +148,7 @@ cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
 cp "$here/generate.py" "$here/prelude.py" "$here/typed.py" "$here/names.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
    "$here/layout.py" "$here/layout.pl" "$here/block-facts.py" "$here/block-facts.pl" \
    "$work/nanofil/rocq/scripts/glibc-code/"
-cp "$here/../../glibc/CodePrelude.v" "$work/nanofil/rocq/glibc/"
+cp "$here"/../../glibc/{CodePrelude,IRNotation,IRBytes}.v "$work/nanofil/rocq/glibc/"
 for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
 for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \

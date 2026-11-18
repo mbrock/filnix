@@ -47,21 +47,22 @@ def main(src, outdir, profile):
         # A function too long for a file: its blocks in files of their own,
         # after the items before it.
         flush()
-        assert it[0].startswith('    TApp "func" [') and it[1] == "      TList [", it[:2]
-        assert it[-1].endswith("]]"), it[-1][-20:]
+        assert it[0].startswith('    cap_fn{ ') and it[1] == "      {", it[:2]
+        assert it[-1] == "      } }", it[-1]
         blocks = []
-        for l in it[2:]:
-            if l.startswith('        TApp "block" ['):
+        for l in it[2:-1]:
+            if l.startswith("        @"):
                 blocks.append([l])
             else:
                 blocks[-1].append(l)
-        blocks[-1][-1] = blocks[-1][-1][:-2]
         for b in blocks[:-1]:
             assert b[-1].endswith(";")
             b[-1] = b[-1][:-1]
         names = []
         chunk = []
         for b in blocks:
+            b[0] = "        cap_blk{ " + b[0].lstrip()
+            b[-1] += " }"
             assert len(b) <= BUDGET
             if chunk and count(chunk) + len(b) > BUDGET:
                 files.append(("blocks", chunk))
@@ -70,7 +71,7 @@ def main(src, outdir, profile):
             chunk.append(b)
         files.append(("blocks", chunk))
         names.append(len(files))
-        item = [it[0], "      TList (" + " ++ ".join(f"{profile}_blocks_{k:02d}" for k in names) + ")]"]
+        item = [it[0], "      blocks (" + " ++ ".join(f"{profile}_blocks_{k:02d}" for k in names) + ") }"]
         # The items file after the blocks holds the function.
         cur.append(item)
     flush()
@@ -84,7 +85,7 @@ def render_slices(files, destination, profile):
         "(** This file contains part of glibc's checked option-parser module.",
         "    getopt/code.sh regenerates it from the pinned capture. Do not edit. *)",
         "", "From Stdlib Require Import String ZArith List Ascii.",
-        "From Nanofil Require Import Term.",
+        "From Nanofil Require Import Term.", "From Nanofil Require Import CaptureNotation.",
     ]
     if profile == "formatter":
         header[:2] = [
@@ -96,8 +97,10 @@ def render_slices(files, destination, profile):
         out = header.copy()
         if uses:
             out.append("From Glibc Require Import " + " ".join(f"{stem}Code{n}" for n in uses) + ".")
-        out += ["Import ListNotations.", "Open Scope string_scope.", "Open Scope Z_scope.",
-                "", "(** Character atoms retain their byte values. *)",
+        out += ["Import ListNotations.", "Open Scope string_scope.", "Open Scope Z_scope."]
+        if uses:
+            out.append("Open Scope list_scope.")
+        out += ["", "(** Character atoms retain their byte values. *)",
                 "Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).",
                 "", f"(** These {kind} retain their order in the linked module. *)",
                 f"Definition {profile}_{kind}_{k:02} : list term :=", "  ["]

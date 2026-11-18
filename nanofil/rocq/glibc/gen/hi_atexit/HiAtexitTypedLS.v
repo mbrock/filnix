@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,4 +12,8 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn___lseek64 : func :=
-  mkFunc (a "__lseek64") (a "export") (RClass L) [(W, (a "v0")); (L, (a "v2")); (W, (a "v4"))] [(mkBlock (a "start") [] [(Call (CResult (a "v9") L) (Global (a "zsys_lseek")) [(Arg W (t "v0")); (Arg L (t "v2")); (Arg W (t "v4"))])] (JRet (t "v9")))].
+  ir_fn{ "export" "__lseek64"(W %"v0", L %"v2", W %"v4") -> (RClass L) {
+  @"start":
+    call %"v9" : L = $"zsys_lseek"(W %"v0", L %"v2", W %"v4")
+    => ret %"v9"
+} }.

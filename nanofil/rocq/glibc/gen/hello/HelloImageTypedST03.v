@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -10,555 +11,316 @@ Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
-Definition hello_image_fn___GI_strncmp : func :=
-  mkFunc (a "__GI_strncmp") (a "export") (RClass W) [(P, (a "v0")); (P, (a "v2")); (L, (a "v4"))] [(mkBlock (a "start") [] [(Let (a "v11") L Ptoi [(t "v0")]);
-      (Let (a "v12") L Neg [(t "v11")]);
-      (Let (a "v13") L And [(t "v12"); (Const 7)]);
-      (Let (a "v15") W (Cmp Ult L) [(t "v13"); (t "v4")])] (JBranch (t "v15") (To (a "L9")) (To (a "L8"))));
-  (mkBlock (a "L8") [] [] (JGoto (To (a "L9"))));
-  (mkBlock (a "L9") [(Phi (a "v21") L [((a "L8"), (t "v4")); ((a "start"), (t "v13"))])] [] (JGoto (To (a "L24"))));
-  (mkBlock (a "L24") [(Phi (a "pr.3") W [((a "L26"), (t "v59")); ((a "L9"), (Const 0))]); (Phi (a "pr.2") P [((a "L26"), (t "v39")); ((a "L9"), (t "v2"))]); (Phi (a "pr.1") P [((a "L26"), (t "v34")); ((a "L9"), (t "v0"))])] [(Let (a "v30") L (Ext Sw) [(t "pr.3")]);
-      (Let (a "v31") W (Cmp Ult L) [(t "v30"); (t "v21")])] (JBranch (t "v31") (To (a "L25")) (To (a "L27"))));
-  (mkBlock (a "L25") [] [(Flight (a "v34") Add [(FAddress (t "pr.1")); (FValue (Const 1))] (LowerOf (t "pr.1")));
-      (Let (a "chk0") A (Check 0 1 Read 1) [(t "pr.1")]);
-      (Let (a "v35") W (RawLoad (LdNarrow Sb) 0) [(t "chk0")]);
-      (Let (a "v36") W (Ext Ub) [(t "v35")]);
-      (Flight (a "v39") Add [(FAddress (t "pr.2")); (FValue (Const 1))] (LowerOf (t "pr.2")));
-      (Let (a "chk1") A (Check 0 1 Read 1) [(t "pr.2")]);
-      (Let (a "v40") W (RawLoad (LdNarrow Sb) 0) [(t "chk1")]);
-      (Let (a "v41") W (Ext Ub) [(t "v40")]);
-      (Let (a "v44") W Sub [(t "v36"); (t "v41")]);
-      (Let (a "v49") W (Cmp Eq W) [(t "v36"); (Const 0)])] (JBranch (t "v49") (To (a "L51")) (To (a "L50"))));
-  (mkBlock (a "L50") [] [(Let (a "v53") W (Cmp Ne W) [(t "v44"); (Const 0)])] (JGoto (To (a "L51"))));
-  (mkBlock (a "L51") [(Phi (a "v55") W [((a "L25"), (Const 1)); ((a "L50"), (t "v53"))])] [] (JBranch (t "v55") (To (a "L45")) (To (a "L26"))));
-  (mkBlock (a "L45") [] [] (JRet (t "v44")));
-  (mkBlock (a "L26") [] [(Let (a "v59") W Add [(t "pr.3"); (Const 1)])] (JGoto (Poll (a "L24"))));
-  (mkBlock (a "L27") [] [(Let (a "v65") W (Cmp Eq L) [(t "v21"); (t "v4")])] (JBranch (t "v65") (To (a "L60")) (To (a "L62"))));
-  (mkBlock (a "L60") [] [] (JRet (Const 0)));
-  (mkBlock (a "L62") [] [(Flight (a "v71") Add [(FAddress (t "pr.1")); (FValue (Const 8))] (LowerOf (t "pr.1")));
-      (Let (a "chk2") A (Check 0 8 Read 1) [(t "pr.1")]);
-      (Let (a "v72") L (RawLoad LdL 0) [(t "chk2")]);
-      (Let (a "v75") L Ptoi [(t "pr.2")]);
-      (Let (a "v76") L And [(t "v75"); (Const 7)]);
-      (Let (a "v81") W (Cmp Eq L) [(t "v76"); (Const 0)])] (JBranch (t "v81") (To (a "L77")) (To (a "L78"))));
-  (mkBlock (a "L77") [] [(Let (a "v87") L Sub [(t "v4"); (t "v21")]);
-      (Flight (a "iw_1.v10") Add [(FAddress (t "pr.2")); (FValue (Const 8))] (LowerOf (t "pr.2")));
-      (Let (a "chk3") A (Check 0 8 Read 1) [(t "pr.2")]);
-      (Let (a "iw_1.v11") L (RawLoad LdL 0) [(t "chk3")])] (JGoto (To (a "iw_1.L12"))));
-  (mkBlock (a "iw_1.L12") [(Phi (a "iw_1.pr.5") L [((a "iw_1.L28"), (t "iw_1.v38")); ((a "L77"), (t "iw_1.v11"))]); (Phi (a "iw_1.pr.4") L [((a "iw_1.L28"), (t "iw_1.v25")); ((a "L77"), (t "v87"))]); (Phi (a "iw_1.pr.3") L [((a "iw_1.L28"), (t "iw_1.v35")); ((a "L77"), (t "v72"))]); (Phi (a "iw_1.pr.2") P [((a "iw_1.L28"), (t "iw_1.v37")); ((a "L77"), (t "iw_1.v10"))]); (Phi (a "iw_1.pr.1") P [((a "iw_1.L28"), (t "iw_1.v34")); ((a "L77"), (t "v71"))])] [(Let (a "iw_1.v17") W (Cmp Eq L) [(t "iw_1.pr.3"); (t "iw_1.pr.5")])] (JBranch (t "iw_1.v17") (To (a "iw_1.L13")) (To (a "iw_1.iw_2.start"))));
-  (mkBlock (a "iw_1.L13") [] [(Let (a "iw_1.v22") W (Cmp Ule L) [(t "iw_1.pr.4"); (Const 8)])] (JBranch (t "iw_1.v22") (To (a "iw_1.iw_2.start")) (To (a "iw_1.L20"))));
-  (mkBlock (a "iw_1.L20") [] [(Let (a "iw_1.v25") L Sub [(t "iw_1.pr.4"); (Const 8)]);
-      (Let (a "iw_1.iw_1.iw_1.v8") L Sub [(t "iw_1.pr.3"); (Const 72340172838076673)]);
-      (Let (a "iw_1.iw_1.iw_1.v10") L Xor [(t "iw_1.pr.3"); (Const (-1))]);
-      (Let (a "iw_1.iw_1.iw_1.v11") L And [(t "iw_1.iw_1.iw_1.v8"); (t "iw_1.iw_1.iw_1.v10")]);
-      (Let (a "iw_1.iw_1.iw_1.v13") L And [(t "iw_1.iw_1.iw_1.v11"); (Const 9259542123273814144)]);
-      (Let (a "iw_1.iw_1.v4") W (Cmp Ne L) [(t "iw_1.iw_1.iw_1.v13"); (Const 0)])] (JBranch (t "iw_1.iw_1.v4") (To (a "L79")) (To (a "iw_1.L28"))));
-  (mkBlock (a "iw_1.L28") [] [(Flight (a "iw_1.v34") Add [(FAddress (t "iw_1.pr.1")); (FValue (Const 8))] (LowerOf (t "iw_1.pr.1")));
-      (Let (a "chk4") A (Check 0 8 Read 1) [(t "iw_1.pr.1")]);
-      (Let (a "iw_1.v35") L (RawLoad LdL 0) [(t "chk4")]);
-      (Flight (a "iw_1.v37") Add [(FAddress (t "iw_1.pr.2")); (FValue (Const 8))] (LowerOf (t "iw_1.pr.2")));
-      (Let (a "chk5") A (Check 0 8 Read 1) [(t "iw_1.pr.2")]);
-      (Let (a "iw_1.v38") L (RawLoad LdL 0) [(t "chk5")])] (JGoto (Poll (a "iw_1.L12"))));
-  (mkBlock (a "iw_1.iw_2.start") [] [(Let (a "iw_1.iw_2.iw_1.iw_1.v9") L Xor [(t "iw_1.pr.3"); (t "iw_1.pr.5")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v13") L And [(t "iw_1.pr.3"); (Const 9187201950435737471)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v15") L Add [(t "iw_1.iw_2.iw_1.iw_1.v13"); (Const 9187201950435737471)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v17") L Or [(t "iw_1.iw_2.iw_1.iw_1.v15"); (t "iw_1.pr.3")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v21") L And [(t "iw_1.iw_2.iw_1.iw_1.v9"); (Const 9187201950435737471)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v23") L Add [(t "iw_1.iw_2.iw_1.iw_1.v21"); (Const 9187201950435737471)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v25") L Or [(t "iw_1.iw_2.iw_1.iw_1.v23"); (t "iw_1.iw_2.iw_1.iw_1.v9")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v28") L Xor [(t "iw_1.iw_2.iw_1.iw_1.v17"); (Const (-1))]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v29") L Or [(t "iw_1.iw_2.iw_1.iw_1.v25"); (t "iw_1.iw_2.iw_1.iw_1.v28")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_1.v32") L And [(t "iw_1.iw_2.iw_1.iw_1.v29"); (Const 9259542123273814144)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v6") W (Cmp Eq L) [(t "iw_1.iw_2.iw_1.iw_1.v32"); (Const 0)])] (JBranch (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v6") (To (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4")) (To (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L3"))));
-  (mkBlock (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L3") [] [(Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v8") L Neg [(t "iw_1.iw_2.iw_1.iw_1.v32")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v9") L And [(t "iw_1.iw_2.iw_1.iw_1.v32"); (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v8")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v10") L Sub [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v9"); (Const 1)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v11") L Shr [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v10"); (Const 1)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v12") L And [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v11"); (Const 6148914691236517205)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v13") L Sub [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v10"); (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v12")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v14") L And [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v13"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v15") L Shr [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v13"); (Const 2)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v16") L And [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v15"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v17") L Add [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v14"); (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v16")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v18") L Shr [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v17"); (Const 4)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v19") L Add [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v17"); (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v18")]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v20") L And [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v19"); (Const 1085102592571150095)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v21") L Mul [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v20"); (Const 72340172838076673)]);
-      (Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v22") L Shr [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v21"); (Const 56)])] (JGoto (To (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4"))));
-  (mkBlock (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4") [(Phi (a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v23") W [((a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), (t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v22")); ((a "iw_1.iw_2.start"), (Const 64))])] [(Let (a "iw_1.iw_2.iw_1.iw_2.iw_1.v27") W Shr [(t "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.v23"); (Const 3)]);
-      (Let (a "iw_1.iw_2.v15") L (Ext Uw) [(t "iw_1.iw_2.iw_1.iw_2.iw_1.v27")]);
-      (Let (a "iw_1.iw_2.v16") W (Cmp Ule L) [(t "iw_1.pr.4"); (t "iw_1.iw_2.v15")])] (JBranch (t "iw_1.iw_2.v16") (To (a "L79")) (To (a "iw_1.iw_2.iw_2.start"))));
-  (mkBlock (a "iw_1.iw_2.iw_2.start") [] [(Let (a "iw_1.iw_2.iw_2.v10") W Shl [(t "iw_1.iw_2.iw_1.iw_2.iw_1.v27"); (Const 3)]);
-      (Let (a "iw_1.iw_2.iw_2.v11") L Shr [(t "iw_1.pr.3"); (t "iw_1.iw_2.iw_2.v10")]);
-      (Let (a "iw_1.iw_2.iw_2.v12") W (Ext Ub) [(t "iw_1.iw_2.iw_2.v11")]);
-      (Let (a "iw_1.iw_2.iw_3.v11") L Shr [(t "iw_1.pr.5"); (t "iw_1.iw_2.iw_2.v10")]);
-      (Let (a "iw_1.iw_2.iw_3.v12") W (Ext Ub) [(t "iw_1.iw_2.iw_3.v11")]);
-      (Let (a "iw_1.iw_2.v26") W Sub [(t "iw_1.iw_2.iw_2.v12"); (t "iw_1.iw_2.iw_3.v12")])] (JGoto (To (a "L79"))));
-  (mkBlock (a "L78") [] [(Flight (a "v92") Sub [(FAddress (t "pr.2")); (FValue (t "v76"))] (LowerOf (t "pr.2")));
-      (Let (a "v97") L Sub [(t "v4"); (t "v21")]);
-      (Flight (a "iw_2.v12") Add [(FAddress (t "v92")); (FValue (Const 8))] (LowerOf (t "v92")));
-      (Let (a "chk6") A (Check 0 8 Read 1) [(t "v92")]);
-      (Let (a "iw_2.v13") L (RawLoad LdL 0) [(t "chk6")]);
-      (Let (a "iw_2.v16") L Shl [(t "v76"); (Const 3)]);
-      (Let (a "iw_2.v20") L Sub [(Const 64); (t "iw_2.v16")]);
-      (Let (a "iw_2.v24") L Shr [(t "iw_2.v13"); (t "iw_2.v16")]);
-      (Let (a "iw_2.v28") L Shl [(Const 18446744073709551615); (t "iw_2.v20")]);
-      (Let (a "iw_2.v29") L Or [(t "iw_2.v24"); (t "iw_2.v28")]);
-      (Let (a "iw_2.iw_1.iw_1.v8") L Sub [(t "iw_2.v29"); (Const 72340172838076673)]);
-      (Let (a "iw_2.iw_1.iw_1.v10") L Xor [(t "iw_2.v29"); (Const (-1))]);
-      (Let (a "iw_2.iw_1.iw_1.v11") L And [(t "iw_2.iw_1.iw_1.v8"); (t "iw_2.iw_1.iw_1.v10")]);
-      (Let (a "iw_2.iw_1.iw_1.v13") L And [(t "iw_2.iw_1.iw_1.v11"); (Const 9259542123273814144)]);
-      (Let (a "iw_2.v36") W (Cmp Eq L) [(t "iw_2.iw_1.iw_1.v13"); (Const 0)])] (JBranch (t "iw_2.v36") (To (a "iw_2.L37")) (To (a "iw_2.L38"))));
-  (mkBlock (a "iw_2.L37") [] [(Let (a "iw_2.v41") L Sub [(Const 8); (t "v76")]);
-      (Let (a "iw_2.v42") W (Cmp Ugt L) [(t "v97"); (t "iw_2.v41")])] (JGoto (To (a "iw_2.L38"))));
-  (mkBlock (a "iw_2.L38") [(Phi (a "iw_2.v44") W [((a "L78"), (Const 0)); ((a "iw_2.L37"), (t "iw_2.v42"))])] [] (JBranch (t "iw_2.v44") (To (a "iw_2.L46")) (To (a "iw_2.L32"))));
-  (mkBlock (a "iw_2.L46") [(Phi (a "iw_2.pr.8") L [((a "iw_2.L80"), (t "iw_2.v51")); ((a "iw_2.L38"), (t "iw_2.v13"))]); (Phi (a "iw_2.pr.6") L [((a "iw_2.L80"), (t "iw_2.v77")); ((a "iw_2.L38"), (t "v97"))]); (Phi (a "iw_2.pr.4") L [((a "iw_2.L80"), (t "iw_2.v95")); ((a "iw_2.L38"), (t "v72"))]); (Phi (a "iw_2.pr.2") P [((a "iw_2.L80"), (t "iw_2.v50")); ((a "iw_2.L38"), (t "iw_2.v12"))]); (Phi (a "iw_2.pr.1") P [((a "iw_2.L80"), (t "iw_2.v94")); ((a "iw_2.L38"), (t "v71"))])] [(Flight (a "iw_2.v50") Add [(FAddress (t "iw_2.pr.2")); (FValue (Const 8))] (LowerOf (t "iw_2.pr.2")));
-      (Let (a "chk7") A (Check 0 8 Read 1) [(t "iw_2.pr.2")]);
-      (Let (a "iw_2.v51") L (RawLoad LdL 0) [(t "chk7")]);
-      (Let (a "iw_2.v54") L Shr [(t "iw_2.pr.8"); (t "iw_2.v16")]);
-      (Let (a "iw_2.v57") L Shl [(t "iw_2.v51"); (t "iw_2.v20")]);
-      (Let (a "iw_2.v58") L Or [(t "iw_2.v54"); (t "iw_2.v57")]);
-      (Let (a "iw_2.v63") W (Cmp Ule L) [(t "iw_2.pr.6"); (Const 8)])] (JBranch (t "iw_2.v63") (To (a "iw_2.L65")) (To (a "iw_2.L64"))));
-  (mkBlock (a "iw_2.L64") [] [(Let (a "iw_2.v68") W (Cmp Ne L) [(t "iw_2.pr.4"); (t "iw_2.v58")])] (JGoto (To (a "iw_2.L65"))));
-  (mkBlock (a "iw_2.L65") [(Phi (a "iw_2.v70") W [((a "iw_2.L46"), (Const 1)); ((a "iw_2.L64"), (t "iw_2.v68"))])] [] (JBranch (t "iw_2.v70") (To (a "iw_2.iw_2.start")) (To (a "iw_2.L61"))));
-  (mkBlock (a "iw_2.iw_2.start") [] [(Let (a "iw_2.iw_2.iw_1.iw_1.v9") L Xor [(t "iw_2.pr.4"); (t "iw_2.v58")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v13") L And [(t "iw_2.pr.4"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v15") L Add [(t "iw_2.iw_2.iw_1.iw_1.v13"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v17") L Or [(t "iw_2.iw_2.iw_1.iw_1.v15"); (t "iw_2.pr.4")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v21") L And [(t "iw_2.iw_2.iw_1.iw_1.v9"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v23") L Add [(t "iw_2.iw_2.iw_1.iw_1.v21"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v25") L Or [(t "iw_2.iw_2.iw_1.iw_1.v23"); (t "iw_2.iw_2.iw_1.iw_1.v9")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v28") L Xor [(t "iw_2.iw_2.iw_1.iw_1.v17"); (Const (-1))]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v29") L Or [(t "iw_2.iw_2.iw_1.iw_1.v25"); (t "iw_2.iw_2.iw_1.iw_1.v28")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_1.v32") L And [(t "iw_2.iw_2.iw_1.iw_1.v29"); (Const 9259542123273814144)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v6") W (Cmp Eq L) [(t "iw_2.iw_2.iw_1.iw_1.v32"); (Const 0)])] (JBranch (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v6") (To (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4")) (To (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L3"))));
-  (mkBlock (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L3") [] [(Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v8") L Neg [(t "iw_2.iw_2.iw_1.iw_1.v32")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v9") L And [(t "iw_2.iw_2.iw_1.iw_1.v32"); (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v8")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v10") L Sub [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v9"); (Const 1)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v11") L Shr [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v10"); (Const 1)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v12") L And [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v11"); (Const 6148914691236517205)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v13") L Sub [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v10"); (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v12")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v14") L And [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v13"); (Const 3689348814741910323)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v15") L Shr [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v13"); (Const 2)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v16") L And [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v15"); (Const 3689348814741910323)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v17") L Add [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v14"); (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v16")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v18") L Shr [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v17"); (Const 4)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v19") L Add [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v17"); (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v18")]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v20") L And [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v19"); (Const 1085102592571150095)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v21") L Mul [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v20"); (Const 72340172838076673)]);
-      (Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v22") L Shr [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v21"); (Const 56)])] (JGoto (To (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4"))));
-  (mkBlock (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4") [(Phi (a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v23") W [((a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L3"), (t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v22")); ((a "iw_2.iw_2.start"), (Const 64))])] [(Let (a "iw_2.iw_2.iw_1.iw_2.iw_1.v27") W Shr [(t "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.v23"); (Const 3)]);
-      (Let (a "iw_2.iw_2.v15") L (Ext Uw) [(t "iw_2.iw_2.iw_1.iw_2.iw_1.v27")]);
-      (Let (a "iw_2.iw_2.v16") W (Cmp Ule L) [(t "iw_2.pr.6"); (t "iw_2.iw_2.v15")])] (JBranch (t "iw_2.iw_2.v16") (To (a "L79")) (To (a "iw_2.iw_2.iw_2.start"))));
-  (mkBlock (a "iw_2.iw_2.iw_2.start") [] [(Let (a "iw_2.iw_2.iw_2.v10") W Shl [(t "iw_2.iw_2.iw_1.iw_2.iw_1.v27"); (Const 3)]);
-      (Let (a "iw_2.iw_2.iw_2.v11") L Shr [(t "iw_2.pr.4"); (t "iw_2.iw_2.iw_2.v10")]);
-      (Let (a "iw_2.iw_2.iw_2.v12") W (Ext Ub) [(t "iw_2.iw_2.iw_2.v11")]);
-      (Let (a "iw_2.iw_2.iw_3.v11") L Shr [(t "iw_2.v58"); (t "iw_2.iw_2.iw_2.v10")]);
-      (Let (a "iw_2.iw_2.iw_3.v12") W (Ext Ub) [(t "iw_2.iw_2.iw_3.v11")]);
-      (Let (a "iw_2.iw_2.v26") W Sub [(t "iw_2.iw_2.iw_2.v12"); (t "iw_2.iw_2.iw_3.v12")])] (JGoto (To (a "L79"))));
-  (mkBlock (a "iw_2.L61") [] [(Let (a "iw_2.v77") L Sub [(t "iw_2.pr.6"); (Const 8)]);
-      (Let (a "iw_2.iw_3.iw_1.v8") L Sub [(t "iw_2.v51"); (Const 72340172838076673)]);
-      (Let (a "iw_2.iw_3.iw_1.v10") L Xor [(t "iw_2.v51"); (Const (-1))]);
-      (Let (a "iw_2.iw_3.iw_1.v11") L And [(t "iw_2.iw_3.iw_1.v8"); (t "iw_2.iw_3.iw_1.v10")]);
-      (Let (a "iw_2.iw_3.iw_1.v13") L And [(t "iw_2.iw_3.iw_1.v11"); (Const 9259542123273814144)]);
-      (Let (a "iw_2.iw_3.v4") W (Cmp Ne L) [(t "iw_2.iw_3.iw_1.v13"); (Const 0)])] (JBranch (t "iw_2.iw_3.v4") (To (a "iw_2.L85")) (To (a "iw_2.L84"))));
-  (mkBlock (a "iw_2.L84") [] [(Let (a "iw_2.v88") L Sub [(Const 8); (t "v76")]);
-      (Let (a "iw_2.v89") W (Cmp Ule L) [(t "iw_2.v77"); (t "iw_2.v88")])] (JGoto (To (a "iw_2.L85"))));
-  (mkBlock (a "iw_2.L85") [(Phi (a "iw_2.v91") W [((a "iw_2.L61"), (Const 1)); ((a "iw_2.L84"), (t "iw_2.v89"))])] [] (JBranch (t "iw_2.v91") (To (a "iw_2.iw_4.start")) (To (a "iw_2.L80"))));
-  (mkBlock (a "iw_2.L80") [] [(Flight (a "iw_2.v94") Add [(FAddress (t "iw_2.pr.1")); (FValue (Const 8))] (LowerOf (t "iw_2.pr.1")));
-      (Let (a "chk8") A (Check 0 8 Read 1) [(t "iw_2.pr.1")]);
-      (Let (a "iw_2.v95") L (RawLoad LdL 0) [(t "chk8")])] (JGoto (Poll (a "iw_2.L46"))));
-  (mkBlock (a "iw_2.iw_4.start") [] [(Let (a "iw_2.iw_4.iw_1.v8") L Sub [(t "iw_2.pr.4"); (Const 72340172838076673)]);
-      (Let (a "iw_2.iw_4.iw_1.v10") L Xor [(t "iw_2.pr.4"); (Const (-1))]);
-      (Let (a "iw_2.iw_4.iw_1.v11") L And [(t "iw_2.iw_4.iw_1.v8"); (t "iw_2.iw_4.iw_1.v10")]);
-      (Let (a "iw_2.iw_4.iw_1.v13") L And [(t "iw_2.iw_4.iw_1.v11"); (Const 9259542123273814144)]);
-      (Let (a "iw_2.iw_4.v4") W (Cmp Ne L) [(t "iw_2.iw_4.iw_1.v13"); (Const 0)])] (JBranch (t "iw_2.iw_4.v4") (To (a "L79")) (To (a "iw_2.L99"))));
-  (mkBlock (a "iw_2.L99") [] [(Let (a "chk9") A (Check 0 8 Read 1) [(t "iw_2.pr.1")]);
-      (Let (a "iw_2.v106") L (RawLoad LdL 0) [(t "chk9")]);
-      (Let (a "iw_2.v109") L Shr [(t "iw_2.v51"); (t "iw_2.v16")]);
-      (Let (a "iw_2.v111") W Shl [(Const 0); (t "iw_2.v20")]);
-      (Let (a "iw_2.v112") L (Ext Sw) [(t "iw_2.v111")]);
-      (Let (a "iw_2.v113") L Or [(t "iw_2.v109"); (t "iw_2.v112")])] (JGoto (To (a "iw_2.L32"))));
-  (mkBlock (a "iw_2.L32") [(Phi (a "iw_2.pr.9") L [((a "iw_2.L99"), (t "iw_2.v113")); ((a "iw_2.L38"), (t "iw_2.v29"))]); (Phi (a "iw_2.pr.5") L [((a "iw_2.L99"), (t "iw_2.v77")); ((a "iw_2.L38"), (t "v97"))]); (Phi (a "iw_2.pr.3") L [((a "iw_2.L99"), (t "iw_2.v106")); ((a "iw_2.L38"), (t "v72"))])] [(Let (a "iw_2.iw_5.iw_1.iw_1.v9") L Xor [(t "iw_2.pr.3"); (t "iw_2.pr.9")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v13") L And [(t "iw_2.pr.3"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v15") L Add [(t "iw_2.iw_5.iw_1.iw_1.v13"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v17") L Or [(t "iw_2.iw_5.iw_1.iw_1.v15"); (t "iw_2.pr.3")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v21") L And [(t "iw_2.iw_5.iw_1.iw_1.v9"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v23") L Add [(t "iw_2.iw_5.iw_1.iw_1.v21"); (Const 9187201950435737471)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v25") L Or [(t "iw_2.iw_5.iw_1.iw_1.v23"); (t "iw_2.iw_5.iw_1.iw_1.v9")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v28") L Xor [(t "iw_2.iw_5.iw_1.iw_1.v17"); (Const (-1))]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v29") L Or [(t "iw_2.iw_5.iw_1.iw_1.v25"); (t "iw_2.iw_5.iw_1.iw_1.v28")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_1.v32") L And [(t "iw_2.iw_5.iw_1.iw_1.v29"); (Const 9259542123273814144)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v6") W (Cmp Eq L) [(t "iw_2.iw_5.iw_1.iw_1.v32"); (Const 0)])] (JBranch (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v6") (To (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4")) (To (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L3"))));
-  (mkBlock (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L3") [] [(Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v8") L Neg [(t "iw_2.iw_5.iw_1.iw_1.v32")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v9") L And [(t "iw_2.iw_5.iw_1.iw_1.v32"); (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v8")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v10") L Sub [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v9"); (Const 1)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v11") L Shr [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v10"); (Const 1)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v12") L And [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v11"); (Const 6148914691236517205)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v13") L Sub [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v10"); (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v12")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v14") L And [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v13"); (Const 3689348814741910323)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v15") L Shr [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v13"); (Const 2)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v16") L And [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v15"); (Const 3689348814741910323)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v17") L Add [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v14"); (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v16")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v18") L Shr [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v17"); (Const 4)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v19") L Add [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v17"); (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v18")]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v20") L And [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v19"); (Const 1085102592571150095)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v21") L Mul [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v20"); (Const 72340172838076673)]);
-      (Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v22") L Shr [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v21"); (Const 56)])] (JGoto (To (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4"))));
-  (mkBlock (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4") [(Phi (a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v23") W [((a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L3"), (t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v22")); ((a "iw_2.L32"), (Const 64))])] [(Let (a "iw_2.iw_5.iw_1.iw_2.iw_1.v27") W Shr [(t "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.v23"); (Const 3)]);
-      (Let (a "iw_2.iw_5.v15") L (Ext Uw) [(t "iw_2.iw_5.iw_1.iw_2.iw_1.v27")]);
-      (Let (a "iw_2.iw_5.v16") W (Cmp Ule L) [(t "iw_2.pr.5"); (t "iw_2.iw_5.v15")])] (JBranch (t "iw_2.iw_5.v16") (To (a "L79")) (To (a "iw_2.iw_5.iw_2.start"))));
-  (mkBlock (a "iw_2.iw_5.iw_2.start") [] [(Let (a "iw_2.iw_5.iw_2.v10") W Shl [(t "iw_2.iw_5.iw_1.iw_2.iw_1.v27"); (Const 3)]);
-      (Let (a "iw_2.iw_5.iw_2.v11") L Shr [(t "iw_2.pr.3"); (t "iw_2.iw_5.iw_2.v10")]);
-      (Let (a "iw_2.iw_5.iw_2.v12") W (Ext Ub) [(t "iw_2.iw_5.iw_2.v11")]);
-      (Let (a "iw_2.iw_5.iw_3.v11") L Shr [(t "iw_2.pr.9"); (t "iw_2.iw_5.iw_2.v10")]);
-      (Let (a "iw_2.iw_5.iw_3.v12") W (Ext Ub) [(t "iw_2.iw_5.iw_3.v11")]);
-      (Let (a "iw_2.iw_5.v26") W Sub [(t "iw_2.iw_5.iw_2.v12"); (t "iw_2.iw_5.iw_3.v12")])] (JGoto (To (a "L79"))));
-  (mkBlock (a "L79") [(Phi (a "v99") W [((a "iw_1.L20"), (Const 0)); ((a "iw_1.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), (Const 0)); ((a "iw_1.iw_2.iw_2.start"), (t "iw_1.iw_2.v26")); ((a "iw_2.iw_2.iw_1.iw_2.iw_1.iw_1.L4"), (Const 0)); ((a "iw_2.iw_2.iw_2.start"), (t "iw_2.iw_2.v26")); ((a "iw_2.iw_4.start"), (Const 0)); ((a "iw_2.iw_5.iw_1.iw_2.iw_1.iw_1.L4"), (Const 0)); ((a "iw_2.iw_5.iw_2.start"), (t "iw_2.iw_5.v26"))])] [] (JRet (t "v99")))].
-
-Definition hello_image_fn___GI___strndup : func :=
-  mkFunc (a "__GI___strndup") (a "export") (RClass P) [(P, (a "v0")); (L, (a "v2"))] [(mkBlock (a "start") [] [(Call (CResult (a "v7") L) (Global (a "__GI___strnlen")) [(Arg P (t "v0")); (Arg L (t "v2"))]);
-      (Let (a "v10") L Add [(t "v7"); (Const 1)]);
-      (Call (CResult (a "v11") P) (Global (a "malloc")) [(Arg L (t "v10"))]);
-      (Let (a "v16") L Ptoi [(t "v11")]);
-      (Let (a "v17") L Ptoi [(Const 0)]);
-      (Let (a "v18") W (Cmp Eq L) [(t "v16"); (t "v17")])] (JBranch (t "v18") (To (a "L12")) (To (a "L14"))));
-  (mkBlock (a "L12") [] [] (JRet (Const 0)));
-  (mkBlock (a "L14") [] [(Flight (a "v22") Add [(FAddress (t "v11")); (FValue (t "v7"))] (LowerOf (t "v11")));
-      (Let (a "chk0") A (Check 0 1 Write 1) [(t "v22")]);
-      (RawStore Wb 0 (Const 0) (t "chk0"));
-      (Call (CResult (a "v26") P) (Global (a "__GI_memcpy")) [(Arg P (t "v11")); (Arg P (t "v0")); (Arg L (t "v7"))])] (JRet (t "v26")))].
-
-Definition hello_image_fn___GI___strnlen : func :=
-  mkFunc (a "__GI___strnlen") (a "export") (RClass L) [(P, (a "v0")); (L, (a "v2"))] [(mkBlock (a "start") [] [(Call (CResult (a "v7") P) (Global (a "__GI_memchr")) [(Arg P (t "v0")); (Arg W (Const 0)); (Arg L (t "v2"))]);
-      (Let (a "v12") L Ptoi [(t "v7")]);
-      (Let (a "v13") W (Cmp Ne L) [(t "v12"); (Const 0)])] (JBranch (t "v13") (To (a "L8")) (To (a "L10"))));
-  (mkBlock (a "L8") [] [(Let (a "v17") L Ptoi [(t "v0")]);
-      (Let (a "v18") L Sub [(t "v12"); (t "v17")])] (JGoto (To (a "L10"))));
-  (mkBlock (a "L10") [(Phi (a "v20") L [((a "L8"), (t "v18")); ((a "start"), (t "v2"))])] [] (JRet (t "v20")))].
-
-Definition hello_image_fn___GI_strrchr : func :=
-  mkFunc (a "__GI_strrchr") (a "export") (RClass P) [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Call (CResult (a "v7") L) (Global (a "__GI_strlen")) [(Arg P (t "v0"))]);
-      (Let (a "v8") L Add [(t "v7"); (Const 1)]);
-      (Call (CResult (a "v9") P) (Global (a "__GI___memrchr")) [(Arg P (t "v0")); (Arg W (t "v2")); (Arg L (t "v8"))])] (JRet (t "v9")))].
-
-Definition hello_image_fn___GI_strspn : func :=
-  mkFunc (a "__GI_strspn") (a "export") (RClass L) [(P, (a "v0")); (P, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "v40") P (Alloc 4) [(Const 256)]);
-      (Let (a "chk0") A (Check 0 1 Read 1) [(t "v2")]);
-      (Let (a "v9") W (RawLoad (LdNarrow Sb) 0) [(t "chk0")]);
-      (Let (a "v10") W (Cmp Eq W) [(t "v9"); (Const 0)])] (JBranch (t "v10") (To (a "L4")) (To (a "L6"))));
-  (mkBlock (a "L4") [] [] (JRet (Const 0)));
-  (mkBlock (a "L6") [] [(Flight (a "v16") Add [(FAddress (t "v2")); (FValue (Const 1))] (LowerOf (t "v2")));
-      (Let (a "chk1") A (HalfCheck Upper 0 1 Read 1) [(t "chk0"); (t "v16")]);
-      (Let (a "v17") W (RawLoad (LdNarrow Sb) 0) [(t "chk1")]);
-      (Let (a "v18") W (Cmp Eq W) [(t "v17"); (Const 0)])] (JBranch (t "v18") (To (a "L23")) (To (a "L14"))));
-  (mkBlock (a "L23") [(Phi (a "pr.1") P [((a "L25"), (t "v33")); ((a "L6"), (t "v0"))])] [(Let (a "chk2") A (Check 0 1 Read 1) [(t "pr.1")]);
-      (Let (a "v28") W (RawLoad (LdNarrow Sb) 0) [(t "chk2")]);
-      (Let (a "chk3") A (Renew 0 1 Read 1) [(t "chk0"); (t "v2")]);
-      (Let (a "v30") W (RawLoad (LdNarrow Sb) 0) [(t "chk3")]);
-      (Let (a "v31") W (Cmp Eq W) [(t "v28"); (t "v30")])] (JBranch (t "v31") (To (a "L25")) (To (a "L26"))));
-  (mkBlock (a "L25") [] [(Flight (a "v33") Add [(FAddress (t "pr.1")); (FValue (Const 1))] (LowerOf (t "pr.1")))] (JGoto (Poll (a "L23"))));
-  (mkBlock (a "L26") [] [(Let (a "v36") L Ptoi [(t "pr.1")]);
-      (Let (a "v37") L Ptoi [(t "v0")]);
-      (Let (a "v38") L Sub [(t "v36"); (t "v37")])] (JRet (t "v38")));
-  (mkBlock (a "L14") [] [(Call (CResult (a "v42") P) (Global (a "__GI_memset")) [(Arg P (t "v40")); (Arg W (Const 0)); (Arg L (Const 64))]);
-      (Flight (a "v44") Add [(FAddress (t "v42")); (FValue (Const 64))] (LowerOf (t "v42")));
-      (Call (CResult (a "v45") P) (Global (a "__GI_memset")) [(Arg P (t "v44")); (Arg W (Const 0)); (Arg L (Const 64))]);
-      (Flight (a "v47") Add [(FAddress (t "v42")); (FValue (Const 128))] (LowerOf (t "v42")));
-      (Call (CResult (a "v48") P) (Global (a "__GI_memset")) [(Arg P (t "v47")); (Arg W (Const 0)); (Arg L (Const 64))]);
-      (Flight (a "v50") Add [(FAddress (t "v42")); (FValue (Const 192))] (LowerOf (t "v42")));
-      (Call (CResult (a "v51") P) (Global (a "__GI_memset")) [(Arg P (t "v50")); (Arg W (Const 0)); (Arg L (Const 64))])] (JGoto (To (a "L54"))));
-  (mkBlock (a "L54") [(Phi (a "pr.3") P [((a "L14"), (t "v2")); ((a "L54"), (t "v59"))])] [(Flight (a "v59") Add [(FAddress (t "pr.3")); (FValue (Const 1))] (LowerOf (t "pr.3")));
-      (Let (a "chk4") A (Check 0 1 Read 1) [(t "pr.3")]);
-      (Let (a "v60") W (RawLoad (LdNarrow Ub) 0) [(t "chk4")]);
-      (Let (a "v61") L (Ext Uw) [(t "v60")]);
-      (Flight (a "v62") Add [(FAddress (t "v42")); (FValue (t "v61"))] (LowerOf (t "v42")));
-      (Let (a "chk5") A (Check 0 1 Write 1) [(t "v62")]);
-      (RawStore Wb 0 (Const 1) (t "chk5"));
-      (Let (a "chk6") A (HalfCheck Upper 0 1 Read 1) [(t "chk4"); (t "v59")]);
-      (Let (a "v64") W (RawLoad (LdNarrow Ub) 0) [(t "chk6")])] (JBranch (t "v64") (Poll (a "L54")) (To (a "L56"))));
-  (mkBlock (a "L56") [] [(Let (a "chk7") A (Check 0 1 Read 1) [(t "v0")]);
-      (Let (a "v72") W (RawLoad (LdNarrow Ub) 0) [(t "chk7")]);
-      (Let (a "v73") L (Ext Uw) [(t "v72")]);
-      (Flight (a "v74") Add [(FAddress (t "v42")); (FValue (t "v73"))] (LowerOf (t "v42")));
-      (Let (a "chk8") A (Check 0 1 Read 1) [(t "v74")]);
-      (Let (a "v75") W (RawLoad (LdNarrow Ub) 0) [(t "chk8")]);
-      (Let (a "v76") W (Cmp Eq W) [(t "v75"); (Const 0)])] (JBranch (t "v76") (To (a "L66")) (To (a "L68"))));
-  (mkBlock (a "L66") [] [] (JRet (Const 0)));
-  (mkBlock (a "L68") [] [(Flight (a "v83") Add [(FAddress (t "v0")); (FValue (Const 1))] (LowerOf (t "v0")));
-      (Let (a "chk9") A (HalfCheck Upper 0 1 Read 1) [(t "chk7"); (t "v83")]);
-      (Let (a "v84") W (RawLoad (LdNarrow Ub) 0) [(t "chk9")]);
-      (Let (a "v85") L (Ext Uw) [(t "v84")]);
-      (Flight (a "v86") Add [(FAddress (t "v42")); (FValue (t "v85"))] (LowerOf (t "v42")));
-      (Let (a "chk10") A (Check 0 1 Read 1) [(t "v86")]);
-      (Let (a "v87") W (RawLoad (LdNarrow Ub) 0) [(t "chk10")]);
-      (Let (a "v88") W (Cmp Eq W) [(t "v87"); (Const 0)])] (JBranch (t "v88") (To (a "L78")) (To (a "L80"))));
-  (mkBlock (a "L78") [] [] (JRet (Const 1)));
-  (mkBlock (a "L80") [] [(Flight (a "v95") Add [(FAddress (t "v0")); (FValue (Const 2))] (LowerOf (t "v0")));
-      (Let (a "chk11") A (HalfCheck Upper 0 1 Read 1) [(t "chk7"); (t "v95")]);
-      (Let (a "v96") W (RawLoad (LdNarrow Ub) 0) [(t "chk11")]);
-      (Let (a "v97") L (Ext Uw) [(t "v96")]);
-      (Flight (a "v98") Add [(FAddress (t "v42")); (FValue (t "v97"))] (LowerOf (t "v42")));
-      (Let (a "chk12") A (Check 0 1 Read 1) [(t "v98")]);
-      (Let (a "v99") W (RawLoad (LdNarrow Ub) 0) [(t "chk12")]);
-      (Let (a "v100") W (Cmp Eq W) [(t "v99"); (Const 0)])] (JBranch (t "v100") (To (a "L90")) (To (a "L92"))));
-  (mkBlock (a "L90") [] [] (JRet (Const 2)));
-  (mkBlock (a "L92") [] [(Flight (a "v107") Add [(FAddress (t "v0")); (FValue (Const 3))] (LowerOf (t "v0")));
-      (Let (a "chk13") A (HalfCheck Upper 0 1 Read 1) [(t "chk7"); (t "v107")]);
-      (Let (a "v108") W (RawLoad (LdNarrow Ub) 0) [(t "chk13")]);
-      (Let (a "v109") L (Ext Uw) [(t "v108")]);
-      (Flight (a "v110") Add [(FAddress (t "v42")); (FValue (t "v109"))] (LowerOf (t "v42")));
-      (Let (a "chk14") A (Check 0 1 Read 1) [(t "v110")]);
-      (Let (a "v111") W (RawLoad (LdNarrow Ub) 0) [(t "chk14")]);
-      (Let (a "v112") W (Cmp Eq W) [(t "v111"); (Const 0)])] (JBranch (t "v112") (To (a "L102")) (To (a "L104"))));
-  (mkBlock (a "L102") [] [] (JRet (Const 3)));
-  (mkBlock (a "L104") [] [(Let (a "v115") L Ptoi [(t "v0")]);
-      (Let (a "v117") L And [(t "v115"); (Const 18446744073709551612)]);
-      (Let (a "lc.2") L Sub [(t "v117"); (t "v115")]);
-      (Flight (a "v118") Add [(FAddress (t "v0")); (FValue (t "lc.2"))] (LowerOf (t "v0")))] (JGoto (To (a "L123"))));
-  (mkBlock (a "L123") [(Phi (a "pr.2") P [((a "L104"), (t "v118")); ((a "L123"), (t "v127"))])] [(Flight (a "v127") Add [(FAddress (t "pr.2")); (FValue (Const 4))] (LowerOf (t "pr.2")));
-      (Let (a "chk15") A (Check 0 1 Read 1) [(t "v127")]);
-      (Let (a "v131") W (RawLoad (LdNarrow Ub) 0) [(t "chk15")]);
-      (Let (a "v132") L (Ext Uw) [(t "v131")]);
-      (Flight (a "v133") Add [(FAddress (t "v42")); (FValue (t "v132"))] (LowerOf (t "v42")));
-      (Let (a "chk16") A (Check 0 1 Read 1) [(t "v133")]);
-      (Let (a "v134") W (RawLoad (LdNarrow Ub) 0) [(t "chk16")]);
-      (Flight (a "v137") Add [(FAddress (t "v127")); (FValue (Const 1))] (LowerOf (t "v127")));
-      (Let (a "chk17") A (HalfCheck Upper 0 1 Read 1) [(t "chk15"); (t "v137")]);
-      (Let (a "v138") W (RawLoad (LdNarrow Ub) 0) [(t "chk17")]);
-      (Let (a "v139") L (Ext Uw) [(t "v138")]);
-      (Flight (a "v140") Add [(FAddress (t "v42")); (FValue (t "v139"))] (LowerOf (t "v42")));
-      (Let (a "chk18") A (Check 0 1 Read 1) [(t "v140")]);
-      (Let (a "v141") W (RawLoad (LdNarrow Ub) 0) [(t "chk18")]);
-      (Flight (a "v144") Add [(FAddress (t "v127")); (FValue (Const 2))] (LowerOf (t "v127")));
-      (Let (a "chk19") A (HalfCheck Upper 0 1 Read 1) [(t "chk15"); (t "v144")]);
-      (Let (a "v145") W (RawLoad (LdNarrow Ub) 0) [(t "chk19")]);
-      (Let (a "v146") L (Ext Uw) [(t "v145")]);
-      (Flight (a "v147") Add [(FAddress (t "v42")); (FValue (t "v146"))] (LowerOf (t "v42")));
-      (Let (a "chk20") A (Check 0 1 Read 1) [(t "v147")]);
-      (Let (a "v148") W (RawLoad (LdNarrow Ub) 0) [(t "chk20")]);
-      (Flight (a "v151") Add [(FAddress (t "v127")); (FValue (Const 3))] (LowerOf (t "v127")));
-      (Let (a "chk21") A (HalfCheck Upper 0 1 Read 1) [(t "chk15"); (t "v151")]);
-      (Let (a "v152") W (RawLoad (LdNarrow Ub) 0) [(t "chk21")]);
-      (Let (a "v153") L (Ext Uw) [(t "v152")]);
-      (Flight (a "v154") Add [(FAddress (t "v42")); (FValue (t "v153"))] (LowerOf (t "v42")));
-      (Let (a "chk22") A (Check 0 1 Read 1) [(t "v154")]);
-      (Let (a "v155") W (RawLoad (LdNarrow Ub) 0) [(t "chk22")]);
-      (Let (a "v158") W And [(t "v134"); (t "v141")]);
-      (Let (a "v160") W And [(t "v158"); (t "v148")]);
-      (Let (a "v162") W And [(t "v160"); (t "v155")]);
-      (Let (a "v163") W (Cmp Ne W) [(t "v162"); (Const 0)])] (JBranch (t "v163") (Poll (a "L123")) (To (a "L125"))));
-  (mkBlock (a "L125") [] [(Let (a "v167") L Ptoi [(t "v127")]);
-      (Let (a "v169") L Sub [(t "v167"); (t "v115")]);
-      (Let (a "v176") W (Cmp Eq W) [(t "v158"); (Const 0)])] (JBranch (t "v176") (To (a "L170")) (To (a "L171"))));
-  (mkBlock (a "L170") [] [(Let (a "v179") L (Ext Uw) [(t "v134")]);
-      (Let (a "v180") L Add [(t "v169"); (t "v179")])] (JGoto (To (a "L172"))));
-  (mkBlock (a "L171") [] [(Let (a "v183") L (Ext Uw) [(t "v148")]);
-      (Let (a "v184") L Add [(t "v169"); (t "v183")]);
-      (Let (a "v185") L Add [(t "v184"); (Const 2)])] (JGoto (To (a "L172"))));
-  (mkBlock (a "L172") [(Phi (a "v186") L [((a "L170"), (t "v180")); ((a "L171"), (t "v185"))])] [] (JRet (t "v186")))].
-
 Definition hello_image_fn___GI_strstr : func :=
-  mkFunc (a "__GI_strstr") (a "export") (RClass P) [(P, (a "v0")); (P, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "v105") P (Alloc 4) [(Const 256)]);
-      (Let (a "chk0") A (Check 0 1 Read 1) [(t "v2")]);
-      (Let (a "v13") W (RawLoad (LdNarrow Ub) 0) [(t "chk0")]);
-      (Let (a "v14") W (Cmp Eq W) [(t "v13"); (Const 0)])] (JBranch (t "v14") (To (a "L8")) (To (a "L10"))));
-  (mkBlock (a "L8") [] [] (JRet (t "v0")));
-  (mkBlock (a "L10") [] [(Let (a "v20") W (RawLoad (LdNarrow Ub) 0) [(t "chk0")]);
-      (Call (CResult (a "v21") P) (Global (a "__GI_strchr")) [(Arg P (t "v0")); (Arg W (t "v20"))]);
-      (Let (a "v26") L Ptoi [(t "v21")]);
-      (Let (a "v27") L Ptoi [(Const 0)]);
-      (Let (a "v28") W (Cmp Eq L) [(t "v26"); (t "v27")])] (JBranch (t "v28") (To (a "L30")) (To (a "L29"))));
-  (mkBlock (a "L29") [] [(Flight (a "v32") Add [(FAddress (t "v2")); (FValue (Const 1))] (LowerOf (t "v2")));
-      (Let (a "chk2") A (HalfCheck Upper 0 1 Read 1) [(t "chk0"); (t "v32")]);
-      (Let (a "v33") W (RawLoad (LdNarrow Ub) 0) [(t "chk2")]);
-      (Let (a "v34") W (Cmp Eq W) [(t "v33"); (Const 0)])] (JGoto (To (a "L30"))));
-  (mkBlock (a "L30") [(Phi (a "v36") W [((a "L10"), (Const 1)); ((a "L29"), (t "v34"))])] [] (JBranch (t "v36") (To (a "L22")) (To (a "L24"))));
-  (mkBlock (a "L22") [] [] (JRet (t "v21")));
-  (mkBlock (a "L24") [] [(Flight (a "v43") Add [(FAddress (t "v2")); (FValue (Const 2))] (LowerOf (t "v2")));
-      (Let (a "chk3") A (HalfCheck Upper 0 1 Read 1) [(t "chk0"); (t "v43")]);
-      (Let (a "v44") W (RawLoad (LdNarrow Ub) 0) [(t "chk3")]);
-      (Let (a "v45") W (Cmp Eq W) [(t "v44"); (Const 0)])] (JBranch (t "v45") (To (a "iw_1.start")) (To (a "L41"))));
-  (mkBlock (a "iw_1.start") [] [(Let (a "chk4") A (Renew 0 1 Read 1) [(t "chk0"); (t "v2")]);
-      (Let (a "iw_1.v7") W (RawLoad (LdNarrow Ub) 0) [(t "chk4")]);
-      (Let (a "iw_1.v8") W Shl [(t "iw_1.v7"); (Const 16)]);
-      (Flight (a "iw_1.v10") Add [(FAddress (t "v2")); (FValue (Const 1))] (LowerOf (t "v2")));
-      (Let (a "iw_1.v11") W (RawLoad (LdNarrow Ub) 1) [(t "chk4")]);
-      (Let (a "iw_1.v12") W Or [(t "iw_1.v8"); (t "iw_1.v11")]);
-      (Let (a "chk6") A (Check 0 1 Read 1) [(t "v21")]);
-      (Let (a "iw_1.v17") W (RawLoad (LdNarrow Ub) 0) [(t "chk6")])] (JGoto (To (a "iw_1.L18"))));
-  (mkBlock (a "iw_1.L18") [(Phi (a "iw_1.pr.3") W [((a "iw_1.L19"), (t "iw_1.v37")); ((a "iw_1.start"), (t "iw_1.v17"))]); (Phi (a "iw_1.pr.2") W [((a "iw_1.L19"), (t "iw_1.v34")); ((a "iw_1.start"), (Const 0))]); (Phi (a "iw_1.pr.1") P [((a "iw_1.L19"), (t "iw_1.v36")); ((a "iw_1.start"), (t "v21"))])] [(Let (a "iw_1.v24") W (Cmp Ne W) [(t "iw_1.v12"); (t "iw_1.pr.2")])] (JBranch (t "iw_1.v24") (To (a "iw_1.L25")) (To (a "iw_1.L26"))));
-  (mkBlock (a "iw_1.L25") [] [(Let (a "iw_1.v28") W (Cmp Ne W) [(t "iw_1.pr.3"); (Const 0)])] (JGoto (To (a "iw_1.L26"))));
-  (mkBlock (a "iw_1.L26") [(Phi (a "iw_1.v30") W [((a "iw_1.L18"), (Const 0)); ((a "iw_1.L25"), (t "iw_1.v28"))])] [] (JBranch (t "iw_1.v30") (To (a "iw_1.L19")) (To (a "iw_1.L21"))));
-  (mkBlock (a "iw_1.L19") [] [(Let (a "iw_1.v32") W Shl [(t "iw_1.pr.2"); (Const 16)]);
-      (Let (a "iw_1.v34") W Or [(t "iw_1.v32"); (t "iw_1.pr.3")]);
-      (Flight (a "iw_1.v36") Add [(FAddress (t "iw_1.pr.1")); (FValue (Const 1))] (LowerOf (t "iw_1.pr.1")));
-      (Let (a "chk7") A (Check 0 1 Read 1) [(t "iw_1.v36")]);
-      (Let (a "iw_1.v37") W (RawLoad (LdNarrow Ub) 0) [(t "chk7")])] (JGoto (Poll (a "iw_1.L18"))));
-  (mkBlock (a "iw_1.L21") [] [(Let (a "iw_1.v43") W (Cmp Eq W) [(t "iw_1.v12"); (t "iw_1.pr.2")])] (JBranch (t "iw_1.v43") (To (a "iw_1.L38")) (To (a "iw_1.L40"))));
-  (mkBlock (a "iw_1.L38") [] [(Flight (a "iw_1.v45") Sub [(FAddress (t "iw_1.pr.1")); (FValue (Const 2))] (LowerOf (t "iw_1.pr.1")))] (JGoto (To (a "iw_1.L40"))));
-  (mkBlock (a "iw_1.L40") [(Phi (a "iw_1.v46") P [((a "iw_1.L38"), (t "iw_1.v45")); ((a "iw_1.L21"), (Const 0))])] [] (JRet (t "iw_1.v46")));
-  (mkBlock (a "L41") [] [(Flight (a "v54") Add [(FAddress (t "v2")); (FValue (Const 3))] (LowerOf (t "v2")));
-      (Let (a "chk8") A (HalfCheck Upper 0 1 Read 1) [(t "chk0"); (t "v54")]);
-      (Let (a "v55") W (RawLoad (LdNarrow Ub) 0) [(t "chk8")]);
-      (Let (a "v56") W (Cmp Eq W) [(t "v55"); (Const 0)])] (JBranch (t "v56") (To (a "iw_2.start")) (To (a "L52"))));
-  (mkBlock (a "iw_2.start") [] [(Let (a "chk9") A (Renew 0 1 Read 1) [(t "chk0"); (t "v2")]);
-      (Let (a "iw_2.v7") W (RawLoad (LdNarrow Ub) 0) [(t "chk9")]);
-      (Let (a "iw_2.v8") W Shl [(t "iw_2.v7"); (Const 24)]);
-      (Flight (a "iw_2.v10") Add [(FAddress (t "v2")); (FValue (Const 1))] (LowerOf (t "v2")));
-      (Let (a "iw_2.v11") W (RawLoad (LdNarrow Ub) 1) [(t "chk9")]);
-      (Let (a "iw_2.v12") W Shl [(t "iw_2.v11"); (Const 16)]);
-      (Let (a "iw_2.v13") W Or [(t "iw_2.v8"); (t "iw_2.v12")]);
-      (Flight (a "iw_2.v15") Add [(FAddress (t "v2")); (FValue (Const 2))] (LowerOf (t "v2")));
-      (Let (a "iw_2.v16") W (RawLoad (LdNarrow Ub) 0) [(t "chk3")]);
-      (Let (a "iw_2.v17") W Shl [(t "iw_2.v16"); (Const 8)]);
-      (Let (a "iw_2.v18") W Or [(t "iw_2.v13"); (t "iw_2.v17")]);
-      (Let (a "chk12") A (Check 0 1 Read 1) [(t "v21")]);
-      (Let (a "iw_2.v23") W (RawLoad (LdNarrow Ub) 0) [(t "chk12")])] (JGoto (To (a "iw_2.L24"))));
-  (mkBlock (a "iw_2.L24") [(Phi (a "iw_2.pr.3") W [((a "iw_2.L25"), (t "iw_2.v43")); ((a "iw_2.start"), (t "iw_2.v23"))]); (Phi (a "iw_2.pr.2") W [((a "iw_2.L25"), (t "iw_2.v40")); ((a "iw_2.start"), (Const 0))]); (Phi (a "iw_2.pr.1") P [((a "iw_2.L25"), (t "iw_2.v42")); ((a "iw_2.start"), (t "v21"))])] [(Let (a "iw_2.v30") W (Cmp Ne W) [(t "iw_2.v18"); (t "iw_2.pr.2")])] (JBranch (t "iw_2.v30") (To (a "iw_2.L31")) (To (a "iw_2.L32"))));
-  (mkBlock (a "iw_2.L31") [] [(Let (a "iw_2.v34") W (Cmp Ne W) [(t "iw_2.pr.3"); (Const 0)])] (JGoto (To (a "iw_2.L32"))));
-  (mkBlock (a "iw_2.L32") [(Phi (a "iw_2.v36") W [((a "iw_2.L24"), (Const 0)); ((a "iw_2.L31"), (t "iw_2.v34"))])] [] (JBranch (t "iw_2.v36") (To (a "iw_2.L25")) (To (a "iw_2.L27"))));
-  (mkBlock (a "iw_2.L25") [] [(Let (a "iw_2.v39") W Or [(t "iw_2.pr.2"); (t "iw_2.pr.3")]);
-      (Let (a "iw_2.v40") W Shl [(t "iw_2.v39"); (Const 8)]);
-      (Flight (a "iw_2.v42") Add [(FAddress (t "iw_2.pr.1")); (FValue (Const 1))] (LowerOf (t "iw_2.pr.1")));
-      (Let (a "chk13") A (Check 0 1 Read 1) [(t "iw_2.v42")]);
-      (Let (a "iw_2.v43") W (RawLoad (LdNarrow Ub) 0) [(t "chk13")])] (JGoto (Poll (a "iw_2.L24"))));
-  (mkBlock (a "iw_2.L27") [] [(Let (a "iw_2.v49") W (Cmp Eq W) [(t "iw_2.v18"); (t "iw_2.pr.2")])] (JBranch (t "iw_2.v49") (To (a "iw_2.L44")) (To (a "iw_2.L46"))));
-  (mkBlock (a "iw_2.L44") [] [(Flight (a "iw_2.v51") Sub [(FAddress (t "iw_2.pr.1")); (FValue (Const 3))] (LowerOf (t "iw_2.pr.1")))] (JGoto (To (a "iw_2.L46"))));
-  (mkBlock (a "iw_2.L46") [(Phi (a "iw_2.v52") P [((a "iw_2.L44"), (t "iw_2.v51")); ((a "iw_2.L27"), (Const 0))])] [] (JRet (t "iw_2.v52")));
-  (mkBlock (a "L52") [] [(Call (CResult (a "v63") L) (Global (a "__GI_strlen")) [(Arg P (t "v2"))]);
-      (Let (a "v67") L Or [(t "v63"); (Const 512)]);
-      (Call (CResult (a "v68") L) (Global (a "__GI___strnlen")) [(Arg P (t "v21")); (Arg L (t "v67"))]);
-      (Let (a "v74") W (Cmp Ult L) [(t "v68"); (t "v63")])] (JBranch (t "v74") (To (a "L69")) (To (a "L71"))));
-  (mkBlock (a "L69") [] [] (JRet (Const 0)));
-  (mkBlock (a "L71") [] [(Call (CResult (a "v82") W) (Global (a "__GI_memcmp")) [(Arg P (t "v21")); (Arg P (t "v2")); (Arg L (t "v63"))]);
-      (Let (a "v83") W (Cmp Eq W) [(t "v82"); (Const 0)])] (JBranch (t "v83") (To (a "L76")) (To (a "L78"))));
-  (mkBlock (a "L76") [] [] (JRet (t "v21")));
-  (mkBlock (a "L78") [] [(Let (a "v90") W (Cmp Ugt L) [(t "v63"); (Const 256)])] (JBranch (t "v90") (To (a "L86")) (To (a "L88"))));
-  (mkBlock (a "L86") [] [(Call (CResult (a "v97") P) (Global (a "glibc_strstr#two_way_long_needle")) [(Arg P (t "v21")); (Arg L (t "v68")); (Arg P (t "v2")); (Arg L (t "v63"))])] (JRet (t "v97")));
-  (mkBlock (a "L88") [] [(Flight (a "v102") Add [(FAddress (t "v21")); (FValue (t "v68"))] (LowerOf (t "v21")));
-      (Flight (a "v104") Sub [(FAddress (t "v102")); (FValue (t "v63"))] (LowerOf (t "v102")));
-      (Let (a "v110") L Sub [(t "v63"); (Const 1)]);
-      (Call (CResult (a "v112") P) (Global (a "__GI_memset")) [(Arg P (t "v105")); (Arg W (Const 0)); (Arg L (Const 256))])] (JGoto (To (a "L114"))));
-  (mkBlock (a "L114") [(Phi (a "pr.7") W [((a "L115"), (t "v145")); ((a "L88"), (Const 1))])] [(Let (a "v120") L (Ext Sw) [(t "pr.7")]);
-      (Let (a "v121") W (Cmp Ult L) [(t "v120"); (t "v110")])] (JBranch (t "v121") (To (a "L115")) (To (a "L117"))));
-  (mkBlock (a "L115") [] [(Flight (a "v125") Add [(FAddress (t "v2")); (FValue (t "v120"))] (LowerOf (t "v2")));
-      (Let (a "chk14") A (Check 0 1 Read 1) [(t "v125")]);
-      (Let (a "v127") W (RawLoad (LdNarrow Ub) 0) [(t "chk14")]);
-      (Let (a "v128") L (Ext Uw) [(t "v127")]);
-      (Flight (a "v135") Add [(FAddress (t "v125")); (FValue (Const 18446744073709551615))] (LowerOf (t "v125")));
-      (Let (a "chk15") A (HalfCheck Lower 0 1 Read 1) [(t "chk14"); (t "v135")]);
-      (Let (a "v136") W (RawLoad (LdNarrow Ub) 0) [(t "chk15")]);
-      (Let (a "v137") L (Ext Uw) [(t "v136")]);
-      (Let (a "v138") L Shl [(t "v137"); (Const 3)]);
-      (Let (a "v139") L Sub [(t "v128"); (t "v138")]);
-      (Let (a "v140") L And [(t "v139"); (Const 255)]);
-      (Flight (a "v141") Add [(FAddress (t "v105")); (FValue (t "v140"))] (LowerOf (t "v105")));
-      (Let (a "v143") W (Ext Ub) [(t "pr.7")]);
-      (Let (a "chk16") A (Check 0 1 Write 1) [(t "v141")]);
-      (RawStore Wb 0 (t "v143") (t "chk16"));
-      (Let (a "v145") W Add [(t "pr.7"); (Const 1)])] (JGoto (Poll (a "L114"))));
-  (mkBlock (a "L117") [] [(Flight (a "v149") Add [(FAddress (t "v2")); (FValue (t "v110"))] (LowerOf (t "v2")));
-      (Let (a "chk17") A (Check 0 1 Read 1) [(t "v149")]);
-      (Let (a "v151") W (RawLoad (LdNarrow Ub) 0) [(t "chk17")]);
-      (Let (a "v152") L (Ext Uw) [(t "v151")]);
-      (Flight (a "v158") Add [(FAddress (t "v149")); (FValue (Const 18446744073709551615))] (LowerOf (t "v149")));
-      (Let (a "chk18") A (HalfCheck Lower 0 1 Read 1) [(t "chk17"); (t "v158")]);
-      (Let (a "v159") W (RawLoad (LdNarrow Ub) 0) [(t "chk18")]);
-      (Let (a "v160") L (Ext Uw) [(t "v159")]);
-      (Let (a "v161") L Shl [(t "v160"); (Const 3)]);
-      (Let (a "v162") L Sub [(t "v152"); (t "v161")]);
-      (Let (a "v163") L And [(t "v162"); (Const 255)]);
-      (Flight (a "v164") Add [(FAddress (t "v105")); (FValue (t "v163"))] (LowerOf (t "v105")));
-      (Let (a "chk19") A (Check 0 1 Read 1) [(t "v164")]);
-      (Let (a "v165") W (RawLoad (LdNarrow Ub) 0) [(t "chk19")]);
-      (Let (a "v166") L (Ext Uw) [(t "v165")]);
-      (Let (a "v167") L Sub [(t "v110"); (t "v166")]);
-      (Let (a "v172") W (RawLoad (LdNarrow Ub) 0) [(t "chk17")]);
-      (Let (a "v173") L (Ext Uw) [(t "v172")]);
-      (Let (a "v180") W (RawLoad (LdNarrow Ub) 0) [(t "chk18")]);
-      (Let (a "v181") L (Ext Uw) [(t "v180")]);
-      (Let (a "v182") L Shl [(t "v181"); (Const 3)]);
-      (Let (a "v183") L Sub [(t "v173"); (t "v182")]);
-      (Let (a "v184") L And [(t "v183"); (Const 255)]);
-      (Flight (a "v185") Add [(FAddress (t "v105")); (FValue (t "v184"))] (LowerOf (t "v105")));
-      (Let (a "v187") W (Ext Ub) [(t "v110")]);
-      (Let (a "chk22") A (Check 0 1 Write 1) [(t "v185")]);
-      (RawStore Wb 0 (t "v187") (t "chk22"))] (JGoto (To (a "L188"))));
-  (mkBlock (a "L188") [(Phi (a "pr.5") L [((a "L117"), (Const 0)); ((a "L262"), (t "pr.6")); ((a "L219"), (t "pr.5"))]); (Phi (a "pr.3") P [((a "L117"), (t "v104")); ((a "L262"), (t "pr.4")); ((a "L219"), (t "pr.4"))]); (Phi (a "pr.1") P [((a "L117"), (t "v21")); ((a "L262"), (t "v298")); ((a "L219"), (t "v252"))])] [(Let (a "v196") L Ptoi [(t "pr.1")]);
-      (Let (a "v197") L Ptoi [(t "pr.3")]);
-      (Let (a "v198") W (Cmp Ugt L) [(t "v196"); (t "v197")])] (JBranch (t "v198") (To (a "L191")) (To (a "L193"))));
-  (mkBlock (a "L191") [] [(Flight (a "v204") Add [(FAddress (t "pr.3")); (FValue (t "v110"))] (LowerOf (t "pr.3")));
-      (Flight (a "v205") Add [(FAddress (t "v204")); (FValue (Const 1))] (LowerOf (t "v204")));
-      (Call (CResult (a "v206") L) (Global (a "__GI___strnlen")) [(Arg P (t "v205")); (Arg L (Const 2048))]);
-      (Flight (a "v207") Add [(FAddress (t "pr.3")); (FValue (t "v206"))] (LowerOf (t "pr.3")));
-      (Let (a "v214") L Ptoi [(t "v207")]);
-      (Let (a "v215") W (Cmp Ugt L) [(t "v196"); (t "v214")])] (JBranch (t "v215") (To (a "L208")) (To (a "L193"))));
-  (mkBlock (a "L208") [] [] (JRet (Const 0)));
-  (mkBlock (a "L193") [(Phi (a "pr.4") P [((a "L191"), (t "v207")); ((a "L188"), (t "pr.3"))])] [] (JGoto (To (a "L217"))));
-  (mkBlock (a "L217") [(Phi (a "pr.2") P [((a "L193"), (t "pr.1")); ((a "L242"), (t "v222"))])] [(Flight (a "v222") Add [(FAddress (t "pr.2")); (FValue (t "v110"))] (LowerOf (t "pr.2")));
-      (Let (a "chk23") A (Check 0 1 Read 1) [(t "v222")]);
-      (Let (a "v225") W (RawLoad (LdNarrow Ub) 0) [(t "chk23")]);
-      (Let (a "v226") L (Ext Uw) [(t "v225")]);
-      (Flight (a "v230") Add [(FAddress (t "v222")); (FValue (Const 18446744073709551615))] (LowerOf (t "v222")));
-      (Let (a "chk24") A (HalfCheck Lower 0 1 Read 1) [(t "chk23"); (t "v230")]);
-      (Let (a "v231") W (RawLoad (LdNarrow Ub) 0) [(t "chk24")]);
-      (Let (a "v232") L (Ext Uw) [(t "v231")]);
-      (Let (a "v233") L Shl [(t "v232"); (Const 3)]);
-      (Let (a "v234") L Sub [(t "v226"); (t "v233")]);
-      (Let (a "v235") L And [(t "v234"); (Const 255)]);
-      (Flight (a "v236") Add [(FAddress (t "v105")); (FValue (t "v235"))] (LowerOf (t "v105")));
-      (Let (a "chk25") A (Check 0 1 Read 1) [(t "v236")]);
-      (Let (a "v237") W (RawLoad (LdNarrow Ub) 0) [(t "chk25")]);
-      (Let (a "v238") L (Ext Uw) [(t "v237")]);
-      (Let (a "v240") W (Cmp Eq L) [(t "v238"); (Const 0)])] (JBranch (t "v240") (To (a "L241")) (To (a "L242"))));
-  (mkBlock (a "L241") [] [(Let (a "v245") L Ptoi [(t "v222")]);
-      (Let (a "v246") L Ptoi [(t "pr.4")]);
-      (Let (a "v247") W (Cmp Ule L) [(t "v245"); (t "v246")])] (JGoto (To (a "L242"))));
-  (mkBlock (a "L242") [(Phi (a "v249") W [((a "L217"), (Const 0)); ((a "L241"), (t "v247"))])] [] (JBranch (t "v249") (Poll (a "L217")) (To (a "L219"))));
-  (mkBlock (a "L219") [] [(Flight (a "v252") Sub [(FAddress (t "v222")); (FValue (t "v238"))] (LowerOf (t "v222")));
-      (Let (a "v258") W (Cmp Ult L) [(t "v238"); (t "v110")])] (JBranch (t "v258") (Poll (a "L188")) (To (a "L255"))));
-  (mkBlock (a "L255") [] [(Let (a "v264") W (Cmp Ult L) [(t "v110"); (Const 15)])] (JBranch (t "v264") (To (a "L266")) (To (a "L265"))));
-  (mkBlock (a "L265") [] [(Flight (a "v269") Add [(FAddress (t "v252")); (FValue (t "pr.5"))] (LowerOf (t "v252")));
-      (Flight (a "v272") Add [(FAddress (t "v2")); (FValue (t "pr.5"))] (LowerOf (t "v2")));
-      (Call (CResult (a "v273") W) (Global (a "__GI_memcmp")) [(Arg P (t "v269")); (Arg P (t "v272")); (Arg L (Const 8))]);
-      (Let (a "v274") W (Cmp Eq W) [(t "v273"); (Const 0)])] (JGoto (To (a "L266"))));
-  (mkBlock (a "L266") [(Phi (a "v276") W [((a "L255"), (Const 1)); ((a "L265"), (t "v274"))])] [] (JBranch (t "v276") (To (a "L260")) (To (a "L262"))));
-  (mkBlock (a "L260") [] [(Call (CResult (a "v283") W) (Global (a "__GI_memcmp")) [(Arg P (t "v252")); (Arg P (t "v2")); (Arg L (t "v110"))]);
-      (Let (a "v284") W (Cmp Eq W) [(t "v283"); (Const 0)])] (JBranch (t "v284") (To (a "L277")) (To (a "L279"))));
-  (mkBlock (a "L277") [] [] (JRet (t "v252")));
-  (mkBlock (a "L279") [] [(Let (a "v291") W (Cmp Uge L) [(t "pr.5"); (Const 8)])] (JBranch (t "v291") (To (a "L289")) (To (a "L288"))));
-  (mkBlock (a "L288") [] [] (JGoto (To (a "L289"))));
-  (mkBlock (a "L289") [(Phi (a "v294") L [((a "L288"), (t "v110")); ((a "L279"), (t "pr.5"))])] [(Let (a "v295") L Sub [(t "v294"); (Const 8)])] (JGoto (To (a "L262"))));
-  (mkBlock (a "L262") [(Phi (a "pr.6") L [((a "L289"), (t "v295")); ((a "L266"), (t "pr.5"))])] [(Flight (a "v298") Add [(FAddress (t "v252")); (FValue (t "v167"))] (LowerOf (t "v252")))] (JGoto (Poll (a "L188"))))].
+  ir_fn{ "export" "__GI_strstr"(P %"v0", P %"v2") -> (RClass P) {
+  @"start":
+    %"v105" : P = (Alloc 4) #256;
+    %"chk0" : A = (Check 0 1 Read 1) %"v2";
+    %"v13" : W = (RawLoad (LdNarrow Ub) 0) %"chk0";
+    %"v14" : W = (Cmp Eq W) %"v13", #0
+    => br %"v14" ? "L8" : "L10";
+  @"L8":
+    => ret %"v0";
+  @"L10":
+    %"v20" : W = (RawLoad (LdNarrow Ub) 0) %"chk0";
+    call %"v21" : P = $"__GI_strchr"(P %"v0", W %"v20");
+    %"v26" : L = Ptoi %"v21";
+    %"v27" : L = Ptoi #0;
+    %"v28" : W = (Cmp Eq L) %"v26", %"v27"
+    => br %"v28" ? "L30" : "L29";
+  @"L29":
+    %"v32" = %"v2" +p #1;
+    %"chk2" : A = (HalfCheck Upper 0 1 Read 1) %"chk0", %"v32";
+    %"v33" : W = (RawLoad (LdNarrow Ub) 0) %"chk2";
+    %"v34" : W = (Cmp Eq W) %"v33", #0
+    => goto "L30";
+  @"L30" [%"v36" : W = phi("L10" => #1, "L29" => %"v34")]:
+    => br %"v36" ? "L22" : "L24";
+  @"L22":
+    => ret %"v21";
+  @"L24":
+    %"v43" = %"v2" +p #2;
+    %"chk3" : A = (HalfCheck Upper 0 1 Read 1) %"chk0", %"v43";
+    %"v44" : W = (RawLoad (LdNarrow Ub) 0) %"chk3";
+    %"v45" : W = (Cmp Eq W) %"v44", #0
+    => br %"v45" ? "iw_1.start" : "L41";
+  @"iw_1.start":
+    %"chk4" : A = (Renew 0 1 Read 1) %"chk0", %"v2";
+    %"iw_1.v7" : W = (RawLoad (LdNarrow Ub) 0) %"chk4";
+    %"iw_1.v8" : W = Shl %"iw_1.v7", #16;
+    %"iw_1.v10" = %"v2" +p #1;
+    %"iw_1.v11" : W = (RawLoad (LdNarrow Ub) 1) %"chk4";
+    %"iw_1.v12" : W = Or %"iw_1.v8", %"iw_1.v11";
+    %"chk6" : A = (Check 0 1 Read 1) %"v21";
+    %"iw_1.v17" : W = (RawLoad (LdNarrow Ub) 0) %"chk6"
+    => goto "iw_1.L18";
+  @"iw_1.L18" [%"iw_1.pr.3" : W = phi("iw_1.L19" => %"iw_1.v37", "iw_1.start" => %"iw_1.v17"); %"iw_1.pr.2" : W = phi("iw_1.L19" => %"iw_1.v34", "iw_1.start" => #0); %"iw_1.pr.1" : P = phi("iw_1.L19" => %"iw_1.v36", "iw_1.start" => %"v21")]:
+    %"iw_1.v24" : W = (Cmp Ne W) %"iw_1.v12", %"iw_1.pr.2"
+    => br %"iw_1.v24" ? "iw_1.L25" : "iw_1.L26";
+  @"iw_1.L25":
+    %"iw_1.v28" : W = (Cmp Ne W) %"iw_1.pr.3", #0
+    => goto "iw_1.L26";
+  @"iw_1.L26" [%"iw_1.v30" : W = phi("iw_1.L18" => #0, "iw_1.L25" => %"iw_1.v28")]:
+    => br %"iw_1.v30" ? "iw_1.L19" : "iw_1.L21";
+  @"iw_1.L19":
+    %"iw_1.v32" : W = Shl %"iw_1.pr.2", #16;
+    %"iw_1.v34" : W = Or %"iw_1.v32", %"iw_1.pr.3";
+    %"iw_1.v36" = %"iw_1.pr.1" +p #1;
+    %"chk7" : A = (Check 0 1 Read 1) %"iw_1.v36";
+    %"iw_1.v37" : W = (RawLoad (LdNarrow Ub) 0) %"chk7"
+    => goto poll "iw_1.L18";
+  @"iw_1.L21":
+    %"iw_1.v43" : W = (Cmp Eq W) %"iw_1.v12", %"iw_1.pr.2"
+    => br %"iw_1.v43" ? "iw_1.L38" : "iw_1.L40";
+  @"iw_1.L38":
+    (Flight (a "iw_1.v45") Sub [(FAddress (t "iw_1.pr.1")); (FValue (Const 2))] (LowerOf (t "iw_1.pr.1")))
+    => goto "iw_1.L40";
+  @"iw_1.L40" [%"iw_1.v46" : P = phi("iw_1.L38" => %"iw_1.v45", "iw_1.L21" => #0)]:
+    => ret %"iw_1.v46";
+  @"L41":
+    %"v54" = %"v2" +p #3;
+    %"chk8" : A = (HalfCheck Upper 0 1 Read 1) %"chk0", %"v54";
+    %"v55" : W = (RawLoad (LdNarrow Ub) 0) %"chk8";
+    %"v56" : W = (Cmp Eq W) %"v55", #0
+    => br %"v56" ? "iw_2.start" : "L52";
+  @"iw_2.start":
+    %"chk9" : A = (Renew 0 1 Read 1) %"chk0", %"v2";
+    %"iw_2.v7" : W = (RawLoad (LdNarrow Ub) 0) %"chk9";
+    %"iw_2.v8" : W = Shl %"iw_2.v7", #24;
+    %"iw_2.v10" = %"v2" +p #1;
+    %"iw_2.v11" : W = (RawLoad (LdNarrow Ub) 1) %"chk9";
+    %"iw_2.v12" : W = Shl %"iw_2.v11", #16;
+    %"iw_2.v13" : W = Or %"iw_2.v8", %"iw_2.v12";
+    %"iw_2.v15" = %"v2" +p #2;
+    %"iw_2.v16" : W = (RawLoad (LdNarrow Ub) 0) %"chk3";
+    %"iw_2.v17" : W = Shl %"iw_2.v16", #8;
+    %"iw_2.v18" : W = Or %"iw_2.v13", %"iw_2.v17";
+    %"chk12" : A = (Check 0 1 Read 1) %"v21";
+    %"iw_2.v23" : W = (RawLoad (LdNarrow Ub) 0) %"chk12"
+    => goto "iw_2.L24";
+  @"iw_2.L24" [%"iw_2.pr.3" : W = phi("iw_2.L25" => %"iw_2.v43", "iw_2.start" => %"iw_2.v23"); %"iw_2.pr.2" : W = phi("iw_2.L25" => %"iw_2.v40", "iw_2.start" => #0); %"iw_2.pr.1" : P = phi("iw_2.L25" => %"iw_2.v42", "iw_2.start" => %"v21")]:
+    %"iw_2.v30" : W = (Cmp Ne W) %"iw_2.v18", %"iw_2.pr.2"
+    => br %"iw_2.v30" ? "iw_2.L31" : "iw_2.L32";
+  @"iw_2.L31":
+    %"iw_2.v34" : W = (Cmp Ne W) %"iw_2.pr.3", #0
+    => goto "iw_2.L32";
+  @"iw_2.L32" [%"iw_2.v36" : W = phi("iw_2.L24" => #0, "iw_2.L31" => %"iw_2.v34")]:
+    => br %"iw_2.v36" ? "iw_2.L25" : "iw_2.L27";
+  @"iw_2.L25":
+    %"iw_2.v39" : W = Or %"iw_2.pr.2", %"iw_2.pr.3";
+    %"iw_2.v40" : W = Shl %"iw_2.v39", #8;
+    %"iw_2.v42" = %"iw_2.pr.1" +p #1;
+    %"chk13" : A = (Check 0 1 Read 1) %"iw_2.v42";
+    %"iw_2.v43" : W = (RawLoad (LdNarrow Ub) 0) %"chk13"
+    => goto poll "iw_2.L24";
+  @"iw_2.L27":
+    %"iw_2.v49" : W = (Cmp Eq W) %"iw_2.v18", %"iw_2.pr.2"
+    => br %"iw_2.v49" ? "iw_2.L44" : "iw_2.L46";
+  @"iw_2.L44":
+    (Flight (a "iw_2.v51") Sub [(FAddress (t "iw_2.pr.1")); (FValue (Const 3))] (LowerOf (t "iw_2.pr.1")))
+    => goto "iw_2.L46";
+  @"iw_2.L46" [%"iw_2.v52" : P = phi("iw_2.L44" => %"iw_2.v51", "iw_2.L27" => #0)]:
+    => ret %"iw_2.v52";
+  @"L52":
+    call %"v63" : L = $"__GI_strlen"(P %"v2");
+    %"v67" : L = Or %"v63", #512;
+    call %"v68" : L = $"__GI___strnlen"(P %"v21", L %"v67");
+    %"v74" : W = (Cmp Ult L) %"v68", %"v63"
+    => br %"v74" ? "L69" : "L71";
+  @"L69":
+    => ret #0;
+  @"L71":
+    call %"v82" : W = $"__GI_memcmp"(P %"v21", P %"v2", L %"v63");
+    %"v83" : W = (Cmp Eq W) %"v82", #0
+    => br %"v83" ? "L76" : "L78";
+  @"L76":
+    => ret %"v21";
+  @"L78":
+    %"v90" : W = (Cmp Ugt L) %"v63", #256
+    => br %"v90" ? "L86" : "L88";
+  @"L86":
+    call %"v97" : P = $"glibc_strstr#two_way_long_needle"(P %"v21", L %"v68", P %"v2", L %"v63")
+    => ret %"v97";
+  @"L88":
+    %"v102" = %"v21" +p %"v68";
+    (Flight (a "v104") Sub [(FAddress (t "v102")); (FValue (t "v63"))] (LowerOf (t "v102")));
+    %"v110" : L = Sub %"v63", #1;
+    call %"v112" : P = $"__GI_memset"(P %"v105", W #0, L #256)
+    => goto "L114";
+  @"L114" [%"pr.7" : W = phi("L115" => %"v145", "L88" => #1)]:
+    %"v120" : L = (Ext Sw) %"pr.7";
+    %"v121" : W = (Cmp Ult L) %"v120", %"v110"
+    => br %"v121" ? "L115" : "L117";
+  @"L115":
+    %"v125" = %"v2" +p %"v120";
+    %"chk14" : A = (Check 0 1 Read 1) %"v125";
+    %"v127" : W = (RawLoad (LdNarrow Ub) 0) %"chk14";
+    %"v128" : L = (Ext Uw) %"v127";
+    %"v135" = %"v125" +p #18446744073709551615;
+    %"chk15" : A = (HalfCheck Lower 0 1 Read 1) %"chk14", %"v135";
+    %"v136" : W = (RawLoad (LdNarrow Ub) 0) %"chk15";
+    %"v137" : L = (Ext Uw) %"v136";
+    %"v138" : L = Shl %"v137", #3;
+    %"v139" : L = Sub %"v128", %"v138";
+    %"v140" : L = And %"v139", #255;
+    %"v141" = %"v105" +p %"v140";
+    %"v143" : W = (Ext Ub) %"pr.7";
+    %"chk16" : A = (Check 0 1 Write 1) %"v141";
+    store Wb [%"chk16" + 0] <- %"v143";
+    %"v145" : W = Add %"pr.7", #1
+    => goto poll "L114";
+  @"L117":
+    %"v149" = %"v2" +p %"v110";
+    %"chk17" : A = (Check 0 1 Read 1) %"v149";
+    %"v151" : W = (RawLoad (LdNarrow Ub) 0) %"chk17";
+    %"v152" : L = (Ext Uw) %"v151";
+    %"v158" = %"v149" +p #18446744073709551615;
+    %"chk18" : A = (HalfCheck Lower 0 1 Read 1) %"chk17", %"v158";
+    %"v159" : W = (RawLoad (LdNarrow Ub) 0) %"chk18";
+    %"v160" : L = (Ext Uw) %"v159";
+    %"v161" : L = Shl %"v160", #3;
+    %"v162" : L = Sub %"v152", %"v161";
+    %"v163" : L = And %"v162", #255;
+    %"v164" = %"v105" +p %"v163";
+    %"chk19" : A = (Check 0 1 Read 1) %"v164";
+    %"v165" : W = (RawLoad (LdNarrow Ub) 0) %"chk19";
+    %"v166" : L = (Ext Uw) %"v165";
+    %"v167" : L = Sub %"v110", %"v166";
+    %"v172" : W = (RawLoad (LdNarrow Ub) 0) %"chk17";
+    %"v173" : L = (Ext Uw) %"v172";
+    %"v180" : W = (RawLoad (LdNarrow Ub) 0) %"chk18";
+    %"v181" : L = (Ext Uw) %"v180";
+    %"v182" : L = Shl %"v181", #3;
+    %"v183" : L = Sub %"v173", %"v182";
+    %"v184" : L = And %"v183", #255;
+    %"v185" = %"v105" +p %"v184";
+    %"v187" : W = (Ext Ub) %"v110";
+    %"chk22" : A = (Check 0 1 Write 1) %"v185";
+    store Wb [%"chk22" + 0] <- %"v187"
+    => goto "L188";
+  @"L188" [%"pr.5" : L = phi("L117" => #0, "L262" => %"pr.6", "L219" => %"pr.5"); %"pr.3" : P = phi("L117" => %"v104", "L262" => %"pr.4", "L219" => %"pr.4"); %"pr.1" : P = phi("L117" => %"v21", "L262" => %"v298", "L219" => %"v252")]:
+    %"v196" : L = Ptoi %"pr.1";
+    %"v197" : L = Ptoi %"pr.3";
+    %"v198" : W = (Cmp Ugt L) %"v196", %"v197"
+    => br %"v198" ? "L191" : "L193";
+  @"L191":
+    %"v204" = %"pr.3" +p %"v110";
+    %"v205" = %"v204" +p #1;
+    call %"v206" : L = $"__GI___strnlen"(P %"v205", L #2048);
+    %"v207" = %"pr.3" +p %"v206";
+    %"v214" : L = Ptoi %"v207";
+    %"v215" : W = (Cmp Ugt L) %"v196", %"v214"
+    => br %"v215" ? "L208" : "L193";
+  @"L208":
+    => ret #0;
+  @"L193" [%"pr.4" : P = phi("L191" => %"v207", "L188" => %"pr.3")]:
+    => goto "L217";
+  @"L217" [%"pr.2" : P = phi("L193" => %"pr.1", "L242" => %"v222")]:
+    %"v222" = %"pr.2" +p %"v110";
+    %"chk23" : A = (Check 0 1 Read 1) %"v222";
+    %"v225" : W = (RawLoad (LdNarrow Ub) 0) %"chk23";
+    %"v226" : L = (Ext Uw) %"v225";
+    %"v230" = %"v222" +p #18446744073709551615;
+    %"chk24" : A = (HalfCheck Lower 0 1 Read 1) %"chk23", %"v230";
+    %"v231" : W = (RawLoad (LdNarrow Ub) 0) %"chk24";
+    %"v232" : L = (Ext Uw) %"v231";
+    %"v233" : L = Shl %"v232", #3;
+    %"v234" : L = Sub %"v226", %"v233";
+    %"v235" : L = And %"v234", #255;
+    %"v236" = %"v105" +p %"v235";
+    %"chk25" : A = (Check 0 1 Read 1) %"v236";
+    %"v237" : W = (RawLoad (LdNarrow Ub) 0) %"chk25";
+    %"v238" : L = (Ext Uw) %"v237";
+    %"v240" : W = (Cmp Eq L) %"v238", #0
+    => br %"v240" ? "L241" : "L242";
+  @"L241":
+    %"v245" : L = Ptoi %"v222";
+    %"v246" : L = Ptoi %"pr.4";
+    %"v247" : W = (Cmp Ule L) %"v245", %"v246"
+    => goto "L242";
+  @"L242" [%"v249" : W = phi("L217" => #0, "L241" => %"v247")]:
+    => br %"v249" ? poll "L217" : "L219";
+  @"L219":
+    (Flight (a "v252") Sub [(FAddress (t "v222")); (FValue (t "v238"))] (LowerOf (t "v222")));
+    %"v258" : W = (Cmp Ult L) %"v238", %"v110"
+    => br %"v258" ? poll "L188" : "L255";
+  @"L255":
+    %"v264" : W = (Cmp Ult L) %"v110", #15
+    => br %"v264" ? "L266" : "L265";
+  @"L265":
+    %"v269" = %"v252" +p %"pr.5";
+    %"v272" = %"v2" +p %"pr.5";
+    call %"v273" : W = $"__GI_memcmp"(P %"v269", P %"v272", L #8);
+    %"v274" : W = (Cmp Eq W) %"v273", #0
+    => goto "L266";
+  @"L266" [%"v276" : W = phi("L255" => #1, "L265" => %"v274")]:
+    => br %"v276" ? "L260" : "L262";
+  @"L260":
+    call %"v283" : W = $"__GI_memcmp"(P %"v252", P %"v2", L %"v110");
+    %"v284" : W = (Cmp Eq W) %"v283", #0
+    => br %"v284" ? "L277" : "L279";
+  @"L277":
+    => ret %"v252";
+  @"L279":
+    %"v291" : W = (Cmp Uge L) %"pr.5", #8
+    => br %"v291" ? "L289" : "L288";
+  @"L288":
+    => goto "L289";
+  @"L289" [%"v294" : L = phi("L288" => %"v110", "L279" => %"pr.5")]:
+    %"v295" : L = Sub %"v294", #8
+    => goto "L262";
+  @"L262" [%"pr.6" : L = phi("L289" => %"v295", "L266" => %"pr.5")]:
+    %"v298" = %"v252" +p %"v167"
+    => goto poll "L188"
+} }.
 
 Definition hello_image_fn___GI___strtok_r : func :=
-  mkFunc (a "__GI___strtok_r") (a "export") (RClass P) [(P, (a "v0")); (P, (a "v2")); (P, (a "v4"))] [(mkBlock (a "start") [] [(Let (a "v11") L Ptoi [(t "v0")]);
-      (Let (a "v12") L Ptoi [(Const 0)]);
-      (Let (a "v13") W (Cmp Eq L) [(t "v11"); (t "v12")])] (JBranch (t "v13") (To (a "L7")) (To (a "L9"))));
-  (mkBlock (a "L7") [] [(Let (a "chk0") A (Check 0 8 Read 8) [(t "v4")]);
-      (Let (a "v15") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")])] (JGoto (To (a "L9"))));
-  (mkBlock (a "L9") [(Phi (a "pr.1") P [((a "L7"), (t "v15")); ((a "start"), (t "v0"))])] [(Let (a "chk1") A (Check 0 1 Read 1) [(t "pr.1")]);
-      (Let (a "v20") W (RawLoad (LdNarrow Sb) 0) [(t "chk1")]);
-      (Let (a "v21") W (Cmp Eq W) [(t "v20"); (Const 0)])] (JBranch (t "v21") (To (a "L16")) (To (a "L18"))));
-  (mkBlock (a "L16") [] [(Let (a "chk2") A (Check 0 8 Write 8) [(t "v4")]);
-      (RawStorePointer 0 (t "pr.1") (t "chk2") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JRet (Const 0)));
-  (mkBlock (a "L18") [] [(Call (CResult (a "v28") L) (Global (a "__GI_strspn")) [(Arg P (t "pr.1")); (Arg P (t "v2"))]);
-      (Flight (a "v29") Add [(FAddress (t "pr.1")); (FValue (t "v28"))] (LowerOf (t "pr.1")));
-      (Let (a "chk3") A (Check 0 1 Read 1) [(t "v29")]);
-      (Let (a "v34") W (RawLoad (LdNarrow Sb) 0) [(t "chk3")]);
-      (Let (a "v35") W (Cmp Eq W) [(t "v34"); (Const 0)])] (JBranch (t "v35") (To (a "L30")) (To (a "L32"))));
-  (mkBlock (a "L30") [] [(Let (a "chk4") A (Check 0 8 Write 8) [(t "v4")]);
-      (RawStorePointer 0 (t "v29") (t "chk4") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JRet (Const 0)));
-  (mkBlock (a "L32") [] [(Call (CResult (a "v42") L) (Global (a "__GI_strcspn")) [(Arg P (t "v29")); (Arg P (t "v2"))]);
-      (Flight (a "v43") Add [(FAddress (t "v29")); (FValue (t "v42"))] (LowerOf (t "v29")));
-      (Let (a "chk5") A (Check 0 1 Read 1) [(t "v43")]);
-      (Let (a "v48") W (RawLoad (LdNarrow Sb) 0) [(t "chk5")]);
-      (Let (a "v49") W (Cmp Eq W) [(t "v48"); (Const 0)])] (JBranch (t "v49") (To (a "L44")) (To (a "L46"))));
-  (mkBlock (a "L44") [] [(Let (a "chk6") A (Check 0 8 Write 8) [(t "v4")]);
-      (RawStorePointer 0 (t "v43") (t "chk6") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JRet (t "v29")));
-  (mkBlock (a "L46") [] [(Let (a "chk7") A (Renew 0 1 Write 1) [(t "chk5"); (t "v43")]);
-      (RawStore Wb 0 (Const 0) (t "chk7"));
-      (Flight (a "v57") Add [(FAddress (t "v43")); (FValue (Const 1))] (LowerOf (t "v43")));
-      (Let (a "chk8") A (Check 0 8 Write 8) [(t "v4")]);
-      (RawStorePointer 0 (t "v57") (t "chk8") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JRet (t "v29")))].
+  ir_fn{ "export" "__GI___strtok_r"(P %"v0", P %"v2", P %"v4") -> (RClass P) {
+  @"start":
+    %"v11" : L = Ptoi %"v0";
+    %"v12" : L = Ptoi #0;
+    %"v13" : W = (Cmp Eq L) %"v11", %"v12"
+    => br %"v13" ? "L7" : "L9";
+  @"L7":
+    %"chk0" : A = (Check 0 8 Read 8) %"v4";
+    %"v15" : P = (RawLoadPointer 0 load_effects) %"chk0"
+    => goto "L9";
+  @"L9" [%"pr.1" : P = phi("L7" => %"v15", "start" => %"v0")]:
+    %"chk1" : A = (Check 0 1 Read 1) %"pr.1";
+    %"v20" : W = (RawLoad (LdNarrow Sb) 0) %"chk1";
+    %"v21" : W = (Cmp Eq W) %"v20", #0
+    => br %"v21" ? "L16" : "L18";
+  @"L16":
+    %"chk2" : A = (Check 0 8 Write 8) %"v4";
+    store.ptr [%"chk2" + 0] <- %"pr.1"
+    => ret #0;
+  @"L18":
+    call %"v28" : L = $"__GI_strspn"(P %"pr.1", P %"v2");
+    %"v29" = %"pr.1" +p %"v28";
+    %"chk3" : A = (Check 0 1 Read 1) %"v29";
+    %"v34" : W = (RawLoad (LdNarrow Sb) 0) %"chk3";
+    %"v35" : W = (Cmp Eq W) %"v34", #0
+    => br %"v35" ? "L30" : "L32";
+  @"L30":
+    %"chk4" : A = (Check 0 8 Write 8) %"v4";
+    store.ptr [%"chk4" + 0] <- %"v29"
+    => ret #0;
+  @"L32":
+    call %"v42" : L = $"__GI_strcspn"(P %"v29", P %"v2");
+    %"v43" = %"v29" +p %"v42";
+    %"chk5" : A = (Check 0 1 Read 1) %"v43";
+    %"v48" : W = (RawLoad (LdNarrow Sb) 0) %"chk5";
+    %"v49" : W = (Cmp Eq W) %"v48", #0
+    => br %"v49" ? "L44" : "L46";
+  @"L44":
+    %"chk6" : A = (Check 0 8 Write 8) %"v4";
+    store.ptr [%"chk6" + 0] <- %"v43"
+    => ret %"v29";
+  @"L46":
+    %"chk7" : A = (Renew 0 1 Write 1) %"chk5", %"v43";
+    store Wb [%"chk7" + 0] <- #0;
+    %"v57" = %"v43" +p #1;
+    %"chk8" : A = (Check 0 8 Write 8) %"v4";
+    store.ptr [%"chk8" + 0] <- %"v57"
+    => ret %"v29"
+} }.

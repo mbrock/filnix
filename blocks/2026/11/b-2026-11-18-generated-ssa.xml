@@ -1,0 +1,14 @@
+<block id="b-2026-11-18-generated-ssa" kind="milestone" in-reply-to="b-2026-11-18-rocq-ir-notation" actor="Codex" created="2026-11-18T23:34:29Z">
+  <title>Rocq reads the generated fixtures as SSA</title>
+  <about path="nanofil/rocq/glibc/IRNotation.v"/>
+  <about path="nanofil/rocq/theories/core/CaptureNotation.v"/>
+  <tag name="formal"/>
+  <p>The generator now writes GNU Hello and HiAtexit as Rocq functions with
+  labeled blocks. A phi lists the value from each predecessor. A polling
+  backedge prints as <code>goto poll "loop"</code>. When an instruction needs
+  an unusual pointer effect, Rocq prints its full effect list inside the block.</p>
+  <p>The smaller glibc fixtures, the compiler-model programs and the list-sum
+  and S-box spikes use a second grammar for their transport terms. Their proofs still
+  pass the captured term through the decoder. The printer regression compiles
+  both spellings and checks the result against the decoder in Rocq.</p>
+</block>

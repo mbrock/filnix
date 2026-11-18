@@ -3,27 +3,13 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRBytes.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
-
-Definition hello_image_item__itowa_upper_digits : item :=
-  (IData (a "_itowa_upper_digits") (LRo (a "export")) 4 [(Str (app (app [48; 0; 0; 0; 49; 0; 0; 0; 50; 0; 0; 0; 51; 0; 0; 0; 52; 0; 0; 0; 53; 0; 0; 0; 54; 0; 0; 0; 55; 0; 0; 0; 56; 0; 0; 0] [57; 0; 0; 0; 65; 0; 0; 0; 66; 0; 0; 0; 67; 0; 0; 0; 68; 0; 0; 0; 69; 0; 0; 0; 70; 0; 0; 0; 71; 0; 0; 0; 72; 0; 0; 0]) (app [73; 0; 0; 0; 74; 0; 0; 0; 75; 0; 0; 0; 76; 0; 0; 0; 77; 0; 0; 0; 78; 0; 0; 0; 79; 0; 0; 0; 80; 0; 0; 0; 81; 0; 0; 0] [82; 0; 0; 0; 83; 0; 0; 0; 84; 0; 0; 0; 85; 0; 0; 0; 86; 0; 0; 0; 87; 0; 0; 0; 88; 0; 0; 0; 89; 0; 0; 0; 90; 0; 0; 0])))]).
-
-Definition hello_image_item_printf : item :=
-  (IAlias (a "printf") (a "export") (a "__printf")).
-
-Definition hello_image_item_glibc_printf_buffer_as_file'23str'2e266 : item :=
-  (IData (a "glibc_printf_buffer_as_file#str.266") (LRo (a "local")) 1 [(Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 45); (Item Wb 62); (Item Wb 115); (Item Wb 116); (Item Wb 114); (Item Wb 101); (Item Wb 97); (Item Wb 109); (Item Wb 46); (Item Wb 95); (Item Wb 73); (Item Wb 79); (Item Wb 95); (Item Wb 119); (Item Wb 114); (Item Wb 105); (Item Wb 116); (Item Wb 101); (Item Wb 95); (Item Wb 112); (Item Wb 116); (Item Wb 114); (Item Wb 32); (Item Wb 62); (Item Wb 61); (Item Wb 32); (Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 45); (Item Wb 62); (Item Wb 110); (Item Wb 101); (Item Wb 120); (Item Wb 116); (Item Wb 45); (Item Wb 62); (Item Wb 119); (Item Wb 114); (Item Wb 105); (Item Wb 116); (Item Wb 101); (Item Wb 95); (Item Wb 112); (Item Wb 116); (Item Wb 114); (Item Wb 0)]).
-
-Definition hello_image_item_glibc_printf_buffer_as_file'23str'2e267 : item :=
-  (IData (a "glibc_printf_buffer_as_file#str.267") (LRo (a "local")) 1 [(Item Wb 112); (Item Wb 114); (Item Wb 105); (Item Wb 110); (Item Wb 116); (Item Wb 102); (Item Wb 95); (Item Wb 98); (Item Wb 117); (Item Wb 102); (Item Wb 102); (Item Wb 101); (Item Wb 114); (Item Wb 95); (Item Wb 97); (Item Wb 115); (Item Wb 95); (Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 46); (Item Wb 99); (Item Wb 0)]).
-
-Definition hello_image_item_glibc_printf_buffer_as_file'23str'2e268 : item :=
-  (IData (a "glibc_printf_buffer_as_file#str.268") (LRo (a "local")) 1 [(Item Wb 95); (Item Wb 95); (Item Wb 112); (Item Wb 114); (Item Wb 105); (Item Wb 110); (Item Wb 116); (Item Wb 102); (Item Wb 95); (Item Wb 98); (Item Wb 117); (Item Wb 102); (Item Wb 102); (Item Wb 101); (Item Wb 114); (Item Wb 95); (Item Wb 97); (Item Wb 115); (Item Wb 95); (Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 95); (Item Wb 99); (Item Wb 111); (Item Wb 109); (Item Wb 109); (Item Wb 105); (Item Wb 116); (Item Wb 0)]).
 
 Definition hello_image_item_glibc_printf_buffer_as_file'23str'2e269 : item :=
   (IData (a "glibc_printf_buffer_as_file#str.269") (LRo (a "local")) 1 [(Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 45); (Item Wb 62); (Item Wb 115); (Item Wb 116); (Item Wb 114); (Item Wb 101); (Item Wb 97); (Item Wb 109); (Item Wb 46); (Item Wb 95); (Item Wb 73); (Item Wb 79); (Item Wb 95); (Item Wb 119); (Item Wb 114); (Item Wb 105); (Item Wb 116); (Item Wb 101); (Item Wb 95); (Item Wb 112); (Item Wb 116); (Item Wb 114); (Item Wb 32); (Item Wb 60); (Item Wb 61); (Item Wb 32); (Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 45); (Item Wb 62); (Item Wb 110); (Item Wb 101); (Item Wb 120); (Item Wb 116); (Item Wb 45); (Item Wb 62); (Item Wb 119); (Item Wb 114); (Item Wb 105); (Item Wb 116); (Item Wb 101); (Item Wb 95); (Item Wb 101); (Item Wb 110); (Item Wb 100); (Item Wb 0)]).
@@ -197,7 +183,7 @@ Definition hello_image_item_glibc_vfprintf_internal'23jump_table : item :=
   (IData (a "glibc_vfprintf_internal#jump_table") (LRo (a "local")) 1 [(Str (app [1; 0; 0; 4; 0; 14; 0; 6; 0; 0; 7; 2; 0; 3; 9; 0; 5; 8; 8; 8; 8; 8; 8; 8; 8; 8; 0; 0; 0; 0; 0; 0; 0; 26; 30; 25; 0; 19; 19; 19; 0; 29; 0; 0; 12] [0; 0; 0; 0; 0; 0; 21; 0; 0; 0; 0; 18; 0; 13; 0; 0; 0; 0; 0; 0; 26; 30; 20; 15; 19; 19; 19; 10; 15; 28; 0; 11; 24; 23; 17; 22; 12; 0; 21; 27; 16; 0; 31; 18; 0; 13]))]).
 
 Definition hello_image_item_glibc_vfprintf_internal'23null : item :=
-  (IData (a "glibc_vfprintf_internal#null") (LRo (a "local")) 1 [(Str [40; 110; 117; 108; 108; 41]); (Zero 1)]).
+  (IData (a "glibc_vfprintf_internal#null") (LRo (a "local")) 1 ["(null)"%irbytes; (Zero 1)]).
 
 Definition hello_image_item_glibc_vfprintf_internal'23printf_positional'2estep4_jumps'2e294 : item :=
   (IData (a "glibc_vfprintf_internal#printf_positional.step4_jumps.294") (LRo (a "local")) 4 [(Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 1); (Item Ww 2); (Item Ww 3); (Item Ww 4); (Item Ww 5); (Item Ww 6); (Item Ww 7); (Item Ww 8); (Item Ww 9); (Item Ww 10); (Item Ww 11); (Item Ww 12); (Item Ww 13); (Item Ww 0); (Item Ww 0); (Item Ww 0); (Item Ww 14); (Item Ww 0)]).

@@ -11,12 +11,17 @@ import time
 
 HERE = Path(__file__).resolve().parent
 ROCQ = HERE.parents[1] / 'rocq'
-HELLO = ROCQ / 'glibc/gen/hello'
 ERROR_NAMES = "hello_image_item_glibc_errname'23_sys_errname"
 
 
+# Keep the measured constructor baseline after the live emitter adopts SSA.
+def baseline_source(name):
+    path = f"nanofil/rocq/glibc/gen/hello/{name}.v"
+    return subprocess.check_output(["git", "show", "7c7dccd80368:" + path], cwd=HERE, text=True)
+
+
 def errnames(work):
-    source = (HELLO / 'HelloImageTypedObjects10.v').read_text()
+    source = baseline_source('HelloImageTypedObjects10')
     header = source[:source.index('Definition ')]
     definition = re.search(rf'^Definition {ERROR_NAMES} : item :=.*?\.$', source, re.M | re.S)
     body = definition.group()
@@ -61,7 +66,7 @@ def run(work, repeats, copies):
     flags = ['-R', 'theories', 'Nanofil']
     for path in HERE.glob('*.v'):
         shutil.copy(path, work)
-    shutil.copy(HELLO / 'HelloImageTypedAL.v', work / 'Baseline.v')
+    (work / 'Baseline.v').write_text(baseline_source('HelloImageTypedAL'))
     errnames(work)
     for name in ['theories/core/Term', 'theories/core/Syntax', 'CompactSyntax', 'AssemblySyntax', 'ByteSyntax']:
         subprocess.run(['rocq', 'c', '-q', *flags, name + '.v'], cwd=work, check=True)

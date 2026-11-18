@@ -17,7 +17,7 @@
   model,
 }:
 let
-  rocq = pkgs.rocqPackages;
+  rocq = import ./rocq-packages.nix { inherit pkgs; };
   src = pkgs.lib.fileset.toSource {
     root = ../.;
     fileset = pkgs.lib.fileset.unions [

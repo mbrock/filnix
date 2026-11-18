@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,156 +12,282 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn_glibc_dcigettext'23plural_eval_recurse : func :=
-  mkFunc (a "glibc_dcigettext#plural_eval_recurse") (a "local") (RTuple [L; L]) [(P, (a "v0")); (L, (a "v2")); (W, (a "v4"))] (app [(mkBlock (a "start") [] [(Let (a "v10") W (Cmp Eq W) [(t "v4"); (Const 0)])] (JBranch (t "v10") (To (a "L6")) (To (a "L8"))));
-  (mkBlock (a "L6") [] [] (JRets [(Const 3); (Const 0)]));
-  (mkBlock (a "L8") [] [(Let (a "v18") W Sub [(t "v4"); (Const 1)]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v0")]);
-      (Let (a "v20") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v505") W (Cmp Eq W) [(t "v20"); (Const 0)])] (JBranch (t "v505") (To (a "L23")) (To (a "L506"))));
-  (mkBlock (a "L23") [] [(Flight (a "v25") Add [(FAddress (t "v0")); (FValue (Const 4))] (LowerOf (t "v0")));
-      (Let (a "chk1") A (HalfCheck Upper 0 4 Read 1) [(t "chk0"); (t "v25")]);
-      (Let (a "v26") W (RawLoad (LdNarrow Uw) 0) [(t "chk1")]);
-      (Let (a "v49") W (Cmp Eq W) [(t "v26"); (Const 0)])] (JBranch (t "v49") (To (a "L29")) (To (a "L50"))));
-  (mkBlock (a "L29") [] [] (JRets [(Const 0); (t "v2")]));
-  (mkBlock (a "L37") [] [(Flight (a "v42") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk2") A (HalfCheck Upper 0 8 Read 1) [(t "chk0"); (t "v42")]);
-      (Let (a "v43") L (RawLoad LdL 0) [(t "chk2")])] (JRets [(Const 0); (t "v43")]));
-  (mkBlock (a "L50") [] [(Let (a "v51") W (Cmp Eq W) [(t "v26"); (Const 1)])] (JBranch (t "v51") (Poll (a "L37")) (To (a "L22"))));
-  (mkBlock (a "L53") [] [(Flight (a "v56") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk3") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v56")]);
-      (Let (a "v58") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk3")]);
-      (Call (CTuple [((a "v62"), L); ((a "v63"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v58")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.18") L Shr [(t "v62"); (Const 32)]);
-      (Let (a "v72") W Copy [(t "v62")]);
-      (Let (a "v73") W (Cmp Ne W) [(t "v72"); (Const 0)])] (JBranch (t "v73") (To (a "L69")) (To (a "L71"))));
-  (mkBlock (a "L69") [] [(Let (a "sw.20") L (Ext Uw) [(t "v62")]);
-      (Let (a "sw.22") L (Ext Uw) [(t "sw.18")]);
-      (Let (a "sw.23") L Shl [(t "sw.22"); (Const 32)]);
-      (Let (a "v74") L Or [(t "sw.23"); (t "sw.20")])] (JRets [(t "v74"); (t "v63")]));
-  (mkBlock (a "L71") [] [(Let (a "v84") W (Cmp Eq L) [(t "v63"); (Const 0)]);
-      (Let (a "v85") L (Ext Sw) [(t "v84")])] (JRets [(Const 0); (t "v85")]));
-  (mkBlock (a "L89") [] [(Flight (a "v92") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk4") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v92")]);
-      (Let (a "v94") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk4")]);
-      (Call (CTuple [((a "v98"), L); ((a "v99"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v94")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.30") L Shr [(t "v98"); (Const 32)]);
-      (Let (a "v108") W Copy [(t "v98")]);
-      (Let (a "v109") W (Cmp Ne W) [(t "v108"); (Const 0)])] (JBranch (t "v109") (To (a "L105")) (To (a "L107"))));
-  (mkBlock (a "L105") [] [(Let (a "sw.32") L (Ext Uw) [(t "v98")]);
-      (Let (a "sw.34") L (Ext Uw) [(t "sw.30")]);
-      (Let (a "sw.35") L Shl [(t "sw.34"); (Const 32)]);
-      (Let (a "v110") L Or [(t "sw.35"); (t "sw.32")])] (JRets [(t "v110"); (t "v99")]));
-  (mkBlock (a "L107") [] [(Flight (a "v118") Add [(FAddress (t "v0")); (FValue (Const 4))] (LowerOf (t "v0")));
-      (Let (a "chk5") A (HalfCheck Upper 0 4 Read 1) [(t "chk0"); (t "v118")]);
-      (Let (a "v119") W (RawLoad (LdNarrow Uw) 0) [(t "chk5")]);
-      (Let (a "v120") W (Cmp Eq W) [(t "v119"); (Const 15)])] (JBranch (t "v120") (To (a "L114")) (To (a "L115"))));
-  (mkBlock (a "L114") [] [(Let (a "v126") W (Cmp Ne L) [(t "v99"); (Const 0)])] (JBranch (t "v126") (To (a "L121")) (To (a "L123"))));
-  (mkBlock (a "L121") [] [] (JRets [(Const 0); (Const 1)]));
-  (mkBlock (a "L123") [] [(Flight (a "v136") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "v137") Add [(FAddress (t "v136")); (FValue (Const 8))] (LowerOf (t "v136")));
-      (Let (a "chk6") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v137")]);
-      (Let (a "v138") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk6")]);
-      (Call (CTuple [((a "v142"), L); ((a "v143"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v138")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.42") L Shr [(t "v142"); (Const 32)]);
-      (Let (a "v152") W Copy [(t "v142")]);
-      (Let (a "v153") W (Cmp Ne W) [(t "v152"); (Const 0)])] (JBranch (t "v153") (To (a "L149")) (To (a "L151"))));
-  (mkBlock (a "L149") [] [(Let (a "sw.44") L (Ext Uw) [(t "v142")]);
-      (Let (a "sw.46") L (Ext Uw) [(t "sw.42")]);
-      (Let (a "sw.47") L Shl [(t "sw.46"); (Const 32)]);
-      (Let (a "v154") L Or [(t "sw.47"); (t "sw.44")])] (JRets [(t "v154"); (t "v143")]));
-  (mkBlock (a "L151") [] [(Let (a "v166") W (Cmp Ne L) [(t "v143"); (Const 0)])] (JBranch (t "v166") (To (a "L163")) (To (a "L162"))));
-  (mkBlock (a "L162") [] [] (JGoto (To (a "L163"))));
-  (mkBlock (a "L163") [(Phi (a "v167") W [((a "L162"), (Const 0)); ((a "L151"), (Const 1))])] [(Let (a "v168") L (Ext Sw) [(t "v167")])] (JRets [(Const 0); (t "v168")]));
-  (mkBlock (a "L115") [] [(Flight (a "v177") Add [(FAddress (t "v0")); (FValue (Const 4))] (LowerOf (t "v0")));
-      (Let (a "v178") W (RawLoad (LdNarrow Uw) 0) [(t "chk5")]);
-      (Let (a "v179") W (Cmp Eq W) [(t "v178"); (Const 14)])] (JBranch (t "v179") (To (a "L173")) (To (a "L174"))));
-  (mkBlock (a "L173") [] [(Let (a "v186") W (Cmp Eq L) [(t "v99"); (Const 0)])] (JBranch (t "v186") (To (a "L180")) (To (a "L182"))));
-  (mkBlock (a "L180") [] [] (JRets [(Const 0); (Const 0)]));
-  (mkBlock (a "L182") [] [(Flight (a "v196") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "v197") Add [(FAddress (t "v196")); (FValue (Const 8))] (LowerOf (t "v196")));
-      (Let (a "chk8") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v197")]);
-      (Let (a "v198") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk8")]);
-      (Call (CTuple [((a "v202"), L); ((a "v203"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v198")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.60") L Shr [(t "v202"); (Const 32)]);
-      (Let (a "v212") W Copy [(t "v202")]);
-      (Let (a "v213") W (Cmp Ne W) [(t "v212"); (Const 0)])] (JBranch (t "v213") (To (a "L209")) (To (a "L211"))));
-  (mkBlock (a "L209") [] [(Let (a "sw.62") L (Ext Uw) [(t "v202")]);
-      (Let (a "sw.64") L (Ext Uw) [(t "sw.60")]);
-      (Let (a "sw.65") L Shl [(t "sw.64"); (Const 32)]);
-      (Let (a "v214") L Or [(t "sw.65"); (t "sw.62")])] (JRets [(t "v214"); (t "v203")]));
-  (mkBlock (a "L211") [] [(Let (a "v226") W (Cmp Ne L) [(t "v203"); (Const 0)])] (JBranch (t "v226") (To (a "L223")) (To (a "L222"))));
-  (mkBlock (a "L222") [] [] (JGoto (To (a "L223"))));
-  (mkBlock (a "L223") [(Phi (a "v227") W [((a "L222"), (Const 0)); ((a "L211"), (Const 1))])] [(Let (a "v228") L (Ext Sw) [(t "v227")])] (JRets [(Const 0); (t "v228")]));
-  (mkBlock (a "L174") [] [(Flight (a "v235") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "v236") Add [(FAddress (t "v235")); (FValue (Const 8))] (LowerOf (t "v235")));
-      (Let (a "chk9") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v236")]);
-      (Let (a "v237") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk9")]);
-      (Call (CTuple [((a "v241"), L); ((a "v242"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v237")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.72") L Shr [(t "v241"); (Const 32)]);
-      (Let (a "v251") W Copy [(t "v241")]);
-      (Let (a "v252") W (Cmp Ne W) [(t "v251"); (Const 0)])] (JBranch (t "v252") (To (a "L248")) (To (a "L250"))));
-  (mkBlock (a "L248") [] [(Let (a "sw.74") L (Ext Uw) [(t "v241")]);
-      (Let (a "sw.76") L (Ext Uw) [(t "sw.72")]);
-      (Let (a "sw.77") L Shl [(t "sw.76"); (Const 32)]);
-      (Let (a "v253") L Or [(t "sw.77"); (t "sw.74")])] (JRets [(t "v253"); (t "v242")]));
-  (mkBlock (a "L250") [] [(Flight (a "v258") Add [(FAddress (t "v0")); (FValue (Const 4))] (LowerOf (t "v0")));
-      (Let (a "chk10") A (Renew 0 4 Read 1) [(t "chk5"); (t "v258")]);
-      (Let (a "v259") W (RawLoad (LdNarrow Uw) 0) [(t "chk10")]);
-      (Let (a "v426") W (Cmp Ult W) [(t "v259"); (Const 8)])] (JBranch (t "v426") (To (a "L427")) (To (a "L428"))));
-  (mkBlock (a "L262") [] [(Let (a "v270") L Mul [(t "v99"); (t "v242")])] (JRets [(Const 0); (t "v270")]));
-  (mkBlock (a "L274") [] [(Let (a "v280") W (Cmp Eq L) [(t "v242"); (Const 0)])] (JBranch (t "v280") (To (a "L275")) (To (a "L277"))));
-  (mkBlock (a "L275") [] [] (JRets [(Const 1); (Const 0)]))] [(mkBlock (a "L277") [] [(Let (a "v294") L Udiv [(t "v99"); (t "v242")])] (JRets [(Const 0); (t "v294")]));
-  (mkBlock (a "L298") [] [(Let (a "v304") W (Cmp Eq L) [(t "v242"); (Const 0)])] (JBranch (t "v304") (To (a "L299")) (To (a "L301"))));
-  (mkBlock (a "L299") [] [] (JRets [(Const 1); (Const 0)]));
-  (mkBlock (a "L301") [] [(Let (a "v318") L Urem [(t "v99"); (t "v242")])] (JRets [(Const 0); (t "v318")]));
-  (mkBlock (a "L322") [] [(Let (a "v330") L Add [(t "v99"); (t "v242")])] (JRets [(Const 0); (t "v330")]));
-  (mkBlock (a "L334") [] [(Let (a "v342") L Sub [(t "v99"); (t "v242")])] (JRets [(Const 0); (t "v342")]));
-  (mkBlock (a "L346") [] [(Let (a "v354") W (Cmp Ult L) [(t "v99"); (t "v242")]);
-      (Let (a "v355") L (Ext Sw) [(t "v354")])] (JRets [(Const 0); (t "v355")]));
-  (mkBlock (a "L359") [] [(Let (a "v367") W (Cmp Ugt L) [(t "v99"); (t "v242")]);
-      (Let (a "v368") L (Ext Sw) [(t "v367")])] (JRets [(Const 0); (t "v368")]));
-  (mkBlock (a "L372") [] [(Let (a "v380") W (Cmp Ule L) [(t "v99"); (t "v242")]);
-      (Let (a "v381") L (Ext Sw) [(t "v380")])] (JRets [(Const 0); (t "v381")]));
-  (mkBlock (a "L385") [] [(Let (a "v393") W (Cmp Uge L) [(t "v99"); (t "v242")]);
-      (Let (a "v394") L (Ext Sw) [(t "v393")])] (JRets [(Const 0); (t "v394")]));
-  (mkBlock (a "L398") [] [(Let (a "v406") W (Cmp Eq L) [(t "v99"); (t "v242")]);
-      (Let (a "v407") L (Ext Sw) [(t "v406")])] (JRets [(Const 0); (t "v407")]));
-  (mkBlock (a "L411") [] [(Let (a "v419") W (Cmp Ne L) [(t "v99"); (t "v242")]);
-      (Let (a "v420") L (Ext Sw) [(t "v419")])] (JRets [(Const 0); (t "v420")]));
-  (mkBlock (a "L427") [] [(Let (a "v429") W (Cmp Ult W) [(t "v259"); (Const 5)])] (JBranch (t "v429") (To (a "L430")) (To (a "L431"))));
-  (mkBlock (a "L430") [] [(Let (a "v432") W (Cmp Eq W) [(t "v259"); (Const 3)])] (JBranch (t "v432") (Poll (a "L262")) (To (a "L433"))));
-  (mkBlock (a "L433") [] [(Let (a "v434") W (Cmp Eq W) [(t "v259"); (Const 4)])] (JBranch (t "v434") (Poll (a "L274")) (To (a "L22"))));
-  (mkBlock (a "L431") [] [(Let (a "v436") W (Cmp Eq W) [(t "v259"); (Const 5)])] (JBranch (t "v436") (Poll (a "L298")) (To (a "L437"))));
-  (mkBlock (a "L437") [] [(Let (a "v438") W (Cmp Eq W) [(t "v259"); (Const 6)])] (JBranch (t "v438") (Poll (a "L322")) (To (a "L439"))));
-  (mkBlock (a "L439") [] [(Let (a "v440") W (Cmp Eq W) [(t "v259"); (Const 7)])] (JBranch (t "v440") (Poll (a "L334")) (To (a "L22"))));
-  (mkBlock (a "L428") [] [(Let (a "v442") W (Cmp Ult W) [(t "v259"); (Const 11)])] (JBranch (t "v442") (To (a "L443")) (To (a "L444"))));
-  (mkBlock (a "L443") [] [(Let (a "v445") W (Cmp Eq W) [(t "v259"); (Const 8)])] (JBranch (t "v445") (Poll (a "L346")) (To (a "L446"))));
-  (mkBlock (a "L446") [] [(Let (a "v447") W (Cmp Eq W) [(t "v259"); (Const 9)])] (JBranch (t "v447") (Poll (a "L359")) (To (a "L448"))));
-  (mkBlock (a "L448") [] [(Let (a "v449") W (Cmp Eq W) [(t "v259"); (Const 10)])] (JBranch (t "v449") (Poll (a "L372")) (To (a "L22"))));
-  (mkBlock (a "L444") [] [(Let (a "v451") W (Cmp Eq W) [(t "v259"); (Const 11)])] (JBranch (t "v451") (Poll (a "L385")) (To (a "L452"))));
-  (mkBlock (a "L452") [] [(Let (a "v453") W (Cmp Eq W) [(t "v259"); (Const 12)])] (JBranch (t "v453") (Poll (a "L398")) (To (a "L454"))));
-  (mkBlock (a "L454") [] [(Let (a "v455") W (Cmp Eq W) [(t "v259"); (Const 13)])] (JBranch (t "v455") (Poll (a "L411")) (To (a "L22"))));
-  (mkBlock (a "L457") [] [(Flight (a "v460") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk11") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v460")]);
-      (Let (a "v462") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Call (CTuple [((a "v466"), L); ((a "v467"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v462")); (Arg L (t "v2")); (Arg W (t "v18"))]);
-      (Let (a "sw.156") L Shr [(t "v466"); (Const 32)]);
-      (Let (a "v476") W Copy [(t "v466")]);
-      (Let (a "v477") W (Cmp Ne W) [(t "v476"); (Const 0)])] (JBranch (t "v477") (To (a "L473")) (To (a "L475"))));
-  (mkBlock (a "L473") [] [(Let (a "sw.158") L (Ext Uw) [(t "v466")]);
-      (Let (a "sw.160") L (Ext Uw) [(t "sw.156")]);
-      (Let (a "sw.161") L Shl [(t "sw.160"); (Const 32)]);
-      (Let (a "v478") L Or [(t "sw.161"); (t "sw.158")])] (JRets [(t "v478"); (t "v467")]));
-  (mkBlock (a "L475") [] [(Flight (a "v483") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "v489") W (Cmp Ne L) [(t "v467"); (Const 0)])] (JBranch (t "v489") (To (a "L486")) (To (a "L485"))));
-  (mkBlock (a "L485") [] [] (JGoto (To (a "L486"))));
-  (mkBlock (a "L486") [(Phi (a "v490") W [((a "L485"), (Const 2)); ((a "L475"), (Const 1))])] [(Let (a "v491") L (Ext Sw) [(t "v490")]);
-      (Let (a "v492") L Shl [(t "v491"); (Const 3)]);
-      (Flight (a "v493") Add [(FAddress (t "v483")); (FValue (t "v492"))] (LowerOf (t "v483")));
-      (Let (a "chk12") A (Check 0 8 Read 8) [(t "v493")]);
-      (Let (a "v494") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk12")]);
-      (Call (CTuple [((a "v498"), L); ((a "v499"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v494")); (Arg L (t "v2")); (Arg W (t "v18"))])] (JRets [(t "v498"); (t "v499")]));
-  (mkBlock (a "L506") [] [(Let (a "v507") W (Cmp Eq W) [(t "v20"); (Const 1)])] (JBranch (t "v507") (Poll (a "L53")) (To (a "L508"))));
-  (mkBlock (a "L508") [] [(Let (a "v509") W (Cmp Eq W) [(t "v20"); (Const 2)])] (JBranch (t "v509") (Poll (a "L89")) (To (a "L510"))));
-  (mkBlock (a "L510") [] [(Let (a "v511") W (Cmp Eq W) [(t "v20"); (Const 3)])] (JBranch (t "v511") (Poll (a "L457")) (To (a "L22"))));
-  (mkBlock (a "L22") [] [] (JRets [(Const 4); (Const 0)]))]).
+  ir_fn{ "local" "glibc_dcigettext#plural_eval_recurse"(P %"v0", L %"v2", W %"v4") -> (RTuple [L; L]) blocks ((app [ir_blk{ @"start":
+    %"v10" : W = (Cmp Eq W) %"v4", #0
+    => br %"v10" ? "L6" : "L8" };
+  ir_blk{ @"L6":
+    => (JRets [(Const 3); (Const 0)]) };
+  ir_blk{ @"L8":
+    %"v18" : W = Sub %"v4", #1;
+    %"chk0" : A = (Check 0 4 Read 1) %"v0";
+    %"v20" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v505" : W = (Cmp Eq W) %"v20", #0
+    => br %"v505" ? "L23" : "L506" };
+  ir_blk{ @"L23":
+    %"v25" = %"v0" +p #4;
+    %"chk1" : A = (HalfCheck Upper 0 4 Read 1) %"chk0", %"v25";
+    %"v26" : W = (RawLoad (LdNarrow Uw) 0) %"chk1";
+    %"v49" : W = (Cmp Eq W) %"v26", #0
+    => br %"v49" ? "L29" : "L50" };
+  ir_blk{ @"L29":
+    => (JRets [(Const 0); (t "v2")]) };
+  ir_blk{ @"L37":
+    %"v42" = %"v0" +p #8;
+    %"chk2" : A = (HalfCheck Upper 0 8 Read 1) %"chk0", %"v42";
+    %"v43" : L = (RawLoad LdL 0) %"chk2"
+    => (JRets [(Const 0); (t "v43")]) };
+  ir_blk{ @"L50":
+    %"v51" : W = (Cmp Eq W) %"v26", #1
+    => br %"v51" ? poll "L37" : "L22" };
+  ir_blk{ @"L53":
+    %"v56" = %"v0" +p #8;
+    %"chk3" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v56";
+    %"v58" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    (Call (CTuple [((a "v62"), L); ((a "v63"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v58")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.18" : L = Shr %"v62", #32;
+    %"v72" : W = Copy %"v62";
+    %"v73" : W = (Cmp Ne W) %"v72", #0
+    => br %"v73" ? "L69" : "L71" };
+  ir_blk{ @"L69":
+    %"sw.20" : L = (Ext Uw) %"v62";
+    %"sw.22" : L = (Ext Uw) %"sw.18";
+    %"sw.23" : L = Shl %"sw.22", #32;
+    %"v74" : L = Or %"sw.23", %"sw.20"
+    => (JRets [(t "v74"); (t "v63")]) };
+  ir_blk{ @"L71":
+    %"v84" : W = (Cmp Eq L) %"v63", #0;
+    %"v85" : L = (Ext Sw) %"v84"
+    => (JRets [(Const 0); (t "v85")]) };
+  ir_blk{ @"L89":
+    %"v92" = %"v0" +p #8;
+    %"chk4" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v92";
+    %"v94" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    (Call (CTuple [((a "v98"), L); ((a "v99"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v94")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.30" : L = Shr %"v98", #32;
+    %"v108" : W = Copy %"v98";
+    %"v109" : W = (Cmp Ne W) %"v108", #0
+    => br %"v109" ? "L105" : "L107" };
+  ir_blk{ @"L105":
+    %"sw.32" : L = (Ext Uw) %"v98";
+    %"sw.34" : L = (Ext Uw) %"sw.30";
+    %"sw.35" : L = Shl %"sw.34", #32;
+    %"v110" : L = Or %"sw.35", %"sw.32"
+    => (JRets [(t "v110"); (t "v99")]) };
+  ir_blk{ @"L107":
+    %"v118" = %"v0" +p #4;
+    %"chk5" : A = (HalfCheck Upper 0 4 Read 1) %"chk0", %"v118";
+    %"v119" : W = (RawLoad (LdNarrow Uw) 0) %"chk5";
+    %"v120" : W = (Cmp Eq W) %"v119", #15
+    => br %"v120" ? "L114" : "L115" };
+  ir_blk{ @"L114":
+    %"v126" : W = (Cmp Ne L) %"v99", #0
+    => br %"v126" ? "L121" : "L123" };
+  ir_blk{ @"L121":
+    => (JRets [(Const 0); (Const 1)]) };
+  ir_blk{ @"L123":
+    %"v136" = %"v0" +p #8;
+    %"v137" = %"v136" +p #8;
+    %"chk6" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v137";
+    %"v138" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    (Call (CTuple [((a "v142"), L); ((a "v143"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v138")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.42" : L = Shr %"v142", #32;
+    %"v152" : W = Copy %"v142";
+    %"v153" : W = (Cmp Ne W) %"v152", #0
+    => br %"v153" ? "L149" : "L151" };
+  ir_blk{ @"L149":
+    %"sw.44" : L = (Ext Uw) %"v142";
+    %"sw.46" : L = (Ext Uw) %"sw.42";
+    %"sw.47" : L = Shl %"sw.46", #32;
+    %"v154" : L = Or %"sw.47", %"sw.44"
+    => (JRets [(t "v154"); (t "v143")]) };
+  ir_blk{ @"L151":
+    %"v166" : W = (Cmp Ne L) %"v143", #0
+    => br %"v166" ? "L163" : "L162" };
+  ir_blk{ @"L162":
+    => goto "L163" };
+  ir_blk{ @"L163" [%"v167" : W = phi("L162" => #0, "L151" => #1)]:
+    %"v168" : L = (Ext Sw) %"v167"
+    => (JRets [(Const 0); (t "v168")]) };
+  ir_blk{ @"L115":
+    %"v177" = %"v0" +p #4;
+    %"v178" : W = (RawLoad (LdNarrow Uw) 0) %"chk5";
+    %"v179" : W = (Cmp Eq W) %"v178", #14
+    => br %"v179" ? "L173" : "L174" };
+  ir_blk{ @"L173":
+    %"v186" : W = (Cmp Eq L) %"v99", #0
+    => br %"v186" ? "L180" : "L182" };
+  ir_blk{ @"L180":
+    => (JRets [(Const 0); (Const 0)]) };
+  ir_blk{ @"L182":
+    %"v196" = %"v0" +p #8;
+    %"v197" = %"v196" +p #8;
+    %"chk8" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v197";
+    %"v198" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    (Call (CTuple [((a "v202"), L); ((a "v203"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v198")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.60" : L = Shr %"v202", #32;
+    %"v212" : W = Copy %"v202";
+    %"v213" : W = (Cmp Ne W) %"v212", #0
+    => br %"v213" ? "L209" : "L211" };
+  ir_blk{ @"L209":
+    %"sw.62" : L = (Ext Uw) %"v202";
+    %"sw.64" : L = (Ext Uw) %"sw.60";
+    %"sw.65" : L = Shl %"sw.64", #32;
+    %"v214" : L = Or %"sw.65", %"sw.62"
+    => (JRets [(t "v214"); (t "v203")]) };
+  ir_blk{ @"L211":
+    %"v226" : W = (Cmp Ne L) %"v203", #0
+    => br %"v226" ? "L223" : "L222" };
+  ir_blk{ @"L222":
+    => goto "L223" };
+  ir_blk{ @"L223" [%"v227" : W = phi("L222" => #0, "L211" => #1)]:
+    %"v228" : L = (Ext Sw) %"v227"
+    => (JRets [(Const 0); (t "v228")]) };
+  ir_blk{ @"L174":
+    %"v235" = %"v0" +p #8;
+    %"v236" = %"v235" +p #8;
+    %"chk9" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v236";
+    %"v237" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    (Call (CTuple [((a "v241"), L); ((a "v242"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v237")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.72" : L = Shr %"v241", #32;
+    %"v251" : W = Copy %"v241";
+    %"v252" : W = (Cmp Ne W) %"v251", #0
+    => br %"v252" ? "L248" : "L250" };
+  ir_blk{ @"L248":
+    %"sw.74" : L = (Ext Uw) %"v241";
+    %"sw.76" : L = (Ext Uw) %"sw.72";
+    %"sw.77" : L = Shl %"sw.76", #32;
+    %"v253" : L = Or %"sw.77", %"sw.74"
+    => (JRets [(t "v253"); (t "v242")]) };
+  ir_blk{ @"L250":
+    %"v258" = %"v0" +p #4;
+    %"chk10" : A = (Renew 0 4 Read 1) %"chk5", %"v258";
+    %"v259" : W = (RawLoad (LdNarrow Uw) 0) %"chk10";
+    %"v426" : W = (Cmp Ult W) %"v259", #8
+    => br %"v426" ? "L427" : "L428" };
+  ir_blk{ @"L262":
+    %"v270" : L = Mul %"v99", %"v242"
+    => (JRets [(Const 0); (t "v270")]) };
+  ir_blk{ @"L274":
+    %"v280" : W = (Cmp Eq L) %"v242", #0
+    => br %"v280" ? "L275" : "L277" };
+  ir_blk{ @"L275":
+    => (JRets [(Const 1); (Const 0)]) }] [ir_blk{ @"L277":
+    %"v294" : L = Udiv %"v99", %"v242"
+    => (JRets [(Const 0); (t "v294")]) };
+  ir_blk{ @"L298":
+    %"v304" : W = (Cmp Eq L) %"v242", #0
+    => br %"v304" ? "L299" : "L301" };
+  ir_blk{ @"L299":
+    => (JRets [(Const 1); (Const 0)]) };
+  ir_blk{ @"L301":
+    %"v318" : L = Urem %"v99", %"v242"
+    => (JRets [(Const 0); (t "v318")]) };
+  ir_blk{ @"L322":
+    %"v330" : L = Add %"v99", %"v242"
+    => (JRets [(Const 0); (t "v330")]) };
+  ir_blk{ @"L334":
+    %"v342" : L = Sub %"v99", %"v242"
+    => (JRets [(Const 0); (t "v342")]) };
+  ir_blk{ @"L346":
+    %"v354" : W = (Cmp Ult L) %"v99", %"v242";
+    %"v355" : L = (Ext Sw) %"v354"
+    => (JRets [(Const 0); (t "v355")]) };
+  ir_blk{ @"L359":
+    %"v367" : W = (Cmp Ugt L) %"v99", %"v242";
+    %"v368" : L = (Ext Sw) %"v367"
+    => (JRets [(Const 0); (t "v368")]) };
+  ir_blk{ @"L372":
+    %"v380" : W = (Cmp Ule L) %"v99", %"v242";
+    %"v381" : L = (Ext Sw) %"v380"
+    => (JRets [(Const 0); (t "v381")]) };
+  ir_blk{ @"L385":
+    %"v393" : W = (Cmp Uge L) %"v99", %"v242";
+    %"v394" : L = (Ext Sw) %"v393"
+    => (JRets [(Const 0); (t "v394")]) };
+  ir_blk{ @"L398":
+    %"v406" : W = (Cmp Eq L) %"v99", %"v242";
+    %"v407" : L = (Ext Sw) %"v406"
+    => (JRets [(Const 0); (t "v407")]) };
+  ir_blk{ @"L411":
+    %"v419" : W = (Cmp Ne L) %"v99", %"v242";
+    %"v420" : L = (Ext Sw) %"v419"
+    => (JRets [(Const 0); (t "v420")]) };
+  ir_blk{ @"L427":
+    %"v429" : W = (Cmp Ult W) %"v259", #5
+    => br %"v429" ? "L430" : "L431" };
+  ir_blk{ @"L430":
+    %"v432" : W = (Cmp Eq W) %"v259", #3
+    => br %"v432" ? poll "L262" : "L433" };
+  ir_blk{ @"L433":
+    %"v434" : W = (Cmp Eq W) %"v259", #4
+    => br %"v434" ? poll "L274" : "L22" };
+  ir_blk{ @"L431":
+    %"v436" : W = (Cmp Eq W) %"v259", #5
+    => br %"v436" ? poll "L298" : "L437" };
+  ir_blk{ @"L437":
+    %"v438" : W = (Cmp Eq W) %"v259", #6
+    => br %"v438" ? poll "L322" : "L439" };
+  ir_blk{ @"L439":
+    %"v440" : W = (Cmp Eq W) %"v259", #7
+    => br %"v440" ? poll "L334" : "L22" };
+  ir_blk{ @"L428":
+    %"v442" : W = (Cmp Ult W) %"v259", #11
+    => br %"v442" ? "L443" : "L444" };
+  ir_blk{ @"L443":
+    %"v445" : W = (Cmp Eq W) %"v259", #8
+    => br %"v445" ? poll "L346" : "L446" };
+  ir_blk{ @"L446":
+    %"v447" : W = (Cmp Eq W) %"v259", #9
+    => br %"v447" ? poll "L359" : "L448" };
+  ir_blk{ @"L448":
+    %"v449" : W = (Cmp Eq W) %"v259", #10
+    => br %"v449" ? poll "L372" : "L22" };
+  ir_blk{ @"L444":
+    %"v451" : W = (Cmp Eq W) %"v259", #11
+    => br %"v451" ? poll "L385" : "L452" };
+  ir_blk{ @"L452":
+    %"v453" : W = (Cmp Eq W) %"v259", #12
+    => br %"v453" ? poll "L398" : "L454" };
+  ir_blk{ @"L454":
+    %"v455" : W = (Cmp Eq W) %"v259", #13
+    => br %"v455" ? poll "L411" : "L22" };
+  ir_blk{ @"L457":
+    %"v460" = %"v0" +p #8;
+    %"chk11" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v460";
+    %"v462" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    (Call (CTuple [((a "v466"), L); ((a "v467"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v462")); (Arg L (t "v2")); (Arg W (t "v18"))]);
+    %"sw.156" : L = Shr %"v466", #32;
+    %"v476" : W = Copy %"v466";
+    %"v477" : W = (Cmp Ne W) %"v476", #0
+    => br %"v477" ? "L473" : "L475" };
+  ir_blk{ @"L473":
+    %"sw.158" : L = (Ext Uw) %"v466";
+    %"sw.160" : L = (Ext Uw) %"sw.156";
+    %"sw.161" : L = Shl %"sw.160", #32;
+    %"v478" : L = Or %"sw.161", %"sw.158"
+    => (JRets [(t "v478"); (t "v467")]) };
+  ir_blk{ @"L475":
+    %"v483" = %"v0" +p #8;
+    %"v489" : W = (Cmp Ne L) %"v467", #0
+    => br %"v489" ? "L486" : "L485" };
+  ir_blk{ @"L485":
+    => goto "L486" };
+  ir_blk{ @"L486" [%"v490" : W = phi("L485" => #2, "L475" => #1)]:
+    %"v491" : L = (Ext Sw) %"v490";
+    %"v492" : L = Shl %"v491", #3;
+    %"v493" = %"v483" +p %"v492";
+    %"chk12" : A = (Check 0 8 Read 8) %"v493";
+    %"v494" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    (Call (CTuple [((a "v498"), L); ((a "v499"), L)]) (Global (a "glibc_dcigettext#plural_eval_recurse")) [(Arg P (t "v494")); (Arg L (t "v2")); (Arg W (t "v18"))])
+    => (JRets [(t "v498"); (t "v499")]) };
+  ir_blk{ @"L506":
+    %"v507" : W = (Cmp Eq W) %"v20", #1
+    => br %"v507" ? poll "L53" : "L508" };
+  ir_blk{ @"L508":
+    %"v509" : W = (Cmp Eq W) %"v20", #2
+    => br %"v509" ? poll "L89" : "L510" };
+  ir_blk{ @"L510":
+    %"v511" : W = (Cmp Eq W) %"v20", #3
+    => br %"v511" ? poll "L457" : "L22" };
+  ir_blk{ @"L22":
+    => (JRets [(Const 4); (Const 0)]) }])) }.

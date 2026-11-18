@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -14,12 +15,12 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition hi_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "main"; TAtom "export"; TAtom "w"; TList [];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v0"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "str.10"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v1"]; TAtom "w"]; TApp "global" [TAtom "puts"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]]];
-          TApp "ret" [TApp "const" [TInt 0]]]]];
-    TApp "data" [TAtom "str.10"; TApp "ro" [TAtom "local"]; TInt 1; TList [TApp "item" [TAtom "b"; TApp "const" [TInt 104]]; TApp "item" [TAtom "b"; TApp "const" [TInt 101]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 108]]; TApp "item" [TAtom "b"; TApp "const" [TInt 111]]; TApp "item" [TAtom "b"; TApp "const" [TInt 0]]]]
+    cap_fn{ "export" "main" [] -> "w"
+      {
+        @"start":
+          %"v0" : "p" = "copy" $"str.10";
+          call %"v1" : "w" = $"puts"("p" %"v0")
+          => ret #0
+      } };
+    cap{ op "data"("str.10", op "ro"("local"), int 1, [op "item"("b", #104); op "item"("b", #101); op "item"("b", #108); op "item"("b", #108); op "item"("b", #111); op "item"("b", #0)]) }
   ]].

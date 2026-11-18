@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,9 +12,13 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn___GI___fcntl64_nocancel : func :=
-  mkFunc (a "__GI___fcntl64_nocancel") (a "export") (RClass W) [(W, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "va_args") P VaArgs [(Const 16)]);
-      (Let (a "v4") P Copy [(Global (a "zsys_fcntl"))]);
-      (Let (a "v5") P VaArgs [(Const 0)]);
-      (Call (CResult (a "v6") P) (Global (a "zcall")) [(Arg P (t "v4")); (Arg P (t "v5"))]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v6")]);
-      (Let (a "v7") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")])] (JRet (t "v7")))].
+  ir_fn{ "export" "__GI___fcntl64_nocancel"(W %"v0", W %"v2") -> (RClass W) {
+  @"start":
+    %"va_args" : P = VaArgs #16;
+    %"v4" : P = Copy $"zsys_fcntl";
+    %"v5" : P = VaArgs #0;
+    call %"v6" : P = $"zcall"(P %"v4", P %"v5");
+    %"chk0" : A = (Check 0 4 Read 1) %"v6";
+    %"v7" : W = (RawLoad (LdNarrow Sw) 0) %"chk0"
+    => ret %"v7"
+} }.

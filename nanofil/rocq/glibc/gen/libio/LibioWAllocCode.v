@@ -5,6 +5,7 @@
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -12,190 +13,172 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition libiowalloc_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "__GI__IO_wsetb"; TAtom "export"; TAtom "void"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v4"]]; TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v6"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v12"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "v13"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v14"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v13"]]; TApp "const" [TInt 48]]; TApp "lower" [TApp "tmp" [TAtom "v13"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v14"]]];
-            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v16"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v15"]]];
-            TApp "let" [TApp "tmp" [TAtom "v17"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v16"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v17"]; TAtom "L18"; TAtom "L19"]];
-        TApp "block" [TAtom "L18"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v21"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 116]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v21"]]];
-            TApp "let" [TApp "tmp" [TAtom "v22"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v23"]; TAtom "w"; TAtom "shl"; TList [TApp "tmp" [TAtom "v22"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v24"]; TAtom "w"; TAtom "sar"; TList [TApp "tmp" [TAtom "v23"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v25"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v24"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v26"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "v25"]; TApp "const" [TInt 0]]]];
-          TApp "goto" [TAtom "L19"]];
-        TApp "block" [TAtom "L19"; TList [TApp "phi" [TApp "tmp" [TAtom "v28"]; TAtom "w"; TList [TApp "-" [TAtom "start"; TApp "const" [TInt 0]]; TApp "-" [TAtom "L18"; TApp "tmp" [TAtom "v26"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "v28"]; TAtom "L8"; TAtom "L10"]];
-        TApp "block" [TAtom "L8"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v30"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v31"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v32"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v31"]]; TApp "const" [TInt 48]]; TApp "lower" [TApp "tmp" [TAtom "v31"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk4"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v32"]]];
-            TApp "let" [TApp "tmp" [TAtom "v33"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk4"]]];
-            TApp "call" [TAtom "void"; TApp "global" [TAtom "free"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v33"]]]]];
-          TApp "goto" [TAtom "L10"]];
-        TApp "block" [TAtom "L10"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v35"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk5"]; TAtom "a"; TApp "renew" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v35"]]];
-            TApp "let" [TApp "tmp" [TAtom "v36"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk5"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v37"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v36"]]; TApp "const" [TInt 48]]; TApp "lower" [TApp "tmp" [TAtom "v36"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk6"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v37"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v2"]; TApp "tmp" [TAtom "chk6"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "chk7"]; TAtom "a"; TApp "renew" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v35"]]];
-            TApp "let" [TApp "tmp" [TAtom "v41"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk7"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v42"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v41"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v41"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk8"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v42"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v4"]; TApp "tmp" [TAtom "chk8"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]]];
-          TApp "branch" [TApp "tmp" [TAtom "v6"]; TAtom "L44"; TAtom "L45"]];
-        TApp "block" [TAtom "L44"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v49"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 116]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk9"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v49"]]];
-            TApp "let" [TApp "tmp" [TAtom "v50"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk9"]]];
-            TApp "let" [TApp "tmp" [TAtom "v51"]; TAtom "w"; TAtom "shl"; TList [TApp "tmp" [TAtom "v50"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v52"]; TAtom "w"; TAtom "sar"; TList [TApp "tmp" [TAtom "v51"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v54"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v52"]; TApp "const" [TInt 4294967287]]];
-            TApp "let" [TApp "tmp" [TAtom "v55"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk9"]]];
-            TApp "let" [TApp "tmp" [TAtom "v56"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v55"]; TApp "const" [TInt 4278190080]]];
-            TApp "let" [TApp "tmp" [TAtom "v57"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v54"]; TApp "const" [TInt 16777215]]];
-            TApp "let" [TApp "tmp" [TAtom "v58"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "v56"]; TApp "tmp" [TAtom "v57"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk11"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "write"; TInt 1]; TList [TApp "tmp" [TAtom "chk9"]; TApp "tmp" [TAtom "v49"]]];
-            TApp "raw_store" [TAtom "w"; TInt 0; TApp "tmp" [TAtom "v58"]; TApp "tmp" [TAtom "chk11"]]];
-          TApp "goto" [TAtom "L46"]];
-        TApp "block" [TAtom "L45"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v62"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 116]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk12"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v62"]]];
-            TApp "let" [TApp "tmp" [TAtom "v63"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk12"]]];
-            TApp "let" [TApp "tmp" [TAtom "v64"]; TAtom "w"; TAtom "shl"; TList [TApp "tmp" [TAtom "v63"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v65"]; TAtom "w"; TAtom "sar"; TList [TApp "tmp" [TAtom "v64"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v66"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "v65"]; TApp "const" [TInt 8]]];
-            TApp "let" [TApp "tmp" [TAtom "v67"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk12"]]];
-            TApp "let" [TApp "tmp" [TAtom "v68"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v67"]; TApp "const" [TInt 4278190080]]];
-            TApp "let" [TApp "tmp" [TAtom "v69"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v66"]; TApp "const" [TInt 16777215]]];
-            TApp "let" [TApp "tmp" [TAtom "v70"]; TAtom "w"; TAtom "or"; TList [TApp "tmp" [TAtom "v68"]; TApp "tmp" [TAtom "v69"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk14"]; TAtom "a"; TApp "renew" [TInt 0; TInt 4; TAtom "write"; TInt 1]; TList [TApp "tmp" [TAtom "chk12"]; TApp "tmp" [TAtom "v62"]]];
-            TApp "raw_store" [TAtom "w"; TInt 0; TApp "tmp" [TAtom "v70"]; TApp "tmp" [TAtom "chk14"]]];
-          TApp "goto" [TAtom "L46"]];
-        TApp "block" [TAtom "L46"; TList [];
-          TList [];
-          TAtom "ret"]]];
-    TApp "func" [TAtom "__GI__IO_wdoallocbuf"; TAtom "export"; TAtom "void"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v6"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v6"]]];
-            TApp "let" [TApp "tmp" [TAtom "v7"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v8"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v7"]]; TApp "const" [TInt 48]]; TApp "lower" [TApp "tmp" [TAtom "v7"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v8"]]];
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v9"]]];
-            TApp "let" [TApp "tmp" [TAtom "v11"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v10"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v11"]; TAtom "L2"; TAtom "L4"]];
-        TApp "block" [TAtom "L2"; TList [];
-          TList [];
-          TAtom "ret"];
-        TApp "block" [TAtom "L4"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v17"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v17"]; TApp "const" [TInt 2]]];
-            TApp "let" [TApp "tmp" [TAtom "v19"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "v18"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v19"]; TAtom "L13"; TAtom "L15"]];
-        TApp "block" [TAtom "L13"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v24"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v25"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v26"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v25"]]; TApp "const" [TInt 224]]; TApp "lower" [TApp "tmp" [TAtom "v25"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk4"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v26"]]];
-            TApp "let" [TApp "tmp" [TAtom "v27"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk4"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v28"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v27"]]; TApp "const" [TInt 104]]; TApp "lower" [TApp "tmp" [TAtom "v27"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk5"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v28"]]];
-            TApp "let" [TApp "tmp" [TAtom "v29"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk5"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk6"]; TAtom "f"; TAtom "check_function"; TList [TApp "tmp" [TAtom "v29"]]];
-            TApp "raw_call" [TApp "result" [TApp "tmp" [TAtom "v31"]; TAtom "w"]; TApp "tmp" [TAtom "chk6"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]];
-            TApp "let" [TApp "tmp" [TAtom "v32"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "w"]; TList [TApp "tmp" [TAtom "v31"]; TApp "const" [TInt 4294967295]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v32"]; TAtom "L20"; TAtom "L15"]];
-        TApp "block" [TAtom "L20"; TList [];
-          TList [];
-          TAtom "ret"];
-        TApp "block" [TAtom "L15"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v36"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 160]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk7"]; TAtom "a"; TApp "renew" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v36"]]];
-            TApp "let" [TApp "tmp" [TAtom "v37"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk7"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v38"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v37"]]; TApp "const" [TInt 216]]; TApp "lower" [TApp "tmp" [TAtom "v37"]]];
-            TApp "let" [TApp "tmp" [TAtom "v41"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk7"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v42"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v41"]]; TApp "const" [TInt 216]]; TApp "lower" [TApp "tmp" [TAtom "v41"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v43"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v42"]]; TApp "const" [TInt 4]]; TApp "lower" [TApp "tmp" [TAtom "v42"]]];
-            TApp "call" [TAtom "void"; TApp "global" [TAtom "__GI__IO_wsetb"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v38"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v43"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 0]]]]];
-          TAtom "ret"]]];
-    TApp "func" [TAtom "_IO_wfile_doallocate"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v8"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v8"]]];
-            TApp "let" [TApp "tmp" [TAtom "v9"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v9"]]];
-            TApp "let" [TApp "tmp" [TAtom "v11"]; TAtom "l"; TAtom "ptoi"; TList [TApp "const" [TInt 0]]];
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "l"]; TList [TApp "tmp" [TAtom "v10"]; TApp "tmp" [TAtom "v11"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v12"]; TAtom "L4"; TAtom "L6"]];
-        TApp "block" [TAtom "L4"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v14"]; TAtom "w"]; TApp "global" [TAtom "__GI__IO_file_doallocate"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]]];
-          TApp "goto" [TAtom "L6"]];
-        TApp "block" [TAtom "L6"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v16"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 64]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v16"]]];
-            TApp "let" [TApp "tmp" [TAtom "v17"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v19"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v0"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "renew" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v19"]]];
-            TApp "let" [TApp "tmp" [TAtom "v20"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v17"]]];
-            TApp "let" [TApp "tmp" [TAtom "v22"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v20"]]];
-            TApp "let" [TApp "tmp" [TAtom "v23"]; TAtom "l"; TAtom "sub"; TList [TApp "tmp" [TAtom "v21"]; TApp "tmp" [TAtom "v22"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk3"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 4; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v28"]; TAtom "w"; TApp "raw_load" [TAtom "sw"; TInt 0]; TList [TApp "tmp" [TAtom "chk3"]]];
-            TApp "let" [TApp "tmp" [TAtom "v29"]; TAtom "w"; TAtom "and"; TList [TApp "tmp" [TAtom "v28"]; TApp "const" [TInt 1]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v29"]; TAtom "L24"; TAtom "L26"]];
-        TApp "block" [TAtom "L24"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v31"]; TAtom "l"; TAtom "add"; TList [TApp "tmp" [TAtom "v23"]; TApp "const" [TInt 4]]];
-            TApp "let" [TApp "tmp" [TAtom "v32"]; TAtom "l"; TAtom "sub"; TList [TApp "tmp" [TAtom "v31"]; TApp "const" [TInt 1]]];
-            TApp "let" [TApp "tmp" [TAtom "v33"]; TAtom "l"; TAtom "shr"; TList [TApp "tmp" [TAtom "v32"]; TApp "const" [TInt 2]]]];
-          TApp "goto" [TAtom "L26"]];
-        TApp "block" [TAtom "L26"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "l"; TList [TApp "-" [TAtom "L24"; TApp "tmp" [TAtom "v33"]]; TApp "-" [TAtom "L6"; TApp "tmp" [TAtom "v23"]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v35"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "pr.1"]; TApp "const" [TInt 2]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v36"]; TAtom "p"]; TApp "global" [TAtom "malloc"]; TList [TApp "arg" [TAtom "l"; TApp "tmp" [TAtom "v35"]]]];
-            TApp "let" [TApp "tmp" [TAtom "v41"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v36"]]];
-            TApp "let" [TApp "tmp" [TAtom "v43"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "l"]; TList [TApp "tmp" [TAtom "v41"]; TApp "tmp" [TAtom "v11"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v43"]; TAtom "L37"; TAtom "L39"]];
-        TApp "block" [TAtom "L37"; TList [];
-          TList [];
-          TApp "ret" [TApp "const" [TInt 4294967295]]];
-        TApp "block" [TAtom "L39"; TList [];
-          TList [
-            TApp "flight" [TApp "tmp" [TAtom "v53"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v36"]]; TApp "tmp" [TAtom "v35"]]; TApp "lower" [TApp "tmp" [TAtom "v36"]]];
-            TApp "call" [TAtom "void"; TApp "global" [TAtom "__GI__IO_wsetb"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v36"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v53"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 1]]]]];
-          TApp "ret" [TApp "const" [TInt 1]]]]]
+    cap_fn{ "export" "__GI__IO_wsetb" [param "p" %"v0"; param "p" %"v2"; param "p" %"v4"; param "w" %"v6"] -> "void"
+      {
+        @"start":
+          %"v12" = %"v0" +p #160;
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"v12";
+          %"v13" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v14" = %"v13" +p #48;
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v14";
+          %"v15" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1";
+          %"v16" : "l" = "ptoi" %"v15";
+          %"v17" : "w" = op "cmp"("ne", "l") %"v16", #0
+          => br %"v17" ? "L18" : "L19";
+        @"L18":
+          %"v21" = %"v0" +p #116;
+          %"chk2" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk0", %"v21";
+          %"v22" : "w" = op "raw_load"("sw", int 0) %"chk2";
+          %"v23" : "w" = "shl" %"v22", #8;
+          %"v24" : "w" = "sar" %"v23", #8;
+          %"v25" : "w" = "and" %"v24", #8;
+          %"v26" : "w" = op "cmp"("eq", "w") %"v25", #0
+          => goto "L19";
+        @"L19" [phi %"v28" : "w" = ("start" => #0, "L18" => %"v26")]:
+          => br %"v28" ? "L8" : "L10";
+        @"L8":
+          %"v30" = %"v0" +p #160;
+          %"v31" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v32" = %"v31" +p #48;
+          %"chk4" : "a" = op "check"(int 0, int 8, "read", int 8) %"v32";
+          %"v33" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk4";
+          call void $"free"("p" %"v33")
+          => goto "L10";
+        @"L10":
+          %"v35" = %"v0" +p #160;
+          %"chk5" : "a" = op "renew"(int 0, int 8, "read", int 8) %"chk0", %"v35";
+          %"v36" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk5";
+          %"v37" = %"v36" +p #48;
+          %"chk6" : "a" = op "check"(int 0, int 8, "write", int 8) %"v37";
+          store.ptr [%"chk6" + 0] <- %"v2";
+          %"chk7" : "a" = op "renew"(int 0, int 8, "read", int 8) %"chk0", %"v35";
+          %"v41" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk7";
+          %"v42" = %"v41" +p #56;
+          %"chk8" : "a" = op "check"(int 0, int 8, "write", int 8) %"v42";
+          store.ptr [%"chk8" + 0] <- %"v4"
+          => br %"v6" ? "L44" : "L45";
+        @"L44":
+          %"v49" = %"v0" +p #116;
+          %"chk9" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk0", %"v49";
+          %"v50" : "w" = op "raw_load"("sw", int 0) %"chk9";
+          %"v51" : "w" = "shl" %"v50", #8;
+          %"v52" : "w" = "sar" %"v51", #8;
+          %"v54" : "w" = "and" %"v52", #4294967287;
+          %"v55" : "w" = op "raw_load"("sw", int 0) %"chk9";
+          %"v56" : "w" = "and" %"v55", #4278190080;
+          %"v57" : "w" = "and" %"v54", #16777215;
+          %"v58" : "w" = "or" %"v56", %"v57";
+          %"chk11" : "a" = op "renew"(int 0, int 4, "write", int 1) %"chk9", %"v49";
+          store "w" [%"chk11" + 0] <- %"v58"
+          => goto "L46";
+        @"L45":
+          %"v62" = %"v0" +p #116;
+          %"chk12" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk0", %"v62";
+          %"v63" : "w" = op "raw_load"("sw", int 0) %"chk12";
+          %"v64" : "w" = "shl" %"v63", #8;
+          %"v65" : "w" = "sar" %"v64", #8;
+          %"v66" : "w" = "or" %"v65", #8;
+          %"v67" : "w" = op "raw_load"("sw", int 0) %"chk12";
+          %"v68" : "w" = "and" %"v67", #4278190080;
+          %"v69" : "w" = "and" %"v66", #16777215;
+          %"v70" : "w" = "or" %"v68", %"v69";
+          %"chk14" : "a" = op "renew"(int 0, int 4, "write", int 1) %"chk12", %"v62";
+          store "w" [%"chk14" + 0] <- %"v70"
+          => goto "L46";
+        @"L46":
+          => ret void
+      } };
+    cap_fn{ "export" "__GI__IO_wdoallocbuf" [param "p" %"v0"] -> "void"
+      {
+        @"start":
+          %"v6" = %"v0" +p #160;
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"v6";
+          %"v7" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v8" = %"v7" +p #48;
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v8";
+          %"v9" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1";
+          %"v10" : "l" = "ptoi" %"v9";
+          %"v11" : "w" = op "cmp"("ne", "l") %"v10", #0
+          => br %"v11" ? "L2" : "L4";
+        @"L2":
+          => ret void;
+        @"L4":
+          %"chk2" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk0", %"v0";
+          %"v17" : "w" = op "raw_load"("sw", int 0) %"chk2";
+          %"v18" : "w" = "and" %"v17", #2;
+          %"v19" : "w" = op "cmp"("eq", "w") %"v18", #0
+          => br %"v19" ? "L13" : "L15";
+        @"L13":
+          %"v24" = %"v0" +p #160;
+          %"v25" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v26" = %"v25" +p #224;
+          %"chk4" : "a" = op "check"(int 0, int 8, "read", int 8) %"v26";
+          %"v27" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk4";
+          %"v28" = %"v27" +p #104;
+          %"chk5" : "a" = op "check"(int 0, int 8, "read", int 8) %"v28";
+          %"v29" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk5";
+          %"chk6" : "f" = "check_function" %"v29";
+          rawcall %"v31" : "w" = %"chk6"("p" %"v0");
+          %"v32" : "w" = op "cmp"("ne", "w") %"v31", #4294967295
+          => br %"v32" ? "L20" : "L15";
+        @"L20":
+          => ret void;
+        @"L15":
+          %"v36" = %"v0" +p #160;
+          %"chk7" : "a" = op "renew"(int 0, int 8, "read", int 8) %"chk0", %"v36";
+          %"v37" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk7";
+          %"v38" = %"v37" +p #216;
+          %"v41" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk7";
+          %"v42" = %"v41" +p #216;
+          %"v43" = %"v42" +p #4;
+          call void $"__GI__IO_wsetb"("p" %"v0", "p" %"v38", "p" %"v43", "w" #0)
+          => ret void
+      } };
+    cap_fn{ "export" "_IO_wfile_doallocate" [param "p" %"v0"] -> "w"
+      {
+        @"start":
+          %"v8" = %"v0" +p #56;
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"v8";
+          %"v9" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v10" : "l" = "ptoi" %"v9";
+          %"v11" : "l" = "ptoi" #0;
+          %"v12" : "w" = op "cmp"("eq", "l") %"v10", %"v11"
+          => br %"v12" ? "L4" : "L6";
+        @"L4":
+          call %"v14" : "w" = $"__GI__IO_file_doallocate"("p" %"v0")
+          => goto "L6";
+        @"L6":
+          %"v16" = %"v0" +p #64;
+          %"chk1" : "a" = op "half_check"("upper", int 0, int 8, "read", int 8) %"chk0", %"v16";
+          %"v17" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1";
+          %"v19" = %"v0" +p #56;
+          %"chk2" : "a" = op "renew"(int 0, int 8, "read", int 8) %"chk0", %"v19";
+          %"v20" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk2";
+          %"v21" : "l" = "ptoi" %"v17";
+          %"v22" : "l" = "ptoi" %"v20";
+          %"v23" : "l" = "sub" %"v21", %"v22";
+          %"chk3" : "a" = op "half_check"("lower", int 0, int 4, "read", int 1) %"chk0", %"v0";
+          %"v28" : "w" = op "raw_load"("sw", int 0) %"chk3";
+          %"v29" : "w" = "and" %"v28", #1
+          => br %"v29" ? "L24" : "L26";
+        @"L24":
+          %"v31" : "l" = "add" %"v23", #4;
+          %"v32" : "l" = "sub" %"v31", #1;
+          %"v33" : "l" = "shr" %"v32", #2
+          => goto "L26";
+        @"L26" [phi %"pr.1" : "l" = ("L24" => %"v33", "L6" => %"v23")]:
+          %"v35" : "l" = "shl" %"pr.1", #2;
+          call %"v36" : "p" = $"malloc"("l" %"v35");
+          %"v41" : "l" = "ptoi" %"v36";
+          %"v43" : "w" = op "cmp"("eq", "l") %"v41", %"v11"
+          => br %"v43" ? "L37" : "L39";
+        @"L37":
+          => ret #4294967295;
+        @"L39":
+          %"v53" = %"v36" +p %"v35";
+          call void $"__GI__IO_wsetb"("p" %"v0", "p" %"v36", "p" %"v53", "w" #1)
+          => ret #1
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

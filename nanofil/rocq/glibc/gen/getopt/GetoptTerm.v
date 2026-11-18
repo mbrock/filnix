@@ -3,10 +3,11 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
-From Glibc Require Import GetoptCode03 GetoptCode07.
+From Nanofil Require Import CaptureNotation.
+From Glibc Require Import GetoptCode01 GetoptCode04.
 Import ListNotations.
 Open Scope string_scope.
 
 (** The linked module joins every generated item without changing its order. *)
 Definition getopt_term : term :=
-  TApp "module" [TList (getopt_items_03 ++ getopt_items_07)].
+  TApp "module" [TList (getopt_items_01 ++ getopt_items_04)].

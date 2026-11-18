@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,37 +12,50 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn_glibc_vtables'23check_stdfiles_vtables : func :=
-  mkFunc (a "glibc_vtables#check_stdfiles_vtables") (a "local") RVoid [] [(mkBlock (a "start") [] [(Let (a "v3") P Copy [(Global (a "_IO_2_1_stdin_"))]);
-      (Flight (a "v4") Add [(FAddress (t "v3")); (FValue (Const 216))] (LowerOf (t "v3")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v4")]);
-      (Let (a "v5") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "v6") P Copy [(Global (a "__io_vtables"))]);
-      (Flight (a "v7") Add [(FAddress (t "v6")); (FValue (Const 336))] (LowerOf (t "v6")));
-      (Let (a "v8") L Ptoi [(t "v5")]);
-      (Let (a "v9") L Ptoi [(t "v7")]);
-      (Let (a "v10") W (Cmp Ne L) [(t "v8"); (t "v9")])] (JBranch (t "v10") (To (a "L12")) (To (a "L11"))));
-  (mkBlock (a "L11") [] [(Let (a "v13") P Copy [(Global (a "_IO_2_1_stdout_"))]);
-      (Flight (a "v14") Add [(FAddress (t "v13")); (FValue (Const 216))] (LowerOf (t "v13")));
-      (Let (a "chk1") A (Check 0 8 Read 8) [(t "v14")]);
-      (Let (a "v15") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Let (a "v16") P Copy [(Global (a "__io_vtables"))]);
-      (Flight (a "v17") Add [(FAddress (t "v16")); (FValue (Const 336))] (LowerOf (t "v16")));
-      (Let (a "v18") L Ptoi [(t "v15")]);
-      (Let (a "v19") L Ptoi [(t "v17")]);
-      (Let (a "v20") W (Cmp Ne L) [(t "v18"); (t "v19")])] (JGoto (To (a "L12"))));
-  (mkBlock (a "L12") [(Phi (a "v22") W [((a "start"), (Const 1)); ((a "L11"), (t "v20"))])] [] (JBranch (t "v22") (To (a "L24")) (To (a "L23"))));
-  (mkBlock (a "L23") [] [(Let (a "v25") P Copy [(Global (a "_IO_2_1_stderr_"))]);
-      (Flight (a "v26") Add [(FAddress (t "v25")); (FValue (Const 216))] (LowerOf (t "v25")));
-      (Let (a "chk2") A (Check 0 8 Read 8) [(t "v26")]);
-      (Let (a "v27") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Let (a "v28") P Copy [(Global (a "__io_vtables"))]);
-      (Flight (a "v29") Add [(FAddress (t "v28")); (FValue (Const 336))] (LowerOf (t "v28")));
-      (Let (a "v30") L Ptoi [(t "v27")]);
-      (Let (a "v31") L Ptoi [(t "v29")]);
-      (Let (a "v32") W (Cmp Ne L) [(t "v30"); (t "v31")])] (JGoto (To (a "L24"))));
-  (mkBlock (a "L24") [(Phi (a "v34") W [((a "L12"), (Const 1)); ((a "L23"), (t "v32"))])] [] (JBranch (t "v34") (To (a "L0")) (To (a "L2"))));
-  (mkBlock (a "L0") [] [(Let (a "v35") P Copy [(Global (a "_IO_vtable_check"))]);
-      (Let (a "iw_1.v6") P Copy [(Global (a "IO_accept_foreign_vtables"))]);
-      (Let (a "chk3") A (Check 0 8 Write 8) [(t "iw_1.v6")]);
-      (RawStorePointer 0 (t "v35") (t "chk3") [AtomicWrite])] (JGoto (To (a "L2"))));
-  (mkBlock (a "L2") [] [] JRetVoid)].
+  ir_fn{ "local" "glibc_vtables#check_stdfiles_vtables"() -> RVoid {
+  @"start":
+    %"v3" : P = Copy $"_IO_2_1_stdin_";
+    %"v4" = %"v3" +p #216;
+    %"chk0" : A = (Check 0 8 Read 8) %"v4";
+    %"v5" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v6" : P = Copy $"__io_vtables";
+    %"v7" = %"v6" +p #336;
+    %"v8" : L = Ptoi %"v5";
+    %"v9" : L = Ptoi %"v7";
+    %"v10" : W = (Cmp Ne L) %"v8", %"v9"
+    => br %"v10" ? "L12" : "L11";
+  @"L11":
+    %"v13" : P = Copy $"_IO_2_1_stdout_";
+    %"v14" = %"v13" +p #216;
+    %"chk1" : A = (Check 0 8 Read 8) %"v14";
+    %"v15" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v16" : P = Copy $"__io_vtables";
+    %"v17" = %"v16" +p #336;
+    %"v18" : L = Ptoi %"v15";
+    %"v19" : L = Ptoi %"v17";
+    %"v20" : W = (Cmp Ne L) %"v18", %"v19"
+    => goto "L12";
+  @"L12" [%"v22" : W = phi("start" => #1, "L11" => %"v20")]:
+    => br %"v22" ? "L24" : "L23";
+  @"L23":
+    %"v25" : P = Copy $"_IO_2_1_stderr_";
+    %"v26" = %"v25" +p #216;
+    %"chk2" : A = (Check 0 8 Read 8) %"v26";
+    %"v27" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v28" : P = Copy $"__io_vtables";
+    %"v29" = %"v28" +p #336;
+    %"v30" : L = Ptoi %"v27";
+    %"v31" : L = Ptoi %"v29";
+    %"v32" : W = (Cmp Ne L) %"v30", %"v31"
+    => goto "L24";
+  @"L24" [%"v34" : W = phi("L12" => #1, "L23" => %"v32")]:
+    => br %"v34" ? "L0" : "L2";
+  @"L0":
+    %"v35" : P = Copy $"_IO_vtable_check";
+    %"iw_1.v6" : P = Copy $"IO_accept_foreign_vtables";
+    %"chk3" : A = (Check 0 8 Write 8) %"iw_1.v6";
+    (RawStorePointer 0 (t "v35") (t "chk3") [AtomicWrite])
+    => goto "L2";
+  @"L2":
+    => ret void
+} }.

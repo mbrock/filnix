@@ -5,7 +5,7 @@
 % dropped. Transport.v's decode_module turns it into the module.
 %
 %   (cd src && ../bin/nanofil -O outcomes FILE.ir </dev/null) |
-%     swipl rocq/scripts/gallina.pl [--chunk] NAME SOURCE [CHECKER] >rocq/theories/programs/NAMECode.v
+%     swipl rocq/scripts/gallina.pl [--chunk] [--constructors] NAME SOURCE [CHECKER] >rocq/theories/programs/NAMECode.v
 %
 % The output is a fixture: rocq/scripts/programs.sh regenerates it and fails
 % when nanofil's checked module has changed.
@@ -14,14 +14,19 @@
 % item's initializer, such as a locale table's thousands) is printed as
 % a balanced tree of `app` over lists of at most 64, so neither Rocq's
 % parser nor parse.sh nests one `cons` per element. The term is the
-% same list. Without it the output is as before, byte for byte.
+% same list. The default printer uses CaptureNotation.v. The --constructors
+% option writes the same term using the original Gallina constructors.
 
 :- initialization(main, main).
 
-main :-
+main :- write_fixture.
+
+write_fixture :-
     % The terms' atoms are UTF-8, whatever the locale (a Nix build has none).
     set_stream(user_input, encoding(utf8)),
-    current_prolog_flag(argv, Argv),
+    current_prolog_flag(argv, Options),
+    ( select('--constructors', Options, Argv) -> Printer = items, Imports = []
+    ; Argv = Options, Printer = captured_items, Imports = ["From Nanofil Require Import CaptureNotation."] ),
     (   select('--chunk', Argv, Args) -> nb_setval(chunk, true) ; Args = Argv, nb_setval(chunk, false) ),
     Args = [Name, Source|Rest],
     ( Rest = [Checker] -> true ; Checker = 'rocq/scripts/programs.sh' ),
@@ -36,6 +41,7 @@ main :-
     format("    current. Do not edit. *)~n~n"),
     format("From Stdlib Require Import String ZArith List Ascii.~n"),
     format("From Nanofil Require Import Term.~n"),
+    maplist(writeln, Imports),
     format("Import ListNotations.~n"),
     format("Open Scope string_scope.~n"),
     format("Open Scope Z_scope.~n~n"),
@@ -43,7 +49,7 @@ main :-
     format("Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).~n~n"),
     format("(** The module term. *)~n"),
     format("Definition ~w_term : term :=~n  TApp \"module\" [TList [~n", [Name]),
-    items(Items),
+    call(Printer, Items),
     format("  ]].~n").
 
 is_context(context(_, _)).
@@ -117,3 +123,76 @@ string_lit(A) :-
     format("\""),
     forall(member(C, Cs), ( C =:= 0'" -> format("\"\"") ; format("~c", [C]) )),
     format("\"").
+
+% CaptureNotation.v preserves the transport term, including unsupported instructions.
+items_with(_, _, []).
+items_with(Printer, Sep, [X|Xs]) :-
+    call(Printer, X), forall(member(Y, Xs), (write(Sep), call(Printer, Y))).
+
+quoted(A) :- atom(A), atom_codes(A, Cs), maplist(printable, Cs).
+number_arg(N) :- ( N < 0 -> format('(~d)', [N]) ; format('~d', [N]) ).
+named(Prefix,A) :- write(Prefix), string_lit(A).
+
+captured_items(Items) :- items_with(captured_item, ';\n', Items), nl.
+captured_item(func(N,L,R,Ps,Bs)) :- Bs = [_|_], !,
+    write('    cap_fn{ '), expr(L), write(' '), expr(N), write(' '), expr(Ps),
+    write(' -> '), expr(R), write('\n      {\n'),
+    items_with(captured_block, ';\n', Bs), write('\n      } }').
+captured_item(I) :- write('    cap{ '), expr(I), write(' }').
+
+captured_block(block(L,Ps,Is,J)) :-
+    write('        @'), expr(L),
+    ( Ps = [] -> true ; write(' ['), items_with(expr, '; ', Ps), write(']') ),
+    write(':\n'), items_with(instruction_line, ';\n', Is),
+    ( Is = [] -> true ; nl ), write('          => '), instruction(J).
+
+instruction_line(I) :- write('          '), instruction(I).
+instruction(let(tmp(D),K,O,Args)) :- quoted(D), is_list(Args), !,
+    named('%',D), write(' : '), expr(K), write(' = '), expr(O),
+    ( Args = [] -> true ; write(' '), items_with(expr, ', ', Args) ).
+instruction(flight(tmp(D),add,[address(B),V],lower(B))) :- quoted(D), !,
+    named('%',D), write(' = '), expr(B), write(' +p '), expr(V).
+instruction(raw_store(W,Off,V,A)) :- integer(Off), !,
+    write('store '), expr(W), store_at(A,Off,V).
+instruction(raw_store_pointer(Off,V,A,[aux_ensure,lower_barrier,rooted_reload,lower_write,address_write])) :-
+    integer(Off), !, write('store.ptr'), store_at(A,Off,V).
+instruction(local_alloc(D,N)) :- quoted(D), integer(N), !,
+    named('alloca ',D), write(' '), number_arg(N).
+instruction(goto(T)) :- !, write('goto '), expr(T).
+instruction(branch(V,Y,N)) :- !,
+    write('br '), expr(V), write(' ? '), expr(Y), write(' : '), expr(N).
+instruction(ret(V)) :- !, write('ret '), expr(V).
+instruction(ret) :- !, write('ret void').
+instruction(unreachable) :- !, write('unreachable').
+instruction(I) :-
+    compound(I), compound_name_arguments(I, F, [R,C,As]),
+    memberchk(F-Kw, [call-call,raw_call-rawcall]), is_list(As), maplist(is_arg,As),
+    ( R == void ; R = result(tmp(D),_), quoted(D) ), !,
+    write(Kw), write(' '),
+    ( R = result(tmp(Dst),K) -> named('%',Dst), write(' : '), expr(K), write(' = ') ; write('void ') ),
+    expr(C), write('('), items_with(actual, ', ', As), write(')').
+instruction(I) :- write('('), expr(I), write(')').
+
+store_at(A,Off,V) :- write(' ['), expr(A), write(' + '), number_arg(Off), write('] <- '), expr(V).
+is_arg(arg(_,_)).
+actual(arg(K,V)) :- expr(K), write(' '), expr(V).
+incoming(L-V) :- expr(L), write(' => '), expr(V).
+is_pair(_-_).
+
+expr(tmp(D)) :- quoted(D), !, named('%',D).
+expr(global(N)) :- quoted(N), !, named('$',N).
+expr(const(N)) :- integer(N), !, write('#'), number_arg(N).
+expr(poll(L)) :- quoted(L), !, named('poll ',L).
+expr(param(K,tmp(D))) :- quoted(D), !, write('param '), expr(K), named(' %',D).
+expr(phi(tmp(D),K,Ps)) :- quoted(D), Ps = [_|_], maplist(is_pair,Ps), !,
+    named('phi %',D), write(' : '), expr(K), write(' = ('), items_with(incoming, ', ', Ps), write(')').
+expr(X) :- integer(X), !, write('int '), number_arg(X).
+expr(X) :- is_list(X), !,
+    ( length(X,N), N > 64 -> escape(X)
+    ; write('['), items_with(expr, '; ', X), write(']') ).
+expr(X) :- quoted(X), !, string_lit(X).
+expr(X) :- compound(X), compound_name_arguments(X,F,As), As = [_|_], quoted(F), !,
+    named('op ',F), write('('), items_with(expr, ', ', As), write(')').
+expr(X) :- escape(X).
+
+escape(X) :- write('term('), gallina(X), write(')').

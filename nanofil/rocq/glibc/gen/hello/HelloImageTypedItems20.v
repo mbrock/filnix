@@ -3,7 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import HelloImageEraseMem HelloImageTypedFP HelloImageTypedFU HelloImageTypedFX HelloImageTypedGE05 HelloImageTypedGR HelloImageTypedObjects10 HelloImageTypedObjects11 HelloImageTypedPA HelloImageTypedPR01 HelloImageTypedPR02 HelloImageTypedVF.
+From Glibc Require Import HelloImageEraseMem HelloImageTypedFP HelloImageTypedFU HelloImageTypedFX HelloImageTypedGE03 HelloImageTypedGR HelloImageTypedObjects10 HelloImageTypedPA01 HelloImageTypedPA02 HelloImageTypedPR01 HelloImageTypedVF.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.

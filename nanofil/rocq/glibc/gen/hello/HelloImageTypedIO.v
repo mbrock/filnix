@@ -3,7 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Export HelloImageTypedIO01 HelloImageTypedIO02 HelloImageTypedIO03 HelloImageTypedIO04 HelloImageTypedIO05 HelloImageTypedIO06 HelloImageTypedIO07 HelloImageTypedIO08 HelloImageTypedIO09 HelloImageTypedIO10 HelloImageTypedIO11 HelloImageTypedIO12 HelloImageTypedIO13 HelloImageTypedIO14 HelloImageTypedIO15 HelloImageTypedIO16.
+From Glibc Require Export HelloImageTypedIO01 HelloImageTypedIO02 HelloImageTypedIO03 HelloImageTypedIO04 HelloImageTypedIO05 HelloImageTypedIO06 HelloImageTypedIO07 HelloImageTypedIO08 HelloImageTypedIO09 HelloImageTypedIO10 HelloImageTypedIO11 HelloImageTypedIO12.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.

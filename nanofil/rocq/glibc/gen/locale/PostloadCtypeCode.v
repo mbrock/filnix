@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,147 +12,145 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition postloadctype_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "postloadctype_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "_nl_postload_ctype"; TInt 0]]]];
-    TApp "func" [TAtom "_nl_postload_ctype"; TAtom "export"; TAtom "void"; TList [];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v1"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v1"]]];
-            TApp "let" [TApp "tmp" [TAtom "v3"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v4"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v3"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v3"]]];
-            TApp "let" [TApp "tmp" [TAtom "v5"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v6"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v5"]]; TApp "const" [TInt 104]]; TApp "lower" [TApp "tmp" [TAtom "v5"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v13"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v12"]]; TApp "const" [TInt 256]]; TApp "lower" [TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk2"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v6"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v13"]; TApp "tmp" [TAtom "chk2"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v15"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v14"]]; TApp "const" [TInt 112]]; TApp "lower" [TApp "tmp" [TAtom "v14"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v20"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v4"]]; TApp "const" [TInt 24]]; TApp "lower" [TApp "tmp" [TAtom "v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk3"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v20"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk3"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v22"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v21"]]; TApp "const" [TInt 512]]; TApp "lower" [TApp "tmp" [TAtom "v21"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk4"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v15"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v22"]; TApp "tmp" [TAtom "chk4"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v23"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v24"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v23"]]; TApp "const" [TInt 120]]; TApp "lower" [TApp "tmp" [TAtom "v23"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v29"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v4"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v4"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk5"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk1"]; TApp "tmp" [TAtom "v29"]]];
-            TApp "let" [TApp "tmp" [TAtom "v30"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk5"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v31"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v30"]]; TApp "const" [TInt 512]]; TApp "lower" [TApp "tmp" [TAtom "v30"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk6"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v24"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v31"]; TApp "tmp" [TAtom "chk6"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v35"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk7"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v35"]]];
-            TApp "let" [TApp "tmp" [TAtom "v36"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk7"]]];
-            TApp "let" [TApp "tmp" [TAtom "v37"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "let" [TApp "tmp" [TAtom "v38"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v36"]]];
-            TApp "let" [TApp "tmp" [TAtom "v39"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v37"]]];
-            TApp "let" [TApp "tmp" [TAtom "v40"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "l"]; TList [TApp "tmp" [TAtom "v38"]; TApp "tmp" [TAtom "v39"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v40"]; TAtom "L32"; TAtom "L34"]];
-        TApp "block" [TAtom "L32"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v41"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_CTYPE_B"]]];
-            TApp "let" [TApp "tmp" [TAtom "v42"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v43"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v42"]]; TApp "const" [TInt 104]]; TApp "lower" [TApp "tmp" [TAtom "v42"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk8"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v43"]]];
-            TApp "let" [TApp "tmp" [TAtom "v44"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk8"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk9"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v41"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v44"]; TApp "tmp" [TAtom "chk9"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v45"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_CTYPE_TOUPPER"]]];
-            TApp "let" [TApp "tmp" [TAtom "v46"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v47"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v46"]]; TApp "const" [TInt 120]]; TApp "lower" [TApp "tmp" [TAtom "v46"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk10"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v47"]]];
-            TApp "let" [TApp "tmp" [TAtom "v48"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk10"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk11"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v45"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v48"]; TApp "tmp" [TAtom "chk11"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v49"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_CTYPE_TOLOWER"]]];
-            TApp "let" [TApp "tmp" [TAtom "v50"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_nl_global_locale"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v51"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v50"]]; TApp "const" [TInt 112]]; TApp "lower" [TApp "tmp" [TAtom "v50"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk12"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v51"]]];
-            TApp "let" [TApp "tmp" [TAtom "v52"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk12"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk13"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v49"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v52"]; TApp "tmp" [TAtom "chk13"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]]];
-          TApp "goto" [TAtom "L34"]];
-        TApp "block" [TAtom "L34"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v53"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype_b"]]];
-            TApp "let" [TApp "tmp" [TAtom "v54"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk14"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v54"]]];
-            TApp "let" [TApp "tmp" [TAtom "v55"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk14"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk15"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v55"]]];
-            TApp "let" [TApp "tmp" [TAtom "v57"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk15"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v58"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v57"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v57"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk16"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v58"]]];
-            TApp "let" [TApp "tmp" [TAtom "v63"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk16"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v64"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v63"]]; TApp "const" [TInt 256]]; TApp "lower" [TApp "tmp" [TAtom "v63"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk17"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v53"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v64"]; TApp "tmp" [TAtom "chk17"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v65"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype_toupper"]]];
-            TApp "let" [TApp "tmp" [TAtom "v66"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk18"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v66"]]];
-            TApp "let" [TApp "tmp" [TAtom "v67"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk18"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk19"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v67"]]];
-            TApp "let" [TApp "tmp" [TAtom "v69"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk19"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v70"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v69"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v69"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v74"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v70"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v70"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk20"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v74"]]];
-            TApp "let" [TApp "tmp" [TAtom "v75"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk20"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v76"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v75"]]; TApp "const" [TInt 512]]; TApp "lower" [TApp "tmp" [TAtom "v75"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk21"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v65"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v76"]; TApp "tmp" [TAtom "chk21"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v77"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype_tolower"]]];
-            TApp "let" [TApp "tmp" [TAtom "v78"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk22"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v78"]]];
-            TApp "let" [TApp "tmp" [TAtom "v79"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk22"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk23"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v79"]]];
-            TApp "let" [TApp "tmp" [TAtom "v81"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk23"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v82"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v81"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v81"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v86"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v82"]]; TApp "const" [TInt 24]]; TApp "lower" [TApp "tmp" [TAtom "v82"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk24"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v86"]]];
-            TApp "let" [TApp "tmp" [TAtom "v87"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk24"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v88"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v87"]]; TApp "const" [TInt 512]]; TApp "lower" [TApp "tmp" [TAtom "v87"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk25"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v77"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v88"]; TApp "tmp" [TAtom "chk25"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v89"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype32_b"]]];
-            TApp "let" [TApp "tmp" [TAtom "v90"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk26"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v90"]]];
-            TApp "let" [TApp "tmp" [TAtom "v91"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk26"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk27"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v91"]]];
-            TApp "let" [TApp "tmp" [TAtom "v93"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk27"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v94"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v93"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v93"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v98"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v94"]]; TApp "const" [TInt 40]]; TApp "lower" [TApp "tmp" [TAtom "v94"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk28"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v98"]]];
-            TApp "let" [TApp "tmp" [TAtom "v99"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk28"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk29"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v89"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v99"]; TApp "tmp" [TAtom "chk29"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v101"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype32_toupper"]]];
-            TApp "let" [TApp "tmp" [TAtom "v102"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk30"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v102"]]];
-            TApp "let" [TApp "tmp" [TAtom "v103"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk30"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk31"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v103"]]];
-            TApp "let" [TApp "tmp" [TAtom "v105"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk31"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v106"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v105"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v105"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v110"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v106"]]; TApp "const" [TInt 120]]; TApp "lower" [TApp "tmp" [TAtom "v106"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk32"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v110"]]];
-            TApp "let" [TApp "tmp" [TAtom "v111"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk32"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk33"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v101"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v111"]; TApp "tmp" [TAtom "chk33"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
-            TApp "let" [TApp "tmp" [TAtom "v113"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__ctype32_tolower"]]];
-            TApp "let" [TApp "tmp" [TAtom "v114"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "__libc_tsd_LOCALE"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk34"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v114"]]];
-            TApp "let" [TApp "tmp" [TAtom "v115"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk34"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk35"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v115"]]];
-            TApp "let" [TApp "tmp" [TAtom "v117"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk35"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v118"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v117"]]; TApp "const" [TInt 56]]; TApp "lower" [TApp "tmp" [TAtom "v117"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v122"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v118"]]; TApp "const" [TInt 128]]; TApp "lower" [TApp "tmp" [TAtom "v118"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk36"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v122"]]];
-            TApp "let" [TApp "tmp" [TAtom "v123"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk36"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk37"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v113"]]];
-            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "v123"]; TApp "tmp" [TAtom "chk37"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]]];
-          TAtom "ret"]]]
+    cap{ op "data"("postloadctype_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("_nl_postload_ctype", int 0))]) };
+    cap_fn{ "export" "_nl_postload_ctype" [] -> "void"
+      {
+        @"start":
+          %"v1" : "p" = "copy" $"_nl_global_locale";
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 8) %"v1";
+          %"v3" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk0";
+          %"v4" = %"v3" +p #56;
+          %"v5" : "p" = "copy" $"_nl_global_locale";
+          %"v6" = %"v5" +p #104;
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v4";
+          %"v12" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1";
+          %"v13" = %"v12" +p #256;
+          %"chk2" : "a" = op "check"(int 0, int 8, "write", int 8) %"v6";
+          store.ptr [%"chk2" + 0] <- %"v13";
+          %"v14" : "p" = "copy" $"_nl_global_locale";
+          %"v15" = %"v14" +p #112;
+          %"v20" = %"v4" +p #24;
+          %"chk3" : "a" = op "half_check"("upper", int 0, int 8, "read", int 8) %"chk1", %"v20";
+          %"v21" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk3";
+          %"v22" = %"v21" +p #512;
+          %"chk4" : "a" = op "check"(int 0, int 8, "write", int 8) %"v15";
+          store.ptr [%"chk4" + 0] <- %"v22";
+          %"v23" : "p" = "copy" $"_nl_global_locale";
+          %"v24" = %"v23" +p #120;
+          %"v29" = %"v4" +p #8;
+          %"chk5" : "a" = op "half_check"("upper", int 0, int 8, "read", int 8) %"chk1", %"v29";
+          %"v30" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk5";
+          %"v31" = %"v30" +p #512;
+          %"chk6" : "a" = op "check"(int 0, int 8, "write", int 8) %"v24";
+          store.ptr [%"chk6" + 0] <- %"v31";
+          %"v35" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk7" : "a" = op "check"(int 0, int 8, "read", int 8) %"v35";
+          %"v36" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk7";
+          %"v37" : "p" = "copy" $"_nl_global_locale";
+          %"v38" : "l" = "ptoi" %"v36";
+          %"v39" : "l" = "ptoi" %"v37";
+          %"v40" : "w" = op "cmp"("eq", "l") %"v38", %"v39"
+          => br %"v40" ? "L32" : "L34";
+        @"L32":
+          %"v41" : "p" = "copy" $"__libc_tsd_CTYPE_B";
+          %"v42" : "p" = "copy" $"_nl_global_locale";
+          %"v43" = %"v42" +p #104;
+          %"chk8" : "a" = op "check"(int 0, int 8, "read", int 8) %"v43";
+          %"v44" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk8";
+          %"chk9" : "a" = op "check"(int 0, int 8, "write", int 8) %"v41";
+          store.ptr [%"chk9" + 0] <- %"v44";
+          %"v45" : "p" = "copy" $"__libc_tsd_CTYPE_TOUPPER";
+          %"v46" : "p" = "copy" $"_nl_global_locale";
+          %"v47" = %"v46" +p #120;
+          %"chk10" : "a" = op "check"(int 0, int 8, "read", int 8) %"v47";
+          %"v48" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk10";
+          %"chk11" : "a" = op "check"(int 0, int 8, "write", int 8) %"v45";
+          store.ptr [%"chk11" + 0] <- %"v48";
+          %"v49" : "p" = "copy" $"__libc_tsd_CTYPE_TOLOWER";
+          %"v50" : "p" = "copy" $"_nl_global_locale";
+          %"v51" = %"v50" +p #112;
+          %"chk12" : "a" = op "check"(int 0, int 8, "read", int 8) %"v51";
+          %"v52" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk12";
+          %"chk13" : "a" = op "check"(int 0, int 8, "write", int 8) %"v49";
+          store.ptr [%"chk13" + 0] <- %"v52"
+          => goto "L34";
+        @"L34":
+          %"v53" : "p" = "copy" $"__ctype_b";
+          %"v54" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk14" : "a" = op "check"(int 0, int 8, "read", int 8) %"v54";
+          %"v55" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk14";
+          %"chk15" : "a" = op "check"(int 0, int 8, "read", int 8) %"v55";
+          %"v57" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk15";
+          %"v58" = %"v57" +p #56;
+          %"chk16" : "a" = op "check"(int 0, int 8, "read", int 8) %"v58";
+          %"v63" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk16";
+          %"v64" = %"v63" +p #256;
+          %"chk17" : "a" = op "check"(int 0, int 8, "write", int 8) %"v53";
+          store.ptr [%"chk17" + 0] <- %"v64";
+          %"v65" : "p" = "copy" $"__ctype_toupper";
+          %"v66" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk18" : "a" = op "check"(int 0, int 8, "read", int 8) %"v66";
+          %"v67" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk18";
+          %"chk19" : "a" = op "check"(int 0, int 8, "read", int 8) %"v67";
+          %"v69" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk19";
+          %"v70" = %"v69" +p #56;
+          %"v74" = %"v70" +p #8;
+          %"chk20" : "a" = op "check"(int 0, int 8, "read", int 8) %"v74";
+          %"v75" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk20";
+          %"v76" = %"v75" +p #512;
+          %"chk21" : "a" = op "check"(int 0, int 8, "write", int 8) %"v65";
+          store.ptr [%"chk21" + 0] <- %"v76";
+          %"v77" : "p" = "copy" $"__ctype_tolower";
+          %"v78" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk22" : "a" = op "check"(int 0, int 8, "read", int 8) %"v78";
+          %"v79" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk22";
+          %"chk23" : "a" = op "check"(int 0, int 8, "read", int 8) %"v79";
+          %"v81" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk23";
+          %"v82" = %"v81" +p #56;
+          %"v86" = %"v82" +p #24;
+          %"chk24" : "a" = op "check"(int 0, int 8, "read", int 8) %"v86";
+          %"v87" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk24";
+          %"v88" = %"v87" +p #512;
+          %"chk25" : "a" = op "check"(int 0, int 8, "write", int 8) %"v77";
+          store.ptr [%"chk25" + 0] <- %"v88";
+          %"v89" : "p" = "copy" $"__ctype32_b";
+          %"v90" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk26" : "a" = op "check"(int 0, int 8, "read", int 8) %"v90";
+          %"v91" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk26";
+          %"chk27" : "a" = op "check"(int 0, int 8, "read", int 8) %"v91";
+          %"v93" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk27";
+          %"v94" = %"v93" +p #56;
+          %"v98" = %"v94" +p #40;
+          %"chk28" : "a" = op "check"(int 0, int 8, "read", int 8) %"v98";
+          %"v99" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk28";
+          %"chk29" : "a" = op "check"(int 0, int 8, "write", int 8) %"v89";
+          store.ptr [%"chk29" + 0] <- %"v99";
+          %"v101" : "p" = "copy" $"__ctype32_toupper";
+          %"v102" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk30" : "a" = op "check"(int 0, int 8, "read", int 8) %"v102";
+          %"v103" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk30";
+          %"chk31" : "a" = op "check"(int 0, int 8, "read", int 8) %"v103";
+          %"v105" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk31";
+          %"v106" = %"v105" +p #56;
+          %"v110" = %"v106" +p #120;
+          %"chk32" : "a" = op "check"(int 0, int 8, "read", int 8) %"v110";
+          %"v111" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk32";
+          %"chk33" : "a" = op "check"(int 0, int 8, "write", int 8) %"v101";
+          store.ptr [%"chk33" + 0] <- %"v111";
+          %"v113" : "p" = "copy" $"__ctype32_tolower";
+          %"v114" : "p" = "copy" $"__libc_tsd_LOCALE";
+          %"chk34" : "a" = op "check"(int 0, int 8, "read", int 8) %"v114";
+          %"v115" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk34";
+          %"chk35" : "a" = op "check"(int 0, int 8, "read", int 8) %"v115";
+          %"v117" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk35";
+          %"v118" = %"v117" +p #56;
+          %"v122" = %"v118" +p #128;
+          %"chk36" : "a" = op "check"(int 0, int 8, "read", int 8) %"v122";
+          %"v123" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk36";
+          %"chk37" : "a" = op "check"(int 0, int 8, "write", int 8) %"v113";
+          store.ptr [%"chk37" + 0] <- %"v123"
+          => ret void
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

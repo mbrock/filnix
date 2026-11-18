@@ -1,15 +1,13 @@
 :- encoding(utf8).
-/*  rocq_syntax: Rocq (Coq) source as Prolog terms, with positions and
-    comments.
+/*  The site reads Rocq source into Prolog trees so that it can draw terms
+    and proofs beside the comments that explain them. The lexer records
+    character offsets and preserves the spelling of literals. The grammar
+    retains tactic control flow and the tokens of unfamiliar atomic tactics.
 
-    A lexer and a DCG for the vernacular and Gallina that the formal
-    campaign writes (docs/formal.md), so that dterm-rocq can draw Rocq the
-    way dterm draws Prolog. Nothing is desugared: every node keeps the
-    character span it came from, numbers and strings keep their spelling,
-    and comments are returned beside the sentences, so the drawing can put
-    each where it was written. Tactics keep their control structure and
-    use Gallina terms for embedded expressions; unfamiliar atomic syntax
-    keeps its tokens, rather than being guessed or dropped.
+    Generated transport fixtures use a custom grammar. The parser expands
+    each fixture expression into its constructor tree so the census can
+    identify the same function in either spelling. The expansion carries
+    the span of the fixture expression.
 
     Every node's first argument is its span From-To (character offsets,
     To exclusive). Terms:
@@ -34,18 +32,15 @@
     | `fix(P, N, Bs, Ty, B)`, `named(P, X, E)` | `fix f Bs : Ty := B`, an argument `(x:=E)` |
     | `aspat(P, Pat, N)`, `bits(P, E, Ds)` | `Pat as n` in a pattern, a positive's binary digits `p~0~1` (Ds `'01'`) |
 
-    A binder is `b(P, Kind, Names, Type)`: Kind `paren`, `brace`, `bare`,
-    `struct` (`{struct x}`) or `pattern(Pat)` (`'(a, b)`, Names `[]`),
-    Names a list of `n(P, Name)`, Type `none` when there is none.
+    A binder records its span, kind, names and type. The kind distinguishes
+    parentheses, braces, bare identifiers, structural recursion and patterns.
+    Each name has its own span. A binder without a type carries `none`.
 
-    Sentences are the vernacular, each `dir/2`, `ind/3`, `rec/7`, `def/6`,
-    `mutual/2` (a Fixpoint with further bodies after `with`, each a
-    `def/6`), `thm/5`, `decl/3`, `notation/5`, `module/5`, `endm/2`,
-    `cmd/3` (a command such as Print Assumptions or Extract Constant: its
-    keywords and the tokens after them) or `raw/2` (one the grammar does
-    not read), and the file is a tree of them (rocq_read_file/3):
-    a module or section holds its sentences, and a theorem its proof,
-    `pf(Steps, End)`, each step `step(P, Bullets, Toks)`.
+    The file tree groups sentences by module and section. Declarations,
+    definitions, notations and commands each have a node. A mutual fixpoint
+    holds its additional definitions in order. A theorem holds its proof
+    steps, including the bullets, and the command that ended the proof.
+    A sentence outside the grammar retains its tokens in a raw node.
 
     Comments are `cm(From, To, Text)`, Text with its markers.
 */
@@ -160,6 +155,7 @@ sbody([C|Cs0], [C|B], Cs) :- sbody(Cs0, B, Cs).
 
 token([0'"|Cs0], O0, str(S), Cs, O) :- !,
     sbody(Cs0, B, Cs), string_codes(S, B), length(B, N), O is O0 + N + 2.
+token([0'., 0'.|Cs], O0, sym('..'), Cs, O) :- !, O is O0 + 2.
 token([0'.|Cs], O0, dot, Cs, O) :- ( Cs == [] ; Cs = [C|_], white(C) ), !, O is O0 + 1.
 %  The glibc code generator names a temporary of compiled C after the C
 %  expression it holds and writes the name between single guillemets,
@@ -343,6 +339,7 @@ modifiers --> [t(id(M), _, _)], { memberchk(M, ['Local', 'Global', 'Program', 'P
     \+ peek(sym(_)), !, modifiers.
 modifiers --> [].
 
+vernac(P, dir(P, ['String', 'Notation'|Ws])) --> tk(id('String')), tk(id('Notation')), !, words(Ws).
 vernac(P, dir(P, Words)) --> peek(id(K)), { directive(K) }, !, words(Words).
 vernac(P, cmd(P, Kws, Toks)) --> peek(id(K)), { command(K) }, !, command_words(Kws), remaining(Toks).
 vernac(P, ind(P, Kw, Bodies)) --> tk(id(Kw)), { memberchk(Kw, ['Inductive', 'CoInductive', 'Variant']) }, !,
@@ -380,7 +377,7 @@ vernac(P, decl(P, Kw, Gs)) -->
 vernac(P, notation(P, Kw, S, E, Mods)) -->
     tk(id(Kw)), { memberchk(Kw, ['Notation', 'Infix', 'Abbreviation']) }, !,
     ( tk(str(S)) -> [] ; tk(id(A)), names0(Ps), { maplist([n(_, X), X]>>true, Ps, Xs), atomic_list_concat([A|Xs], ' ', S0), atom_string(S0, S) } ),
-    tk(sym(':=')), atom(E), mods(Mods).
+    tk(sym(':=')), notation_rhs(E), mods(Mods).
 vernac(P, module(P, Kind, N, Bs, Open)) -->
     tk(id('Module')), !, ( tk(id('Type')) -> { Kind = module_type } ; { Kind = module } ),
     name(N), binders0(Bs),
@@ -428,6 +425,11 @@ name(n(F-T, X)) --> tk(id(X), F, T), { X \== '_' }.
 
 opt_type(Ty) --> tk(sym(':')), !, term(Ty).
 opt_type(none) --> [].
+
+% Recursive notations use .. as a placeholder inside the right-hand side.
+notation_rhs(E) -->
+    { ( nb_current(rocq_notation_rhs, Old) -> true ; Old = false ), b_setval(rocq_notation_rhs, true) },
+    atom(E), { b_setval(rocq_notation_rhs, Old) }.
 
 %  The modifiers of a notation, (at level 70) and the like, as words.
 mods([W|Ws]) --> [t(K, _, _)], !, { tok_text(K, W) }, mods(Ws).
@@ -724,6 +726,7 @@ starts_atom --> peek(K), { atom_start(K), \+ ( K == sym('@'), nb_current(rocq_no
                            \+ ( K == id(is), nb_current(rocq_if, true) ) }.
 
 atom_start(id(X)) :- \+ op_word(X).
+atom_start(sym('..')) :- nb_current(rocq_notation_rhs, true).
 atom_start(num(_)). atom_start(str(_)).
 atom_start(p('(')). atom_start(p('[')). atom_start(p('{|')).
 atom_start(kw(match)). atom_start(sym('@')).
@@ -751,6 +754,9 @@ bit(D, T) --> tk(sym('~')), tk(num(N), _, T), { memberchk(N, ['0', '1']), atom_c
 as_pat(E, aspat(F-T, E, N)) --> { nb_current(rocq_mode, pattern) }, tk(kw(as)), !, name(N), { start(E, F), N = n(_-T, _) }.
 as_pat(E, E) --> [].
 
+atom0(E) --> tk(id(Kind), F, _), { memberchk(Kind, [cap,cap_fn,cap_blk]) }, tk(p('{')), !,
+    cap_entry(Kind, Term), tk(p('}'), _, T), { cap_tree(F-T, Term, E) }.
+atom0(id(F-T, '..')) --> { nb_current(rocq_notation_rhs, true) }, tk(sym('..'), F, T), !.
 atom0(hole(F-T)) --> tk(id('_'), F, T), !.
 atom0(pure(F-T, E)) --> tk(sym('⌜'), F, _), !, term(E), tk(sym('⌝'), _, T).
 atom0(const(F-T, C)) --> tk(sym(C), F, T), { memberchk(C, ['⊤', '∅']) }, !.
@@ -785,6 +791,78 @@ atom0(match(F-T, Ss, Ret, Brs)) --> tk(kw(match), F, _), !,
     scrutinees(Ss), ( tk(kw(return)) -> expr(100, Ret) ; { Ret = none } ),
     tk(kw(with)), ( tk(sym('|')) -> [] ; [] ),
     branches(Brs), tk(kw(end), _, T).
+
+% The transport fixture notation expands to ordinary Term.v constructors.
+% Keeping their trees lets the census count the same functions across both
+% spellings and lets the strict reprint check the expansion with Rocq.
+cap_entry(cap, X) --> cap_expr(X).
+cap_entry(cap_blk, B) --> cap_block(B).
+cap_entry(cap_fn, compound("func", [N,L,R,Ps,Bs])) -->
+    cap_expr(L), cap_expr(N), cap_expr(Ps), tk(sym('->')), cap_expr(R),
+    ( tk(id(blocks)) -> tk(p('(')), term(List), tk(p(')')), { Bs = list_expr(List) }
+    ; tk(p('{')), cap_seq(cap_block, ';', Blocks), tk(p('}')), { Bs = seq(Blocks) } ).
+
+cap_seq(Read, Sep, [X|Xs]) --> call(Read, X),
+    ( tk(p(Sep)) -> cap_seq(Read, Sep, Xs) ; { Xs = [] } ).
+
+cap_block(compound("block", [L,seq(Ps),seq(Is),J])) -->
+    tk(sym('@')), cap_expr(L),
+    ( tk(p('[')) -> cap_seq(cap_expr, ';', Ps), tk(p(']')) ; { Ps = [] } ),
+    tk(sym(':')), ( peek(sym('=>')) -> { Is = [] } ; cap_seq(cap_inst, ';', Is) ),
+    tk(sym('=>')), cap_inst(J).
+
+cap_expr(atom(S)) --> tk(str(S)), !.
+cap_expr(compound("tmp", [atom(D)])) --> tk(sym('%')), !, tk(str(D)).
+cap_expr(compound("global", [atom(N)])) --> tk(sym('$')), !, tk(str(N)).
+cap_expr(compound("const", [int(N)])) --> tk(sym('#')), !, cap_number(N).
+cap_expr(compound("poll", [atom(L)])) --> tk(id(poll)), !, tk(str(L)).
+cap_expr(compound("param", [K,compound("tmp", [atom(D)])])) -->
+    tk(id(param)), !, cap_expr(K), tk(sym('%')), tk(str(D)).
+cap_expr(compound("phi", [compound("tmp",[atom(D)]),K,seq(Ps)])) -->
+    tk(id(phi)), !, tk(sym('%')), tk(str(D)), tk(sym(':')), cap_expr(K), tk(sym('=')),
+    tk(p('(')), cap_seq(cap_incoming, ',', Ps), tk(p(')')).
+cap_expr(int(N)) --> tk(id(int)), !, cap_number(N).
+cap_expr(compound(F, Args)) --> tk(id(op)), !, tk(str(F)), tk(p('(')),
+    cap_seq(cap_expr, ',', Args), tk(p(')')).
+cap_expr(seq(Xs)) --> tk(p('[')), !,
+    ( peek(p(']')) -> { Xs=[] } ; cap_seq(cap_expr, ';', Xs) ), tk(p(']')).
+cap_expr(gallina(X)) --> tk(id(term)), tk(p('(')), term(X), tk(p(')')).
+cap_number(num(P,N)) --> tk(num(N), F, T), { P=F-T }.
+cap_number(paren(F-T, pre(A-B, '-', num(C-B,N)))) -->
+    tk(p('('), F, _), tk(sym('-'), A, _), tk(num(N), C, B), tk(p(')'), _, T).
+cap_incoming(compound("-", [L,V])) --> cap_expr(L), tk(sym('=>')), cap_expr(V).
+
+cap_inst(I) --> tk(sym('%')), !, tk(str(D)),
+    { Tmp = compound("tmp",[atom(D)]) },
+    ( tk(sym(':')) -> cap_expr(K), tk(sym('=')), cap_expr(O),
+      ( cap_seq(cap_expr, ',', Args) -> [] ; {Args=[]} ),
+      { I = compound("let", [Tmp,K,O,seq(Args)]) }
+    ; tk(sym('=')), cap_expr(Base), tk(sym('+')), tk(id(p)), cap_expr(Off),
+      { I = compound("flight",[Tmp,atom("add"),seq([compound("address",[Base]),Off]),compound("lower",[Base])]) } ).
+cap_inst(compound("goto",[L])) --> tk(id(goto)), !, cap_expr(L).
+cap_inst(compound("branch",[V,Y,N])) --> tk(id(br)), !, cap_expr(V), tk(sym('?')), cap_expr(Y), tk(sym(':')), cap_expr(N).
+cap_inst(R) --> tk(id(ret)), !,
+    ( tk(id(void)) -> { R=atom("ret") } ; cap_expr(V), { R=compound("ret",[V]) } ).
+cap_inst(atom("unreachable")) --> tk(id(unreachable)), !.
+cap_inst(compound("local_alloc",[atom(D),int(N)])) --> tk(id(alloca)), !, tk(str(D)), cap_number(N).
+cap_inst(compound("raw_store",[W,int(Off),V,A])) --> tk(id(store)), !, cap_expr(W), cap_store(A,Off,V).
+cap_inst(compound("raw_store_pointer",[int(Off),V,A,seq(Es)])) --> tk(id('store.ptr')), !, cap_store(A,Off,V),
+    { maplist(cap_atom, ["aux_ensure","lower_barrier","rooted_reload","lower_write","address_write"], Es) }.
+cap_inst(compound(F,[R,C,seq(As)])) --> tk(id(Kw)), { memberchk(Kw-F,[call-"call",rawcall-"raw_call"]) }, !,
+    ( tk(sym('%')), tk(str(D)), tk(sym(':')) -> cap_expr(K), tk(sym('=')), { R=compound("result",[compound("tmp",[atom(D)]),K]) }
+    ; tk(id(void)), { R=atom("void") } ), cap_expr(C), tk(p('(')),
+    ( peek(p(')')) -> {As=[]} ; cap_seq(cap_arg, ',', As) ), tk(p(')')).
+cap_inst(I) --> tk(p('(')), cap_expr(I), tk(p(')')).
+cap_store(A,N,V) --> tk(p('[')), cap_expr(A), tk(sym('+')), cap_number(N), tk(p(']')), tk(sym('<-')), cap_expr(V).
+cap_arg(compound("arg",[K,V])) --> cap_expr(K), cap_expr(V).
+cap_atom(S, atom(S)).
+
+cap_tree(P, compound(F,Args), app(P,id(P,'TApp'),[str(P,F),list(P,Es)])) :- maplist(cap_tree(P), Args, Es).
+cap_tree(P, seq(Args), app(P,id(P,'TList'),[list(P,Es)])) :- maplist(cap_tree(P), Args, Es).
+cap_tree(P, list_expr(X), app(P,id(P,'TList'),[X])).
+cap_tree(P, atom(S), app(P,id(P,'TAtom'),[str(P,S)])).
+cap_tree(P, int(X), app(P,id(P,'TInt'),[X])).
+cap_tree(_, gallina(X), X).
 
 %  (W | L), an or-pattern.
 or_rest([E|Es]) --> term(E), ( tk(sym('|')) -> or_rest(Es) ; { Es = [] } ).
@@ -903,7 +981,7 @@ tactic_subject(term(E)) --> term(E).
 
 %  In t; [a | b.. | c], b.. runs b on every goal between a's and c's.
 tactic_choices([T|Ts]) -->
-    ( tactic(T0) -> ( tk(sym('.')), tk(sym('.')) -> { T = rest(T0) } ; { T = T0 } ) ; { T = empty } ),
+    ( tactic(T0) -> ( tk(sym('..')) -> { T = rest(T0) } ; { T = T0 } ) ; { T = empty } ),
     ( tk(sym('|')) -> tactic_choices(Ts) ; { Ts = [] } ).
 tactic_branches([tbr(Ps, T)|Bs]) --> tactic_match_pattern(Ps), tk(sym('=>')), tactic(T),
     ( tk(sym('|')) -> tactic_branches(Bs) ; { Bs = [] } ).
@@ -994,7 +1072,7 @@ intro_pairs([P|Ps]) --> tk(sym('&')), intro_pattern(P), !, intro_pairs(Ps).
 intro_pairs([]) --> [].
 
 tactic_token(K) :- \+ memberchk(K, [p(';'), p('('), p(')'), p('['), p(']'),
-                                    sym('|'), sym('=>'), sym('||'), sym('.'), kw(end)]).
+                                    sym('|'), sym('=>'), sym('||'), sym('..'), sym('.'), kw(end)]).
 matching('(', ')').
 matching('[', ']').
 matching('{', '}').
@@ -1007,6 +1085,7 @@ tactic_pattern([]) --> [].
 
 %  A notation "x OP y" := (f x y) (at level N) makes OP an infix operator
 %  of the file, and folds f x y back into x OP y when it is drawn.
+record_notation(notation(_, _, _, _, Mods)) :- append(_, [in, custom|_], Mods), !.
 record_notation(notation(_, _, S, E, Mods)) :-
     split_string(S, " ", "", [X, Op0, Y]), X \== "", Y \== "",
     atom_string(Op, Op0), \+ std_op(Op, _, _),

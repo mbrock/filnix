@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,35 +12,60 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn___opendir : func :=
-  mkFunc (a "__opendir") (a "export") (RClass P) [(P, (a "v0"))] [(mkBlock (a "start") [] [(Let (a "chk0") A (Check 0 1 Read 1) [(t "v0")]);
-      (Let (a "iw_1.v7") W (RawLoad (LdNarrow Sb) 0) [(t "chk0")]);
-      (Let (a "iw_1.v8") W (Cmp Eq W) [(t "iw_1.v7"); (Const 0)])] (JBranch (t "iw_1.v8") (To (a "iw_1.L2")) (To (a "iw_1.join"))));
-  (mkBlock (a "iw_1.L2") [] [(Let (a "iw_1.v11") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk1") A (Check 0 4 Write 1) [(t "iw_1.v11")]);
-      (RawStore Ww 0 (Const 2) (t "chk1"))] (JGoto (To (a "iw_1.join"))));
-  (mkBlock (a "iw_1.join") [(Phi (a "v6") W [((a "iw_1.L2"), (Const 1)); ((a "start"), (Const 0))])] [] (JBranch (t "v6") (To (a "L2")) (To (a "L4"))));
-  (mkBlock (a "L2") [] [] (JRet (Const 0)));
-  (mkBlock (a "L4") [] [(Call (CResult (a "v12") W) (Global (a "__GI___open_nocancel")) [(Arg P (t "v0")); (Arg W (Const 591872))]);
-      (Let (a "iw_2.v10") P (Alloc 8) [(Const 144)]);
-      (Let (a "iw_2.v6") W (Cmp Slt W) [(t "v12"); (Const 0)])] (JBranch (t "iw_2.v6") (To (a "iw_2.join")) (To (a "iw_2.L4"))));
-  (mkBlock (a "iw_2.L4") [] [(Call (CResult (a "iw_2.v15") W) (Global (a "__GI___fstat64")) [(Arg W (t "v12")); (Arg P (t "iw_2.v10"))]);
-      (Let (a "iw_2.v16") W (Cmp Slt W) [(t "iw_2.v15"); (Const 0)])] (JBranch (t "iw_2.v16") (To (a "iw_2.L19")) (To (a "iw_2.L13"))));
-  (mkBlock (a "iw_2.L13") [] [(Flight (a "iw_2.v24") Add [(FAddress (t "iw_2.v10")); (FValue (Const 24))] (LowerOf (t "iw_2.v10")));
-      (Let (a "chk2") A (Check 0 4 Read 1) [(t "iw_2.v24")]);
-      (Let (a "iw_2.v25") W (RawLoad (LdNarrow Uw) 0) [(t "chk2")]);
-      (Let (a "iw_2.v26") W And [(t "iw_2.v25"); (Const 61440)]);
-      (Let (a "iw_2.v28") W (Cmp Ne W) [(t "iw_2.v26"); (Const 16384)])] (JBranch (t "iw_2.v28") (To (a "iw_2.L21")) (To (a "iw_2.L23"))));
-  (mkBlock (a "iw_2.L21") [] [(Let (a "iw_2.v31") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk3") A (Check 0 4 Write 1) [(t "iw_2.v31")]);
-      (RawStore Ww 0 (Const 20) (t "chk3"))] (JGoto (To (a "iw_2.L19"))));
-  (mkBlock (a "iw_2.L19") [] [(Call CVoid (Global (a "__GI___close_nocancel_nostatus")) [(Arg W (t "v12"))])] (JGoto (To (a "iw_2.join"))));
-  (mkBlock (a "iw_2.L23") [] [(Call (CResult (a "iw_2.v36") P) (Global (a "__alloc_dir")) [(Arg W (t "v12")); (Arg W (Const 1)); (Arg W (Const 0)); (Arg P (t "iw_2.v10"))])] (JGoto (To (a "iw_2.join"))));
-  (mkBlock (a "iw_2.join") [(Phi (a "v13") P [((a "iw_2.L19"), (Const 0)); ((a "iw_2.L23"), (t "iw_2.v36")); ((a "L4"), (Const 0))])] [] (JRet (t "v13")))].
+  ir_fn{ "export" "__opendir"(P %"v0") -> (RClass P) {
+  @"start":
+    %"chk0" : A = (Check 0 1 Read 1) %"v0";
+    %"iw_1.v7" : W = (RawLoad (LdNarrow Sb) 0) %"chk0";
+    %"iw_1.v8" : W = (Cmp Eq W) %"iw_1.v7", #0
+    => br %"iw_1.v8" ? "iw_1.L2" : "iw_1.join";
+  @"iw_1.L2":
+    %"iw_1.v11" : P = Copy $"__libc_errno";
+    %"chk1" : A = (Check 0 4 Write 1) %"iw_1.v11";
+    store Ww [%"chk1" + 0] <- #2
+    => goto "iw_1.join";
+  @"iw_1.join" [%"v6" : W = phi("iw_1.L2" => #1, "start" => #0)]:
+    => br %"v6" ? "L2" : "L4";
+  @"L2":
+    => ret #0;
+  @"L4":
+    call %"v12" : W = $"__GI___open_nocancel"(P %"v0", W #591872);
+    %"iw_2.v10" : P = (Alloc 8) #144;
+    %"iw_2.v6" : W = (Cmp Slt W) %"v12", #0
+    => br %"iw_2.v6" ? "iw_2.join" : "iw_2.L4";
+  @"iw_2.L4":
+    call %"iw_2.v15" : W = $"__GI___fstat64"(W %"v12", P %"iw_2.v10");
+    %"iw_2.v16" : W = (Cmp Slt W) %"iw_2.v15", #0
+    => br %"iw_2.v16" ? "iw_2.L19" : "iw_2.L13";
+  @"iw_2.L13":
+    %"iw_2.v24" = %"iw_2.v10" +p #24;
+    %"chk2" : A = (Check 0 4 Read 1) %"iw_2.v24";
+    %"iw_2.v25" : W = (RawLoad (LdNarrow Uw) 0) %"chk2";
+    %"iw_2.v26" : W = And %"iw_2.v25", #61440;
+    %"iw_2.v28" : W = (Cmp Ne W) %"iw_2.v26", #16384
+    => br %"iw_2.v28" ? "iw_2.L21" : "iw_2.L23";
+  @"iw_2.L21":
+    %"iw_2.v31" : P = Copy $"__libc_errno";
+    %"chk3" : A = (Check 0 4 Write 1) %"iw_2.v31";
+    store Ww [%"chk3" + 0] <- #20
+    => goto "iw_2.L19";
+  @"iw_2.L19":
+    call void $"__GI___close_nocancel_nostatus"(W %"v12")
+    => goto "iw_2.join";
+  @"iw_2.L23":
+    call %"iw_2.v36" : P = $"__alloc_dir"(W %"v12", W #1, W #0, P %"iw_2.v10")
+    => goto "iw_2.join";
+  @"iw_2.join" [%"v13" : P = phi("iw_2.L19" => #0, "iw_2.L23" => %"iw_2.v36", "L4" => #0)]:
+    => ret %"v13"
+} }.
 
 Definition hello_image_fn___GI___open64_nocancel : func :=
-  mkFunc (a "__GI___open64_nocancel") (a "export") (RClass W) [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "va_args") P VaArgs [(Const 16)]);
-      (Let (a "v4") P Copy [(Global (a "zsys_open"))]);
-      (Let (a "v5") P VaArgs [(Const 0)]);
-      (Call (CResult (a "v6") P) (Global (a "zcall")) [(Arg P (t "v4")); (Arg P (t "v5"))]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v6")]);
-      (Let (a "v7") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")])] (JRet (t "v7")))].
+  ir_fn{ "export" "__GI___open64_nocancel"(P %"v0", W %"v2") -> (RClass W) {
+  @"start":
+    %"va_args" : P = VaArgs #16;
+    %"v4" : P = Copy $"zsys_open";
+    %"v5" : P = VaArgs #0;
+    call %"v6" : P = $"zcall"(P %"v4", P %"v5");
+    %"chk0" : A = (Check 0 4 Read 1) %"v6";
+    %"v7" : W = (RawLoad (LdNarrow Sw) 0) %"chk0"
+    => ret %"v7"
+} }.

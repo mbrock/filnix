@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -14,29 +15,26 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition cycle_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "cycle"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [];
-          TApp "goto" [TAtom "L4"]];
-        TApp "block" [TAtom "L4"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.2"]; TAtom "w"; TList [TApp "-" [TAtom "L5"; TApp "tmp" [TAtom "v21"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]; TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "l"; TList [TApp "-" [TAtom "L5"; TApp "tmp" [TAtom "v19"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "w"; TApp "cmp" [TAtom "slt"; TAtom "w"]; TList [TApp "tmp" [TAtom "pr.2"]; TApp "tmp" [TAtom "v0"]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v10"]; TAtom "L5"; TAtom "L7"]];
-        TApp "block" [TAtom "L5"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "xs"]]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "w"; TAtom "rem"; TList [TApp "tmp" [TAtom "pr.2"]; TApp "const" [TInt 4]]];
-            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v14"]]];
-            TApp "let" [TApp "tmp" [TAtom "v16"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "v15"]; TApp "const" [TInt 3]]];
-            TApp "flight" [TApp "tmp" [TAtom "v17"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v12"]]; TApp "tmp" [TAtom "v16"]]; TApp "lower" [TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v17"]]];
-            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v19"]; TAtom "l"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.1"]; TApp "tmp" [TAtom "v18"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.2"]; TApp "const" [TInt 1]]]];
-          TApp "goto" [TApp "poll" [TAtom "L4"]]];
-        TApp "block" [TAtom "L7"; TList [];
-          TList [];
-          TApp "ret" [TApp "tmp" [TAtom "pr.1"]]]]];
-    TApp "data" [TAtom "xs"; TApp "ro" [TAtom "local"]; TInt 8; TList [TApp "item" [TAtom "b"; TApp "str" [TList [(chr 1); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 2); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 3); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 4); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0); (chr 0)]]]]]
+    cap_fn{ "export" "cycle" [param "w" %"v0"] -> "l"
+      {
+        @"start":
+          => goto "L4";
+        @"L4" [phi %"pr.2" : "w" = ("L5" => %"v21", "start" => #0); phi %"pr.1" : "l" = ("L5" => %"v19", "start" => #0)]:
+          %"v10" : "w" = op "cmp"("slt", "w") %"pr.2", %"v0"
+          => br %"v10" ? "L5" : "L7";
+        @"L5":
+          %"v12" : "p" = "copy" $"xs";
+          %"v14" : "w" = "rem" %"pr.2", #4;
+          %"v15" : "l" = op "ext"("sw") %"v14";
+          %"v16" : "l" = "shl" %"v15", #3;
+          %"v17" = %"v12" +p %"v16";
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 1) %"v17";
+          %"v18" : "l" = op "raw_load"("l", int 0) %"chk0";
+          %"v19" : "l" = "add" %"pr.1", %"v18";
+          %"v21" : "w" = "add" %"pr.2", #1
+          => goto poll "L4";
+        @"L7":
+          => ret %"pr.1"
+      } };
+    cap{ op "data"("xs", op "ro"("local"), int 8, [op "item"("b", op "str"([term((chr 1)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 2)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 3)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 4)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0)); term((chr 0))]))]) }
   ]].

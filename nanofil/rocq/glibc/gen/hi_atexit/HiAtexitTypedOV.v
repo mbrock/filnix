@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,29 +12,45 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn___GI___overflow : func :=
-  mkFunc (a "__GI___overflow") (a "export") (RClass W) [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Flight (a "v8") Add [(FAddress (t "v0")); (FValue (Const 192))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v8")]);
-      (Let (a "v9") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v10") W (Cmp Eq W) [(t "v9"); (Const 0)])] (JBranch (t "v10") (To (a "L13")) (To (a "L6"))));
-  (mkBlock (a "L13") [] [(Flight (a "v27") Add [(FAddress (t "v0")); (FValue (Const 192))] (LowerOf (t "v0")));
-      (Let (a "v28") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v29") W (Cmp Eq W) [(t "v28"); (Const 0)])] (JBranch (t "v29") (To (a "L23")) (To (a "L25"))));
-  (mkBlock (a "L23") [] [(Flight (a "v31") Add [(FAddress (t "v0")); (FValue (Const 192))] (LowerOf (t "v0")));
-      (Let (a "chk2") A (Renew 0 4 Write 1) [(t "chk0"); (t "v31")]);
-      (RawStore Ww 0 (Const 4294967295) (t "chk2"))] (JGoto (To (a "L25"))));
-  (mkBlock (a "L25") [] [(Flight (a "v34") Add [(FAddress (t "v0")); (FValue (Const 192))] (LowerOf (t "v0")));
-      (Let (a "v35") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")])] (JGoto (To (a "L6"))));
-  (mkBlock (a "L6") [] [(Flight (a "v58") Add [(FAddress (t "v0")); (FValue (Const 216))] (LowerOf (t "v0")));
-      (Let (a "chk4") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v58")]);
-      (Let (a "v59") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk4")]);
-      (Let (a "iw_1.v4") L Ptoi [(t "v59")]);
-      (Let (a "iw_1.v7") P Copy [(Global (a "__io_vtables"))]);
-      (Let (a "iw_1.v8") L Ptoi [(t "iw_1.v7")]);
-      (Let (a "iw_1.v9") L Sub [(t "iw_1.v4"); (t "iw_1.v8")]);
-      (Let (a "iw_1.v15") W (Cmp Uge L) [(t "iw_1.v9"); (Const 2352)])] (JBranch (t "iw_1.v15") (To (a "iw_1.L10")) (To (a "iw_1.join"))));
-  (mkBlock (a "iw_1.L10") [] [(Call CVoid (Global (a "_IO_vtable_check")) [])] (JGoto (To (a "iw_1.join"))));
-  (mkBlock (a "iw_1.join") [] [(Flight (a "v61") Add [(FAddress (t "v59")); (FValue (Const 24))] (LowerOf (t "v59")));
-      (Let (a "chk5") A (Check 0 8 Read 8) [(t "v61")]);
-      (Let (a "v62") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk5")]);
-      (Let (a "chk6") F CheckFunction [(t "v62")]);
-      (RawCall (CResult (a "v65") W) (t "chk6") [(Arg P (t "v0")); (Arg W (t "v2"))])] (JRet (t "v65")))].
+  ir_fn{ "export" "__GI___overflow"(P %"v0", W %"v2") -> (RClass W) {
+  @"start":
+    %"v8" = %"v0" +p #192;
+    %"chk0" : A = (Check 0 4 Read 1) %"v8";
+    %"v9" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v10" : W = (Cmp Eq W) %"v9", #0
+    => br %"v10" ? "L13" : "L6";
+  @"L13":
+    %"v27" = %"v0" +p #192;
+    %"v28" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v29" : W = (Cmp Eq W) %"v28", #0
+    => br %"v29" ? "L23" : "L25";
+  @"L23":
+    %"v31" = %"v0" +p #192;
+    %"chk2" : A = (Renew 0 4 Write 1) %"chk0", %"v31";
+    store Ww [%"chk2" + 0] <- #4294967295
+    => goto "L25";
+  @"L25":
+    %"v34" = %"v0" +p #192;
+    %"v35" : W = (RawLoad (LdNarrow Sw) 0) %"chk0"
+    => goto "L6";
+  @"L6":
+    %"v58" = %"v0" +p #216;
+    %"chk4" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v58";
+    %"v59" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"iw_1.v4" : L = Ptoi %"v59";
+    %"iw_1.v7" : P = Copy $"__io_vtables";
+    %"iw_1.v8" : L = Ptoi %"iw_1.v7";
+    %"iw_1.v9" : L = Sub %"iw_1.v4", %"iw_1.v8";
+    %"iw_1.v15" : W = (Cmp Uge L) %"iw_1.v9", #2352
+    => br %"iw_1.v15" ? "iw_1.L10" : "iw_1.join";
+  @"iw_1.L10":
+    call void $"_IO_vtable_check"()
+    => goto "iw_1.join";
+  @"iw_1.join":
+    %"v61" = %"v59" +p #24;
+    %"chk5" : A = (Check 0 8 Read 8) %"v61";
+    %"v62" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"chk6" : F = CheckFunction %"v62";
+    rawcall %"v65" : W = %"chk6"(P %"v0", W %"v2")
+    => ret %"v65"
+} }.

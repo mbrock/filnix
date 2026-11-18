@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,8 +12,12 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn____asprintf : func :=
-  mkFunc (a "___asprintf") (a "export") (RClass W) [(P, (a "v0")); (P, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "v4") P (Alloc 8) [(Const 24)]);
-      (Let (a "va_args") P VaArgs [(Const 16)]);
-      (Let (a "chk0") A (Check 0 8 Write 8) [(t "v4")]);
-      (RawStorePointer 0 (t "va_args") (t "chk0") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Call (CResult (a "v8") W) (Global (a "__vasprintf_internal")) [(Arg P (t "v0")); (Arg P (t "v2")); (Arg P (t "v4")); (Arg W (Const 0))])] (JRet (t "v8")))].
+  ir_fn{ "export" "___asprintf"(P %"v0", P %"v2") -> (RClass W) {
+  @"start":
+    %"v4" : P = (Alloc 8) #24;
+    %"va_args" : P = VaArgs #16;
+    %"chk0" : A = (Check 0 8 Write 8) %"v4";
+    store.ptr [%"chk0" + 0] <- %"va_args";
+    call %"v8" : W = $"__vasprintf_internal"(P %"v0", P %"v2", P %"v4", W #0)
+    => ret %"v8"
+} }.

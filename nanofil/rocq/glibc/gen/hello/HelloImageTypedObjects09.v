@@ -10,9 +10,6 @@ Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
-Definition hello_image_item__nl_category_names : item :=
-  (IData (a "_nl_category_names") (LRo (a "export")) 1 [(Str [76; 67; 95; 67; 79; 76; 76; 65; 84; 69]); (Zero 1); (Str [76; 67; 95; 67; 84; 89; 80; 69]); (Zero 1); (Str [76; 67; 95; 77; 79; 78; 69; 84; 65; 82; 89]); (Zero 1); (Str [76; 67; 95; 78; 85; 77; 69; 82; 73; 67]); (Zero 1); (Str [76; 67; 95; 84; 73; 77; 69]); (Zero 1); (Str [76; 67; 95; 77; 69; 83; 83; 65; 71; 69; 83]); (Zero 1); (Str [76; 67; 95; 80; 65; 80; 69; 82]); (Zero 1); (Str [76; 67; 95; 78; 65; 77; 69]); (Zero 1); (Str [76; 67; 95; 65; 68; 68; 82; 69; 83; 83]); (Zero 1); (Str [76; 67; 95; 84; 69; 76; 69; 80; 72; 79; 78; 69]); (Zero 1); (Str [76; 67; 95; 77; 69; 65; 83; 85; 82; 69; 77; 69; 78; 84]); (Zero 1); (Str [76; 67; 95; 73; 68; 69; 78; 84; 73; 70; 73; 67; 65; 84; 73; 79; 78]); (Zero 1)]).
-
 Definition hello_image_item_glibc_setlocale'23_nl_category_postload : item :=
   (IData (a "glibc_setlocale#_nl_category_postload") (LRo (a "local")) 8 [(Sym (a "_nl_postload_ctype") 0); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Zero 8); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Item Wl 0); (Item Wl 0)]).
 
@@ -465,3 +462,9 @@ Definition hello_image_item_glibc_errlist_data_gen'23str'2e272 : item :=
 
 Definition hello_image_item_glibc_errlist_data_gen'23str'2e273 : item :=
   (IData (a "glibc_errlist_data_gen#str.273") (LRo (a "local")) 1 [(Item Wb 84); (Item Wb 101); (Item Wb 120); (Item Wb 116); (Item Wb 32); (Item Wb 102); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 32); (Item Wb 98); (Item Wb 117); (Item Wb 115); (Item Wb 121); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_errlist_data_gen'23str'2e274 : item :=
+  (IData (a "glibc_errlist_data_gen#str.274") (LRo (a "local")) 1 [(Item Wb 70); (Item Wb 105); (Item Wb 108); (Item Wb 101); (Item Wb 32); (Item Wb 116); (Item Wb 111); (Item Wb 111); (Item Wb 32); (Item Wb 108); (Item Wb 97); (Item Wb 114); (Item Wb 103); (Item Wb 101); (Item Wb 0)]).
+
+Definition hello_image_item_glibc_errlist_data_gen'23str'2e275 : item :=
+  (IData (a "glibc_errlist_data_gen#str.275") (LRo (a "local")) 1 [(Item Wb 78); (Item Wb 111); (Item Wb 32); (Item Wb 115); (Item Wb 112); (Item Wb 97); (Item Wb 99); (Item Wb 101); (Item Wb 32); (Item Wb 108); (Item Wb 101); (Item Wb 102); (Item Wb 116); (Item Wb 32); (Item Wb 111); (Item Wb 110); (Item Wb 32); (Item Wb 100); (Item Wb 101); (Item Wb 118); (Item Wb 105); (Item Wb 99); (Item Wb 101); (Item Wb 0)]).

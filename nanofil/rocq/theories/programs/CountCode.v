@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -14,33 +15,30 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition count_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "next_l"; TAtom "export"; TAtom "p"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v3"]; TAtom "p"]; TApp "global" [TAtom "strchr"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 108]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v3"]]]]];
-    TApp "func" [TAtom "count_l"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v5"]; TAtom "p"]; TApp "global" [TAtom "next_l"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]]];
-          TApp "goto" [TAtom "L6"]];
-        TApp "block" [TAtom "L6"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.2"]; TAtom "p"; TList [TApp "-" [TAtom "L7"; TApp "tmp" [TAtom "v21"]]; TApp "-" [TAtom "start"; TApp "tmp" [TAtom "v5"]]]]; TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "w"; TList [TApp "-" [TAtom "L7"; TApp "tmp" [TAtom "v18"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v11"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "pr.2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v11"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v12"]; TAtom "L7"; TAtom "L9"]];
-        TApp "block" [TAtom "L7"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 1; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "pr.2"]]];
-            TApp "let" [TApp "tmp" [TAtom "v16"]; TAtom "w"; TApp "raw_load" [TAtom "sb"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v17"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "w"]; TList [TApp "tmp" [TAtom "v16"]; TApp "const" [TInt 108]]];
-            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.1"]; TApp "tmp" [TAtom "v17"]]];
-            TApp "flight" [TApp "tmp" [TAtom "v20"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "pr.2"]]; TApp "const" [TInt 1]]; TApp "lower" [TApp "tmp" [TAtom "pr.2"]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v21"]; TAtom "p"]; TApp "global" [TAtom "next_l"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v20"]]]]];
-          TApp "goto" [TApp "poll" [TAtom "L6"]]];
-        TApp "block" [TAtom "L9"; TList [];
-          TList [];
-          TApp "ret" [TApp "tmp" [TAtom "pr.1"]]]]]
+    cap_fn{ "export" "next_l" [param "p" %"v0"] -> "p"
+      {
+        @"start":
+          call %"v3" : "p" = $"strchr"("p" %"v0", "w" #108)
+          => ret %"v3"
+      } };
+    cap_fn{ "export" "count_l" [param "p" %"v0"] -> "w"
+      {
+        @"start":
+          call %"v5" : "p" = $"next_l"("p" %"v0")
+          => goto "L6";
+        @"L6" [phi %"pr.2" : "p" = ("L7" => %"v21", "start" => %"v5"); phi %"pr.1" : "w" = ("L7" => %"v18", "start" => #0)]:
+          %"v11" : "l" = "ptoi" %"pr.2";
+          %"v12" : "w" = op "cmp"("ne", "l") %"v11", #0
+          => br %"v12" ? "L7" : "L9";
+        @"L7":
+          %"chk0" : "a" = op "check"(int 0, int 1, "read", int 1) %"pr.2";
+          %"v16" : "w" = op "raw_load"("sb", int 0) %"chk0";
+          %"v17" : "w" = op "cmp"("eq", "w") %"v16", #108;
+          %"v18" : "w" = "add" %"pr.1", %"v17";
+          %"v20" = %"pr.2" +p #1;
+          call %"v21" : "p" = $"next_l"("p" %"v20")
+          => goto poll "L6";
+        @"L9":
+          => ret %"pr.1"
+      } }
   ]].

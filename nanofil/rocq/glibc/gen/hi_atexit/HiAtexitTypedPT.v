@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,230 +12,283 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn___ptmalloc_init : func :=
-  mkFunc (a "__ptmalloc_init") (a "export") RVoid [] [(mkBlock (a "start") [] [(Let (a "v12") P (Alloc 8) [(Const 8)]);
-      (Let (a "v17") P (Alloc 4) [(Const 4)]);
-      (Let (a "v22") P (Alloc 8) [(Const 8)]);
-      (Let (a "v27") P (Alloc 8) [(Const 8)]);
-      (Let (a "v32") P (Alloc 4) [(Const 4)]);
-      (Let (a "v37") P (Alloc 8) [(Const 8)]);
-      (Let (a "v42") P (Alloc 8) [(Const 8)]);
-      (Let (a "v47") P (Alloc 8) [(Const 8)]);
-      (Let (a "v52") P (Alloc 8) [(Const 8)]);
-      (Let (a "v57") P (Alloc 8) [(Const 8)]);
-      (Let (a "iw_1.v3") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "iw_1.iw_1.v7") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "iw_1.iw_1.v7")]);
-      (Let (a "iw_1.iw_1.v8") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Call (CResult (a "iw_1.iw_1.v13") L) (Global (a "zsys_getrandom")) [(Arg P (t "iw_1.v3")); (Arg L (Const 8)); (Arg W (Const 1))]);
-      (Let (a "iw_1.iw_1.v14") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk1") A (Check 0 4 Write 1) [(t "iw_1.iw_1.v14")]);
-      (RawStore Ww 0 (t "iw_1.iw_1.v8") (t "chk1"));
-      (Let (a "iw_1.v5") W (Cmp Ne L) [(t "iw_1.iw_1.v13"); (Const 8)])] (JBranch (t "iw_1.v5") (To (a "iw_1.L0")) (To (a "iw_1.L12"))));
-  (mkBlock (a "iw_1.L0") [] [(Let (a "iw_1.v6") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk2") A (Check 0 8 Write 1) [(t "iw_1.v6")]);
-      (RawStore Wl 0 (Const 0) (t "chk2"))] (JGoto (To (a "iw_1.L12"))));
-  (mkBlock (a "iw_1.L12") [] [(Let (a "iw_1.v15") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk3") A (Check 0 8 Read 1) [(t "iw_1.v15")]);
-      (Let (a "iw_1.v16") L (RawLoad LdL 0) [(t "chk3")]);
-      (Let (a "iw_1.v17") W (Cmp Ule L) [(t "iw_1.v16"); (Const 16777216)])] (JBranch (t "iw_1.v17") (To (a "iw_1.L19")) (To (a "iw_1.L18"))));
-  (mkBlock (a "iw_1.L18") [] [(Let (a "iw_1.v20") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk4") A (Check 0 8 Read 1) [(t "iw_1.v20")]);
-      (Let (a "iw_1.v21") L (RawLoad LdL 0) [(t "chk4")]);
-      (Let (a "iw_1.v25") W (Cmp Uge L) [(t "iw_1.v21"); (Const 18446744073692774399)])] (JGoto (To (a "iw_1.L19"))));
-  (mkBlock (a "iw_1.L19") [(Phi (a "iw_1.v27") W [((a "iw_1.L12"), (Const 1)); ((a "iw_1.L18"), (t "iw_1.v25"))])] [] (JBranch (t "iw_1.v27") (To (a "iw_1.L29")) (To (a "iw_1.L28"))));
-  (mkBlock (a "iw_1.L28") [] [(Let (a "iw_1.v30") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk5") A (Check 0 8 Read 1) [(t "iw_1.v30")]);
-      (Let (a "iw_1.v31") L (RawLoad LdL 0) [(t "chk5")]);
-      (Let (a "iw_1.iw_2.v3") L Shr [(t "iw_1.v31"); (Const 1)]);
-      (Let (a "iw_1.iw_2.v4") L And [(t "iw_1.iw_2.v3"); (Const 6148914691236517205)]);
-      (Let (a "iw_1.iw_2.v5") L Sub [(t "iw_1.v31"); (t "iw_1.iw_2.v4")]);
-      (Let (a "iw_1.iw_2.v6") L And [(t "iw_1.iw_2.v5"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_2.v7") L Shr [(t "iw_1.iw_2.v5"); (Const 2)]);
-      (Let (a "iw_1.iw_2.v8") L And [(t "iw_1.iw_2.v7"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_2.v9") L Add [(t "iw_1.iw_2.v6"); (t "iw_1.iw_2.v8")]);
-      (Let (a "iw_1.iw_2.v10") L Shr [(t "iw_1.iw_2.v9"); (Const 4)]);
-      (Let (a "iw_1.iw_2.v11") L Add [(t "iw_1.iw_2.v9"); (t "iw_1.iw_2.v10")]);
-      (Let (a "iw_1.iw_2.v12") L And [(t "iw_1.iw_2.v11"); (Const 1085102592571150095)]);
-      (Let (a "iw_1.iw_2.v13") L Mul [(t "iw_1.iw_2.v12"); (Const 72340172838076673)]);
-      (Let (a "iw_1.iw_2.v14") L Shr [(t "iw_1.iw_2.v13"); (Const 56)])] (JGoto (To (a "iw_1.iw_2.join"))));
-  (mkBlock (a "iw_1.iw_2.join") [(Phi (a "iw_1.v32") W [((a "iw_1.L28"), (t "iw_1.iw_2.v14"))])] [(Let (a "iw_1.v34") W (Cmp Ult W) [(t "iw_1.v32"); (Const 16)])] (JGoto (To (a "iw_1.L29"))));
-  (mkBlock (a "iw_1.L29") [(Phi (a "iw_1.v36") W [((a "iw_1.L19"), (Const 1)); ((a "iw_1.iw_2.join"), (t "iw_1.v34"))])] [] (JBranch (t "iw_1.v36") (To (a "iw_1.L38")) (To (a "iw_1.L37"))));
-  (mkBlock (a "iw_1.L37") [] [(Let (a "iw_1.v39") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk6") A (Check 0 8 Read 1) [(t "iw_1.v39")]);
-      (Let (a "iw_1.v40") L (RawLoad LdL 0) [(t "chk6")]);
-      (Let (a "iw_1.iw_3.v3") L Shr [(t "iw_1.v40"); (Const 1)]);
-      (Let (a "iw_1.iw_3.v4") L And [(t "iw_1.iw_3.v3"); (Const 6148914691236517205)]);
-      (Let (a "iw_1.iw_3.v5") L Sub [(t "iw_1.v40"); (t "iw_1.iw_3.v4")]);
-      (Let (a "iw_1.iw_3.v6") L And [(t "iw_1.iw_3.v5"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_3.v7") L Shr [(t "iw_1.iw_3.v5"); (Const 2)]);
-      (Let (a "iw_1.iw_3.v8") L And [(t "iw_1.iw_3.v7"); (Const 3689348814741910323)]);
-      (Let (a "iw_1.iw_3.v9") L Add [(t "iw_1.iw_3.v6"); (t "iw_1.iw_3.v8")]);
-      (Let (a "iw_1.iw_3.v10") L Shr [(t "iw_1.iw_3.v9"); (Const 4)]);
-      (Let (a "iw_1.iw_3.v11") L Add [(t "iw_1.iw_3.v9"); (t "iw_1.iw_3.v10")]);
-      (Let (a "iw_1.iw_3.v12") L And [(t "iw_1.iw_3.v11"); (Const 1085102592571150095)]);
-      (Let (a "iw_1.iw_3.v13") L Mul [(t "iw_1.iw_3.v12"); (Const 72340172838076673)]);
-      (Let (a "iw_1.iw_3.v14") L Shr [(t "iw_1.iw_3.v13"); (Const 56)])] (JGoto (To (a "iw_1.iw_3.join"))));
-  (mkBlock (a "iw_1.iw_3.join") [(Phi (a "iw_1.v41") W [((a "iw_1.L37"), (t "iw_1.iw_3.v14"))])] [(Let (a "iw_1.v43") W (Cmp Ugt W) [(t "iw_1.v41"); (Const 48)])] (JGoto (To (a "iw_1.L38"))));
-  (mkBlock (a "iw_1.L38") [(Phi (a "iw_1.v45") W [((a "iw_1.L29"), (Const 1)); ((a "iw_1.iw_3.join"), (t "iw_1.v43"))])] [] (JBranch (t "iw_1.v45") (To (a "iw_1.L13")) (To (a "iw_1.join"))));
-  (mkBlock (a "iw_1.L13") [] [(Let (a "iw_1.v46") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "iw_1.iw_4.v0") P (Alloc 8) [(Const 16)]);
-      (Call (CResult (a "iw_1.iw_4.v1") W) (Global (a "__GI___clock_gettime")) [(Arg W (Const 1)); (Arg P (t "iw_1.iw_4.v0"))]);
-      (Flight (a "iw_1.iw_4.v3") Add [(FAddress (t "iw_1.iw_4.v0")); (FValue (Const 8))] (LowerOf (t "iw_1.iw_4.v0")));
-      (Let (a "chk7") A (Check 0 8 Read 1) [(t "iw_1.iw_4.v3")]);
-      (Let (a "iw_1.iw_4.v4") L (RawLoad LdL 0) [(t "chk7")]);
-      (Let (a "chk8") A (HalfCheck Lower 0 8 Read 1) [(t "chk7"); (t "iw_1.iw_4.v0")]);
-      (Let (a "iw_1.iw_4.v5") L (RawLoad LdL 0) [(t "chk8")]);
-      (Let (a "iw_1.iw_4.v6") L Xor [(t "iw_1.iw_4.v4"); (t "iw_1.iw_4.v5")]);
-      (Let (a "iw_1.iw_4.v7") W Copy [(t "iw_1.iw_4.v6")]);
-      (Let (a "iw_1.iw_4.v8") W Copy [(t "iw_1.iw_4.v6")]);
-      (Let (a "iw_1.iw_4.v9") W Shl [(t "iw_1.iw_4.v8"); (Const 24)]);
-      (Let (a "iw_1.iw_4.v10") W Copy [(t "iw_1.iw_4.v6")]);
-      (Let (a "iw_1.iw_4.v11") W Shr [(t "iw_1.iw_4.v10"); (Const 8)]);
-      (Let (a "iw_1.iw_4.v12") W Or [(t "iw_1.iw_4.v9"); (t "iw_1.iw_4.v11")]);
-      (Let (a "iw_1.iw_4.v13") W Xor [(t "iw_1.iw_4.v7"); (t "iw_1.iw_4.v12")]);
-      (Let (a "iw_1.v48") L (Ext Uw) [(t "iw_1.iw_4.v13")]);
-      (Let (a "chk9") A (Check 0 8 Write 1) [(t "iw_1.v46")]);
-      (RawStore Wl 0 (t "iw_1.v48") (t "chk9"));
-      (Let (a "iw_1.v49") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "iw_1.v50") P Copy [(Global (a "glibc_malloc#tcache_key"))]);
-      (Let (a "chk10") A (Check 0 8 Read 1) [(t "iw_1.v50")]);
-      (Let (a "iw_1.v51") L (RawLoad LdL 0) [(t "chk10")]);
-      (Let (a "iw_1.v52") L Shl [(t "iw_1.v51"); (Const 32)]);
-      (Let (a "iw_1.iw_5.v0") P (Alloc 8) [(Const 16)]);
-      (Call (CResult (a "iw_1.iw_5.v1") W) (Global (a "__GI___clock_gettime")) [(Arg W (Const 1)); (Arg P (t "iw_1.iw_5.v0"))]);
-      (Flight (a "iw_1.iw_5.v3") Add [(FAddress (t "iw_1.iw_5.v0")); (FValue (Const 8))] (LowerOf (t "iw_1.iw_5.v0")));
-      (Let (a "chk11") A (Check 0 8 Read 1) [(t "iw_1.iw_5.v3")]);
-      (Let (a "iw_1.iw_5.v4") L (RawLoad LdL 0) [(t "chk11")]);
-      (Let (a "chk12") A (HalfCheck Lower 0 8 Read 1) [(t "chk11"); (t "iw_1.iw_5.v0")]);
-      (Let (a "iw_1.iw_5.v5") L (RawLoad LdL 0) [(t "chk12")]);
-      (Let (a "iw_1.iw_5.v6") L Xor [(t "iw_1.iw_5.v4"); (t "iw_1.iw_5.v5")]);
-      (Let (a "iw_1.iw_5.v7") W Copy [(t "iw_1.iw_5.v6")]);
-      (Let (a "iw_1.iw_5.v8") W Copy [(t "iw_1.iw_5.v6")]);
-      (Let (a "iw_1.iw_5.v9") W Shl [(t "iw_1.iw_5.v8"); (Const 24)]);
-      (Let (a "iw_1.iw_5.v10") W Copy [(t "iw_1.iw_5.v6")]);
-      (Let (a "iw_1.iw_5.v11") W Shr [(t "iw_1.iw_5.v10"); (Const 8)]);
-      (Let (a "iw_1.iw_5.v12") W Or [(t "iw_1.iw_5.v9"); (t "iw_1.iw_5.v11")]);
-      (Let (a "iw_1.iw_5.v13") W Xor [(t "iw_1.iw_5.v7"); (t "iw_1.iw_5.v12")]);
-      (Let (a "iw_1.v54") L (Ext Uw) [(t "iw_1.iw_5.v13")]);
-      (Let (a "iw_1.v55") L Or [(t "iw_1.v52"); (t "iw_1.v54")]);
-      (Let (a "chk13") A (Check 0 8 Write 1) [(t "iw_1.v49")]);
-      (RawStore Wl 0 (t "iw_1.v55") (t "chk13"))] (JGoto (Poll (a "iw_1.L12"))));
-  (mkBlock (a "iw_1.join") [] [(Let (a "v3") P Copy [(Global (a "__libc_initial"))]);
-      (Let (a "chk14") A (Check 0 1 Read 1) [(t "v3")]);
-      (Let (a "v4") W (RawLoad (LdNarrow Ub) 0) [(t "chk14")]);
-      (Let (a "v5") W (Cmp Eq W) [(t "v4"); (Const 0)])] (JBranch (t "v5") (To (a "L0")) (To (a "L2"))));
-  (mkBlock (a "L0") [] [(Let (a "v6") P Copy [(Global (a "glibc_malloc#__always_fail_morecore"))]);
-      (Let (a "chk15") A (Check 0 1 Write 1) [(t "v6")]);
-      (RawStore Wb 0 (Const 1) (t "chk15"))] (JGoto (To (a "L2"))));
-  (mkBlock (a "L2") [] [(Let (a "v8") P Copy [(Global (a "thread_arena"))]);
-      (Let (a "v9") P Copy [(Global (a "glibc_malloc#main_arena"))]);
-      (Let (a "chk16") A (Check 0 8 Write 8) [(t "v8")]);
-      (RawStorePointer 0 (t "v9") (t "chk16") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v10") P Copy [(Global (a "glibc_malloc#main_arena"))])] (JGoto (To (a "iw_2.L4"))));
-  (mkBlock (a "iw_2.L4") [(Phi (a "iw_2.pr.1") W [((a "iw_2.L5"), (t "iw_2.v25")); ((a "L2"), (Const 1))])] [(Let (a "iw_2.v9") W (Cmp Slt W) [(t "iw_2.pr.1"); (Const 128)])] (JBranch (t "iw_2.v9") (To (a "iw_2.L5")) (To (a "iw_2.L7"))));
-  (mkBlock (a "iw_2.L5") [] [(Flight (a "iw_2.v11") Add [(FAddress (t "v10")); (FValue (Const 24))] (LowerOf (t "v10")));
-      (Let (a "iw_2.v13") W Sub [(t "iw_2.pr.1"); (Const 1)]);
-      (Let (a "iw_2.v14") W Shl [(t "iw_2.v13"); (Const 1)]);
-      (Let (a "iw_2.v15") L (Ext Sw) [(t "iw_2.v14")]);
-      (Let (a "iw_2.v16") L Shl [(t "iw_2.v15"); (Const 3)]);
-      (Flight (a "iw_2.v17") Add [(FAddress (t "iw_2.v11")); (FValue (t "iw_2.v16"))] (LowerOf (t "iw_2.v11")));
-      (Flight (a "iw_2.v18") Sub [(FAddress (t "iw_2.v17")); (FValue (Const 16))] (LowerOf (t "iw_2.v17")));
-      (Flight (a "iw_2.v20") Add [(FAddress (t "iw_2.v18")); (FValue (Const 16))] (LowerOf (t "iw_2.v18")));
-      (Flight (a "iw_2.v22") Add [(FAddress (t "iw_2.v18")); (FValue (Const 24))] (LowerOf (t "iw_2.v18")));
-      (Let (a "chk17") A (Check 0 8 Write 8) [(t "iw_2.v22")]);
-      (RawStorePointer 0 (t "iw_2.v18") (t "chk17") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk18") A (HalfCheck Lower 0 8 Write 8) [(t "chk17"); (t "iw_2.v20")]);
-      (RawStorePointer 0 (t "iw_2.v18") (t "chk18") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "iw_2.v25") W Add [(t "iw_2.pr.1"); (Const 1)])] (JGoto (Poll (a "iw_2.L4"))));
-  (mkBlock (a "iw_2.L7") [] [(Let (a "iw_2.v30") P Copy [(Global (a "glibc_malloc#main_arena"))]);
-      (Let (a "iw_2.v31") L Ptoi [(t "v10")]);
-      (Let (a "iw_2.v32") L Ptoi [(t "iw_2.v30")]);
-      (Let (a "iw_2.v33") W (Cmp Ne L) [(t "iw_2.v31"); (t "iw_2.v32")])] (JBranch (t "iw_2.v33") (To (a "iw_2.L26")) (To (a "iw_2.L28"))));
-  (mkBlock (a "iw_2.L26") [] [(Flight (a "iw_2.v35") Add [(FAddress (t "v10")); (FValue (Const 4))] (LowerOf (t "v10")));
-      (Let (a "chk19") A (Check 0 4 Read 1) [(t "iw_2.v35")]);
-      (Let (a "iw_2.v36") W (RawLoad (LdNarrow Sw) 0) [(t "chk19")]);
-      (Let (a "iw_2.v37") W Or [(t "iw_2.v36"); (Const 2)]);
-      (Let (a "chk20") A (Renew 0 4 Write 1) [(t "chk19"); (t "iw_2.v35")]);
-      (RawStore Ww 0 (t "iw_2.v37") (t "chk20"))] (JGoto (To (a "iw_2.L28"))));
-  (mkBlock (a "iw_2.L28") [] [(Flight (a "iw_2.v39") Add [(FAddress (t "v10")); (FValue (Const 8))] (LowerOf (t "v10")));
-      (Flight (a "iw_2.v41") Add [(FAddress (t "v10")); (FValue (Const 24))] (LowerOf (t "v10")));
-      (Flight (a "iw_2.v47") Sub [(FAddress (t "iw_2.v41")); (FValue (Const 16))] (LowerOf (t "iw_2.v41")));
-      (Let (a "chk21") A (Check 0 8 Write 8) [(t "iw_2.v39")]);
-      (RawStorePointer 0 (t "iw_2.v47") (t "chk21") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v14") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_top_pad"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 24)); (Arg P (t "v12")); (Arg P (t "v14"))]);
-      (Let (a "chk22") A (Check 0 8 Read 1) [(t "v12")]);
-      (Let (a "v15") L (RawLoad LdL 0) [(t "chk22")]);
-      (Let (a "v19") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_perturb_byte"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 21)); (Arg P (t "v17")); (Arg P (t "v19"))]);
-      (Let (a "chk23") A (Check 0 4 Read 1) [(t "v17")]);
-      (Let (a "v20") W (RawLoad (LdNarrow Sw) 0) [(t "chk23")]);
-      (Let (a "v24") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_mmap_threshold"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 19)); (Arg P (t "v22")); (Arg P (t "v24"))]);
-      (Let (a "chk24") A (Check 0 8 Read 1) [(t "v22")]);
-      (Let (a "v25") L (RawLoad LdL 0) [(t "chk24")]);
-      (Let (a "v29") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_trim_threshold"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 25)); (Arg P (t "v27")); (Arg P (t "v29"))]);
-      (Let (a "chk25") A (Check 0 8 Read 1) [(t "v27")]);
-      (Let (a "v30") L (RawLoad LdL 0) [(t "chk25")]);
-      (Let (a "v34") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_mmaps_max"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 18)); (Arg P (t "v32")); (Arg P (t "v34"))]);
-      (Let (a "chk26") A (Check 0 4 Read 1) [(t "v32")]);
-      (Let (a "v35") W (RawLoad (LdNarrow Sw) 0) [(t "chk26")]);
-      (Let (a "v39") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_arena_max"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 14)); (Arg P (t "v37")); (Arg P (t "v39"))]);
-      (Let (a "chk27") A (Check 0 8 Read 1) [(t "v37")]);
-      (Let (a "v40") L (RawLoad LdL 0) [(t "chk27")]);
-      (Let (a "v44") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_arena_test"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 15)); (Arg P (t "v42")); (Arg P (t "v44"))]);
-      (Let (a "chk28") A (Check 0 8 Read 1) [(t "v42")]);
-      (Let (a "v45") L (RawLoad LdL 0) [(t "chk28")]);
-      (Let (a "v49") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_tcache_max"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 23)); (Arg P (t "v47")); (Arg P (t "v49"))]);
-      (Let (a "chk29") A (Check 0 8 Read 1) [(t "v47")]);
-      (Let (a "v50") L (RawLoad LdL 0) [(t "chk29")]);
-      (Let (a "v54") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_tcache_count"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 22)); (Arg P (t "v52")); (Arg P (t "v54"))]);
-      (Let (a "chk30") A (Check 0 8 Read 1) [(t "v52")]);
-      (Let (a "v55") L (RawLoad LdL 0) [(t "chk30")]);
-      (Let (a "v59") P Copy [(Global (a "glibc_malloc#_dl_tunable_set_hugetlb"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 17)); (Arg P (t "v57")); (Arg P (t "v59"))]);
-      (Let (a "chk31") A (Check 0 8 Read 1) [(t "v57")]);
-      (Let (a "v60") L (RawLoad LdL 0) [(t "chk31")]);
-      (Let (a "v64") P Copy [(Global (a "glibc_malloc#mp_"))]);
-      (Flight (a "v65") Add [(FAddress (t "v64")); (FValue (Const 56))] (LowerOf (t "v64")));
-      (Let (a "chk32") A (Check 0 8 Read 1) [(t "v65")]);
-      (Let (a "v66") L (RawLoad LdL 0) [(t "chk32")]);
-      (Let (a "v67") W (Cmp Ugt L) [(t "v66"); (Const 0)])] (JBranch (t "v67") (To (a "L68")) (To (a "L69"))));
-  (mkBlock (a "L68") [] [(Let (a "v70") P Copy [(Global (a "glibc_malloc#mp_"))]);
-      (Flight (a "v71") Add [(FAddress (t "v70")); (FValue (Const 56))] (LowerOf (t "v70")));
-      (Let (a "chk33") A (Check 0 8 Read 1) [(t "v71")]);
-      (Let (a "v72") L (RawLoad LdL 0) [(t "chk33")]);
-      (Let (a "v74") W (Cmp Ule L) [(t "v72"); (Const 67108864)])] (JGoto (To (a "L69"))));
-  (mkBlock (a "L69") [(Phi (a "v76") W [((a "iw_2.L28"), (Const 0)); ((a "L68"), (t "v74"))])] [] (JBranch (t "v76") (To (a "L61")) (To (a "L63"))));
-  (mkBlock (a "L61") [] [(Call (CResult (a "v82") W) (Global (a "__tunable_is_initialized")) [(Arg W (Const 19))]);
-      (Let (a "v83") W (Ext Ub) [(t "v82")]);
-      (Let (a "v84") W (Cmp Eq W) [(t "v83"); (Const 0)])] (JBranch (t "v84") (To (a "L77")) (To (a "L79"))));
-  (mkBlock (a "L77") [] [(Let (a "v85") P Copy [(Global (a "glibc_malloc#mp_"))]);
-      (Flight (a "v86") Add [(FAddress (t "v85")); (FValue (Const 56))] (LowerOf (t "v85")));
-      (Let (a "chk34") A (Check 0 8 Read 1) [(t "v86")]);
-      (Let (a "v87") L (RawLoad LdL 0) [(t "chk34")]);
-      (Let (a "iw_4.v5") P Copy [(Global (a "glibc_malloc#mp_"))]);
-      (Flight (a "iw_4.v6") Add [(FAddress (t "iw_4.v5")); (FValue (Const 16))] (LowerOf (t "iw_4.v5")));
-      (Let (a "chk35") A (Check 0 8 Write 1) [(t "iw_4.v6")]);
-      (RawStore Wl 0 (t "v87") (t "chk35"));
-      (Let (a "iw_4.v8") P Copy [(Global (a "glibc_malloc#mp_"))]);
-      (Flight (a "iw_4.v9") Add [(FAddress (t "iw_4.v8")); (FValue (Const 80))] (LowerOf (t "iw_4.v8")));
-      (Let (a "chk36") A (Check 0 4 Write 1) [(t "iw_4.v9")]);
-      (RawStore Ww 0 (Const 1) (t "chk36"))] (JGoto (To (a "L79"))));
-  (mkBlock (a "L79") [] [(Let (a "v89") P Copy [(Global (a "glibc_malloc#__always_fail_morecore"))]);
-      (Let (a "chk37") A (Check 0 1 Write 1) [(t "v89")]);
-      (RawStore Wb 0 (Const 1) (t "chk37"))] (JGoto (To (a "L63"))));
-  (mkBlock (a "L63") [] [] JRetVoid)].
+  ir_fn{ "export" "__ptmalloc_init"() -> RVoid {
+  @"start":
+    %"v12" : P = (Alloc 8) #8;
+    %"v17" : P = (Alloc 4) #4;
+    %"v22" : P = (Alloc 8) #8;
+    %"v27" : P = (Alloc 8) #8;
+    %"v32" : P = (Alloc 4) #4;
+    %"v37" : P = (Alloc 8) #8;
+    %"v42" : P = (Alloc 8) #8;
+    %"v47" : P = (Alloc 8) #8;
+    %"v52" : P = (Alloc 8) #8;
+    %"v57" : P = (Alloc 8) #8;
+    %"iw_1.v3" : P = Copy $"glibc_malloc#tcache_key";
+    %"iw_1.iw_1.v7" : P = Copy $"__libc_errno";
+    %"chk0" : A = (Check 0 4 Read 1) %"iw_1.iw_1.v7";
+    %"iw_1.iw_1.v8" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    call %"iw_1.iw_1.v13" : L = $"zsys_getrandom"(P %"iw_1.v3", L #8, W #1);
+    %"iw_1.iw_1.v14" : P = Copy $"__libc_errno";
+    %"chk1" : A = (Check 0 4 Write 1) %"iw_1.iw_1.v14";
+    store Ww [%"chk1" + 0] <- %"iw_1.iw_1.v8";
+    %"iw_1.v5" : W = (Cmp Ne L) %"iw_1.iw_1.v13", #8
+    => br %"iw_1.v5" ? "iw_1.L0" : "iw_1.L12";
+  @"iw_1.L0":
+    %"iw_1.v6" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk2" : A = (Check 0 8 Write 1) %"iw_1.v6";
+    store Wl [%"chk2" + 0] <- #0
+    => goto "iw_1.L12";
+  @"iw_1.L12":
+    %"iw_1.v15" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk3" : A = (Check 0 8 Read 1) %"iw_1.v15";
+    %"iw_1.v16" : L = (RawLoad LdL 0) %"chk3";
+    %"iw_1.v17" : W = (Cmp Ule L) %"iw_1.v16", #16777216
+    => br %"iw_1.v17" ? "iw_1.L19" : "iw_1.L18";
+  @"iw_1.L18":
+    %"iw_1.v20" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk4" : A = (Check 0 8 Read 1) %"iw_1.v20";
+    %"iw_1.v21" : L = (RawLoad LdL 0) %"chk4";
+    %"iw_1.v25" : W = (Cmp Uge L) %"iw_1.v21", #18446744073692774399
+    => goto "iw_1.L19";
+  @"iw_1.L19" [%"iw_1.v27" : W = phi("iw_1.L12" => #1, "iw_1.L18" => %"iw_1.v25")]:
+    => br %"iw_1.v27" ? "iw_1.L29" : "iw_1.L28";
+  @"iw_1.L28":
+    %"iw_1.v30" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk5" : A = (Check 0 8 Read 1) %"iw_1.v30";
+    %"iw_1.v31" : L = (RawLoad LdL 0) %"chk5";
+    %"iw_1.iw_2.v3" : L = Shr %"iw_1.v31", #1;
+    %"iw_1.iw_2.v4" : L = And %"iw_1.iw_2.v3", #6148914691236517205;
+    %"iw_1.iw_2.v5" : L = Sub %"iw_1.v31", %"iw_1.iw_2.v4";
+    %"iw_1.iw_2.v6" : L = And %"iw_1.iw_2.v5", #3689348814741910323;
+    %"iw_1.iw_2.v7" : L = Shr %"iw_1.iw_2.v5", #2;
+    %"iw_1.iw_2.v8" : L = And %"iw_1.iw_2.v7", #3689348814741910323;
+    %"iw_1.iw_2.v9" : L = Add %"iw_1.iw_2.v6", %"iw_1.iw_2.v8";
+    %"iw_1.iw_2.v10" : L = Shr %"iw_1.iw_2.v9", #4;
+    %"iw_1.iw_2.v11" : L = Add %"iw_1.iw_2.v9", %"iw_1.iw_2.v10";
+    %"iw_1.iw_2.v12" : L = And %"iw_1.iw_2.v11", #1085102592571150095;
+    %"iw_1.iw_2.v13" : L = Mul %"iw_1.iw_2.v12", #72340172838076673;
+    %"iw_1.iw_2.v14" : L = Shr %"iw_1.iw_2.v13", #56
+    => goto "iw_1.iw_2.join";
+  @"iw_1.iw_2.join" [%"iw_1.v32" : W = phi("iw_1.L28" => %"iw_1.iw_2.v14")]:
+    %"iw_1.v34" : W = (Cmp Ult W) %"iw_1.v32", #16
+    => goto "iw_1.L29";
+  @"iw_1.L29" [%"iw_1.v36" : W = phi("iw_1.L19" => #1, "iw_1.iw_2.join" => %"iw_1.v34")]:
+    => br %"iw_1.v36" ? "iw_1.L38" : "iw_1.L37";
+  @"iw_1.L37":
+    %"iw_1.v39" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk6" : A = (Check 0 8 Read 1) %"iw_1.v39";
+    %"iw_1.v40" : L = (RawLoad LdL 0) %"chk6";
+    %"iw_1.iw_3.v3" : L = Shr %"iw_1.v40", #1;
+    %"iw_1.iw_3.v4" : L = And %"iw_1.iw_3.v3", #6148914691236517205;
+    %"iw_1.iw_3.v5" : L = Sub %"iw_1.v40", %"iw_1.iw_3.v4";
+    %"iw_1.iw_3.v6" : L = And %"iw_1.iw_3.v5", #3689348814741910323;
+    %"iw_1.iw_3.v7" : L = Shr %"iw_1.iw_3.v5", #2;
+    %"iw_1.iw_3.v8" : L = And %"iw_1.iw_3.v7", #3689348814741910323;
+    %"iw_1.iw_3.v9" : L = Add %"iw_1.iw_3.v6", %"iw_1.iw_3.v8";
+    %"iw_1.iw_3.v10" : L = Shr %"iw_1.iw_3.v9", #4;
+    %"iw_1.iw_3.v11" : L = Add %"iw_1.iw_3.v9", %"iw_1.iw_3.v10";
+    %"iw_1.iw_3.v12" : L = And %"iw_1.iw_3.v11", #1085102592571150095;
+    %"iw_1.iw_3.v13" : L = Mul %"iw_1.iw_3.v12", #72340172838076673;
+    %"iw_1.iw_3.v14" : L = Shr %"iw_1.iw_3.v13", #56
+    => goto "iw_1.iw_3.join";
+  @"iw_1.iw_3.join" [%"iw_1.v41" : W = phi("iw_1.L37" => %"iw_1.iw_3.v14")]:
+    %"iw_1.v43" : W = (Cmp Ugt W) %"iw_1.v41", #48
+    => goto "iw_1.L38";
+  @"iw_1.L38" [%"iw_1.v45" : W = phi("iw_1.L29" => #1, "iw_1.iw_3.join" => %"iw_1.v43")]:
+    => br %"iw_1.v45" ? "iw_1.L13" : "iw_1.join";
+  @"iw_1.L13":
+    %"iw_1.v46" : P = Copy $"glibc_malloc#tcache_key";
+    %"iw_1.iw_4.v0" : P = (Alloc 8) #16;
+    call %"iw_1.iw_4.v1" : W = $"__GI___clock_gettime"(W #1, P %"iw_1.iw_4.v0");
+    %"iw_1.iw_4.v3" = %"iw_1.iw_4.v0" +p #8;
+    %"chk7" : A = (Check 0 8 Read 1) %"iw_1.iw_4.v3";
+    %"iw_1.iw_4.v4" : L = (RawLoad LdL 0) %"chk7";
+    %"chk8" : A = (HalfCheck Lower 0 8 Read 1) %"chk7", %"iw_1.iw_4.v0";
+    %"iw_1.iw_4.v5" : L = (RawLoad LdL 0) %"chk8";
+    %"iw_1.iw_4.v6" : L = Xor %"iw_1.iw_4.v4", %"iw_1.iw_4.v5";
+    %"iw_1.iw_4.v7" : W = Copy %"iw_1.iw_4.v6";
+    %"iw_1.iw_4.v8" : W = Copy %"iw_1.iw_4.v6";
+    %"iw_1.iw_4.v9" : W = Shl %"iw_1.iw_4.v8", #24;
+    %"iw_1.iw_4.v10" : W = Copy %"iw_1.iw_4.v6";
+    %"iw_1.iw_4.v11" : W = Shr %"iw_1.iw_4.v10", #8;
+    %"iw_1.iw_4.v12" : W = Or %"iw_1.iw_4.v9", %"iw_1.iw_4.v11";
+    %"iw_1.iw_4.v13" : W = Xor %"iw_1.iw_4.v7", %"iw_1.iw_4.v12";
+    %"iw_1.v48" : L = (Ext Uw) %"iw_1.iw_4.v13";
+    %"chk9" : A = (Check 0 8 Write 1) %"iw_1.v46";
+    store Wl [%"chk9" + 0] <- %"iw_1.v48";
+    %"iw_1.v49" : P = Copy $"glibc_malloc#tcache_key";
+    %"iw_1.v50" : P = Copy $"glibc_malloc#tcache_key";
+    %"chk10" : A = (Check 0 8 Read 1) %"iw_1.v50";
+    %"iw_1.v51" : L = (RawLoad LdL 0) %"chk10";
+    %"iw_1.v52" : L = Shl %"iw_1.v51", #32;
+    %"iw_1.iw_5.v0" : P = (Alloc 8) #16;
+    call %"iw_1.iw_5.v1" : W = $"__GI___clock_gettime"(W #1, P %"iw_1.iw_5.v0");
+    %"iw_1.iw_5.v3" = %"iw_1.iw_5.v0" +p #8;
+    %"chk11" : A = (Check 0 8 Read 1) %"iw_1.iw_5.v3";
+    %"iw_1.iw_5.v4" : L = (RawLoad LdL 0) %"chk11";
+    %"chk12" : A = (HalfCheck Lower 0 8 Read 1) %"chk11", %"iw_1.iw_5.v0";
+    %"iw_1.iw_5.v5" : L = (RawLoad LdL 0) %"chk12";
+    %"iw_1.iw_5.v6" : L = Xor %"iw_1.iw_5.v4", %"iw_1.iw_5.v5";
+    %"iw_1.iw_5.v7" : W = Copy %"iw_1.iw_5.v6";
+    %"iw_1.iw_5.v8" : W = Copy %"iw_1.iw_5.v6";
+    %"iw_1.iw_5.v9" : W = Shl %"iw_1.iw_5.v8", #24;
+    %"iw_1.iw_5.v10" : W = Copy %"iw_1.iw_5.v6";
+    %"iw_1.iw_5.v11" : W = Shr %"iw_1.iw_5.v10", #8;
+    %"iw_1.iw_5.v12" : W = Or %"iw_1.iw_5.v9", %"iw_1.iw_5.v11";
+    %"iw_1.iw_5.v13" : W = Xor %"iw_1.iw_5.v7", %"iw_1.iw_5.v12";
+    %"iw_1.v54" : L = (Ext Uw) %"iw_1.iw_5.v13";
+    %"iw_1.v55" : L = Or %"iw_1.v52", %"iw_1.v54";
+    %"chk13" : A = (Check 0 8 Write 1) %"iw_1.v49";
+    store Wl [%"chk13" + 0] <- %"iw_1.v55"
+    => goto poll "iw_1.L12";
+  @"iw_1.join":
+    %"v3" : P = Copy $"__libc_initial";
+    %"chk14" : A = (Check 0 1 Read 1) %"v3";
+    %"v4" : W = (RawLoad (LdNarrow Ub) 0) %"chk14";
+    %"v5" : W = (Cmp Eq W) %"v4", #0
+    => br %"v5" ? "L0" : "L2";
+  @"L0":
+    %"v6" : P = Copy $"glibc_malloc#__always_fail_morecore";
+    %"chk15" : A = (Check 0 1 Write 1) %"v6";
+    store Wb [%"chk15" + 0] <- #1
+    => goto "L2";
+  @"L2":
+    %"v8" : P = Copy $"thread_arena";
+    %"v9" : P = Copy $"glibc_malloc#main_arena";
+    %"chk16" : A = (Check 0 8 Write 8) %"v8";
+    store.ptr [%"chk16" + 0] <- %"v9";
+    %"v10" : P = Copy $"glibc_malloc#main_arena"
+    => goto "iw_2.L4";
+  @"iw_2.L4" [%"iw_2.pr.1" : W = phi("iw_2.L5" => %"iw_2.v25", "L2" => #1)]:
+    %"iw_2.v9" : W = (Cmp Slt W) %"iw_2.pr.1", #128
+    => br %"iw_2.v9" ? "iw_2.L5" : "iw_2.L7";
+  @"iw_2.L5":
+    %"iw_2.v11" = %"v10" +p #24;
+    %"iw_2.v13" : W = Sub %"iw_2.pr.1", #1;
+    %"iw_2.v14" : W = Shl %"iw_2.v13", #1;
+    %"iw_2.v15" : L = (Ext Sw) %"iw_2.v14";
+    %"iw_2.v16" : L = Shl %"iw_2.v15", #3;
+    %"iw_2.v17" = %"iw_2.v11" +p %"iw_2.v16";
+    (Flight (a "iw_2.v18") Sub [(FAddress (t "iw_2.v17")); (FValue (Const 16))] (LowerOf (t "iw_2.v17")));
+    %"iw_2.v20" = %"iw_2.v18" +p #16;
+    %"iw_2.v22" = %"iw_2.v18" +p #24;
+    %"chk17" : A = (Check 0 8 Write 8) %"iw_2.v22";
+    store.ptr [%"chk17" + 0] <- %"iw_2.v18";
+    %"chk18" : A = (HalfCheck Lower 0 8 Write 8) %"chk17", %"iw_2.v20";
+    store.ptr [%"chk18" + 0] <- %"iw_2.v18";
+    %"iw_2.v25" : W = Add %"iw_2.pr.1", #1
+    => goto poll "iw_2.L4";
+  @"iw_2.L7":
+    %"iw_2.v30" : P = Copy $"glibc_malloc#main_arena";
+    %"iw_2.v31" : L = Ptoi %"v10";
+    %"iw_2.v32" : L = Ptoi %"iw_2.v30";
+    %"iw_2.v33" : W = (Cmp Ne L) %"iw_2.v31", %"iw_2.v32"
+    => br %"iw_2.v33" ? "iw_2.L26" : "iw_2.L28";
+  @"iw_2.L26":
+    %"iw_2.v35" = %"v10" +p #4;
+    %"chk19" : A = (Check 0 4 Read 1) %"iw_2.v35";
+    %"iw_2.v36" : W = (RawLoad (LdNarrow Sw) 0) %"chk19";
+    %"iw_2.v37" : W = Or %"iw_2.v36", #2;
+    %"chk20" : A = (Renew 0 4 Write 1) %"chk19", %"iw_2.v35";
+    store Ww [%"chk20" + 0] <- %"iw_2.v37"
+    => goto "iw_2.L28";
+  @"iw_2.L28":
+    %"iw_2.v39" = %"v10" +p #8;
+    %"iw_2.v41" = %"v10" +p #24;
+    (Flight (a "iw_2.v47") Sub [(FAddress (t "iw_2.v41")); (FValue (Const 16))] (LowerOf (t "iw_2.v41")));
+    %"chk21" : A = (Check 0 8 Write 8) %"iw_2.v39";
+    store.ptr [%"chk21" + 0] <- %"iw_2.v47";
+    %"v14" : P = Copy $"glibc_malloc#_dl_tunable_set_top_pad";
+    call void $"__tunable_get_val"(W #24, P %"v12", P %"v14");
+    %"chk22" : A = (Check 0 8 Read 1) %"v12";
+    %"v15" : L = (RawLoad LdL 0) %"chk22";
+    %"v19" : P = Copy $"glibc_malloc#_dl_tunable_set_perturb_byte";
+    call void $"__tunable_get_val"(W #21, P %"v17", P %"v19");
+    %"chk23" : A = (Check 0 4 Read 1) %"v17";
+    %"v20" : W = (RawLoad (LdNarrow Sw) 0) %"chk23";
+    %"v24" : P = Copy $"glibc_malloc#_dl_tunable_set_mmap_threshold";
+    call void $"__tunable_get_val"(W #19, P %"v22", P %"v24");
+    %"chk24" : A = (Check 0 8 Read 1) %"v22";
+    %"v25" : L = (RawLoad LdL 0) %"chk24";
+    %"v29" : P = Copy $"glibc_malloc#_dl_tunable_set_trim_threshold";
+    call void $"__tunable_get_val"(W #25, P %"v27", P %"v29");
+    %"chk25" : A = (Check 0 8 Read 1) %"v27";
+    %"v30" : L = (RawLoad LdL 0) %"chk25";
+    %"v34" : P = Copy $"glibc_malloc#_dl_tunable_set_mmaps_max";
+    call void $"__tunable_get_val"(W #18, P %"v32", P %"v34");
+    %"chk26" : A = (Check 0 4 Read 1) %"v32";
+    %"v35" : W = (RawLoad (LdNarrow Sw) 0) %"chk26";
+    %"v39" : P = Copy $"glibc_malloc#_dl_tunable_set_arena_max";
+    call void $"__tunable_get_val"(W #14, P %"v37", P %"v39");
+    %"chk27" : A = (Check 0 8 Read 1) %"v37";
+    %"v40" : L = (RawLoad LdL 0) %"chk27";
+    %"v44" : P = Copy $"glibc_malloc#_dl_tunable_set_arena_test";
+    call void $"__tunable_get_val"(W #15, P %"v42", P %"v44");
+    %"chk28" : A = (Check 0 8 Read 1) %"v42";
+    %"v45" : L = (RawLoad LdL 0) %"chk28";
+    %"v49" : P = Copy $"glibc_malloc#_dl_tunable_set_tcache_max";
+    call void $"__tunable_get_val"(W #23, P %"v47", P %"v49");
+    %"chk29" : A = (Check 0 8 Read 1) %"v47";
+    %"v50" : L = (RawLoad LdL 0) %"chk29";
+    %"v54" : P = Copy $"glibc_malloc#_dl_tunable_set_tcache_count";
+    call void $"__tunable_get_val"(W #22, P %"v52", P %"v54");
+    %"chk30" : A = (Check 0 8 Read 1) %"v52";
+    %"v55" : L = (RawLoad LdL 0) %"chk30";
+    %"v59" : P = Copy $"glibc_malloc#_dl_tunable_set_hugetlb";
+    call void $"__tunable_get_val"(W #17, P %"v57", P %"v59");
+    %"chk31" : A = (Check 0 8 Read 1) %"v57";
+    %"v60" : L = (RawLoad LdL 0) %"chk31";
+    %"v64" : P = Copy $"glibc_malloc#mp_";
+    %"v65" = %"v64" +p #56;
+    %"chk32" : A = (Check 0 8 Read 1) %"v65";
+    %"v66" : L = (RawLoad LdL 0) %"chk32";
+    %"v67" : W = (Cmp Ugt L) %"v66", #0
+    => br %"v67" ? "L68" : "L69";
+  @"L68":
+    %"v70" : P = Copy $"glibc_malloc#mp_";
+    %"v71" = %"v70" +p #56;
+    %"chk33" : A = (Check 0 8 Read 1) %"v71";
+    %"v72" : L = (RawLoad LdL 0) %"chk33";
+    %"v74" : W = (Cmp Ule L) %"v72", #67108864
+    => goto "L69";
+  @"L69" [%"v76" : W = phi("iw_2.L28" => #0, "L68" => %"v74")]:
+    => br %"v76" ? "L61" : "L63";
+  @"L61":
+    call %"v82" : W = $"__tunable_is_initialized"(W #19);
+    %"v83" : W = (Ext Ub) %"v82";
+    %"v84" : W = (Cmp Eq W) %"v83", #0
+    => br %"v84" ? "L77" : "L79";
+  @"L77":
+    %"v85" : P = Copy $"glibc_malloc#mp_";
+    %"v86" = %"v85" +p #56;
+    %"chk34" : A = (Check 0 8 Read 1) %"v86";
+    %"v87" : L = (RawLoad LdL 0) %"chk34";
+    %"iw_4.v5" : P = Copy $"glibc_malloc#mp_";
+    %"iw_4.v6" = %"iw_4.v5" +p #16;
+    %"chk35" : A = (Check 0 8 Write 1) %"iw_4.v6";
+    store Wl [%"chk35" + 0] <- %"v87";
+    %"iw_4.v8" : P = Copy $"glibc_malloc#mp_";
+    %"iw_4.v9" = %"iw_4.v8" +p #80;
+    %"chk36" : A = (Check 0 4 Write 1) %"iw_4.v9";
+    store Ww [%"chk36" + 0] <- #1
+    => goto "L79";
+  @"L79":
+    %"v89" : P = Copy $"glibc_malloc#__always_fail_morecore";
+    %"chk37" : A = (Check 0 1 Write 1) %"v89";
+    store Wb [%"chk37" + 0] <- #1
+    => goto "L63";
+  @"L63":
+    => ret void
+} }.
 
 Definition hi_fn___pthread_tunables_init : func :=
-  mkFunc (a "__pthread_tunables_init") (a "export") RVoid [] [(mkBlock (a "start") [] [(Let (a "v1") P (Alloc 4) [(Const 4)]);
-      (Let (a "v3") P Copy [(Global (a "glibc_pthread_mutex_conf#_dl_tunable_set_mutex_spin_count"))]);
-      (Call CVoid (Global (a "__tunable_get_val")) [(Arg W (Const 27)); (Arg P (t "v1")); (Arg P (t "v3"))]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v1")]);
-      (Let (a "v4") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")])] JRetVoid)].
+  ir_fn{ "export" "__pthread_tunables_init"() -> RVoid {
+  @"start":
+    %"v1" : P = (Alloc 4) #4;
+    %"v3" : P = Copy $"glibc_pthread_mutex_conf#_dl_tunable_set_mutex_spin_count";
+    call void $"__tunable_get_val"(W #27, P %"v1", P %"v3");
+    %"chk0" : A = (Check 0 4 Read 1) %"v1";
+    %"v4" : W = (RawLoad (LdNarrow Sw) 0) %"chk0"
+    => ret void
+} }.

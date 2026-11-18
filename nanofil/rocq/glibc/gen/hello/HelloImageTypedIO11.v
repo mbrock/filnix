@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -10,599 +11,1338 @@ Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
-Definition hello_image_fn___GI__IO_str_overflow : func :=
-  mkFunc (a "__GI__IO_str_overflow") (a "export") (RClass W) [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "v7") W (Cmp Eq W) [(t "v2"); (Const 4294967295)]);
-      (Let (a "chk0") A (Check 0 4 Read 1) [(t "v0")]);
-      (Let (a "v13") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v14") W And [(t "v13"); (Const 8)])] (JBranch (t "v14") (To (a "L9")) (To (a "L11"))));
-  (mkBlock (a "L9") [] [] (JBranch (t "v7") (To (a "L17")) (To (a "L16"))));
-  (mkBlock (a "L16") [] [] (JGoto (To (a "L17"))));
-  (mkBlock (a "L17") [(Phi (a "v20") W [((a "L16"), (Const 4294967295)); ((a "L9"), (Const 0))])] [] (JRet (t "v20")));
-  (mkBlock (a "L11") [] [(Let (a "v26") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v27") W And [(t "v26"); (Const 1024)])] (JBranch (t "v27") (To (a "L28")) (To (a "L29"))));
-  (mkBlock (a "L28") [] [(Let (a "v31") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v32") W And [(t "v31"); (Const 2048)]);
-      (Let (a "v33") W (Cmp Eq W) [(t "v32"); (Const 0)])] (JGoto (To (a "L29"))));
-  (mkBlock (a "L29") [(Phi (a "v35") W [((a "L11"), (Const 0)); ((a "L28"), (t "v33"))])] [] (JBranch (t "v35") (To (a "L22")) (To (a "L24"))));
-  (mkBlock (a "L22") [] [(Let (a "v37") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v38") W Or [(t "v37"); (Const 2048)]);
-      (Let (a "chk4") A (Renew 0 4 Write 1) [(t "chk0"); (t "v0")]);
-      (RawStore Ww 0 (t "v38") (t "chk4"));
-      (Flight (a "v40") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Flight (a "v42") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk5") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v42")]);
-      (Let (a "v43") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk5")]);
-      (Let (a "chk6") A (HalfCheck Upper 0 8 Write 8) [(t "chk0"); (t "v40")]);
-      (RawStorePointer 0 (t "v43") (t "chk6") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v47") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk7") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v47")]);
-      (Let (a "v48") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk7")]);
-      (Let (a "chk8") A (Renew 0 8 Write 8) [(t "chk5"); (t "v42")]);
-      (RawStorePointer 0 (t "v48") (t "chk8") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L24"))));
-  (mkBlock (a "L24") [] [(Flight (a "v50") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk9") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v50")]);
-      (Let (a "v51") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk9")]);
-      (Flight (a "v53") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk10") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v53")]);
-      (Let (a "v54") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk10")]);
-      (Let (a "v55") L Ptoi [(t "v51")]);
-      (Let (a "v56") L Ptoi [(t "v54")]);
-      (Let (a "v57") L Sub [(t "v55"); (t "v56")]);
-      (Flight (a "v63") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "chk11") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v63")]);
-      (Let (a "v64") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Flight (a "v66") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "v67") P (RawLoadPointer (-8) [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Let (a "v68") L Ptoi [(t "v64")]);
-      (Let (a "v69") L Ptoi [(t "v67")]);
-      (Let (a "v70") L Sub [(t "v68"); (t "v69")]);
-      (Let (a "v72") L (Ext Sw) [(t "v7")]);
-      (Let (a "v73") L Add [(t "v70"); (t "v72")]);
-      (Let (a "v74") W (Cmp Uge L) [(t "v57"); (t "v73")])] (JBranch (t "v74") (To (a "L58")) (To (a "L60"))));
-  (mkBlock (a "L58") [] [(Let (a "chk13") A (Renew 0 4 Read 1) [(t "chk0"); (t "v0")]);
-      (Let (a "v79") W (RawLoad (LdNarrow Sw) 0) [(t "chk13")]);
-      (Let (a "v80") W And [(t "v79"); (Const 1)])] (JBranch (t "v80") (To (a "L75")) (To (a "L76"))));
-  (mkBlock (a "L75") [] [] (JRet (Const 4294967295)));
-  (mkBlock (a "L76") [] [(Flight (a "v86") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "v87") P (RawLoadPointer (-8) [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Flight (a "v90") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "v91") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Let (a "v94") P (RawLoadPointer (-8) [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Let (a "v95") L Ptoi [(t "v91")]);
-      (Let (a "v96") L Ptoi [(t "v94")]);
-      (Let (a "v97") L Sub [(t "v95"); (t "v96")]);
-      (Let (a "v100") L Shl [(t "v97"); (Const 1)]);
-      (Let (a "v101") L Add [(t "v100"); (Const 100)]);
-      (Let (a "v107") W (Cmp Ult L) [(t "v101"); (t "v97")])] (JBranch (t "v107") (To (a "L102")) (To (a "L104"))));
-  (mkBlock (a "L102") [] [] (JRet (Const 4294967295)));
-  (mkBlock (a "L104") [] [(Call (CResult (a "v111") P) (Global (a "malloc")) [(Arg L (t "v101"))]);
-      (Let (a "v116") L Ptoi [(t "v111")]);
-      (Let (a "v117") L Ptoi [(Const 0)]);
-      (Let (a "v118") W (Cmp Eq L) [(t "v116"); (t "v117")])] (JBranch (t "v118") (To (a "L112")) (To (a "L114"))));
-  (mkBlock (a "L112") [] [] (JRet (Const 4294967295)));
-  (mkBlock (a "L114") [] [(Let (a "v125") L Ptoi [(t "v87")]);
-      (Let (a "v126") W (Cmp Ne L) [(t "v125"); (Const 0)])] (JBranch (t "v126") (To (a "L121")) (To (a "L123"))));
-  (mkBlock (a "L121") [] [(Call (CResult (a "v130") P) (Global (a "__GI_memcpy")) [(Arg P (t "v111")); (Arg P (t "v87")); (Arg L (t "v97"))]);
-      (Call CVoid (Global (a "free")) [(Arg P (t "v87"))]);
-      (Flight (a "v133") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk17") A (HalfCheck Upper 0 8 Write 8) [(t "chk0"); (t "v133")]);
-      (RawStorePointer 0 (Const 0) (t "chk17") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L123"))));
-  (mkBlock (a "L123") [] [(Flight (a "v136") Add [(FAddress (t "v111")); (FValue (t "v97"))] (LowerOf (t "v111")));
-      (Let (a "v139") L Sub [(t "v101"); (t "v97")]);
-      (Call (CResult (a "v140") P) (Global (a "__GI_memset")) [(Arg P (t "v136")); (Arg W (Const 0)); (Arg L (t "v139"))]);
-      (Flight (a "v145") Add [(FAddress (t "v111")); (FValue (t "v101"))] (LowerOf (t "v111")));
-      (Call CVoid (Global (a "__GI__IO_setb")) [(Arg P (t "v0")); (Arg P (t "v111")); (Arg P (t "v145")); (Arg W (Const 1))]);
-      (Flight (a "v147") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Let (a "chk18") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v147")]);
-      (Let (a "v151") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk18")]);
-      (Let (a "v153") L Ptoi [(t "v151")]);
-      (Let (a "v155") L Sub [(t "v153"); (t "v125")]);
-      (Flight (a "v156") Add [(FAddress (t "v111")); (FValue (t "v155"))] (LowerOf (t "v111")));
-      (Let (a "chk19") A (Renew 0 8 Write 8) [(t "chk18"); (t "v147")]);
-      (RawStorePointer 0 (t "v156") (t "chk19") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v158") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk20") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v158")]);
-      (Let (a "v162") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk20")]);
-      (Let (a "v164") L Ptoi [(t "v162")]);
-      (Let (a "v166") L Sub [(t "v164"); (t "v125")]);
-      (Flight (a "v167") Add [(FAddress (t "v111")); (FValue (t "v166"))] (LowerOf (t "v111")));
-      (Let (a "chk21") A (Renew 0 8 Write 8) [(t "chk20"); (t "v158")]);
-      (RawStorePointer 0 (t "v167") (t "chk21") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v169") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk22") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v169")]);
-      (Let (a "v173") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk22")]);
-      (Let (a "v175") L Ptoi [(t "v173")]);
-      (Let (a "v177") L Sub [(t "v175"); (t "v125")]);
-      (Flight (a "v178") Add [(FAddress (t "v111")); (FValue (t "v177"))] (LowerOf (t "v111")));
-      (Let (a "chk23") A (Renew 0 8 Write 8) [(t "chk22"); (t "v169")]);
-      (RawStorePointer 0 (t "v178") (t "chk23") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v180") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk24") A (Renew 0 8 Read 8) [(t "chk9"); (t "v180")]);
-      (Let (a "v184") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk24")]);
-      (Let (a "v186") L Ptoi [(t "v184")]);
-      (Let (a "v188") L Sub [(t "v186"); (t "v125")]);
-      (Flight (a "v189") Add [(FAddress (t "v111")); (FValue (t "v188"))] (LowerOf (t "v111")));
-      (Let (a "chk25") A (Renew 0 8 Write 8) [(t "chk9"); (t "v180")]);
-      (RawStorePointer 0 (t "v189") (t "chk25") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v191") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk26") A (Renew 0 8 Write 8) [(t "chk10"); (t "v191")]);
-      (RawStorePointer 0 (t "v111") (t "chk26") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v194") Add [(FAddress (t "v0")); (FValue (Const 48))] (LowerOf (t "v0")));
-      (Flight (a "v196") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "chk27") A (Renew 0 8 Read 8) [(t "chk11"); (t "v196")]);
-      (Let (a "v197") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk27")]);
-      (Let (a "chk28") A (HalfCheck Upper 0 8 Write 8) [(t "chk0"); (t "v194")]);
-      (RawStorePointer 0 (t "v197") (t "chk28") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L60"))));
-  (mkBlock (a "L60") [] [(Let (a "v202") W (Cmp Ne W) [(t "v2"); (Const 4294967295)])] (JBranch (t "v202") (To (a "L198")) (To (a "L200"))));
-  (mkBlock (a "L198") [] [(Flight (a "v204") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk29") A (Renew 0 8 Read 8) [(t "chk9"); (t "v204")]);
-      (Let (a "v205") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk29")]);
-      (Flight (a "v206") Add [(FAddress (t "v205")); (FValue (Const 1))] (LowerOf (t "v205")));
-      (Let (a "chk30") A (Renew 0 8 Write 8) [(t "chk9"); (t "v204")]);
-      (RawStorePointer 0 (t "v206") (t "chk30") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v208") W (Ext Ub) [(t "v2")]);
-      (Let (a "v209") W (Ext Sb) [(t "v208")]);
-      (Let (a "chk31") A (Check 0 1 Write 1) [(t "v205")]);
-      (RawStore Wb 0 (t "v209") (t "chk31"))] (JGoto (To (a "L200"))));
-  (mkBlock (a "L200") [] [(Flight (a "v214") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk32") A (Renew 0 8 Read 8) [(t "chk9"); (t "v214")]);
-      (Let (a "v215") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk32")]);
-      (Flight (a "v217") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk33") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v217")]);
-      (Let (a "v218") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk33")]);
-      (Let (a "v219") L Ptoi [(t "v215")]);
-      (Let (a "v220") L Ptoi [(t "v218")]);
-      (Let (a "v221") W (Cmp Ugt L) [(t "v219"); (t "v220")])] (JBranch (t "v221") (To (a "L210")) (To (a "L212"))));
-  (mkBlock (a "L210") [] [(Flight (a "v223") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Flight (a "v225") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "v226") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk32")]);
-      (Let (a "chk35") A (Renew 0 8 Write 8) [(t "chk33"); (t "v223")]);
-      (RawStorePointer 0 (t "v226") (t "chk35") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L212"))));
-  (mkBlock (a "L212") [] [] (JBranch (t "v7") (To (a "L227")) (To (a "L228"))));
-  (mkBlock (a "L227") [] [] (JRet (Const 0)));
-  (mkBlock (a "L228") [] [] (JRet (t "v2")))].
+Definition hello_image_fn___GI__IO_wfile_xsputn : func :=
+  ir_fn{ "export" "__GI__IO_wfile_xsputn"(P %"v0", P %"v2", L %"v4") -> (RClass L) {
+  @"start":
+    %"v16" : W = (Cmp Ule L) %"v4", #0
+    => br %"v16" ? "L12" : "L14";
+  @"L12":
+    => ret #0;
+  @"L14":
+    %"chk0" : A = (Check 0 4 Read 1) %"v0";
+    %"v22" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v23" : W = And %"v22", #512
+    => br %"v23" ? "L24" : "L25";
+  @"L24":
+    %"v27" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v28" : W = And %"v27", #2048;
+    %"v29" : W = (Cmp Ne W) %"v28", #0
+    => goto "L25";
+  @"L25" [%"v30" : W = phi("L14" => #0, "L24" => %"v29")]:
+    => br %"v30" ? "L18" : "L19";
+  @"L18":
+    %"v32" = %"v0" +p #160;
+    %"chk2" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v32";
+    %"v33" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v34" = %"v33" +p #56;
+    %"chk3" : A = (Check 0 8 Read 8) %"v34";
+    %"v35" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v38" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v39" = %"v38" +p #32;
+    %"chk5" : A = (Check 0 8 Read 8) %"v39";
+    %"v40" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v41" : L = Ptoi %"v35";
+    %"v42" : L = Ptoi %"v40";
+    %"v43" : L = Sub %"v41", %"v42";
+    %"v44" : L = Div %"v43", #4;
+    %"v50" : W = (Cmp Uge L) %"v44", %"v4"
+    => br %"v50" ? "L45" : "L20";
+  @"L45":
+    %"v54" : L = Shl %"v4", #2;
+    %"v55" = %"v2" +p %"v54"
+    => goto "L56";
+  @"L56" [%"pr.14" : P = phi("L45" => %"v55", "L57" => %"v69")]:
+    %"v62" : L = Ptoi %"pr.14";
+    %"v63" : L = Ptoi %"v2";
+    %"v64" : W = (Cmp Ugt L) %"v62", %"v63"
+    => br %"v64" ? "L57" : "L20";
+  @"L57":
+    (Flight (a "v69") Sub [(FAddress (t "pr.14")); (FValue (Const 4))] (LowerOf (t "pr.14")));
+    %"chk6" : A = (Check 0 4 Read 1) %"v69";
+    %"v70" : W = (RawLoad (LdNarrow Sw) 0) %"chk6";
+    %"v71" : W = (Cmp Eq W) %"v70", #10
+    => br %"v71" ? "L65" : poll "L56";
+  @"L65":
+    %"v74" : L = Ptoi %"v69";
+    %"v76" : L = Sub %"v74", %"v63";
+    %"v77" : L = Div %"v76", #4;
+    %"v78" : L = Add %"v77", #1
+    => goto "L20";
+  @"L19":
+    %"v84" = %"v0" +p #160;
+    %"chk7" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v84";
+    %"v85" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v86" = %"v85" +p #40;
+    %"chk8" : A = (Check 0 8 Read 8) %"v86";
+    %"v87" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"v90" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v91" = %"v90" +p #32;
+    %"chk10" : A = (Check 0 8 Read 8) %"v91";
+    %"v92" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v93" : L = Ptoi %"v87";
+    %"v94" : L = Ptoi %"v92";
+    %"v95" : W = (Cmp Ugt L) %"v93", %"v94"
+    => br %"v95" ? "L80" : "L20";
+  @"L80":
+    %"v97" = %"v0" +p #160;
+    %"v98" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v99" = %"v98" +p #40;
+    %"chk12" : A = (Check 0 8 Read 8) %"v99";
+    %"v100" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    %"v103" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v104" = %"v103" +p #32;
+    %"chk14" : A = (Check 0 8 Read 8) %"v104";
+    %"v105" : P = (RawLoadPointer 0 load_effects) %"chk14";
+    %"v106" : L = Ptoi %"v100";
+    %"v107" : L = Ptoi %"v105";
+    %"v108" : L = Sub %"v106", %"v107";
+    %"v109" : L = Div %"v108", #4
+    => goto "L20";
+  @"L20" [%"pr.10" : L = phi("L56" => %"v44", "L65" => %"v78", "L18" => %"v44", "L80" => %"v109", "L19" => #0); %"pr.6" : W = phi("L56" => #0, "L65" => #1, "L18" => #0, "L80" => #0, "L19" => #0)]:
+    %"v114" : W = (Cmp Ugt L) %"pr.10", #0
+    => br %"v114" ? "L110" : "L112";
+  @"L110":
+    %"v120" : W = (Cmp Ugt L) %"pr.10", %"v4"
+    => br %"v120" ? "L117" : "L116";
+  @"L116":
+    => goto "L117";
+  @"L117" [%"pr.9" : L = phi("L116" => %"pr.10", "L110" => %"v4")]:
+    %"v126" : W = (Cmp Ugt L) %"pr.9", #20
+    => br %"v126" ? "L122" : "L123";
+  @"L122":
+    %"v128" = %"v0" +p #160;
+    %"chk15" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v128";
+    %"v129" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"v130" = %"v129" +p #32;
+    %"v133" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"v134" = %"v133" +p #32;
+    %"chk17" : A = (Check 0 8 Read 8) %"v134";
+    %"v135" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    call %"v138" : P = $"__wmempcpy"(P %"v135", P %"v2", L %"pr.9");
+    %"chk18" : A = (Check 0 8 Write 8) %"v130";
+    store.ptr [%"chk18" + 0] <- %"v138";
+    %"v141" : L = Shl %"pr.9", #2;
+    %"v142" = %"v2" +p %"v141"
+    => goto "L124";
+  @"L123":
+    %"v145" = %"v0" +p #160;
+    %"chk19" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v145";
+    %"v146" : P = (RawLoadPointer 0 load_effects) %"chk19";
+    %"v147" = %"v146" +p #32;
+    %"chk20" : A = (Check 0 8 Read 8) %"v147";
+    %"v148" : P = (RawLoadPointer 0 load_effects) %"chk20"
+    => goto "L151";
+  @"L151" [%"pr.16" : W = phi("L123" => %"pr.9", "L152" => %"v155"); %"pr.15" : P = phi("L123" => %"v148", "L152" => %"v158"); %"pr.3" : P = phi("L123" => %"v2", "L152" => %"v160")]:
+    %"v155" : W = Sub %"pr.16", #1;
+    %"v156" : W = (Cmp Sge W) %"v155", #0
+    => br %"v156" ? "L152" : "L153";
+  @"L152":
+    %"v158" = %"pr.15" +p #4;
+    %"v160" = %"pr.3" +p #4;
+    %"chk21" : A = (Check 0 4 Read 1) %"pr.3";
+    %"v161" : W = (RawLoad (LdNarrow Sw) 0) %"chk21";
+    %"chk22" : A = (Check 0 4 Write 1) %"pr.15";
+    store Ww [%"chk22" + 0] <- %"v161"
+    => goto poll "L151";
+  @"L153":
+    %"v163" = %"v0" +p #160;
+    %"chk23" : A = (Renew 0 8 Read 8) %"chk19", %"v163";
+    %"v164" : P = (RawLoadPointer 0 load_effects) %"chk23";
+    %"v165" = %"v164" +p #32;
+    %"chk24" : A = (Check 0 8 Write 8) %"v165";
+    store.ptr [%"chk24" + 0] <- %"pr.15"
+    => goto "L124";
+  @"L124" [%"pr.2" : P = phi("L122" => %"v142", "L153" => %"pr.3")]:
+    %"v169" : L = Sub %"v4", %"pr.9"
+    => goto "L112";
+  @"L112" [%"pr.4" : L = phi("L124" => %"v169", "L20" => %"v4"); %"pr.1" : P = phi("L124" => %"pr.2", "L20" => %"v2")]:
+    %"v174" : W = (Cmp Ugt L) %"pr.4", #0
+    => br %"v174" ? "L170" : "L172";
+  @"L170":
+    call %"v179" : L = $"__GI__IO_wdefault_xsputn"(P %"v0", P %"pr.1", L %"pr.4");
+    %"v180" : L = Sub %"pr.4", %"v179"
+    => goto "L172";
+  @"L172" [%"pr.5" : L = phi("L170" => %"v180", "L112" => %"pr.4")]:
+    => br %"pr.6" ? "L185" : "L186";
+  @"L185":
+    %"v188" = %"v0" +p #160;
+    %"chk25" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v188";
+    %"v189" : P = (RawLoadPointer 0 load_effects) %"chk25";
+    %"v190" = %"v189" +p #32;
+    %"chk26" : A = (Check 0 8 Read 8) %"v190";
+    %"v191" : P = (RawLoadPointer 0 load_effects) %"chk26";
+    %"v194" : P = (RawLoadPointer 0 load_effects) %"chk25";
+    %"v195" = %"v194" +p #24;
+    %"chk28" : A = (Check 0 8 Read 8) %"v195";
+    %"v196" : P = (RawLoadPointer 0 load_effects) %"chk28";
+    %"v197" : L = Ptoi %"v191";
+    %"v198" : L = Ptoi %"v196";
+    %"v199" : W = (Cmp Ne L) %"v197", %"v198"
+    => goto "L186";
+  @"L186" [%"v201" : W = phi("L172" => #0, "L185" => %"v199")]:
+    => br %"v201" ? "L181" : "L183";
+  @"L181":
+    %"v204" = %"v0" +p #160;
+    %"chk29" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v204";
+    %"v205" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v206" = %"v205" +p #24;
+    %"chk30" : A = (Check 0 8 Read 8) %"v206";
+    %"v207" : P = (RawLoadPointer 0 load_effects) %"chk30";
+    %"v210" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v211" = %"v210" +p #32;
+    %"chk32" : A = (Check 0 8 Read 8) %"v211";
+    %"v212" : P = (RawLoadPointer 0 load_effects) %"chk32";
+    %"v215" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v216" = %"v215" +p #24;
+    %"chk34" : A = (Check 0 8 Read 8) %"v216";
+    %"v217" : P = (RawLoadPointer 0 load_effects) %"chk34";
+    %"v218" : L = Ptoi %"v212";
+    %"v219" : L = Ptoi %"v217";
+    %"v220" : L = Sub %"v218", %"v219";
+    %"v221" : L = Div %"v220", #4;
+    call %"v222" : W = $"__GI__IO_wdo_write"(P %"v0", P %"v207", L %"v221")
+    => goto "L183";
+  @"L183":
+    %"v225" : L = Sub %"v4", %"pr.5"
+    => ret %"v225"
+} }.
 
-Definition hello_image_fn___GI__IO_str_underflow : func :=
-  mkFunc (a "__GI__IO_str_underflow") (a "export") (RClass W) [(P, (a "v0"))] [(mkBlock (a "start") [] [(Flight (a "v6") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v6")]);
-      (Let (a "v7") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Flight (a "v9") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk1") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v9")]);
-      (Let (a "v10") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Let (a "v11") L Ptoi [(t "v7")]);
-      (Let (a "v12") L Ptoi [(t "v10")]);
-      (Let (a "v13") W (Cmp Ugt L) [(t "v11"); (t "v12")])] (JBranch (t "v13") (To (a "L2")) (To (a "L4"))));
-  (mkBlock (a "L2") [] [(Flight (a "v15") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Flight (a "v17") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "v18") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "chk3") A (Renew 0 8 Write 8) [(t "chk1"); (t "v15")]);
-      (RawStorePointer 0 (t "v18") (t "chk3") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L4"))));
-  (mkBlock (a "L4") [] [(Let (a "chk4") A (HalfCheck Lower 0 4 Read 1) [(t "chk0"); (t "v0")]);
-      (Let (a "v23") W (RawLoad (LdNarrow Sw) 0) [(t "chk4")]);
-      (Let (a "v24") W And [(t "v23"); (Const 1024)])] (JBranch (t "v24") (To (a "L25")) (To (a "L26"))));
-  (mkBlock (a "L25") [] [(Let (a "v28") W (RawLoad (LdNarrow Sw) 0) [(t "chk4")]);
-      (Let (a "v29") W And [(t "v28"); (Const 2048)]);
-      (Let (a "v30") W (Cmp Ne W) [(t "v29"); (Const 0)])] (JGoto (To (a "L26"))));
-  (mkBlock (a "L26") [(Phi (a "v31") W [((a "L4"), (Const 0)); ((a "L25"), (t "v30"))])] [] (JBranch (t "v31") (To (a "L19")) (To (a "L21"))));
-  (mkBlock (a "L19") [] [(Let (a "v33") W (RawLoad (LdNarrow Sw) 0) [(t "chk4")]);
-      (Let (a "v35") W And [(t "v33"); (Const 4294965247)]);
-      (Let (a "chk7") A (Renew 0 4 Write 1) [(t "chk4"); (t "v0")]);
-      (RawStore Ww 0 (t "v35") (t "chk7"));
-      (Flight (a "v37") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "v39") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk8") A (Renew 0 8 Read 8) [(t "chk0"); (t "v39")]);
-      (Let (a "v40") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk8")]);
-      (Let (a "chk9") A (HalfCheck Lower 0 8 Write 8) [(t "chk0"); (t "v37")]);
-      (RawStorePointer 0 (t "v40") (t "chk9") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v44") Add [(FAddress (t "v0")); (FValue (Const 48))] (LowerOf (t "v0")));
-      (Let (a "chk10") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v44")]);
-      (Let (a "v45") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk10")]);
-      (Let (a "chk11") A (Renew 0 8 Write 8) [(t "chk0"); (t "v39")]);
-      (RawStorePointer 0 (t "v45") (t "chk11") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L21"))));
-  (mkBlock (a "L21") [] [(Flight (a "v50") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk12") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v50")]);
-      (Let (a "v51") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk12")]);
-      (Flight (a "v53") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk13") A (Renew 0 8 Read 8) [(t "chk1"); (t "v53")]);
-      (Let (a "v54") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk13")]);
-      (Let (a "v55") L Ptoi [(t "v51")]);
-      (Let (a "v56") L Ptoi [(t "v54")]);
-      (Let (a "v57") W (Cmp Ult L) [(t "v55"); (t "v56")])] (JBranch (t "v57") (To (a "L46")) (To (a "L47"))));
-  (mkBlock (a "L46") [] [(Flight (a "v59") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "v60") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk12")]);
-      (Let (a "chk15") A (Check 0 1 Read 1) [(t "v60")]);
-      (Let (a "v61") W (RawLoad (LdNarrow Ub) 0) [(t "chk15")])] (JRet (t "v61")));
-  (mkBlock (a "L47") [] [] (JRet (Const 4294967295)))].
+Definition hello_image_fn___GI__IO_least_wmarker : func :=
+  ir_fn{ "export" "__GI__IO_least_wmarker"(P %"v0", P %"v2") -> (RClass L) {
+  @"start":
+    %"v7" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v7";
+    %"v8" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v9" = %"v8" +p #16;
+    %"chk1" : A = (Check 0 8 Read 8) %"v9";
+    %"v10" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v11" : L = Ptoi %"v2";
+    %"v12" : L = Ptoi %"v10";
+    %"v13" : L = Sub %"v11", %"v12";
+    %"v14" : L = Div %"v13", #4;
+    %"v17" = %"v0" +p #96;
+    %"chk2" : A = (HalfCheck Lower 0 8 Read 8) %"chk0", %"v17";
+    %"v18" : P = (RawLoadPointer 0 load_effects) %"chk2"
+    => goto "L19";
+  @"L19" [%"pr.3" : P = phi("L29" => %"v41", "start" => %"v18"); %"pr.1" : L = phi("L29" => %"pr.2", "start" => %"v14")]:
+    %"v24" : L = Ptoi %"pr.3";
+    %"v25" : L = Ptoi #0;
+    %"v26" : W = (Cmp Ne L) %"v24", %"v25"
+    => br %"v26" ? "L20" : "L22";
+  @"L20":
+    %"v31" = %"pr.3" +p #16;
+    %"chk3" : A = (Check 0 4 Read 1) %"v31";
+    %"v32" : W = (RawLoad (LdNarrow Sw) 0) %"chk3";
+    %"v34" : L = (Ext Sw) %"v32";
+    %"v35" : W = (Cmp Slt L) %"v34", %"pr.1"
+    => br %"v35" ? "L27" : "L29";
+  @"L27":
+    %"v37" = %"pr.3" +p #16;
+    %"v38" : W = (RawLoad (LdNarrow Sw) 0) %"chk3";
+    %"v39" : L = (Ext Sw) %"v38"
+    => goto "L29";
+  @"L29" [%"pr.2" : L = phi("L27" => %"v39", "L20" => %"pr.1")]:
+    %"chk5" : A = (HalfCheck Lower 0 8 Read 8) %"chk3", %"pr.3";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk5"
+    => goto poll "L19";
+  @"L22":
+    => ret %"pr.1"
+} }.
 
-Definition hello_image_fn__IO_str_count : func :=
-  mkFunc (a "_IO_str_count") (a "export") (RClass L) [(P, (a "v0"))] [(mkBlock (a "start") [] [(Flight (a "v6") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v6")]);
-      (Let (a "v7") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Flight (a "v9") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk1") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v9")]);
-      (Let (a "v10") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Let (a "v11") L Ptoi [(t "v7")]);
-      (Let (a "v12") L Ptoi [(t "v10")]);
-      (Let (a "v13") W (Cmp Ugt L) [(t "v11"); (t "v12")])] (JBranch (t "v13") (To (a "L2")) (To (a "L3"))));
-  (mkBlock (a "L2") [] [(Flight (a "v15") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "v16") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")])] (JGoto (To (a "L4"))));
-  (mkBlock (a "L3") [] [(Flight (a "v18") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "v19") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")])] (JGoto (To (a "L4"))));
-  (mkBlock (a "L4") [(Phi (a "v20") P [((a "L2"), (t "v16")); ((a "L3"), (t "v19"))])] [(Flight (a "v22") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Let (a "v23") P (RawLoadPointer 8 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Let (a "v24") L Ptoi [(t "v20")]);
-      (Let (a "v25") L Ptoi [(t "v23")]);
-      (Let (a "v26") L Sub [(t "v24"); (t "v25")])] (JRet (t "v26")))].
+Definition hello_image_fn___GI__IO_switch_to_main_wget_area : func :=
+  ir_fn{ "export" "__GI__IO_switch_to_main_wget_area"(P %"v0") -> RVoid {
+  @"start":
+    %"chk0" : A = (Check 0 4 Read 1) %"v0";
+    %"v4" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v6" : W = And %"v4", #4294967039;
+    %"chk1" : A = (Renew 0 4 Write 1) %"chk0", %"v0";
+    store Ww [%"chk1" + 0] <- %"v6";
+    %"v8" = %"v0" +p #160;
+    %"chk2" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v8";
+    %"v9" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v10" = %"v9" +p #8;
+    %"chk3" : A = (Check 0 8 Read 8) %"v10";
+    %"v11" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v14" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v15" = %"v14" +p #8;
+    %"v18" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v19" = %"v18" +p #80;
+    %"chk6" : A = (Check 0 8 Read 8) %"v19";
+    %"v20" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"chk7" : A = (Check 0 8 Write 8) %"v15";
+    store.ptr [%"chk7" + 0] <- %"v20";
+    %"chk8" : A = (Renew 0 8 Read 8) %"chk2", %"v8";
+    %"v23" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"v24" = %"v23" +p #80;
+    %"chk9" : A = (Check 0 8 Write 8) %"v24";
+    store.ptr [%"chk9" + 0] <- %"v11";
+    %"chk10" : A = (Renew 0 8 Read 8) %"chk2", %"v8";
+    %"v28" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v29" = %"v28" +p #16;
+    %"chk11" : A = (Check 0 8 Read 8) %"v29";
+    %"v30" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    %"v33" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v34" = %"v33" +p #16;
+    %"v37" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v38" = %"v37" +p #64;
+    %"chk14" : A = (Check 0 8 Read 8) %"v38";
+    %"v39" : P = (RawLoadPointer 0 load_effects) %"chk14";
+    %"chk15" : A = (Check 0 8 Write 8) %"v34";
+    store.ptr [%"chk15" + 0] <- %"v39";
+    %"chk16" : A = (Renew 0 8 Read 8) %"chk2", %"v8";
+    %"v42" : P = (RawLoadPointer 0 load_effects) %"chk16";
+    %"v43" = %"v42" +p #64;
+    %"chk17" : A = (Check 0 8 Write 8) %"v43";
+    store.ptr [%"chk17" + 0] <- %"v30";
+    %"chk18" : A = (Renew 0 8 Read 8) %"chk2", %"v8";
+    %"v47" : P = (RawLoadPointer 0 load_effects) %"chk18";
+    %"v50" : P = (RawLoadPointer 0 load_effects) %"chk18";
+    %"v51" = %"v50" +p #16;
+    %"chk20" : A = (Check 0 8 Read 8) %"v51";
+    %"v52" : P = (RawLoadPointer 0 load_effects) %"chk20";
+    %"chk21" : A = (Check 0 8 Write 8) %"v47";
+    store.ptr [%"chk21" + 0] <- %"v52"
+    => ret void
+} }.
 
-Definition hello_image_fn___GI__IO_str_seekoff : func :=
-  mkFunc (a "__GI__IO_str_seekoff") (a "export") (RClass L) [(P, (a "v0")); (L, (a "v2")); (W, (a "v4")); (W, (a "v6"))] [(mkBlock (a "start") [] [(Let (a "v13") W (Cmp Eq W) [(t "v6"); (Const 0)])] (JBranch (t "v13") (To (a "L14")) (To (a "L15"))));
-  (mkBlock (a "L14") [] [(Let (a "chk0") A (Check 0 4 Read 1) [(t "v0")]);
-      (Let (a "v17") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v18") W And [(t "v17"); (Const 1024)]);
-      (Let (a "v19") W (Cmp Ne W) [(t "v18"); (Const 0)])] (JGoto (To (a "L15"))));
-  (mkBlock (a "L15") [(Phi (a "v20") W [((a "start"), (Const 0)); ((a "L14"), (t "v19"))])] [] (JBranch (t "v20") (To (a "L9")) (To (a "L11"))));
-  (mkBlock (a "L9") [] [(Let (a "chk1") A (Check 0 4 Read 1) [(t "v0")]);
-      (Let (a "v25") W (RawLoad (LdNarrow Sw) 0) [(t "chk1")]);
-      (Let (a "v26") W And [(t "v25"); (Const 2048)])] (JBranch (t "v26") (To (a "L11")) (To (a "L22"))));
-  (mkBlock (a "L22") [] [] (JGoto (To (a "L11"))));
-  (mkBlock (a "L11") [(Phi (a "pr.1") W [((a "L22"), (Const 1)); ((a "L9"), (Const 2)); ((a "L15"), (t "v6"))])] [(Flight (a "v30") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk2") A (Check 0 8 Read 8) [(t "v30")]);
-      (Let (a "v31") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Flight (a "v33") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk3") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v33")]);
-      (Let (a "v34") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk3")]);
-      (Let (a "v35") L Ptoi [(t "v31")]);
-      (Let (a "v36") L Ptoi [(t "v34")]);
-      (Let (a "v37") W (Cmp Ugt L) [(t "v35"); (t "v36")])] (JBranch (t "v37") (To (a "L39")) (To (a "L38"))));
-  (mkBlock (a "L38") [] [(Let (a "chk4") A (HalfCheck Lower 0 4 Read 1) [(t "chk2"); (t "v0")]);
-      (Let (a "v41") W (RawLoad (LdNarrow Sw) 0) [(t "chk4")]);
-      (Let (a "v42") W And [(t "v41"); (Const 2048)]);
-      (Let (a "v43") W (Cmp Ne W) [(t "v42"); (Const 0)])] (JGoto (To (a "L39"))));
-  (mkBlock (a "L39") [(Phi (a "v44") W [((a "L11"), (Const 1)); ((a "L38"), (t "v43"))])] [] (JBranch (t "v44") (To (a "iw_1.start")) (To (a "L48"))));
-  (mkBlock (a "iw_1.start") [] [(Let (a "chk5") A (HalfCheck Lower 0 4 Read 1) [(t "chk2"); (t "v0")]);
-      (Let (a "iw_1.v6") W (RawLoad (LdNarrow Sw) 0) [(t "chk5")]);
-      (Let (a "iw_1.v7") W And [(t "iw_1.v6"); (Const 256)])] (JBranch (t "iw_1.v7") (To (a "iw_1.L2")) (To (a "iw_1.L3"))));
-  (mkBlock (a "iw_1.L2") [] [(Flight (a "iw_1.v9") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Flight (a "iw_1.v11") Add [(FAddress (t "v0")); (FValue (Const 80))] (LowerOf (t "v0")));
-      (Let (a "chk6") A (HalfCheck Upper 0 8 Read 8) [(t "chk2"); (t "iw_1.v11")]);
-      (Let (a "iw_1.v12") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk6")]);
-      (Let (a "chk7") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "iw_1.v9")]);
-      (RawStorePointer 0 (t "iw_1.v12") (t "chk7") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "iw_1.L4"))));
-  (mkBlock (a "iw_1.L3") [] [(Flight (a "iw_1.v14") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Flight (a "iw_1.v16") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk8") A (HalfCheck Upper 0 8 Read 8) [(t "chk2"); (t "iw_1.v16")]);
-      (Let (a "iw_1.v17") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk8")]);
-      (Let (a "chk9") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "iw_1.v14")]);
-      (RawStorePointer 0 (t "iw_1.v17") (t "chk9") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "iw_1.v22") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk10") A (Renew 0 8 Read 8) [(t "chk2"); (t "iw_1.v22")]);
-      (Let (a "iw_1.v23") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk10")]);
-      (Flight (a "iw_1.v25") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk11") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "iw_1.v25")]);
-      (Let (a "iw_1.v26") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk11")]);
-      (Let (a "iw_1.v27") L Ptoi [(t "iw_1.v23")]);
-      (Let (a "iw_1.v28") L Ptoi [(t "iw_1.v26")]);
-      (Let (a "iw_1.v29") W (Cmp Ugt L) [(t "iw_1.v27"); (t "iw_1.v28")])] (JBranch (t "iw_1.v29") (To (a "iw_1.L18")) (To (a "iw_1.L4"))));
-  (mkBlock (a "iw_1.L18") [] [(Flight (a "iw_1.v31") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Flight (a "iw_1.v33") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "iw_1.v34") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk10")]);
-      (Let (a "chk13") A (Renew 0 8 Write 8) [(t "chk11"); (t "iw_1.v31")]);
-      (RawStorePointer 0 (t "iw_1.v34") (t "chk13") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "iw_1.L4"))));
-  (mkBlock (a "iw_1.L4") [] [(Flight (a "iw_1.v36") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "iw_1.v38") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Flight (a "iw_1.v40") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk14") A (Renew 0 8 Read 8) [(t "chk2"); (t "iw_1.v40")]);
-      (Let (a "iw_1.v41") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk14")]);
-      (Let (a "chk15") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "iw_1.v38")]);
-      (RawStorePointer 0 (t "iw_1.v41") (t "chk15") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk16") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "iw_1.v36")]);
-      (RawStorePointer 0 (t "iw_1.v41") (t "chk16") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk17") A (Renew 0 4 Read 1) [(t "chk5"); (t "v0")]);
-      (Let (a "iw_1.v43") W (RawLoad (LdNarrow Sw) 0) [(t "chk17")]);
-      (Let (a "iw_1.v45") W And [(t "iw_1.v43"); (Const 4294965247)]);
-      (Let (a "chk18") A (Renew 0 4 Write 1) [(t "chk5"); (t "v0")]);
-      (RawStore Ww 0 (t "iw_1.v45") (t "chk18"))] (JGoto (To (a "L48"))));
-  (mkBlock (a "L48") [] [(Let (a "v55") W (Cmp Eq W) [(t "pr.1"); (Const 0)])] (JBranch (t "v55") (To (a "L51")) (To (a "L52"))));
-  (mkBlock (a "L51") [] [(Flight (a "v57") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk19") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v57")]);
-      (Let (a "v58") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk19")]);
-      (Flight (a "v60") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Let (a "chk20") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v60")]);
-      (Let (a "v61") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk20")]);
-      (Let (a "v62") L Ptoi [(t "v58")]);
-      (Let (a "v63") L Ptoi [(t "v61")]);
-      (Let (a "v64") L Sub [(t "v62"); (t "v63")])] (JGoto (To (a "L53"))));
-  (mkBlock (a "L52") [] [(Call (CResult (a "v67") L) (Global (a "_IO_str_count")) [(Arg P (t "v0"))]);
-      (Let (a "v74") W And [(t "pr.1"); (Const 1)])] (JBranch (t "v74") (To (a "L77")) (To (a "L72"))));
-  (mkBlock (a "L80") [] [(Flight (a "v82") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Let (a "chk21") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v82")]);
-      (Let (a "v83") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk21")]);
-      (Flight (a "v85") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Let (a "chk22") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v85")]);
-      (Let (a "v86") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk22")]);
-      (Let (a "v87") L Ptoi [(t "v83")]);
-      (Let (a "v88") L Ptoi [(t "v86")]);
-      (Let (a "v89") L Sub [(t "v87"); (t "v88")])] (JGoto (To (a "L78"))));
-  (mkBlock (a "L77") [] [(Let (a "v93") W (Cmp Eq W) [(t "v4"); (Const 0)])] (JBranch (t "v93") (To (a "L78")) (To (a "L94"))));
-  (mkBlock (a "L94") [] [(Let (a "v95") W (Cmp Eq W) [(t "v4"); (Const 1)])] (JBranch (t "v95") (Poll (a "L80")) (To (a "L78"))));
-  (mkBlock (a "L78") [(Phi (a "pr.5") L [((a "L80"), (t "v89")); ((a "L77"), (Const 0)); ((a "L94"), (t "v67"))])] [(Let (a "v99") L Sub [(Const 9223372036854775807); (t "pr.5")]);
-      (Let (a "v105") L Neg [(t "pr.5")]);
-      (Let (a "v106") W (Cmp Slt L) [(t "v2"); (t "v105")])] (JBranch (t "v106") (To (a "L108")) (To (a "L107"))));
-  (mkBlock (a "L107") [] [(Let (a "v111") W (Cmp Sgt L) [(t "v2"); (t "v99")])] (JGoto (To (a "L108"))));
-  (mkBlock (a "L108") [(Phi (a "v113") W [((a "L78"), (Const 1)); ((a "L107"), (t "v111"))])] [] (JBranch (t "v113") (To (a "L100")) (To (a "L102"))));
-  (mkBlock (a "L100") [] [(Let (a "v114") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk23") A (Check 0 4 Write 1) [(t "v114")]);
-      (RawStore Ww 0 (Const 22) (t "chk23"))] (JRet (Const 18446744073709551615)));
-  (mkBlock (a "L102") [] [(Let (a "v120") L Add [(t "pr.5"); (t "v2")]);
-      (Let (a "v126") W (Cmp Sgt L) [(t "v120"); (t "v67")])] (JBranch (t "v126") (To (a "L127")) (To (a "L128"))));
-  (mkBlock (a "L127") [] [(Call (CResult (a "v131") W) (Global (a "glibc_strops#enlarge_userbuf")) [(Arg P (t "v0")); (Arg L (t "v120")); (Arg W (Const 1))]);
-      (Let (a "v132") W (Cmp Ne W) [(t "v131"); (Const 0)])] (JGoto (To (a "L128"))));
-  (mkBlock (a "L128") [(Phi (a "v134") W [((a "L102"), (Const 0)); ((a "L127"), (t "v132"))])] [] (JBranch (t "v134") (To (a "L121")) (To (a "L123"))));
-  (mkBlock (a "L121") [] [] (JRet (Const 18446744073709551615)));
-  (mkBlock (a "L123") [] [(Flight (a "v139") Add [(FAddress (t "v0")); (FValue (Const 8))] (LowerOf (t "v0")));
-      (Flight (a "v141") Add [(FAddress (t "v0")); (FValue (Const 24))] (LowerOf (t "v0")));
-      (Let (a "chk24") A (HalfCheck Lower 0 8 Read 8) [(t "chk2"); (t "v141")]);
-      (Let (a "v142") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk24")]);
-      (Flight (a "v144") Add [(FAddress (t "v142")); (FValue (t "v120"))] (LowerOf (t "v142")));
-      (Let (a "chk25") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "v139")]);
-      (RawStorePointer 0 (t "v144") (t "chk25") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v146") Add [(FAddress (t "v0")); (FValue (Const 16))] (LowerOf (t "v0")));
-      (Let (a "chk26") A (Renew 0 8 Read 8) [(t "chk24"); (t "v141")]);
-      (Let (a "v149") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk26")]);
-      (Flight (a "v151") Add [(FAddress (t "v149")); (FValue (t "v67"))] (LowerOf (t "v149")));
-      (Let (a "chk27") A (HalfCheck Lower 0 8 Write 8) [(t "chk2"); (t "v146")]);
-      (RawStorePointer 0 (t "v151") (t "chk27") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L72"))));
-  (mkBlock (a "L72") [(Phi (a "pr.4") L [((a "L123"), (t "v120")); ((a "L52"), (Const 18446744073709551615))])] [(Let (a "v157") W And [(t "pr.1"); (Const 2)])] (JBranch (t "v157") (To (a "L160")) (To (a "L53"))));
-  (mkBlock (a "L163") [] [(Flight (a "v165") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk28") A (Renew 0 8 Read 8) [(t "chk2"); (t "v165")]);
-      (Let (a "v166") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk28")]);
-      (Flight (a "v168") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk29") A (Renew 0 8 Read 8) [(t "chk3"); (t "v168")]);
-      (Let (a "v169") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk29")]);
-      (Let (a "v170") L Ptoi [(t "v166")]);
-      (Let (a "v171") L Ptoi [(t "v169")]);
-      (Let (a "v172") L Sub [(t "v170"); (t "v171")])] (JGoto (To (a "L161"))));
-  (mkBlock (a "L160") [] [(Let (a "v176") W (Cmp Eq W) [(t "v4"); (Const 0)])] (JBranch (t "v176") (To (a "L161")) (To (a "L177"))));
-  (mkBlock (a "L177") [] [(Let (a "v178") W (Cmp Eq W) [(t "v4"); (Const 1)])] (JBranch (t "v178") (Poll (a "L163")) (To (a "L161"))));
-  (mkBlock (a "L161") [(Phi (a "pr.6") L [((a "L163"), (t "v172")); ((a "L160"), (Const 0)); ((a "L177"), (t "v67"))])] [(Let (a "v182") L Sub [(Const 9223372036854775807); (t "pr.6")]);
-      (Let (a "v188") L Neg [(t "pr.6")]);
-      (Let (a "v189") W (Cmp Slt L) [(t "v2"); (t "v188")])] (JBranch (t "v189") (To (a "L191")) (To (a "L190"))));
-  (mkBlock (a "L190") [] [(Let (a "v194") W (Cmp Sgt L) [(t "v2"); (t "v182")])] (JGoto (To (a "L191"))));
-  (mkBlock (a "L191") [(Phi (a "v196") W [((a "L161"), (Const 1)); ((a "L190"), (t "v194"))])] [] (JBranch (t "v196") (To (a "L183")) (To (a "L185"))));
-  (mkBlock (a "L183") [] [(Let (a "v197") P Copy [(Global (a "__libc_errno"))]);
-      (Let (a "chk30") A (Check 0 4 Write 1) [(t "v197")]);
-      (RawStore Ww 0 (Const 22) (t "chk30"))] (JRet (Const 18446744073709551615)));
-  (mkBlock (a "L185") [] [(Let (a "v203") L Add [(t "pr.6"); (t "v2")]);
-      (Let (a "v209") W (Cmp Sgt L) [(t "v203"); (t "v67")])] (JBranch (t "v209") (To (a "L210")) (To (a "L211"))));
-  (mkBlock (a "L210") [] [(Call (CResult (a "v214") W) (Global (a "glibc_strops#enlarge_userbuf")) [(Arg P (t "v0")); (Arg L (t "v203")); (Arg W (Const 0))]);
-      (Let (a "v215") W (Cmp Ne W) [(t "v214"); (Const 0)])] (JGoto (To (a "L211"))));
-  (mkBlock (a "L211") [(Phi (a "v217") W [((a "L185"), (Const 0)); ((a "L210"), (t "v215"))])] [] (JBranch (t "v217") (To (a "L204")) (To (a "L206"))));
-  (mkBlock (a "L204") [] [] (JRet (Const 18446744073709551615)));
-  (mkBlock (a "L206") [] [(Flight (a "v222") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Flight (a "v224") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk31") A (Renew 0 8 Read 8) [(t "chk3"); (t "v224")]);
-      (Let (a "v225") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk31")]);
-      (Flight (a "v227") Add [(FAddress (t "v225")); (FValue (t "v203"))] (LowerOf (t "v225")));
-      (Let (a "chk32") A (Renew 0 8 Write 8) [(t "chk2"); (t "v222")]);
-      (RawStorePointer 0 (t "v227") (t "chk32") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite])] (JGoto (To (a "L53"))));
-  (mkBlock (a "L53") [(Phi (a "pr.3") L [((a "L51"), (t "v64")); ((a "L206"), (t "v203")); ((a "L72"), (t "pr.4"))])] [] (JRet (t "pr.3")))].
+Definition hello_image_fn___GI__IO_switch_to_wbackup_area : func :=
+  ir_fn{ "export" "__GI__IO_switch_to_wbackup_area"(P %"v0") -> RVoid {
+  @"start":
+    %"chk0" : A = (Check 0 4 Read 1) %"v0";
+    %"v4" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v5" : W = Or %"v4", #256;
+    %"chk1" : A = (Renew 0 4 Write 1) %"chk0", %"v0";
+    store Ww [%"chk1" + 0] <- %"v5";
+    %"v7" = %"v0" +p #160;
+    %"chk2" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v7";
+    %"v8" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v9" = %"v8" +p #8;
+    %"chk3" : A = (Check 0 8 Read 8) %"v9";
+    %"v10" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v13" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v14" = %"v13" +p #8;
+    %"v17" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v18" = %"v17" +p #80;
+    %"chk6" : A = (Check 0 8 Read 8) %"v18";
+    %"v19" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"chk7" : A = (Check 0 8 Write 8) %"v14";
+    store.ptr [%"chk7" + 0] <- %"v19";
+    %"chk8" : A = (Renew 0 8 Read 8) %"chk2", %"v7";
+    %"v22" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"v23" = %"v22" +p #80;
+    %"chk9" : A = (Check 0 8 Write 8) %"v23";
+    store.ptr [%"chk9" + 0] <- %"v10";
+    %"chk10" : A = (Renew 0 8 Read 8) %"chk2", %"v7";
+    %"v27" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v28" = %"v27" +p #16;
+    %"chk11" : A = (Check 0 8 Read 8) %"v28";
+    %"v29" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    %"v32" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v33" = %"v32" +p #16;
+    %"v36" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v37" = %"v36" +p #64;
+    %"chk14" : A = (Check 0 8 Read 8) %"v37";
+    %"v38" : P = (RawLoadPointer 0 load_effects) %"chk14";
+    %"chk15" : A = (Check 0 8 Write 8) %"v33";
+    store.ptr [%"chk15" + 0] <- %"v38";
+    %"chk16" : A = (Renew 0 8 Read 8) %"chk2", %"v7";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk16";
+    %"v42" = %"v41" +p #64;
+    %"chk17" : A = (Check 0 8 Write 8) %"v42";
+    store.ptr [%"chk17" + 0] <- %"v29";
+    %"chk18" : A = (Renew 0 8 Read 8) %"chk2", %"v7";
+    %"v46" : P = (RawLoadPointer 0 load_effects) %"chk18";
+    %"v49" : P = (RawLoadPointer 0 load_effects) %"chk18";
+    %"v50" = %"v49" +p #8;
+    %"chk20" : A = (Check 0 8 Read 8) %"v50";
+    %"v51" : P = (RawLoadPointer 0 load_effects) %"chk20";
+    %"chk21" : A = (Check 0 8 Write 8) %"v46";
+    store.ptr [%"chk21" + 0] <- %"v51"
+    => ret void
+} }.
 
-Definition hello_image_fn___GI__IO_str_pbackfail : func :=
-  mkFunc (a "__GI__IO_str_pbackfail") (a "export") (RClass W) [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Let (a "chk0") A (Check 0 4 Read 1) [(t "v0")]);
-      (Let (a "v8") W (RawLoad (LdNarrow Sw) 0) [(t "chk0")]);
-      (Let (a "v9") W And [(t "v8"); (Const 8)])] (JBranch (t "v9") (To (a "L10")) (To (a "L11"))));
-  (mkBlock (a "L10") [] [(Let (a "v14") W (Cmp Ne W) [(t "v2"); (Const 4294967295)])] (JGoto (To (a "L11"))));
-  (mkBlock (a "L11") [(Phi (a "v16") W [((a "start"), (Const 0)); ((a "L10"), (t "v14"))])] [] (JBranch (t "v16") (To (a "L4")) (To (a "L6"))));
-  (mkBlock (a "L4") [] [] (JRet (Const 4294967295)));
-  (mkBlock (a "L6") [] [(Call (CResult (a "v21") W) (Global (a "__GI__IO_default_pbackfail")) [(Arg P (t "v0")); (Arg W (t "v2"))])] (JRet (t "v21")))].
+Definition hello_image_fn___GI__IO_wsetb : func :=
+  ir_fn{ "export" "__GI__IO_wsetb"(P %"v0", P %"v2", P %"v4", W %"v6") -> RVoid {
+  @"start":
+    %"v12" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v12";
+    %"v13" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v14" = %"v13" +p #48;
+    %"chk1" : A = (Check 0 8 Read 8) %"v14";
+    %"v15" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v16" : L = Ptoi %"v15";
+    %"v17" : W = (Cmp Ne L) %"v16", #0
+    => br %"v17" ? "L18" : "L19";
+  @"L18":
+    %"v21" = %"v0" +p #116;
+    %"chk2" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v21";
+    %"v22" : W = (RawLoad (LdNarrow Sw) 0) %"chk2";
+    %"v23" : W = Shl %"v22", #8;
+    %"v24" : W = Sar %"v23", #8;
+    %"v25" : W = And %"v24", #8;
+    %"v26" : W = (Cmp Eq W) %"v25", #0
+    => goto "L19";
+  @"L19" [%"v28" : W = phi("start" => #0, "L18" => %"v26")]:
+    => br %"v28" ? "L8" : "L10";
+  @"L8":
+    %"v30" = %"v0" +p #160;
+    %"v31" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v32" = %"v31" +p #48;
+    %"chk4" : A = (Check 0 8 Read 8) %"v32";
+    %"v33" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    call void $"free"(P %"v33")
+    => goto "L10";
+  @"L10":
+    %"v35" = %"v0" +p #160;
+    %"chk5" : A = (Renew 0 8 Read 8) %"chk0", %"v35";
+    %"v36" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v37" = %"v36" +p #48;
+    %"chk6" : A = (Check 0 8 Write 8) %"v37";
+    store.ptr [%"chk6" + 0] <- %"v2";
+    %"chk7" : A = (Renew 0 8 Read 8) %"chk0", %"v35";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v42" = %"v41" +p #56;
+    %"chk8" : A = (Check 0 8 Write 8) %"v42";
+    store.ptr [%"chk8" + 0] <- %"v4"
+    => br %"v6" ? "L44" : "L45";
+  @"L44":
+    %"v49" = %"v0" +p #116;
+    %"chk9" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v49";
+    %"v50" : W = (RawLoad (LdNarrow Sw) 0) %"chk9";
+    %"v51" : W = Shl %"v50", #8;
+    %"v52" : W = Sar %"v51", #8;
+    %"v54" : W = And %"v52", #4294967287;
+    %"v55" : W = (RawLoad (LdNarrow Sw) 0) %"chk9";
+    %"v56" : W = And %"v55", #4278190080;
+    %"v57" : W = And %"v54", #16777215;
+    %"v58" : W = Or %"v56", %"v57";
+    %"chk11" : A = (Renew 0 4 Write 1) %"chk9", %"v49";
+    store Ww [%"chk11" + 0] <- %"v58"
+    => goto "L46";
+  @"L45":
+    %"v62" = %"v0" +p #116;
+    %"chk12" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v62";
+    %"v63" : W = (RawLoad (LdNarrow Sw) 0) %"chk12";
+    %"v64" : W = Shl %"v63", #8;
+    %"v65" : W = Sar %"v64", #8;
+    %"v66" : W = Or %"v65", #8;
+    %"v67" : W = (RawLoad (LdNarrow Sw) 0) %"chk12";
+    %"v68" : W = And %"v67", #4278190080;
+    %"v69" : W = And %"v66", #16777215;
+    %"v70" : W = Or %"v68", %"v69";
+    %"chk14" : A = (Renew 0 4 Write 1) %"chk12", %"v62";
+    store Ww [%"chk14" + 0] <- %"v70"
+    => goto "L46";
+  @"L46":
+    => ret void
+} }.
 
-Definition hello_image_fn__IO_str_finish : func :=
-  mkFunc (a "_IO_str_finish") (a "export") RVoid [(P, (a "v0")); (W, (a "v2"))] [(mkBlock (a "start") [] [(Flight (a "v8") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v8")]);
-      (Let (a "v9") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "v10") L Ptoi [(t "v9")]);
-      (Let (a "v11") W (Cmp Ne L) [(t "v10"); (Const 0)])] (JBranch (t "v11") (To (a "L12")) (To (a "L13"))));
-  (mkBlock (a "L12") [] [(Let (a "chk1") A (HalfCheck Lower 0 4 Read 1) [(t "chk0"); (t "v0")]);
-      (Let (a "v15") W (RawLoad (LdNarrow Sw) 0) [(t "chk1")]);
-      (Let (a "v16") W And [(t "v15"); (Const 1)]);
-      (Let (a "v17") W (Cmp Eq W) [(t "v16"); (Const 0)])] (JGoto (To (a "L13"))));
-  (mkBlock (a "L13") [(Phi (a "v19") W [((a "start"), (Const 0)); ((a "L12"), (t "v17"))])] [] (JBranch (t "v19") (To (a "L4")) (To (a "L6"))));
-  (mkBlock (a "L4") [] [(Flight (a "v21") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "v22") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Call CVoid (Global (a "free")) [(Arg P (t "v22"))])] (JGoto (To (a "L6"))));
-  (mkBlock (a "L6") [] [(Flight (a "v24") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk3") A (Renew 0 8 Write 8) [(t "chk0"); (t "v24")]);
-      (RawStorePointer 0 (Const 0) (t "chk3") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Call CVoid (Global (a "__GI__IO_default_finish")) [(Arg P (t "v0")); (Arg W (Const 0))])] JRetVoid)].
+Definition hello_image_fn___GI__IO_wdefault_pbackfail : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_pbackfail"(P %"v0", W %"v2") -> (RClass W) {
+  @"start":
+    %"v8" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v8";
+    %"v9" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk1" : A = (Check 0 8 Read 8) %"v9";
+    %"v10" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v13" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v14" = %"v13" +p #16;
+    %"chk3" : A = (Check 0 8 Read 8) %"v14";
+    %"v15" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v16" : L = Ptoi %"v10";
+    %"v17" : L = Ptoi %"v15";
+    %"v18" : W = (Cmp Ugt L) %"v16", %"v17"
+    => br %"v18" ? "L19" : "L20";
+  @"L19":
+    %"chk4" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v0";
+    %"v22" : W = (RawLoad (LdNarrow Sw) 0) %"chk4";
+    %"v23" : W = And %"v22", #256;
+    %"v24" : W = (Cmp Eq W) %"v23", #0
+    => goto "L20";
+  @"L20" [%"v26" : W = phi("start" => #0, "L19" => %"v24")]:
+    => br %"v26" ? "L27" : "L28";
+  @"L27":
+    %"v30" = %"v0" +p #160;
+    %"v31" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk6" : A = (Check 0 8 Read 8) %"v31";
+    %"v32" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"v36" = %"v32" +p #18446744073709551612;
+    %"chk7" : A = (Check 0 4 Read 1) %"v36";
+    %"v37" : W = (RawLoad (LdNarrow Sw) 0) %"chk7";
+    %"v39" : W = (Cmp Eq W) %"v37", %"v2"
+    => goto "L28";
+  @"L28" [%"v41" : W = phi("L20" => #0, "L27" => %"v39")]:
+    => br %"v41" ? "L4" : "L5";
+  @"L4":
+    %"v43" = %"v0" +p #160;
+    %"v44" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk9" : A = (Check 0 8 Read 8) %"v44";
+    %"v45" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    (Flight (a "v46") Sub [(FAddress (t "v45")); (FValue (Const 4))] (LowerOf (t "v45")));
+    %"chk10" : A = (Renew 0 8 Write 8) %"chk9", %"v44";
+    store.ptr [%"chk10" + 0] <- %"v46"
+    => goto "L6";
+  @"L5":
+    %"chk11" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v0";
+    %"v51" : W = (RawLoad (LdNarrow Sw) 0) %"chk11";
+    %"v52" : W = And %"v51", #256;
+    %"v53" : W = (Cmp Eq W) %"v52", #0
+    => br %"v53" ? "L47" : "L48";
+  @"L47":
+    %"v58" = %"v0" +p #160;
+    %"v59" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk13" : A = (Check 0 8 Read 8) %"v59";
+    %"v60" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v63" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v64" = %"v63" +p #16;
+    %"chk15" : A = (Check 0 8 Read 8) %"v64";
+    %"v65" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"v66" : L = Ptoi %"v60";
+    %"v67" : L = Ptoi %"v65";
+    %"v68" : W = (Cmp Ugt L) %"v66", %"v67"
+    => br %"v68" ? "L69" : "L70";
+  @"L69":
+    %"v72" = %"v0" +p #160;
+    %"v73" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v74" = %"v73" +p #72;
+    %"chk17" : A = (Check 0 8 Read 8) %"v74";
+    %"v75" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"v76" : L = Ptoi %"v75";
+    %"v77" : L = Ptoi #0;
+    %"v78" : W = (Cmp Ne L) %"v76", %"v77"
+    => goto "L70";
+  @"L70" [%"v80" : W = phi("L47" => #0, "L69" => %"v78")]:
+    => br %"v80" ? "L54" : "L55";
+  @"L54":
+    %"v86" = %"v0" +p #160;
+    %"v87" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk19" : A = (Check 0 8 Read 8) %"v87";
+    %"v88" : P = (RawLoadPointer 0 load_effects) %"chk19";
+    call %"v89" : W = $"glibc_wgenops#save_for_wbackup"(P %"v0", P %"v88")
+    => br %"v89" ? "L81" : "L56";
+  @"L81":
+    => ret #4294967295;
+  @"L55":
+    %"v95" = %"v0" +p #160;
+    %"v96" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v97" = %"v96" +p #72;
+    %"chk21" : A = (Check 0 8 Read 8) %"v97";
+    %"v98" : P = (RawLoadPointer 0 load_effects) %"chk21";
+    %"v99" : L = Ptoi %"v98";
+    %"v100" : L = Ptoi #0;
+    %"v102" : W = (Cmp Eq L) %"v99", %"v100"
+    => br %"v102" ? "L91" : "L56";
+  @"L91":
+    call %"v108" : P = $"malloc"(L #512);
+    %"v113" : L = Ptoi %"v108";
+    %"v115" : W = (Cmp Eq L) %"v113", %"v100"
+    => br %"v115" ? "L109" : "L111";
+  @"L109":
+    => ret #4294967295;
+  @"L111":
+    %"v118" = %"v0" +p #160;
+    %"chk22" : A = (Renew 0 8 Read 8) %"chk0", %"v118";
+    %"v119" : P = (RawLoadPointer 0 load_effects) %"chk22";
+    %"v120" = %"v119" +p #64;
+    %"chk23" : A = (Check 0 8 Write 8) %"v120";
+    store.ptr [%"chk23" + 0] <- %"v108";
+    %"chk24" : A = (Renew 0 8 Read 8) %"chk0", %"v118";
+    %"v124" : P = (RawLoadPointer 0 load_effects) %"chk24";
+    %"v125" = %"v124" +p #80;
+    %"v128" : P = (RawLoadPointer 0 load_effects) %"chk24";
+    %"v129" = %"v128" +p #64;
+    %"chk26" : A = (Check 0 8 Read 8) %"v129";
+    %"v130" : P = (RawLoadPointer 0 load_effects) %"chk26";
+    %"v134" = %"v130" +p #512;
+    %"chk27" : A = (Check 0 8 Write 8) %"v125";
+    store.ptr [%"chk27" + 0] <- %"v134";
+    %"chk28" : A = (Renew 0 8 Read 8) %"chk0", %"v118";
+    %"v137" : P = (RawLoadPointer 0 load_effects) %"chk28";
+    %"v138" = %"v137" +p #72;
+    %"v141" : P = (RawLoadPointer 0 load_effects) %"chk28";
+    %"v142" = %"v141" +p #80;
+    %"chk30" : A = (Check 0 8 Read 8) %"v142";
+    %"v143" : P = (RawLoadPointer 0 load_effects) %"chk30";
+    %"chk31" : A = (Check 0 8 Write 8) %"v138";
+    store.ptr [%"chk31" + 0] <- %"v143"
+    => goto "L56";
+  @"L56":
+    %"v145" = %"v0" +p #160;
+    %"chk32" : A = (Renew 0 8 Read 8) %"chk0", %"v145";
+    %"v146" : P = (RawLoadPointer 0 load_effects) %"chk32";
+    %"v147" = %"v146" +p #16;
+    %"v150" : P = (RawLoadPointer 0 load_effects) %"chk32";
+    %"chk34" : A = (Check 0 8 Read 8) %"v150";
+    %"v151" : P = (RawLoadPointer 0 load_effects) %"chk34";
+    %"chk35" : A = (Check 0 8 Write 8) %"v147";
+    store.ptr [%"chk35" + 0] <- %"v151";
+    call void $"__GI__IO_switch_to_wbackup_area"(P %"v0")
+    => goto "L49";
+  @"L48":
+    %"v157" = %"v0" +p #160;
+    %"v158" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk37" : A = (Check 0 8 Read 8) %"v158";
+    %"v159" : P = (RawLoadPointer 0 load_effects) %"chk37";
+    %"v162" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v163" = %"v162" +p #16;
+    %"chk39" : A = (Check 0 8 Read 8) %"v163";
+    %"v164" : P = (RawLoadPointer 0 load_effects) %"chk39";
+    %"v165" : L = Ptoi %"v159";
+    %"v166" : L = Ptoi %"v164";
+    %"v167" : W = (Cmp Ule L) %"v165", %"v166"
+    => br %"v167" ? "L153" : "L49";
+  @"L153":
+    %"v171" = %"v0" +p #160;
+    %"v172" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v173" = %"v172" +p #8;
+    %"chk41" : A = (Check 0 8 Read 8) %"v173";
+    %"v174" : P = (RawLoadPointer 0 load_effects) %"chk41";
+    %"v177" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v178" = %"v177" +p #16;
+    %"chk43" : A = (Check 0 8 Read 8) %"v178";
+    %"v179" : P = (RawLoadPointer 0 load_effects) %"chk43";
+    %"v180" : L = Ptoi %"v174";
+    %"v181" : L = Ptoi %"v179";
+    %"v182" : L = Sub %"v180", %"v181";
+    %"v183" : L = Div %"v182", #4;
+    %"v186" : L = Shl %"v183", #1;
+    %"v188" : L = Shl %"v186", #2;
+    call %"v189" : P = $"malloc"(L %"v188");
+    %"v194" : L = Ptoi %"v189";
+    %"v195" : L = Ptoi #0;
+    %"v196" : W = (Cmp Eq L) %"v194", %"v195"
+    => br %"v196" ? "L190" : "L192";
+  @"L190":
+    => ret #4294967295;
+  @"L192":
+    %"v201" : L = Sub %"v186", %"v183";
+    %"v202" : L = Shl %"v201", #2;
+    %"v203" = %"v189" +p %"v202";
+    %"v205" = %"v0" +p #160;
+    %"chk44" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v206" : P = (RawLoadPointer 0 load_effects) %"chk44";
+    %"v207" = %"v206" +p #16;
+    %"chk45" : A = (Check 0 8 Read 8) %"v207";
+    %"v208" : P = (RawLoadPointer 0 load_effects) %"chk45";
+    call %"v210" : P = $"__wmemcpy"(P %"v203", P %"v208", L %"v183");
+    %"chk46" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v213" : P = (RawLoadPointer 0 load_effects) %"chk46";
+    %"v214" = %"v213" +p #16;
+    %"chk47" : A = (Check 0 8 Read 8) %"v214";
+    %"v215" : P = (RawLoadPointer 0 load_effects) %"chk47";
+    call void $"free"(P %"v215");
+    %"chk48" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v218" : P = (RawLoadPointer 0 load_effects) %"chk48";
+    %"v219" = %"v218" +p #16;
+    %"chk49" : A = (Check 0 8 Write 8) %"v219";
+    store.ptr [%"chk49" + 0] <- %"v189";
+    %"chk50" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v223" : P = (RawLoadPointer 0 load_effects) %"chk50";
+    %"chk51" : A = (Check 0 8 Write 8) %"v223";
+    store.ptr [%"chk51" + 0] <- %"v203";
+    %"chk52" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v232" : P = (RawLoadPointer 0 load_effects) %"chk52";
+    %"v233" = %"v232" +p #8;
+    %"v237" = %"v189" +p %"v188";
+    %"chk53" : A = (Check 0 8 Write 8) %"v233";
+    store.ptr [%"chk53" + 0] <- %"v237";
+    %"chk54" : A = (Renew 0 8 Read 8) %"chk0", %"v205";
+    %"v240" : P = (RawLoadPointer 0 load_effects) %"chk54";
+    %"v241" = %"v240" +p #72;
+    %"v244" : P = (RawLoadPointer 0 load_effects) %"chk54";
+    %"chk56" : A = (Check 0 8 Read 8) %"v244";
+    %"v245" : P = (RawLoadPointer 0 load_effects) %"chk56";
+    %"chk57" : A = (Check 0 8 Write 8) %"v241";
+    store.ptr [%"chk57" + 0] <- %"v245"
+    => goto "L49";
+  @"L49":
+    %"v247" = %"v0" +p #160;
+    %"chk58" : A = (Renew 0 8 Read 8) %"chk0", %"v247";
+    %"v248" : P = (RawLoadPointer 0 load_effects) %"chk58";
+    %"chk59" : A = (Check 0 8 Read 8) %"v248";
+    %"v249" : P = (RawLoadPointer 0 load_effects) %"chk59";
+    (Flight (a "v250") Sub [(FAddress (t "v249")); (FValue (Const 4))] (LowerOf (t "v249")));
+    %"chk60" : A = (Renew 0 8 Write 8) %"chk59", %"v248";
+    store.ptr [%"chk60" + 0] <- %"v250";
+    %"chk61" : A = (Check 0 4 Write 1) %"v250";
+    store Ww [%"chk61" + 0] <- %"v2"
+    => goto "L6";
+  @"L6":
+    => ret %"v2"
+} }.
 
-Definition hello_image_fn__IO_vtable_check : func :=
-  mkFunc (a "_IO_vtable_check") (a "export") RVoid [] [(mkBlock (a "start") [] [(Let (a "v0") P Copy [(Global (a "glibc_vtables#str.302"))]);
-      (Call CVoid (Global (a "__GI___libc_fatal")) [(Arg P (t "v0"))])] JRetVoid)].
+Definition hello_image_fn___GI__IO_wdefault_finish : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_finish"(P %"v0", W %"v2") -> RVoid {
+  @"start":
+    %"v9" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v9";
+    %"v10" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v11" = %"v10" +p #48;
+    %"chk1" : A = (Check 0 8 Read 8) %"v11";
+    %"v12" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v13" : L = Ptoi %"v12";
+    %"v14" : W = (Cmp Ne L) %"v13", #0
+    => br %"v14" ? "L15" : "L16";
+  @"L15":
+    %"v18" = %"v0" +p #116;
+    %"chk2" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v18";
+    %"v19" : W = (RawLoad (LdNarrow Sw) 0) %"chk2";
+    %"v20" : W = Shl %"v19", #8;
+    %"v21" : W = Sar %"v20", #8;
+    %"v22" : W = And %"v21", #8;
+    %"v23" : W = (Cmp Eq W) %"v22", #0
+    => goto "L16";
+  @"L16" [%"v25" : W = phi("start" => #0, "L15" => %"v23")]:
+    => br %"v25" ? "L5" : "L7";
+  @"L5":
+    %"v27" = %"v0" +p #160;
+    %"v28" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v29" = %"v28" +p #48;
+    %"chk4" : A = (Check 0 8 Read 8) %"v29";
+    %"v30" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    call void $"free"(P %"v30");
+    %"chk5" : A = (Renew 0 8 Read 8) %"chk0", %"v27";
+    %"v33" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v34" = %"v33" +p #48;
+    %"v37" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v38" = %"v37" +p #56;
+    %"chk7" : A = (Check 0 8 Write 8) %"v38";
+    store.ptr [%"chk7" + 0] <- #0;
+    %"chk8" : A = (Check 0 8 Write 8) %"v34";
+    store.ptr [%"chk8" + 0] <- #0
+    => goto "L7";
+  @"L7":
+    %"v40" = %"v0" +p #96;
+    %"chk9" : A = (HalfCheck Lower 0 8 Read 8) %"chk0", %"v40";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk9"
+    => goto "L42";
+  @"L42" [%"pr.1" : P = phi("L43" => %"v53", "L7" => %"v41")]:
+    %"v47" : L = Ptoi %"pr.1";
+    %"v48" : L = Ptoi #0;
+    %"v49" : W = (Cmp Ne L) %"v47", %"v48"
+    => br %"v49" ? "L43" : "L45";
+  @"L43":
+    %"v51" = %"pr.1" +p #8;
+    %"chk10" : A = (Check 0 8 Write 8) %"v51";
+    store.ptr [%"chk10" + 0] <- #0;
+    %"chk11" : A = (HalfCheck Lower 0 8 Read 8) %"chk10", %"pr.1";
+    %"v53" : P = (RawLoadPointer 0 load_effects) %"chk11"
+    => goto poll "L42";
+  @"L45":
+    %"v58" = %"v0" +p #160;
+    %"chk12" : A = (Renew 0 8 Read 8) %"chk0", %"v58";
+    %"v59" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    %"v60" = %"v59" +p #72;
+    %"chk13" : A = (Check 0 8 Read 8) %"v60";
+    %"v61" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v62" : L = Ptoi %"v61";
+    %"v64" : W = (Cmp Ne L) %"v62", %"v48"
+    => br %"v64" ? "L54" : "L56";
+  @"L54":
+    call void $"__GI__IO_free_wbackup_area"(P %"v0")
+    => goto "L56";
+  @"L56":
+    %"v70" = %"v0" +p #136;
+    %"chk14" : A = (HalfCheck Lower 0 8 Read 8) %"chk0", %"v70";
+    %"v71" : P = (RawLoadPointer 0 load_effects) %"chk14";
+    %"v72" : L = Ptoi %"v71";
+    %"v74" : W = (Cmp Ne L) %"v72", %"v48"
+    => br %"v74" ? "L68" : "L67";
+  @"L67":
+    => goto "L68";
+  @"L68":
+    call void $"__GI__IO_un_link"(P %"v0")
+    => ret void
+} }.
 
-Definition hello_image_fn__IO_wfile_doallocate : func :=
-  mkFunc (a "_IO_wfile_doallocate") (a "export") (RClass W) [(P, (a "v0"))] [(mkBlock (a "start") [] [(Flight (a "v8") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v8")]);
-      (Let (a "v9") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "v10") L Ptoi [(t "v9")]);
-      (Let (a "v11") L Ptoi [(Const 0)]);
-      (Let (a "v12") W (Cmp Eq L) [(t "v10"); (t "v11")])] (JBranch (t "v12") (To (a "L4")) (To (a "L6"))));
-  (mkBlock (a "L4") [] [(Call (CResult (a "v14") W) (Global (a "__GI__IO_file_doallocate")) [(Arg P (t "v0"))])] (JGoto (To (a "L6"))));
-  (mkBlock (a "L6") [] [(Flight (a "v16") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "chk1") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v16")]);
-      (Let (a "v17") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Flight (a "v19") Add [(FAddress (t "v0")); (FValue (Const 56))] (LowerOf (t "v0")));
-      (Let (a "chk2") A (Renew 0 8 Read 8) [(t "chk0"); (t "v19")]);
-      (Let (a "v20") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Let (a "v21") L Ptoi [(t "v17")]);
-      (Let (a "v22") L Ptoi [(t "v20")]);
-      (Let (a "v23") L Sub [(t "v21"); (t "v22")]);
-      (Let (a "chk3") A (HalfCheck Lower 0 4 Read 1) [(t "chk0"); (t "v0")]);
-      (Let (a "v28") W (RawLoad (LdNarrow Sw) 0) [(t "chk3")]);
-      (Let (a "v29") W And [(t "v28"); (Const 1)])] (JBranch (t "v29") (To (a "L24")) (To (a "L26"))));
-  (mkBlock (a "L24") [] [(Let (a "v31") L Add [(t "v23"); (Const 4)]);
-      (Let (a "v32") L Sub [(t "v31"); (Const 1)]);
-      (Let (a "v33") L Shr [(t "v32"); (Const 2)])] (JGoto (To (a "L26"))));
-  (mkBlock (a "L26") [(Phi (a "pr.1") L [((a "L24"), (t "v33")); ((a "L6"), (t "v23"))])] [(Let (a "v35") L Shl [(t "pr.1"); (Const 2)]);
-      (Call (CResult (a "v36") P) (Global (a "malloc")) [(Arg L (t "v35"))]);
-      (Let (a "v41") L Ptoi [(t "v36")]);
-      (Let (a "v43") W (Cmp Eq L) [(t "v41"); (t "v11")])] (JBranch (t "v43") (To (a "L37")) (To (a "L39"))));
-  (mkBlock (a "L37") [] [] (JRet (Const 4294967295)));
-  (mkBlock (a "L39") [] [(Flight (a "v53") Add [(FAddress (t "v36")); (FValue (t "v35"))] (LowerOf (t "v36")));
-      (Call CVoid (Global (a "__GI__IO_wsetb")) [(Arg P (t "v0")); (Arg P (t "v36")); (Arg P (t "v53")); (Arg W (Const 1))])] (JRet (Const 1)))].
+Definition hello_image_fn___GI__IO_wdefault_uflow : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_uflow"(P %"v0") -> (RClass W) {
+  @"start":
+    %"v4" = %"v0" +p #216;
+    %"chk0" : A = (Check 0 8 Read 8) %"v4";
+    %"v5" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"iw_1.v4" : L = Ptoi %"v5";
+    %"iw_1.v7" : P = Copy $"__io_vtables";
+    %"iw_1.v8" : L = Ptoi %"iw_1.v7";
+    %"iw_1.v9" : L = Sub %"iw_1.v4", %"iw_1.v8";
+    %"iw_1.v15" : W = (Cmp Uge L) %"iw_1.v9", #2352
+    => br %"iw_1.v15" ? "iw_1.L10" : "iw_1.join";
+  @"iw_1.L10":
+    call void $"_IO_vtable_check"()
+    => goto "iw_1.join";
+  @"iw_1.join":
+    %"v7" = %"v5" +p #32;
+    %"chk1" : A = (Check 0 8 Read 8) %"v7";
+    %"v8" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"chk2" : F = CheckFunction %"v8";
+    rawcall %"v10" : W = %"chk2"(P %"v0");
+    %"v15" : W = (Cmp Eq W) %"v10", #4294967295
+    => br %"v15" ? "L11" : "L13";
+  @"L11":
+    => ret #4294967295;
+  @"L13":
+    %"v18" = %"v0" +p #160;
+    %"chk3" : A = (HalfCheck Lower 0 8 Read 8) %"chk0", %"v18";
+    %"v19" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"chk4" : A = (Check 0 8 Read 8) %"v19";
+    %"v20" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"v21" = %"v20" +p #4;
+    %"chk5" : A = (Renew 0 8 Write 8) %"chk4", %"v19";
+    store.ptr [%"chk5" + 0] <- %"v21";
+    %"chk6" : A = (Check 0 4 Read 1) %"v20";
+    %"v22" : W = (RawLoad (LdNarrow Sw) 0) %"chk6"
+    => ret %"v22"
+} }.
 
-Definition hello_image_fn___GI__IO_wdo_write : func :=
-  mkFunc (a "__GI__IO_wdo_write") (a "export") (RClass W) [(P, (a "v0")); (P, (a "v2")); (L, (a "v4"))] [(mkBlock (a "start") [] [(Let (a "v64") P (Alloc 8) [(Const 8)]);
-      (Let (a "v65") P (Alloc 4) [(Const 16)]);
-      (Let (a "v67") P (Alloc 8) [(Const 8)]);
-      (Flight (a "v8") Add [(FAddress (t "v0")); (FValue (Const 152))] (LowerOf (t "v0")));
-      (Let (a "chk0") A (Check 0 8 Read 8) [(t "v8")]);
-      (Let (a "v9") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk0")]);
-      (Let (a "v14") W (Cmp Ugt L) [(t "v4"); (Const 0)])] (JBranch (t "v14") (To (a "L10")) (To (a "L12"))));
-  (mkBlock (a "L10") [] [(Flight (a "v19") Add [(FAddress (t "v0")); (FValue (Const 48))] (LowerOf (t "v0")));
-      (Let (a "chk1") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v19")]);
-      (Let (a "v20") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Flight (a "v22") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk2") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v22")]);
-      (Let (a "v23") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Let (a "v24") L Ptoi [(t "v20")]);
-      (Let (a "v25") L Ptoi [(t "v23")]);
-      (Let (a "v26") W (Cmp Eq L) [(t "v24"); (t "v25")])] (JBranch (t "v26") (To (a "L27")) (To (a "L28"))));
-  (mkBlock (a "L27") [] [(Flight (a "v30") Add [(FAddress (t "v0")); (FValue (Const 48))] (LowerOf (t "v0")));
-      (Let (a "v31") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk1")]);
-      (Flight (a "v33") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk4") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v33")]);
-      (Let (a "v34") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk4")]);
-      (Let (a "v35") L Ptoi [(t "v31")]);
-      (Let (a "v36") L Ptoi [(t "v34")]);
-      (Let (a "v37") W (Cmp Ne L) [(t "v35"); (t "v36")])] (JGoto (To (a "L28"))));
-  (mkBlock (a "L28") [(Phi (a "v39") W [((a "L10"), (Const 0)); ((a "L27"), (t "v37"))])] [] (JBranch (t "v39") (To (a "L15")) (To (a "L60"))));
-  (mkBlock (a "L15") [] [(Flight (a "v45") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk5") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v45")]);
-      (Let (a "v46") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk5")]);
-      (Flight (a "v48") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "v49") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk2")]);
-      (Let (a "v52") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk5")]);
-      (Let (a "v53") L Ptoi [(t "v49")]);
-      (Let (a "v54") L Ptoi [(t "v52")]);
-      (Let (a "v55") L Sub [(t "v53"); (t "v54")]);
-      (Call (CResult (a "v56") W) (Global (a "_IO_new_do_write")) [(Arg P (t "v0")); (Arg P (t "v46")); (Arg L (t "v55"))]);
-      (Let (a "v58") W (Cmp Eq W) [(t "v56"); (Const 4294967295)])] (JBranch (t "v58") (To (a "L40")) (To (a "L60"))));
-  (mkBlock (a "L40") [] [] (JRet (Const (-1))));
-  (mkBlock (a "L60") [(Phi (a "pr.3") L [((a "L129"), (t "v126")); ((a "L15"), (t "v4")); ((a "L28"), (t "v4"))]); (Phi (a "pr.1") P [((a "L129"), (t "v150")); ((a "L15"), (t "v2")); ((a "L28"), (t "v2"))])] [(Flight (a "v73") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "chk8") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v73")]);
-      (Let (a "v74") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk8")]);
-      (Flight (a "v76") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "chk9") A (Renew 0 8 Read 8) [(t "chk2"); (t "v76")]);
-      (Let (a "v77") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk9")]);
-      (Let (a "v78") L Ptoi [(t "v74")]);
-      (Let (a "v79") L Ptoi [(t "v77")]);
-      (Let (a "v80") L Sub [(t "v78"); (t "v79")]);
-      (Let (a "v81") W (Cmp Ult L) [(t "v80"); (Const 16)])] (JBranch (t "v81") (To (a "L69")) (To (a "L70"))));
-  (mkBlock (a "L69") [] [(Let (a "chk10") A (Check 0 8 Write 8) [(t "v67")]);
-      (RawStorePointer 0 (t "v65") (t "chk10") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v82") Add [(FAddress (t "v65")); (FValue (Const 16))] (LowerOf (t "v65")))] (JGoto (To (a "L71"))));
-  (mkBlock (a "L70") [] [(Flight (a "v84") Add [(FAddress (t "v0")); (FValue (Const 40))] (LowerOf (t "v0")));
-      (Let (a "v85") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk9")]);
-      (Let (a "chk12") A (Check 0 8 Write 8) [(t "v67")]);
-      (RawStorePointer 0 (t "v85") (t "chk12") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Flight (a "v87") Add [(FAddress (t "v0")); (FValue (Const 32))] (LowerOf (t "v0")));
-      (Let (a "chk13") A (HalfCheck Lower 0 8 Read 8) [(t "chk0"); (t "v87")]);
-      (Let (a "v88") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk13")]);
-      (Flight (a "v90") Add [(FAddress (t "v0")); (FValue (Const 64))] (LowerOf (t "v0")));
-      (Let (a "chk14") A (Renew 0 8 Read 8) [(t "chk8"); (t "v90")]);
-      (Let (a "v91") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk14")])] (JGoto (To (a "L71"))));
-  (mkBlock (a "L71") [(Phi (a "pr.5") P [((a "L69"), (t "v82")); ((a "L70"), (t "v91"))]); (Phi (a "pr.4") P [((a "L69"), (t "v65")); ((a "L70"), (t "v88"))])] [(Flight (a "v94") Add [(FAddress (t "v0")); (FValue (Const 160))] (LowerOf (t "v0")));
-      (Let (a "chk15") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v94")]);
-      (Let (a "v95") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk15")]);
-      (Flight (a "v96") Add [(FAddress (t "v95")); (FValue (Const 88))] (LowerOf (t "v95")));
-      (Let (a "v100") L Shl [(t "pr.3"); (Const 2)]);
-      (Flight (a "v101") Add [(FAddress (t "pr.1")); (FValue (t "v100"))] (LowerOf (t "pr.1")));
-      (Let (a "chk16") A (Check 0 8 Read 8) [(t "v67")]);
-      (Let (a "v102") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk16")]);
-      (Call (CResult (a "v104") W) (Global (a "__libio_codecvt_out")) [(Arg P (t "v9")); (Arg P (t "v96")); (Arg P (t "pr.1")); (Arg P (t "v101")); (Arg P (t "v64")); (Arg P (t "v102")); (Arg P (t "pr.5")); (Arg P (t "v67"))]);
-      (Let (a "chk17") A (Renew 0 8 Read 8) [(t "chk16"); (t "v67")]);
-      (Let (a "v110") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk17")]);
-      (Let (a "v112") L Ptoi [(t "v110")]);
-      (Let (a "v113") L Ptoi [(t "pr.4")]);
-      (Let (a "v114") L Sub [(t "v112"); (t "v113")]);
-      (Call (CResult (a "v115") W) (Global (a "_IO_new_do_write")) [(Arg P (t "v0")); (Arg P (t "pr.4")); (Arg L (t "v114"))]);
-      (Let (a "v117") W (Cmp Eq W) [(t "v115"); (Const 4294967295)])] (JBranch (t "v117") (To (a "L105")) (To (a "L107"))));
-  (mkBlock (a "L105") [] [] (JRet (Const (-1))));
-  (mkBlock (a "L107") [] [(Let (a "chk18") A (Check 0 8 Read 8) [(t "v64")]);
-      (Let (a "v120") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk18")]);
-      (Let (a "v122") L Ptoi [(t "v120")]);
-      (Let (a "v123") L Ptoi [(t "pr.1")]);
-      (Let (a "v124") L Sub [(t "v122"); (t "v123")]);
-      (Let (a "v125") L Div [(t "v124"); (Const 4)]);
-      (Let (a "v126") L Sub [(t "pr.3"); (t "v125")]);
-      (Let (a "v131") W (Cmp Ne W) [(t "v104"); (Const 0)])] (JBranch (t "v131") (To (a "L132")) (To (a "L133"))));
-  (mkBlock (a "L132") [] [(Let (a "v135") W (Cmp Ne W) [(t "v104"); (Const 1)])] (JBranch (t "v135") (To (a "L133")) (To (a "L136"))));
-  (mkBlock (a "L136") [] [(Let (a "v138") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk18")]);
-      (Let (a "v140") L Ptoi [(t "v138")]);
-      (Let (a "v142") L Sub [(t "v140"); (t "v123")]);
-      (Let (a "v143") L Div [(t "v142"); (Const 4)]);
-      (Let (a "v144") W (Cmp Eq L) [(t "v143"); (Const 0)])] (JGoto (To (a "L133"))));
-  (mkBlock (a "L133") [(Phi (a "v148") W [((a "L107"), (Const 0)); ((a "L132"), (Const 1)); ((a "L136"), (t "v144"))])] [] (JBranch (t "v148") (To (a "L12")) (To (a "L129"))));
-  (mkBlock (a "L129") [] [(Let (a "v150") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk18")]);
-      (Let (a "v152") W (Cmp Ugt L) [(t "v126"); (Const 0)])] (JBranch (t "v152") (Poll (a "L60")) (To (a "L12"))));
-  (mkBlock (a "L12") [(Phi (a "pr.2") L [((a "L129"), (t "v126")); ((a "L133"), (t "v126")); ((a "start"), (t "v4"))])] [(Flight (a "v154") Add [(FAddress (t "v0")); (FValue (Const 160))] (LowerOf (t "v0")));
-      (Let (a "chk21") A (HalfCheck Upper 0 8 Read 8) [(t "chk0"); (t "v154")]);
-      (Let (a "v155") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk21")]);
-      (Flight (a "v156") Add [(FAddress (t "v155")); (FValue (Const 16))] (LowerOf (t "v155")));
-      (Let (a "v159") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk21")]);
-      (Flight (a "v160") Add [(FAddress (t "v159")); (FValue (Const 48))] (LowerOf (t "v159")));
-      (Let (a "chk23") A (Check 0 8 Read 8) [(t "v160")]);
-      (Let (a "v161") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk23")]);
-      (Let (a "chk24") A (Check 0 8 Write 8) [(t "v156")]);
-      (RawStorePointer 0 (t "v161") (t "chk24") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk25") A (Renew 0 8 Read 8) [(t "chk21"); (t "v154")]);
-      (Let (a "v164") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk25")]);
-      (Let (a "v167") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk25")]);
-      (Flight (a "v168") Add [(FAddress (t "v167")); (FValue (Const 48))] (LowerOf (t "v167")));
-      (Let (a "chk27") A (Check 0 8 Read 8) [(t "v168")]);
-      (Let (a "v169") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk27")]);
-      (Let (a "chk28") A (Check 0 8 Write 8) [(t "v164")]);
-      (RawStorePointer 0 (t "v169") (t "chk28") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk29") A (Renew 0 8 Read 8) [(t "chk21"); (t "v154")]);
-      (Let (a "v172") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk29")]);
-      (Flight (a "v173") Add [(FAddress (t "v172")); (FValue (Const 8))] (LowerOf (t "v172")));
-      (Let (a "v176") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk29")]);
-      (Flight (a "v177") Add [(FAddress (t "v176")); (FValue (Const 48))] (LowerOf (t "v176")));
-      (Let (a "chk31") A (Check 0 8 Read 8) [(t "v177")]);
-      (Let (a "v178") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk31")]);
-      (Let (a "chk32") A (Check 0 8 Write 8) [(t "v173")]);
-      (RawStorePointer 0 (t "v178") (t "chk32") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk33") A (Renew 0 8 Read 8) [(t "chk21"); (t "v154")]);
-      (Let (a "v181") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk33")]);
-      (Flight (a "v182") Add [(FAddress (t "v181")); (FValue (Const 24))] (LowerOf (t "v181")));
-      (Let (a "v185") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk33")]);
-      (Flight (a "v186") Add [(FAddress (t "v185")); (FValue (Const 32))] (LowerOf (t "v185")));
-      (Let (a "v189") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk33")]);
-      (Flight (a "v190") Add [(FAddress (t "v189")); (FValue (Const 48))] (LowerOf (t "v189")));
-      (Let (a "chk36") A (Check 0 8 Read 8) [(t "v190")]);
-      (Let (a "v191") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk36")]);
-      (Let (a "chk37") A (Check 0 8 Write 8) [(t "v186")]);
-      (RawStorePointer 0 (t "v191") (t "chk37") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk38") A (Check 0 8 Write 8) [(t "v182")]);
-      (RawStorePointer 0 (t "v191") (t "chk38") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "chk39") A (Renew 0 8 Read 8) [(t "chk21"); (t "v154")]);
-      (Let (a "v194") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk39")]);
-      (Flight (a "v195") Add [(FAddress (t "v194")); (FValue (Const 40))] (LowerOf (t "v194")));
-      (Let (a "chk40") A (HalfCheck Lower 0 4 Read 1) [(t "chk0"); (t "v0")]);
-      (Let (a "v200") W (RawLoad (LdNarrow Sw) 0) [(t "chk40")]);
-      (Let (a "v202") W And [(t "v200"); (Const 514)])] (JBranch (t "v202") (To (a "L196")) (To (a "L197"))));
-  (mkBlock (a "L196") [] [(Flight (a "v204") Add [(FAddress (t "v0")); (FValue (Const 160))] (LowerOf (t "v0")));
-      (Let (a "v205") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk39")]);
-      (Flight (a "v206") Add [(FAddress (t "v205")); (FValue (Const 48))] (LowerOf (t "v205")));
-      (Let (a "chk42") A (Check 0 8 Read 8) [(t "v206")]);
-      (Let (a "v207") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk42")])] (JGoto (To (a "L198"))));
-  (mkBlock (a "L197") [] [(Flight (a "v209") Add [(FAddress (t "v0")); (FValue (Const 160))] (LowerOf (t "v0")));
-      (Let (a "v210") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk39")]);
-      (Flight (a "v211") Add [(FAddress (t "v210")); (FValue (Const 56))] (LowerOf (t "v210")));
-      (Let (a "chk44") A (Check 0 8 Read 8) [(t "v211")]);
-      (Let (a "v212") P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [(t "chk44")])] (JGoto (To (a "L198"))));
-  (mkBlock (a "L198") [(Phi (a "v213") P [((a "L196"), (t "v207")); ((a "L197"), (t "v212"))])] [(Let (a "chk45") A (Check 0 8 Write 8) [(t "v195")]);
-      (RawStorePointer 0 (t "v213") (t "chk45") [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]);
-      (Let (a "v218") W (Cmp Eq L) [(t "pr.2"); (Const 0)])] (JBranch (t "v218") (To (a "L216")) (To (a "L215"))));
-  (mkBlock (a "L215") [] [] (JGoto (To (a "L216"))));
-  (mkBlock (a "L216") [(Phi (a "v219") W [((a "L215"), (Const 4294967295)); ((a "L198"), (Const 0))])] [] (JRet (t "v219")))].
+Definition hello_image_fn___GI__IO_wdefault_xsputn : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_xsputn"(P %"v0", P %"v2", L %"v4") -> (RClass L) {
+  @"start":
+    %"v14" : W = (Cmp Ule L) %"v4", #0
+    => br %"v14" ? "L10" : "L16";
+  @"L10":
+    => ret #0;
+  @"L16" [%"pr.7" : L = phi("start" => %"v4", "L103" => %"v118"); %"pr.2" : P = phi("start" => %"v2", "L103" => %"pr.1")]:
+    %"v22" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v22";
+    %"v23" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v24" = %"v23" +p #40;
+    %"chk1" : A = (Check 0 8 Read 8) %"v24";
+    %"v25" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v28" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v29" = %"v28" +p #32;
+    %"chk3" : A = (Check 0 8 Read 8) %"v29";
+    %"v30" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v31" : L = Ptoi %"v25";
+    %"v32" : L = Ptoi %"v30";
+    %"v33" : L = Sub %"v31", %"v32";
+    %"v34" : L = Div %"v33", #4;
+    %"v39" : W = (Cmp Sgt L) %"v34", #0
+    => br %"v39" ? "L35" : "L37";
+  @"L35":
+    %"v45" : W = (Cmp Ugt L) %"v34", %"pr.7"
+    => br %"v45" ? "L42" : "L41";
+  @"L41":
+    => goto "L42";
+  @"L42" [%"pr.9" : L = phi("L41" => %"v34", "L35" => %"pr.7")]:
+    %"v51" : W = (Cmp Sgt L) %"pr.9", #20
+    => br %"v51" ? "L47" : "L48";
+  @"L47":
+    %"v53" = %"v0" +p #160;
+    %"v54" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v55" = %"v54" +p #32;
+    %"v58" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v59" = %"v58" +p #32;
+    %"chk6" : A = (Check 0 8 Read 8) %"v59";
+    %"v60" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    call %"v63" : P = $"__wmempcpy"(P %"v60", P %"pr.2", L %"pr.9");
+    %"chk7" : A = (Check 0 8 Write 8) %"v55";
+    store.ptr [%"chk7" + 0] <- %"v63";
+    %"v66" : L = Shl %"pr.9", #2;
+    %"v67" = %"pr.2" +p %"v66"
+    => goto "L49";
+  @"L48":
+    %"v72" : W = (Cmp Sle L) %"pr.9", #0
+    => br %"v72" ? "L49" : "L69";
+  @"L69":
+    %"v75" = %"v0" +p #160;
+    %"v76" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v77" = %"v76" +p #32;
+    %"chk9" : A = (Check 0 8 Read 8) %"v77";
+    %"v78" : P = (RawLoadPointer 0 load_effects) %"chk9"
+    => goto "L81";
+  @"L81" [%"pr.13" : L = phi("L69" => %"pr.9", "L82" => %"v86"); %"pr.12" : P = phi("L69" => %"v78", "L82" => %"v89"); %"pr.6" : P = phi("L69" => %"pr.2", "L82" => %"v91")]:
+    %"v86" : L = Sub %"pr.13", #1;
+    %"v87" : W = (Cmp Sge L) %"v86", #0
+    => br %"v87" ? "L82" : "L84";
+  @"L82":
+    %"v89" = %"pr.12" +p #4;
+    %"v91" = %"pr.6" +p #4;
+    %"chk10" : A = (Check 0 4 Read 1) %"pr.6";
+    %"v92" : W = (RawLoad (LdNarrow Sw) 0) %"chk10";
+    %"chk11" : A = (Check 0 4 Write 1) %"pr.12";
+    store Ww [%"chk11" + 0] <- %"v92"
+    => goto poll "L81";
+  @"L84":
+    %"v94" = %"v0" +p #160;
+    %"chk12" : A = (Renew 0 8 Read 8) %"chk0", %"v94";
+    %"v95" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    %"v96" = %"v95" +p #32;
+    %"chk13" : A = (Check 0 8 Write 8) %"v96";
+    store.ptr [%"chk13" + 0] <- %"pr.12"
+    => goto "L49";
+  @"L49" [%"pr.10" : L = phi("L47" => %"pr.9", "L84" => %"pr.9", "L48" => #0); %"pr.4" : P = phi("L47" => %"v67", "L84" => %"pr.6", "L48" => %"pr.2")]:
+    %"v100" : L = Sub %"pr.7", %"pr.10"
+    => goto "L37";
+  @"L37" [%"pr.8" : L = phi("L49" => %"v100", "L16" => %"pr.7"); %"pr.3" : P = phi("L49" => %"pr.4", "L16" => %"pr.2")]:
+    %"v105" : W = (Cmp Eq L) %"pr.8", #0
+    => br %"v105" ? "L107" : "L106";
+  @"L106":
+    %"v110" = %"pr.3" +p #4;
+    %"chk14" : A = (Check 0 4 Read 1) %"pr.3";
+    %"v111" : W = (RawLoad (LdNarrow Sw) 0) %"chk14";
+    call %"v112" : W = $"__GI___woverflow"(P %"v0", W %"v111");
+    %"v113" : W = (Cmp Eq W) %"v112", #4294967295
+    => goto "L107";
+  @"L107" [%"v115" : W = phi("L37" => #1, "L106" => %"v113"); %"pr.1" : P = phi("L106" => %"v110", "L37" => %"pr.3")]:
+    => br %"v115" ? "L19" : "L103";
+  @"L103":
+    %"v118" : L = Sub %"pr.8", #1
+    => goto poll "L16";
+  @"L19":
+    %"v121" : L = Sub %"v4", %"pr.8"
+    => ret %"v121"
+} }.
+
+Definition hello_image_fn___GI__IO_wdefault_xsgetn : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_xsgetn"(P %"v0", P %"v2", L %"v4") -> (RClass L) {
+  @"start":
+    => goto "L10";
+  @"L10" [%"pr.3" : P = phi("start" => %"v2", "L95" => %"pr.4"); %"pr.1" : L = phi("start" => %"v4", "L95" => %"pr.2")]:
+    %"v16" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v16";
+    %"v17" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v18" = %"v17" +p #8;
+    %"chk1" : A = (Check 0 8 Read 8) %"v18";
+    %"v19" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v22" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk3" : A = (Check 0 8 Read 8) %"v22";
+    %"v23" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v24" : L = Ptoi %"v19";
+    %"v25" : L = Ptoi %"v23";
+    %"v26" : L = Sub %"v24", %"v25";
+    %"v27" : L = Div %"v26", #4;
+    %"v32" : W = (Cmp Sgt L) %"v27", #0
+    => br %"v32" ? "L28" : "L30";
+  @"L28":
+    %"v38" : W = (Cmp Ugt L) %"v27", %"pr.1"
+    => br %"v38" ? "L35" : "L34";
+  @"L34":
+    => goto "L35";
+  @"L35" [%"pr.8" : L = phi("L34" => %"v27", "L28" => %"pr.1")]:
+    %"v44" : W = (Cmp Sgt L) %"pr.8", #20
+    => br %"v44" ? "L40" : "L41";
+  @"L40":
+    %"v47" = %"v0" +p #160;
+    %"v48" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk5" : A = (Check 0 8 Read 8) %"v48";
+    %"v49" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    call %"v51" : P = $"__wmempcpy"(P %"pr.3", P %"v49", L %"pr.8");
+    %"chk6" : A = (Renew 0 8 Read 8) %"chk0", %"v47";
+    %"v54" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"chk7" : A = (Check 0 8 Read 8) %"v54";
+    %"v55" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v57" : L = Shl %"pr.8", #2;
+    %"v58" = %"v55" +p %"v57";
+    %"chk8" : A = (Renew 0 8 Write 8) %"chk7", %"v54";
+    store.ptr [%"chk8" + 0] <- %"v58"
+    => goto "L42";
+  @"L41":
+    %"v63" : W = (Cmp Sle L) %"pr.8", #0
+    => br %"v63" ? "L42" : "L60";
+  @"L60":
+    %"v66" = %"v0" +p #160;
+    %"v67" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"chk10" : A = (Check 0 8 Read 8) %"v67";
+    %"v68" : P = (RawLoadPointer 0 load_effects) %"chk10"
+    => goto "L71";
+  @"L71" [%"pr.12" : W = phi("L60" => %"pr.8", "L72" => %"v75"); %"pr.11" : P = phi("L60" => %"v68", "L72" => %"v80"); %"pr.7" : P = phi("L60" => %"pr.3", "L72" => %"v78")]:
+    %"v75" : W = Sub %"pr.12", #1;
+    %"v76" : W = (Cmp Sge W) %"v75", #0
+    => br %"v76" ? "L72" : "L73";
+  @"L72":
+    %"v78" = %"pr.7" +p #4;
+    %"v80" = %"pr.11" +p #4;
+    %"chk11" : A = (Check 0 4 Read 1) %"pr.11";
+    %"v81" : W = (RawLoad (LdNarrow Sw) 0) %"chk11";
+    %"chk12" : A = (Check 0 4 Write 1) %"pr.7";
+    store Ww [%"chk12" + 0] <- %"v81"
+    => goto poll "L71";
+  @"L73":
+    %"v83" = %"v0" +p #160;
+    %"chk13" : A = (Renew 0 8 Read 8) %"chk0", %"v83";
+    %"v84" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"chk14" : A = (Check 0 8 Write 8) %"v84";
+    store.ptr [%"chk14" + 0] <- %"pr.11"
+    => goto "L42";
+  @"L42" [%"pr.9" : L = phi("L40" => %"pr.8", "L73" => %"pr.8", "L41" => #0); %"pr.5" : P = phi("L40" => %"v51", "L73" => %"pr.7", "L41" => %"pr.3")]:
+    %"v88" : L = Sub %"pr.1", %"pr.9"
+    => goto "L30";
+  @"L30" [%"pr.4" : P = phi("L42" => %"pr.5", "L10" => %"pr.3"); %"pr.2" : L = phi("L42" => %"v88", "L10" => %"pr.1")]:
+    %"v93" : W = (Cmp Eq L) %"pr.2", #0
+    => br %"v93" ? "L95" : "L94";
+  @"L94":
+    call %"v97" : W = $"__GI___wunderflow"(P %"v0");
+    %"v98" : W = (Cmp Eq W) %"v97", #4294967295
+    => goto "L95";
+  @"L95" [%"v100" : W = phi("L30" => #1, "L94" => %"v98")]:
+    => br %"v100" ? "L13" : poll "L10";
+  @"L13":
+    %"v104" : L = Sub %"v4", %"pr.2"
+    => ret %"v104"
+} }.
+
+Definition hello_image_fn___GI__IO_wdoallocbuf : func :=
+  ir_fn{ "export" "__GI__IO_wdoallocbuf"(P %"v0") -> RVoid {
+  @"start":
+    %"v6" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v6";
+    %"v7" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v8" = %"v7" +p #48;
+    %"chk1" : A = (Check 0 8 Read 8) %"v8";
+    %"v9" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v10" : L = Ptoi %"v9";
+    %"v11" : W = (Cmp Ne L) %"v10", #0
+    => br %"v11" ? "L2" : "L4";
+  @"L2":
+    => ret void;
+  @"L4":
+    %"chk2" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v0";
+    %"v17" : W = (RawLoad (LdNarrow Sw) 0) %"chk2";
+    %"v18" : W = And %"v17", #2;
+    %"v19" : W = (Cmp Eq W) %"v18", #0
+    => br %"v19" ? "L13" : "L15";
+  @"L13":
+    %"v24" = %"v0" +p #160;
+    %"v25" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v26" = %"v25" +p #224;
+    %"chk4" : A = (Check 0 8 Read 8) %"v26";
+    %"v27" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"v28" = %"v27" +p #104;
+    %"chk5" : A = (Check 0 8 Read 8) %"v28";
+    %"v29" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"chk6" : F = CheckFunction %"v29";
+    rawcall %"v31" : W = %"chk6"(P %"v0");
+    %"v32" : W = (Cmp Ne W) %"v31", #4294967295
+    => br %"v32" ? "L20" : "L15";
+  @"L20":
+    => ret void;
+  @"L15":
+    %"v36" = %"v0" +p #160;
+    %"chk7" : A = (Renew 0 8 Read 8) %"chk0", %"v36";
+    %"v37" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v38" = %"v37" +p #216;
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v42" = %"v41" +p #216;
+    %"v43" = %"v42" +p #4;
+    call void $"__GI__IO_wsetb"(P %"v0", P %"v38", P %"v43", W #0)
+    => ret void
+} }.
+
+Definition hello_image_fn___GI__IO_wdefault_doallocate : func :=
+  ir_fn{ "export" "__GI__IO_wdefault_doallocate"(P %"v0") -> (RClass W) {
+  @"start":
+    call %"v3" : P = $"malloc"(L #8192);
+    %"v8" : L = Ptoi %"v3";
+    %"v9" : L = Ptoi #0;
+    %"v10" : W = (Cmp Eq L) %"v8", %"v9"
+    => br %"v10" ? "L4" : "L6";
+  @"L4":
+    => ret #4294967295;
+  @"L6":
+    %"v20" = %"v3" +p #8192;
+    call void $"__GI__IO_wsetb"(P %"v0", P %"v3", P %"v20", W #1)
+    => ret #1
+} }.
+
+Definition hello_image_fn___GI__IO_switch_to_wget_mode : func :=
+  ir_fn{ "export" "__GI__IO_switch_to_wget_mode"(P %"v0") -> (RClass W) {
+  @"start":
+    %"v6" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v6";
+    %"v7" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v8" = %"v7" +p #32;
+    %"chk1" : A = (Check 0 8 Read 8) %"v8";
+    %"v9" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v12" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v13" = %"v12" +p #24;
+    %"chk3" : A = (Check 0 8 Read 8) %"v13";
+    %"v14" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v15" : L = Ptoi %"v9";
+    %"v16" : L = Ptoi %"v14";
+    %"v17" : W = (Cmp Ugt L) %"v15", %"v16"
+    => br %"v17" ? "L2" : "L4";
+  @"L2":
+    %"v22" = %"v0" +p #160;
+    %"v23" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v24" = %"v23" +p #224;
+    %"chk5" : A = (Check 0 8 Read 8) %"v24";
+    %"v25" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v26" = %"v25" +p #24;
+    %"chk6" : A = (Check 0 8 Read 8) %"v26";
+    %"v27" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"chk7" : F = CheckFunction %"v27";
+    rawcall %"v29" : W = %"chk7"(P %"v0", W #(-1));
+    %"v30" : W = (Cmp Eq W) %"v29", #4294967295
+    => br %"v30" ? "L18" : "L4";
+  @"L18":
+    => ret #4294967295;
+  @"L4":
+    %"chk8" : A = (HalfCheck Lower 0 4 Read 1) %"chk0", %"v0";
+    %"v37" : W = (RawLoad (LdNarrow Sw) 0) %"chk8";
+    %"v38" : W = And %"v37", #256
+    => br %"v38" ? "L33" : "L34";
+  @"L33":
+    %"v40" = %"v0" +p #160;
+    %"chk9" : A = (Renew 0 8 Read 8) %"chk0", %"v40";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    %"v42" = %"v41" +p #16;
+    %"v45" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    %"v46" = %"v45" +p #72;
+    %"chk11" : A = (Check 0 8 Read 8) %"v46";
+    %"v47" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    %"chk12" : A = (Check 0 8 Write 8) %"v42";
+    store.ptr [%"chk12" + 0] <- %"v47"
+    => goto "L35";
+  @"L34":
+    %"v49" = %"v0" +p #160;
+    %"chk13" : A = (Renew 0 8 Read 8) %"chk0", %"v49";
+    %"v50" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v51" = %"v50" +p #16;
+    %"v54" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v55" = %"v54" +p #48;
+    %"chk15" : A = (Check 0 8 Read 8) %"v55";
+    %"v56" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"chk16" : A = (Check 0 8 Write 8) %"v51";
+    store.ptr [%"chk16" + 0] <- %"v56";
+    %"chk17" : A = (Renew 0 8 Read 8) %"chk0", %"v49";
+    %"v62" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"v63" = %"v62" +p #32;
+    %"chk18" : A = (Check 0 8 Read 8) %"v63";
+    %"v64" : P = (RawLoadPointer 0 load_effects) %"chk18";
+    %"v67" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"v68" = %"v67" +p #8;
+    %"chk20" : A = (Check 0 8 Read 8) %"v68";
+    %"v69" : P = (RawLoadPointer 0 load_effects) %"chk20";
+    %"v70" : L = Ptoi %"v64";
+    %"v71" : L = Ptoi %"v69";
+    %"v72" : W = (Cmp Ugt L) %"v70", %"v71"
+    => br %"v72" ? "L57" : "L35";
+  @"L57":
+    %"v74" = %"v0" +p #160;
+    %"v75" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"v76" = %"v75" +p #8;
+    %"v79" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"v80" = %"v79" +p #32;
+    %"chk23" : A = (Check 0 8 Read 8) %"v80";
+    %"v81" : P = (RawLoadPointer 0 load_effects) %"chk23";
+    %"chk24" : A = (Check 0 8 Write 8) %"v76";
+    store.ptr [%"chk24" + 0] <- %"v81"
+    => goto "L35";
+  @"L35":
+    %"v83" = %"v0" +p #160;
+    %"chk25" : A = (Renew 0 8 Read 8) %"chk0", %"v83";
+    %"v84" : P = (RawLoadPointer 0 load_effects) %"chk25";
+    %"v87" : P = (RawLoadPointer 0 load_effects) %"chk25";
+    %"v88" = %"v87" +p #32;
+    %"chk27" : A = (Check 0 8 Read 8) %"v88";
+    %"v89" : P = (RawLoadPointer 0 load_effects) %"chk27";
+    %"chk28" : A = (Check 0 8 Write 8) %"v84";
+    store.ptr [%"chk28" + 0] <- %"v89";
+    %"chk29" : A = (Renew 0 8 Read 8) %"chk0", %"v83";
+    %"v92" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v93" = %"v92" +p #24;
+    %"v96" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v97" = %"v96" +p #32;
+    %"v100" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"v101" = %"v100" +p #40;
+    %"v104" : P = (RawLoadPointer 0 load_effects) %"chk29";
+    %"chk33" : A = (Check 0 8 Read 8) %"v104";
+    %"v105" : P = (RawLoadPointer 0 load_effects) %"chk33";
+    %"chk34" : A = (Check 0 8 Write 8) %"v101";
+    store.ptr [%"chk34" + 0] <- %"v105";
+    %"chk35" : A = (Check 0 8 Write 8) %"v97";
+    store.ptr [%"chk35" + 0] <- %"v105";
+    %"chk36" : A = (Check 0 8 Write 8) %"v93";
+    store.ptr [%"chk36" + 0] <- %"v105";
+    %"chk37" : A = (Renew 0 4 Read 1) %"chk8", %"v0";
+    %"v107" : W = (RawLoad (LdNarrow Sw) 0) %"chk37";
+    %"v109" : W = And %"v107", #4294965247;
+    %"chk38" : A = (Renew 0 4 Write 1) %"chk8", %"v0";
+    store Ww [%"chk38" + 0] <- %"v109"
+    => ret #0
+} }.
+
+Definition hello_image_fn___GI__IO_free_wbackup_area : func :=
+  ir_fn{ "export" "__GI__IO_free_wbackup_area"(P %"v0") -> RVoid {
+  @"start":
+    %"chk0" : A = (Check 0 4 Read 1) %"v0";
+    %"v6" : W = (RawLoad (LdNarrow Sw) 0) %"chk0";
+    %"v7" : W = And %"v6", #256
+    => br %"v7" ? "L2" : "L4";
+  @"L2":
+    call void $"__GI__IO_switch_to_main_wget_area"(P %"v0")
+    => goto "L4";
+  @"L4":
+    %"v10" = %"v0" +p #160;
+    %"chk1" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v10";
+    %"v11" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v12" = %"v11" +p #64;
+    %"chk2" : A = (Check 0 8 Read 8) %"v12";
+    %"v13" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    call void $"free"(P %"v13");
+    %"chk3" : A = (Renew 0 8 Read 8) %"chk1", %"v10";
+    %"v16" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v17" = %"v16" +p #64;
+    %"chk4" : A = (Check 0 8 Write 8) %"v17";
+    store.ptr [%"chk4" + 0] <- #0;
+    %"chk5" : A = (Renew 0 8 Read 8) %"chk1", %"v10";
+    %"v20" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    %"v21" = %"v20" +p #80;
+    %"chk6" : A = (Check 0 8 Write 8) %"v21";
+    store.ptr [%"chk6" + 0] <- #0;
+    %"chk7" : A = (Renew 0 8 Read 8) %"chk1", %"v10";
+    %"v24" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v25" = %"v24" +p #72;
+    %"chk8" : A = (Check 0 8 Write 8) %"v25";
+    store.ptr [%"chk8" + 0] <- #0
+    => ret void
+} }.
+
+Definition hello_image_fn__IO_wmem_sync : func :=
+  ir_fn{ "export" "_IO_wmem_sync"(P %"v0") -> (RClass W) {
+  @"start":
+    %"v8" = %"v0" +p #160;
+    %"chk0" : A = (Check 0 8 Read 8) %"v8";
+    %"v9" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v10" = %"v9" +p #32;
+    %"chk1" : A = (Check 0 8 Read 8) %"v10";
+    %"v11" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v14" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v15" = %"v14" +p #40;
+    %"chk3" : A = (Check 0 8 Read 8) %"v15";
+    %"v16" : P = (RawLoadPointer 0 load_effects) %"chk3";
+    %"v17" : L = Ptoi %"v11";
+    %"v18" : L = Ptoi %"v16";
+    %"v19" : W = (Cmp Eq L) %"v17", %"v18"
+    => br %"v19" ? "L4" : "L6";
+  @"L4":
+    call %"v21" : W = $"_IO_wstr_overflow"(P %"v0", W #0);
+    %"v23" = %"v0" +p #160;
+    %"chk4" : A = (Renew 0 8 Read 8) %"chk0", %"v23";
+    %"v24" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"v25" = %"v24" +p #32;
+    %"chk5" : A = (Check 0 8 Read 8) %"v25";
+    %"v26" : P = (RawLoadPointer 0 load_effects) %"chk5";
+    (Flight (a "v27") Sub [(FAddress (t "v26")); (FValue (Const 4))] (LowerOf (t "v26")));
+    %"chk6" : A = (Renew 0 8 Write 8) %"chk5", %"v25";
+    store.ptr [%"chk6" + 0] <- %"v27"
+    => goto "L6";
+  @"L6":
+    %"v29" = %"v0" +p #240;
+    %"chk7" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v29";
+    %"v30" : P = (RawLoadPointer 0 load_effects) %"chk7";
+    %"v32" = %"v0" +p #160;
+    %"chk8" : A = (Renew 0 8 Read 8) %"chk0", %"v32";
+    %"v33" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"v34" = %"v33" +p #24;
+    %"chk9" : A = (Check 0 8 Read 8) %"v34";
+    %"v35" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    %"chk10" : A = (Check 0 8 Write 8) %"v30";
+    store.ptr [%"chk10" + 0] <- %"v35";
+    %"v37" = %"v0" +p #248;
+    %"chk11" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v37";
+    %"v38" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    %"chk12" : A = (Renew 0 8 Read 8) %"chk0", %"v32";
+    %"v41" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    %"v42" = %"v41" +p #32;
+    %"chk13" : A = (Check 0 8 Read 8) %"v42";
+    %"v43" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v46" : P = (RawLoadPointer 0 load_effects) %"chk12";
+    %"v47" = %"v46" +p #24;
+    %"chk15" : A = (Check 0 8 Read 8) %"v47";
+    %"v48" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"v49" : L = Ptoi %"v43";
+    %"v50" : L = Ptoi %"v48";
+    %"v51" : L = Sub %"v49", %"v50";
+    %"v52" : L = Div %"v51", #4;
+    %"chk16" : A = (Check 0 8 Write 1) %"v38";
+    store Wl [%"chk16" + 0] <- %"v52"
+    => ret #0
+} }.
+
+Definition hello_image_fn__IO_wmem_finish : func :=
+  ir_fn{ "export" "_IO_wmem_finish"(P %"v0", W %"v2") -> RVoid {
+  @"start":
+    %"v7" = %"v0" +p #240;
+    %"chk0" : A = (Check 0 8 Read 8) %"v7";
+    %"v8" : P = (RawLoadPointer 0 load_effects) %"chk0";
+    %"v10" = %"v0" +p #160;
+    %"chk1" : A = (HalfCheck Lower 0 8 Read 8) %"chk0", %"v10";
+    %"v11" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v12" = %"v11" +p #24;
+    %"chk2" : A = (Check 0 8 Read 8) %"v12";
+    %"v13" : P = (RawLoadPointer 0 load_effects) %"chk2";
+    %"v16" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v17" = %"v16" +p #32;
+    %"chk4" : A = (Check 0 8 Read 8) %"v17";
+    %"v18" : P = (RawLoadPointer 0 load_effects) %"chk4";
+    %"v21" : P = (RawLoadPointer 0 load_effects) %"chk1";
+    %"v22" = %"v21" +p #24;
+    %"chk6" : A = (Check 0 8 Read 8) %"v22";
+    %"v23" : P = (RawLoadPointer 0 load_effects) %"chk6";
+    %"v24" : L = Ptoi %"v18";
+    %"v25" : L = Ptoi %"v23";
+    %"v26" : L = Sub %"v24", %"v25";
+    %"v27" : L = Div %"v26", #4;
+    %"v28" : L = Add %"v27", #1;
+    %"v29" : L = Shl %"v28", #2;
+    call %"v30" : P = $"realloc"(P %"v13", L %"v29");
+    %"chk7" : A = (Check 0 8 Write 8) %"v8";
+    store.ptr [%"chk7" + 0] <- %"v30";
+    %"chk8" : A = (Renew 0 8 Read 8) %"chk0", %"v7";
+    %"v36" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"chk9" : A = (Check 0 8 Read 8) %"v36";
+    %"v37" : P = (RawLoadPointer 0 load_effects) %"chk9";
+    %"v38" : L = Ptoi %"v37";
+    %"v39" : L = Ptoi #0;
+    %"v40" : W = (Cmp Ne L) %"v38", %"v39"
+    => br %"v40" ? "L31" : "L33";
+  @"L31":
+    %"v43" = %"v0" +p #160;
+    %"chk10" : A = (Renew 0 8 Read 8) %"chk1", %"v43";
+    %"v44" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v45" = %"v44" +p #32;
+    %"chk11" : A = (Check 0 8 Read 8) %"v45";
+    %"v46" : P = (RawLoadPointer 0 load_effects) %"chk11";
+    %"v49" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v50" = %"v49" +p #24;
+    %"chk13" : A = (Check 0 8 Read 8) %"v50";
+    %"v51" : P = (RawLoadPointer 0 load_effects) %"chk13";
+    %"v52" : L = Ptoi %"v46";
+    %"v53" : L = Ptoi %"v51";
+    %"v54" : L = Sub %"v52", %"v53";
+    %"v55" : L = Div %"v54", #4;
+    %"v57" = %"v0" +p #240;
+    %"v58" : P = (RawLoadPointer 0 load_effects) %"chk8";
+    %"chk15" : A = (Check 0 8 Read 8) %"v58";
+    %"v59" : P = (RawLoadPointer 0 load_effects) %"chk15";
+    %"v61" : L = Shl %"v55", #2;
+    %"v62" = %"v59" +p %"v61";
+    %"chk16" : A = (Check 0 4 Write 1) %"v62";
+    store Ww [%"chk16" + 0] <- #0;
+    %"v64" = %"v0" +p #248;
+    %"chk17" : A = (HalfCheck Upper 0 8 Read 8) %"chk0", %"v64";
+    %"v65" : P = (RawLoadPointer 0 load_effects) %"chk17";
+    %"chk18" : A = (Check 0 8 Write 1) %"v65";
+    store Wl [%"chk18" + 0] <- %"v55";
+    %"v69" : P = (RawLoadPointer 0 load_effects) %"chk10";
+    %"v70" = %"v69" +p #48;
+    %"chk20" : A = (Check 0 8 Write 8) %"v70";
+    store.ptr [%"chk20" + 0] <- #0
+    => goto "L33";
+  @"L33":
+    call void $"_IO_wstr_finish"(P %"v0", W #0)
+    => ret void
+} }.
+
+Definition hello_image_fn__IO_wmem_setbuf : func :=
+  ir_fn{ "export" "_IO_wmem_setbuf"(P %"v0", P %"v2", L %"v4") -> (RClass P) {
+  @"start":
+    => ret %"v0"
+} }.
+
+Definition hello_image_fn__IO_wmem_doallocate : func :=
+  ir_fn{ "export" "_IO_wmem_doallocate"(P %"v0") -> (RClass W) {
+  @"start":
+    => ret #1
+} }.

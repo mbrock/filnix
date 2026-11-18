@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -14,24 +15,22 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition scan_term : term :=
   TApp "module" [TList [
-    TApp "func" [TAtom "scan"; TAtom "export"; TAtom "w"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v4"]; TAtom "l"]; TApp "global" [TAtom "strlen"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]]];
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v7"]; TAtom "p"]; TApp "global" [TAtom "strchr"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 108]]]];
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "v7"]]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "w"; TApp "cmp" [TAtom "eq"; TAtom "l"]; TList [TApp "tmp" [TAtom "v12"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v14"]; TAtom "L8"; TAtom "L10"]];
-        TApp "block" [TAtom "L8"; TList [];
-          TList [];
-          TApp "ret" [TApp "const" [TInt 0]]];
-        TApp "block" [TAtom "L10"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v17"]; TAtom "w"]; TApp "global" [TAtom "puts"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v7"]]]];
-            TApp "flight" [TApp "tmp" [TAtom "v20"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v7"]]; TApp "const" [TInt 1]]; TApp "lower" [TApp "tmp" [TAtom "v7"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 1; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v20"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "w"; TApp "raw_load" [TAtom "sb"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v22"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "v4"]; TApp "tmp" [TAtom "v21"]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v22"]]]]]
+    cap_fn{ "export" "scan" [param "p" %"v0"] -> "w"
+      {
+        @"start":
+          call %"v4" : "l" = $"strlen"("p" %"v0");
+          call %"v7" : "p" = $"strchr"("p" %"v0", "w" #108);
+          %"v12" : "l" = "ptoi" %"v7";
+          %"v14" : "w" = op "cmp"("eq", "l") %"v12", #0
+          => br %"v14" ? "L8" : "L10";
+        @"L8":
+          => ret #0;
+        @"L10":
+          call %"v17" : "w" = $"puts"("p" %"v7");
+          %"v20" = %"v7" +p #1;
+          %"chk0" : "a" = op "check"(int 0, int 1, "read", int 1) %"v20";
+          %"v21" : "w" = op "raw_load"("sb", int 0) %"chk0";
+          %"v22" : "w" = "add" %"v4", %"v21"
+          => ret %"v22"
+      } }
   ]].

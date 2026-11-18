@@ -14,9 +14,9 @@ CENSUS = ROOT / "nanofil/rocq/scripts/census.pl"
 GALLINA = ROOT / "nanofil/rocq/scripts/gallina.pl"
 
 
-def fixture(path, term, chunk=True):
+def fixture(path, term, chunk=True, constructors=False):
     result = subprocess.run(
-        [SWIPL, "-q", str(GALLINA), *(["--chunk"] if chunk else []), "sample", "census-test"],
+        [SWIPL, "-q", str(GALLINA), *(["--constructors"] if constructors else []), *(["--chunk"] if chunk else []), "sample", "census-test"],
         input=term, text=True, capture_output=True, check=True,
     )
     path.write_text(result.stdout)
@@ -60,7 +60,7 @@ with tempfile.TemporaryDirectory(prefix="rocq-census-") as work:
     term = ("module([func(g,export,w,[],[block(start,[],["
             + ",".join(["poll([])"] * 65) + "],ret(const(0)))])]).")
     fixture(chunked, term)
-    fixture(duplicate, term, chunk=False)
+    fixture(duplicate, term, chunk=False, constructors=True)
     result = census(chunked, duplicate)
     assert (result["instructions"], result["terminators"], result["phis"]) == (65, 1, 0)
     assert result["functions"] == 1 and len(result["rows"][0]["files"]) == 2
@@ -80,7 +80,7 @@ Definition sample : term := TApp "func" [TAtom "split"; TAtom "export";
     broken.write_text(chunked.read_text().replace("left ++ right", "missing ++ right"))
     census(broken, ok=False)
 
-    broken.write_text(a.read_text().replace('TApp "block"', 'TApp "broken"', 1))
+    broken.write_text(a.read_text().replace('@"start"', 'broken "start"', 1))
     census(broken, ok=False)
     census(ok=False)
 

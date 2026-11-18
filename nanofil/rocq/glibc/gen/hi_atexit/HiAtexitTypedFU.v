@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,14 +12,27 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hi_fn_glibc_libc_start'23futex_wake : func :=
-  mkFunc (a "glibc_libc_start#futex_wake") (a "local") RVoid [(P, (a "v0")); (W, (a "v2")); (W, (a "v4"))] [(mkBlock (a "start") [] [(Let (a "v16") W (Cmp Eq W) [(t "v4"); (Const 0)])] (JBranch (t "v16") (To (a "L18")) (To (a "L17"))));
-  (mkBlock (a "L17") [] [(Let (a "v20") W (Cmp Eq W) [(t "v4"); (Const 128)])] (JGoto (To (a "L18"))));
-  (mkBlock (a "L18") [(Phi (a "v22") W [((a "start"), (Const 1)); ((a "L17"), (t "v20"))])] [] (JBranch (t "v22") (To (a "L11")) (To (a "L14"))));
-  (mkBlock (a "L14") [] [(Let (a "v24") P Copy [(Global (a "glibc_libc_start#str.322"))]);
-      (Let (a "v25") P Copy [(Global (a "glibc_libc_start#str.323"))]);
-      (Let (a "v26") P Copy [(Global (a "glibc_libc_start#str.324"))]);
-      (Let (a "v27") P Copy [(Global (a "glibc_libc_start#str.325"))]);
-      (Call CVoid (Global (a "zerrorf")) [(Arg P (t "v24")); (Arg P (t "v25")); (Arg W (Const 173)); (Arg P (t "v26")); (Arg P (t "v27"))])] (JGoto (To (a "L11"))));
-  (mkBlock (a "L11") [] [] (JBranch (t "v16") (To (a "L30")) (To (a "L29"))));
-  (mkBlock (a "L29") [] [] (JGoto (To (a "L30"))));
-  (mkBlock (a "L30") [(Phi (a "v33") W [((a "L29"), (Const 0)); ((a "L11"), (Const 1))])] [(Call CVoid (Global (a "zsys_futex_wake")) [(Arg P (t "v0")); (Arg W (t "v2")); (Arg W (t "v33"))])] JRetVoid)].
+  ir_fn{ "local" "glibc_libc_start#futex_wake"(P %"v0", W %"v2", W %"v4") -> RVoid {
+  @"start":
+    %"v16" : W = (Cmp Eq W) %"v4", #0
+    => br %"v16" ? "L18" : "L17";
+  @"L17":
+    %"v20" : W = (Cmp Eq W) %"v4", #128
+    => goto "L18";
+  @"L18" [%"v22" : W = phi("start" => #1, "L17" => %"v20")]:
+    => br %"v22" ? "L11" : "L14";
+  @"L14":
+    %"v24" : P = Copy $"glibc_libc_start#str.322";
+    %"v25" : P = Copy $"glibc_libc_start#str.323";
+    %"v26" : P = Copy $"glibc_libc_start#str.324";
+    %"v27" : P = Copy $"glibc_libc_start#str.325";
+    call void $"zerrorf"(P %"v24", P %"v25", W #173, P %"v26", P %"v27")
+    => goto "L11";
+  @"L11":
+    => br %"v16" ? "L30" : "L29";
+  @"L29":
+    => goto "L30";
+  @"L30" [%"v33" : W = phi("L29" => #0, "L11" => #1)]:
+    call void $"zsys_futex_wake"(P %"v0", W %"v2", W %"v33")
+    => ret void
+} }.

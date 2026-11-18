@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,36 +12,32 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition errlist_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "errlist_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__get_errlist"; TInt 0]]]];
-    TApp "func" [TAtom "__get_errlist"; TAtom "export"; TAtom "p"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v8"]; TAtom "w"; TApp "cmp" [TAtom "sge"; TAtom "w"]; TList [TApp "tmp" [TAtom "v0"]; TApp "const" [TInt 0]]]];
-          TApp "branch" [TApp "tmp" [TAtom "v8"]; TAtom "L9"; TAtom "L10"]];
-        TApp "block" [TAtom "L9"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_sys_errlist_internal_len"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v12"]]];
-            TApp "let" [TApp "tmp" [TAtom "v13"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "w"; TApp "cmp" [TAtom "ult"; TAtom "l"]; TList [TApp "tmp" [TAtom "v14"]; TApp "tmp" [TAtom "v13"]]]];
-          TApp "goto" [TAtom "L10"]];
-        TApp "block" [TAtom "L10"; TList [TApp "phi" [TApp "tmp" [TAtom "v17"]; TAtom "w"; TList [TApp "-" [TAtom "start"; TApp "const" [TInt 0]]; TApp "-" [TAtom "L9"; TApp "tmp" [TAtom "v15"]]]]];
-          TList [];
-          TApp "branch" [TApp "tmp" [TAtom "v17"]; TAtom "L4"; TAtom "L6"]];
-        TApp "block" [TAtom "L4"; TList [];
-          TList [
-            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "p"; TAtom "copy"; TList [TApp "global" [TAtom "_sys_errlist_internal"]]];
-            TApp "let" [TApp "tmp" [TAtom "v20"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v0"]]];
-            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "v20"]; TApp "const" [TInt 3]]];
-            TApp "flight" [TApp "tmp" [TAtom "v22"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v18"]]; TApp "tmp" [TAtom "v21"]]; TApp "lower" [TApp "tmp" [TAtom "v18"]]];
-            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "v22"]]];
-            TApp "let" [TApp "tmp" [TAtom "v23"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v23"]]];
-        TApp "block" [TAtom "L6"; TList [];
-          TList [];
-          TApp "ret" [TApp "const" [TInt 0]]]]]
+    cap{ op "data"("errlist_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__get_errlist", int 0))]) };
+    cap_fn{ "export" "__get_errlist" [param "w" %"v0"] -> "p"
+      {
+        @"start":
+          %"v8" : "w" = op "cmp"("sge", "w") %"v0", #0
+          => br %"v8" ? "L9" : "L10";
+        @"L9":
+          %"v12" : "p" = "copy" $"_sys_errlist_internal_len";
+          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 1) %"v12";
+          %"v13" : "l" = op "raw_load"("l", int 0) %"chk0";
+          %"v14" : "l" = op "ext"("sw") %"v0";
+          %"v15" : "w" = op "cmp"("ult", "l") %"v14", %"v13"
+          => goto "L10";
+        @"L10" [phi %"v17" : "w" = ("start" => #0, "L9" => %"v15")]:
+          => br %"v17" ? "L4" : "L6";
+        @"L4":
+          %"v18" : "p" = "copy" $"_sys_errlist_internal";
+          %"v20" : "l" = op "ext"("sw") %"v0";
+          %"v21" : "l" = "shl" %"v20", #3;
+          %"v22" = %"v18" +p %"v21";
+          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 8) %"v22";
+          %"v23" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1"
+          => ret %"v23";
+        @"L6":
+          => ret #0
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

@@ -4,6 +4,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Glibc Require Import CodePrelude.
+From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,13 +12,13 @@ Open Scope Z_scope.
 (** The module term. *)
 Definition dcgettext_term : term :=
   TApp "module" [TList [
-    TApp "data" [TAtom "dcgettext_roots"; TApp "ro" [TAtom "export"]; TInt 8; TList [TApp "item" [TAtom "p"; TApp "sym" [TAtom "__GI___dcgettext"; TInt 0]]]];
-    TApp "func" [TAtom "__GI___dcgettext"; TAtom "export"; TAtom "p"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v4"]]];
-      TList [
-        TApp "block" [TAtom "start"; TList [];
-          TList [
-            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v9"]; TAtom "p"]; TApp "global" [TAtom "__dcigettext"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v0"]]; TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "v2"]]; TApp "arg" [TAtom "p"; TApp "const" [TInt 0]]; TApp "arg" [TAtom "w"; TApp "const" [TInt 0]]; TApp "arg" [TAtom "l"; TApp "const" [TInt 0]]; TApp "arg" [TAtom "w"; TApp "tmp" [TAtom "v4"]]]]];
-          TApp "ret" [TApp "tmp" [TAtom "v9"]]]]]
+    cap{ op "data"("dcgettext_roots", op "ro"("export"), int 8, [op "item"("p", op "sym"("__GI___dcgettext", int 0))]) };
+    cap_fn{ "export" "__GI___dcgettext" [param "p" %"v0"; param "p" %"v2"; param "w" %"v4"] -> "p"
+      {
+        @"start":
+          call %"v9" : "p" = $"__dcigettext"("p" %"v0", "p" %"v2", "p" #0, "w" #0, "l" #0, "w" %"v4")
+          => ret %"v9"
+      } }
   ]].
 
 From Nanofil Require Import Syntax Transport Semantics.

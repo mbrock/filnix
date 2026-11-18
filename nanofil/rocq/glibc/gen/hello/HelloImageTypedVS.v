@@ -3,6 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
+From Glibc Require Import IRNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -11,7 +12,11 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition hello_image_fn___vsnprintf_internal : func :=
-  mkFunc (a "__vsnprintf_internal") (a "export") (RClass W) [(P, (a "v0")); (L, (a "v2")); (P, (a "v4")); (P, (a "v6")); (W, (a "v8"))] [(mkBlock (a "start") [] [(Let (a "v10") P (Alloc 8) [(Const 168)]);
-      (Call CVoid (Global (a "__printf_buffer_snprintf_init")) [(Arg P (t "v10")); (Arg P (t "v0")); (Arg L (t "v2"))]);
-      (Call CVoid (Global (a "__printf_buffer")) [(Arg P (t "v10")); (Arg P (t "v4")); (Arg P (t "v6")); (Arg W (t "v8"))]);
-      (Call (CResult (a "v16") W) (Global (a "__printf_buffer_snprintf_done")) [(Arg P (t "v10"))])] (JRet (t "v16")))].
+  ir_fn{ "export" "__vsnprintf_internal"(P %"v0", L %"v2", P %"v4", P %"v6", W %"v8") -> (RClass W) {
+  @"start":
+    %"v10" : P = (Alloc 8) #168;
+    call void $"__printf_buffer_snprintf_init"(P %"v10", P %"v0", L %"v2");
+    call void $"__printf_buffer"(P %"v10", P %"v4", P %"v6", W %"v8");
+    call %"v16" : W = $"__printf_buffer_snprintf_done"(P %"v10")
+    => ret %"v16"
+} }.
