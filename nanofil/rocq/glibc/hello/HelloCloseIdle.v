@@ -349,3 +349,86 @@ Proof using Type*.
       destruct Hpost as [[_ ->] | [_ ->]]; [reflexivity | apply LibioFclose.lor32_linked].
 Qed.
 End idle.
+
+(** ## Fclose of an idle stream
+
+    Hello holds stdout and stderr as idle streams, so it needs fclose in
+    the form that takes [file_idle]. The rule below opens the idle
+    stream, hands its lock and flags to [wp_fclose_with] and lets
+    [wp_close_it_idle] close the buffer and the descriptor. *)
+
+Section fclose_idle.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}
+  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
+  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
+  `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
+  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
+  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}
+  `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None)
+  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** A call `c: fclose (fp)` on idle stdout or stderr writes what its
+    heap buffer holds, closes its descriptor and unlinks it. It returns
+    0, or `c: EOF` when the write or the close failed, and gives back
+    errno. The closed object keeps the fields that [closed_stdout]
+    describes, so error reporting can still flush it. *)
+Lemma wp_fclose_idle fr pre post fp fd pin pout fcp vb vreg sb sreg eb Φ :
+  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
+  (pout = fp \/ (ptr_addr pout <> ptr_addr fp /\ 0 <= ptr_addr pout < 2 ^ 64 /\
+    lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp)) ->
+  lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> ptr_addr fp ->
+  0 <= ptr_addr pin < 2 ^ 64 ->
+  lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
+  fd <> 0 -> In fd (ow_fds w0) -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
+  file_idle vb (ow_self w0) fp fd -∗ errno_any eb -∗
+  io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+  ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ tcb_cleanup_inv (ow_self w0) -∗
+     io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
+     (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) -∗
+     errno_any eb -∗ Φ (Ret (WInt k))) -∗
+  WP (ERun fr : sexpr) {{ Φ }}.
+Proof using Type*.
+  intros Hfr Hgout Hout Hgin Hin Hinr Hfcg Hfcr Hfd0 Hfd He.
+  iIntros "#Hvt #Hs Htcb Hf Herr Hio Hlives HK".
+  iDestruct "Hf" as (fb freg st nb Hp) "(Hl & Hf & Hlk & Hb & _)".
+  destruct Hp as (-> & Hal & Hfb & Hend & Hfreg & Hok & Hidle & Hvtb & Hbok & Hshort).
+  iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfdc & Hf2 & _ & %Hcl & Hcol & Hlp & Hoff & _ & _ & _ & _ &
+    Hmd & Htot & Hvtp)".
+  iDestruct "Hlk" as (lb lreg Hlb) "Hlk". rewrite Hlb.
+  pose proof Hidle as Hidle'. unfold idle_ok in Hidle'.
+  destruct Hidle' as (_ & _ & Hmd0 & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hlnk & _ & _ & _ & Hlk0).
+  rewrite Hlb in Hlk0. cbn [ptr_addr] in Hlk0.
+  pose proof Hok as (Hflr & _ & Hfilebuf & _ & Hul & _ & _).
+  cbn [ptr_addr] in Hout, Hin.
+  iApply (wp_fclose_with Hreg Hext Hff fr pre post fb freg (fs_flags st) (fs_mode st) lb lreg sb sreg fcp pin
+    pout vb vreg
+    (([∗ list] i ↦ p ∈ fs_ptrs st, pcell fb (off_ptr i) p) ∗ int_cell fb off_fileno (fs_fileno st) ∗
+     int_cell fb off_flags2 (fs_flags2 st) ∗ bytes fb off_column (fs_column st) ∗
+     icell fb off_offset (fs_offset st) ∗ int_cell fb off_mode (fs_mode st) ∗
+     icell fb off_total_written (fs_total st) ∗ pcell fb off_vtable (fs_vtable st) ∗ buf_idle nb ∗
+     errno_any eb)%I
+    (errno_any eb) Φ
+    with "Hvt Hs Htcb Hl Hfl Hlp Hlk Hio Hlives [$Hps $Hfdc $Hf2 $Hcol $Hoff $Hmd $Htot $Hvtp $Hb $Herr] [] [HK]");
+    try first [exact Hfr | eassumption | lia].
+  - iIntros (fr' Ψ Hfr') "Hl Hfl (Hps & Hfd & Hf2 & Hcol & Hoff & Hmd & Htot & Hvtp & Hb & Herr) HK".
+    iApply (wp_close_it_idle Hreg Hext Hfw Hfh Hzf Hzg Hfc fr' fb freg st nb fd vb vreg eb Ψ
+      with "Hvt Hl Hfl Hps Hfd Hf2 Hcol Hoff Hmd Htot Hvtp Hb Herr HK"); assumption.
+  - iNext. iIntros (k Hk) "Htcb Hio Hlives Hc Herr".
+    iApply ("HK" with "[%] Htcb Hio Hlives [Hc] Herr"); [exact Hk|].
+    iExists fb, freg, lb, lreg. iSplit; [done | iExact "Hc"].
+Qed.
+End fclose_idle.
