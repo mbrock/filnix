@@ -116,10 +116,13 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
     the start of its heap buffer. Its first overflow sets the read
     pointers and the write pointers to the buffer's base, and every
     flush by `c: new_do_write` sets them there again. A stream without a
-    buffer has never written, so it is not putting. The predicate
+    buffer has never written, so it is not putting. Nor is a stream
+    that may not be written, because the overflow function returns
+    before it sets the putting bit of such a stream. The predicate
     [short_idle] nb st states these facts for the stream's buffer nb. *)
 Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
-  (has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
+  ((has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
+   (has (fs_flags st) io_no_writes = true -> has (fs_flags st) io_currently_putting = false)) /\
   match nb with
   | NbShort => has (fs_flags st) io_unbuffered = true /\
       fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4 /\ fs_ptr st 3 = fs_ptr st 6

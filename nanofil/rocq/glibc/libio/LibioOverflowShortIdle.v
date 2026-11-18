@@ -49,11 +49,12 @@ Definition short_after st fb fl rb tw off col mode :=
 Lemma short_after_idle st fresh fd fb fl rb tw off col mode :
   let nb := if fresh : bool then NbNone else NbShort in let st' := short_after st fb fl rb tw off col mode in
   flags_ok st -> idle_ok fd (fs_with_flags2 st 0) -> short_idle nb st -> buf_ptrs_ok fb nb (fs_ptrs st) ->
-  has (fs_flags st) io_unbuffered = true -> short_flags fresh (fs_flags st) fl -> 0 <= fl < 2^32 ->
+  has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_no_writes = false ->
+  short_flags fresh (fs_flags st) fl -> 0 <= fl < 2^32 ->
   in_buf fb NbShort rb -> take 2 col = [0;0] -> (mode = 0 \/ mode = 2^32-1) ->
   flags_ok st' /\ idle_ok fd (fs_with_flags2 st' 0) /\ short_idle NbShort st' /\ buf_ptrs_ok fb NbShort (fs_ptrs st').
 Proof.
-  cbn zeta. intros (Hf & Hmagic & Hfile & Hbk & Hul & Hlock & Huser) Hi [Hline Hshort] Hb Hu Hfl Hrange Hrb Hcol Hmd.
+  cbn zeta. intros (Hf & Hmagic & Hfile & Hbk & Hul & Hlock & Huser) Hi [[Hline _] Hshort] Hb Hu Hnw0 Hfl Hrange Hrb Hcol Hmd.
   assert (E : forall m, Z.land 1 m = 0 -> Z.land 2048 m = 0 -> Z.land io_err_seen m = 0 ->
     has fl m = has (fs_flags st) m) by (intros; unfold has; rewrite (short_flags_mask _ _ _ _ Hfl) //).
   assert (Euser : has fl io_user_buf = true).
@@ -67,7 +68,8 @@ Proof.
   split_and!;
     try solve [assumption | reflexivity | reflexivity || lia | rewrite E; auto; reflexivity |
       rewrite (short_flags_mask _ _ _ _ Hfl); auto; reflexivity | intros; left; assumption |
-      intros; rewrite E; auto; reflexivity | intros; apply Hline; assumption | intros [Ha|Ha]; lia].
+      intros; rewrite E; auto; reflexivity | intros; apply Hline; assumption | intros [Ha|Ha]; lia |
+      rewrite E; auto; [rewrite Hnw0; discriminate | reflexivity..]].
   unfold buf_ptrs_ok. cbn [app nth take]. split_and!; try reflexivity.
   unfold in_buf in Hrb. unfold short_ptr, off_shortbuf. repeat constructor; cbn in *; intuition lia.
 Qed.
@@ -92,7 +94,7 @@ Lemma short_fields vb self fb freg st (fresh : bool) fd flags2 held eb :
   fb mod 8 = 0 -> 0 < fb -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   flags_ok st -> idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 ->
   fs_vtable st = mkPtr (vb+vt_file) (Ro vb) -> buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st ->
-  has fl io_unbuffered = true ->
+  has fl io_unbuffered = true -> has fl io_no_writes = false ->
   file_fields fb st -∗ lock_inv self (fs_lock st) held -∗ wide_idle vb (fs_wide st) (fs_codecvt st) -∗
   errno_any eb -∗ ∃ rb byte,
   short_input fb fresh rb ∗ int_cell fb off_flags fl ∗ icell fb off_total_written (fs_total st) ∗
@@ -102,7 +104,7 @@ Lemma short_fields vb self fb freg st (fresh : bool) fd flags2 held eb :
     live fb freg -∗ short_state fb rb' fl' tw' off' byte' -∗ ovf_fixed fb flags2 fd eb mode' vb -∗
     file_tidy vb self (mkPtr fb (Obj fb)) fd flags2 held ∗ errno_any eb).
 Proof using Type.
-  cbn zeta. intros Hal Hfb Hend Hrend Hok Hi Hf2 Hvt Hb Hshort Hu.
+  cbn zeta. intros Hal Hfb Hend Hrend Hok Hi Hf2 Hvt Hb Hshort Hu Hnw0.
   iIntros "(%Hlen & Hfl & Hps & Hfd & Hf2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb & Hmd & Htw & Hvt) Hlk Hw Herr".
   pose proof (buf_ptrs_in _ _ _ 2 Hb Hlen ltac:(lia)) as Hin.
   pose proof Hi as (_ & Hfd & _ & _ & _ & _ & H01 & H13 & _ & _ & _ & _ & _ & _ & Hcol).
@@ -125,7 +127,7 @@ Proof using Type.
   assert (Hin' : in_buf fb NbShort rb').
   { destruct Hrb as [[-> ->]| ->]; [exact Hin | unfold in_buf, short_ptr, off_shortbuf; cbn; intuition lia]. }
   pose proof (short_after_idle st fresh (fs_fileno st) fb fl' rb' tw' off' col' mode' Hok Hi Hshort
-    ltac:(rewrite Hps; exact Hb) Hu Hflags Hrange Hin' eq_refl Hmode) as Hpost.
+    ltac:(rewrite Hps; exact Hb) Hu Hnw0 Hflags Hrange Hin' eq_refl Hmode) as Hpost.
   iExists fb, freg, st', NbShort. iSplit; [iPureIntro; intuition|]. iFrame "Hl Hlk Hw".
   iDestruct "Hs" as "(P0 & P1 & P2 & P3 & P4 & P5 & P6 & P7)".
   unfold st', short_after, file_fields, fs_ptr. cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset

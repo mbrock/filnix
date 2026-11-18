@@ -86,7 +86,7 @@ Proof using Type*.
       [destruct Hshort as (_ & Hb0' & _); congruence | iDestruct "Hb" as "[]"]. }
   iDestruct (short_fields vb self fb freg st fresh (fs_fileno st) flags2 held eb with "Hf Hlk Hw Herr") as (rb byte)
     "(Hp & Hfl & Htw & Hoff & Hbyte & (Hf2 & Hfd & Herr & Hcol & Hmode & Hvtp) & Hclose)"; try assumption.
-  pose proof (proj1 Hshort Hu) as Hline. pose proof Hok as (_ & _ & _ & Hbk & _).
+  pose proof (proj1 (proj1 Hshort) Hu) as Hline. pose proof Hok as (_ & _ & _ & Hbk & _).
   pose proof Hi as (_ & _ & Hmode & _ & _ & _ & _ & _ & _ & _ & _ & Happ & _).
   cbn [fs_with_flags2 fs_mode fs_flags] in Hmode, Happ.
   unfold has in Hu, Hnw, Hbk, Happ, Hline. apply negb_true_iff, Z.eqb_neq in Hu.
