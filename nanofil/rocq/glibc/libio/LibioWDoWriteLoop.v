@@ -20,14 +20,11 @@
     } while (to_do > 0);
     ```
 
-    Each pass converts into the narrow buffer when it has at least
-    sixteen bytes free, and into the sixteen-byte array mb_buf on the
-    stack otherwise. It then writes what the narrow buffer held before
-    the pass together with the new bytes. Before the first pass, the
-    flush writes the narrow buffer out if it is full and holds pending
-    bytes. This file proves the whole flush. The proof of the loop is a
-    [[later-modality|Löb induction]] over the loop's head, so it needs no
-    bound on the number of passes. *)
+    Before converting the first character, the flush writes out any
+    pending bytes if the narrow buffer is full. Each pass converts into
+    that buffer if it has at least sixteen bytes free. Otherwise the
+    pass converts into a sixteen-byte array on the stack. In either
+    case it writes the bytes from the chosen buffer to the descriptor. *)
 
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
@@ -52,7 +49,8 @@ Local Abbreviation objp b := (mkPtr b (Obj b)).
    the descriptors and pointer cells for individual bytes. *)
 Local Typeclasses Opaque iconv_cell pcell icell bytes auxes live.
 
-(** The conversion function as Hello's image links it. *)
+(** To read the conversion instructions that Hello actually runs, we
+    look up the function in its linked image. *)
 Definition codecvt_out_fn := Eval vm_compute in
   code_function (code_module (TApp "module" [TList hello_image_items_125])) "__libio_codecvt_out".
 
@@ -254,9 +252,9 @@ Local Abbreviation ok st nb := (wide_file_ok ge vb (objp fb) fd fb freg st nb wd
     as they were or mark an empty buffer; after success they always
     mark an empty one. *)
 
-(** The predicate [wdo_post] lk nb wr i j Φ is the caller's continuation
-    for a flush of the stream with the lock lk, the narrow buffer nb
-    and the wide data region wr. *)
+(** When the flush returns, the caller regains the stream and its
+    buffers. It can tell from the return value whether any wide
+    characters might still be pending. *)
 Definition wdo_post (lk : ptr) (nb : nbuf) (wr : region) (i j : Z) (Φ : outcome -> iProp Σ) : iProp Σ :=
   ∀ r st k j', ⌜(r = 0 \/ r = 2 ^ 32 - 1) /\ ok st nb /\ fs_lock st = lk /\
       0 <= k <= window_size w /\ 0 <= j' <= window_size w /\ (r = 0 -> k = 0)⌝ -∗
@@ -318,9 +316,9 @@ Definition loop_stack (a64 : Z) (r64 : region) (mb : Z) (rmb : region) (a67 : Z)
   (∃ ys, ⌜length ys = 16%nat /\ Forall (fun y => 0 <= y < 256) ys⌝ ∗ bytes mb 0 ys) ∗
   live a67 r67 ∗ (∃ p, pcell a67 0 p).
 
-(** The predicate [loop_wp] says that the flush finishes safely from
-    the head of the loop. The proof of the loop assumes it for every
-    later pass by Löb induction. *)
+(** If a pass leaves characters to convert, the next pass needs the
+    same buffers but starts at the new source cursor. The proof uses
+    [[later-modality|Löb induction]] to apply this rule again there. *)
 Definition loop_wp nb lk wr i j a64 r64 mb rmb a67 r67 Φ : iProp Σ :=
   ∀ e r st, ⌜loop_regs e a64 mb a67 i r /\ 0 < r <= i /\ ok st nb /\ fs_lock st = lk⌝ -∗
     L -∗ errno_any eb -∗ live fb freg -∗ file_fields fb st -∗ buf_idle nb -∗
@@ -583,17 +581,22 @@ Proof using Type*.
         - apply window_ptrs_ok; [assumption|lia|lia].
         - destruct Hofl as [-> | ->], Hfl' as [-> | ->]; [left|right|right|right]; reflexivity. }
       iDestruct (bytes_take_drop _ _ zs (Z.to_nat jj) with "Hx1") as "[Hz0 Hz1]"; [lia|].
+      assert (Lold : length (take (Z.to_nat (a4 - bb)) xs) = Z.to_nat (a4 - bb))
+        by (apply length_take_le; clear -A4 Lxs; lia).
+      assert (Lnew : length (take (Z.to_nat jj) zs) = Z.to_nat jj)
+        by (apply length_take_le; clear -Hjj Lzs; lia).
+      assert (Lsend : Z.of_nat (length (take (Z.to_nat (a4 - bb)) xs ++ take (Z.to_nat jj) zs)) = a4 - bb + jj)
+        by (rewrite length_app Lold Lnew; clear -A4 Hjj; lia).
       iDestruct (bytes_app _ _ (take (Z.to_nat (a4 - bb)) xs) (take (Z.to_nat jj) zs) with "[Hx0 Hz0]") as "Hw".
-      { iFrame "Hx0". rewrite length_take Z.add_0_l. replace (Z.of_nat (Z.to_nat (a4 - bb) `min` length xs)) with (a4 - bb) by lia. iExact "Hz0". }
+      { iFrame "Hx0". rewrite Lold Z.add_0_l Z2Nat.id; [iExact "Hz0"|lia]. }
       iApply wp_call_bind; [vx | exact Hdw | reflexivity |]. iNext.
       iApply (wp_wnarrow_heap Hreg Hext Hfw fd vb fb vr freg eb wd w tw tm Hfd Herr _ st bb sz breg bb breg 0
           (take (Z.to_nat (a4 - bb)) xs ++ take (Z.to_nat jj) zs)
         with "Hvt Hwvt Herr Hf Hfields Hbl [] Hw").
-      { rewrite length_app !length_take Z.add_0_r.
-        replace (Z.of_nat (Z.to_nat (a4 - bb) `min` length xs + Z.to_nat jj `min` length zs)) with (a4 - bb + jj) by lia.
+      { rewrite Lsend Z.add_0_r.
         rewrite (Z.mod_small (a4 - bb + jj) (2 ^ 64)); [reflexivity|lia]. }
       { exact H. }
-      all: try (rewrite length_app !length_take; lia). all: try first [lia | (intros; reflexivity)].
+      all: try first [lia | (intros; reflexivity)].
       { apply Forall_app; split; apply Forall_take; assumption. }
       { rewrite decide_True //. }
       iNext. iIntros (r' st' (Hr' & H' & Hlk')) "Herr Hf Hfields Hbl _ Hw". resume. step.
@@ -601,10 +604,9 @@ Proof using Type*.
       { iExists breg, ((take (Z.to_nat (a4 - bb)) xs ++ take (Z.to_nat jj) zs) ++ drop (Z.to_nat jj) zs)%list, cs.
         iFrame "Hbl Hcs". iSplitR.
         { iPureIntro. split_and!; try assumption.
-          - rewrite !length_app length_drop !length_take. lia.
+          - rewrite !length_app length_drop Lold Lnew. clear -Lzs Hjj A4 Lxs; lia.
           - apply Forall_app; split; [apply Forall_app; split; apply Forall_take; assumption|apply Forall_drop; assumption]. }
-        iApply bytes_app. iFrame "Hw". rewrite length_app !length_take Z.add_0_l.
-        replace (Z.of_nat (Z.to_nat (a4 - bb) `min` length xs + Z.to_nat jj `min` length zs)) with (a4 - bb + Z.to_nat jj) by lia.
+        iApply bytes_app. iFrame "Hw". rewrite Lsend Z.add_0_l Z2Nat.id; [|lia].
         iExact "Hz1". }
       destruct Hr' as [-> | ->].
       * branch. step. rewrite (Z.mod_small res (2 ^ 32)); [|lia].
@@ -686,6 +688,21 @@ Proof using Type*.
   change ((8 + 15) / 16 * 16) with 16 in Ea64, Ea67. change ((16 + 15) / 16 * 16) with 16 in Emb.
   assert (A64 : a64 mod 8 = 0) by (clear -Ma64; apply Z.mod_divide in Ma64; [|lia]; apply Z.mod_divide; [lia|]; destruct Ma64 as [q ->]; exists (2 * q); lia).
   assert (A67 : a67 mod 8 = 0) by (clear -Ma67; apply Z.mod_divide in Ma67; [|lia]; apply Z.mod_divide; [lia|]; destruct Ma67 as [q ->]; exists (2 * q); lia).
+  iAssert (wide_data_at vb tw tm wd w wr (window_slots wd w i j)) with
+    "[Hwl Hws Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb]" as "Hwide".
+  { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. by iFrame. }
+  set (r64 := mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live).
+  set (rmb := mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live).
+  set (r67 := mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live).
+  iAssert (loop_stack a64 r64 mb rmb a67 r67) with "[H64 C64 Hmb Bmb H67 C67]" as "Hstack".
+  { iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
+    iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia]. }
+  iPoseProof (wp_wdo_loop nb (fs_lock st) wr i j a64 r64 mb rmb a67 r67 Φ
+    with "Hvt Hwvt HCR") as "Hloop"; try solve [assumption | cbn [r64 rmb r67 r_end]; lia].
+  Local Ltac first_pass i :=
+    rewrite (Z.mod_small i (2 ^ 64)); [|lia]; unfold loop_regs; split_and!;
+    try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence];
+    lookups; rewrite Z.sub_diag wpos_zero; reflexivity.
   destruct nb as [| |bb sz|b]; [exfalso; rewrite (Hnw eq_refl) in Hi; cbn in Hi; lia| | |iDestruct "Hnb" as "[]"].
   - cbn [buf_ptrs_ok nth take] in Bp'. destruct Bp' as (E6 & E7 & Hall). destruct Snb as (Hub & E43 & E36). cbn [nth] in E43, E36, E13, E01.
     clear E01. rewrite E36 in E13, E43. subst p1 p4 p3 p6 p7.
@@ -693,36 +710,12 @@ Proof using Type*.
     destruct p5 as [a5 c5]. cbn [ptr_addr ptr_cap] in C5, A5. subst c5.
     step. check "Hf". load_self_using wp_raw_load_pointer_self "Hf P5". step. check "Hf". load_self_using wp_raw_load_pointer_self "Hf P4".
     step. step. step.
-    destruct (Z.eq_dec a5 (fb + 131)) as [-> | Ha5].
-    + rewrite Z.eqb_refl. branch. step. step. load_self_using wp_raw_load_pointer_self "Hf P5". step. check "Hf". load_self_using wp_raw_load_pointer_self "Hf P3".
-      step. step. step. step. step. rewrite Z.eqb_refl. branch. step.
-      iPoseProof (wp_wdo_loop NbShort (fs_lock st) wr i j a64 (mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live)
-          mb (mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live) a67 (mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live) Φ
-          B ltac:(lia) Hj ltac:(lia) A64 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) ltac:(lia) ltac:(cbn [r_end]; lia)
-          ltac:(cbn [r_end]; lia) ltac:(lia) A67 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) with "Hvt Hwvt HCR") as "Hloop".
-      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb H64 C64 Hmb Bmb H67 C67 HK] Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb] [H64 C64 Hmb Bmb H67 C67] HK").
-      { rewrite (Z.mod_small i (2 ^ 64)); [|lia].
-        unfold loop_regs. split_and!; try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence].
-        lookups. rewrite Z.sub_diag wpos_zero. reflexivity. }
-      { rewrite /file_fields Hps Hcd Hwd. cbn [big_opL]. iFrame. done. }
-      { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-        apply window_ptrs_ok; [assumption|lia|lia]. }
-      iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
-      iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia].
-    + rewrite (Z.mod_small a5); [|lia]. rewrite (Z.mod_small (fb + 131)); [|lia]. rewrite (proj2 (Z.eqb_neq _ _) Ha5). branch. step. branch. step.
-      iPoseProof (wp_wdo_loop NbShort (fs_lock st) wr i j a64 (mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live)
-          mb (mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live) a67 (mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live) Φ
-          B ltac:(lia) Hj ltac:(lia) A64 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) ltac:(lia) ltac:(cbn [r_end]; lia)
-          ltac:(cbn [r_end]; lia) ltac:(lia) A67 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) with "Hvt Hwvt HCR") as "Hloop".
-      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb H64 C64 Hmb Bmb H67 C67 HK] Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb] [H64 C64 Hmb Bmb H67 C67] HK").
-      { rewrite (Z.mod_small i (2 ^ 64)); [|lia].
-        unfold loop_regs. split_and!; try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence].
-        lookups. rewrite Z.sub_diag wpos_zero. reflexivity. }
-      { rewrite /file_fields Hps Hcd Hwd. cbn [big_opL]. iFrame. done. }
-      { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-        apply window_ptrs_ok; [assumption|lia|lia]. }
-      iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
-      iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia].
+    destruct (Z.eq_dec a5 (fb + 131)) as [-> | Ha5];
+      [ rewrite Z.eqb_refl; branch; step; step; load_self_using wp_raw_load_pointer_self "Hf P5"; step; check "Hf"; load_self_using wp_raw_load_pointer_self "Hf P3";
+        step; step; step; step; step; rewrite Z.eqb_refl; branch; step
+      | rewrite (Z.mod_small a5); [|lia]; rewrite (Z.mod_small (fb + 131)); [|lia]; rewrite (proj2 (Z.eqb_neq _ _) Ha5); branch; step; branch; step ].
+    all: iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hwide Hstack HK] Hnb Hwide Hstack HK");
+      [first_pass i | rewrite /file_fields Hps Hcd Hwd; cbn [big_opL]; by iFrame].
   - cbn [buf_ptrs_ok nth take] in Bp'. destruct Bp' as (E6 & E7 & Hall). destruct Snb as (Hub & E26 & E36).
     cbn [nth] in E26, E36, E13, E01. subst p6 p7. subst p2 p3. subst p1. subst p0.
     pose proof (proj1 (Forall_forall _ _) Hall p4 ltac:(cbn; tauto)) as (C4 & A4).
@@ -737,19 +730,8 @@ Proof using Type*.
     2: { rewrite (proj2 (Z.eqb_neq _ _) Ha5). branch. step. branch. step.
       iAssert (buf_idle (NbHeap bb sz)) with "[Hbl Hxs Hcs]" as "Hnb".
       { iExists breg, xs, cs. iFrame. iPureIntro. split_and!; assumption. }
-      iPoseProof (wp_wdo_loop (NbHeap bb sz) (fs_lock st) wr i j a64 (mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live)
-          mb (mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live) a67 (mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live) Φ
-          B ltac:(lia) Hj ltac:(lia) A64 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) ltac:(lia) ltac:(cbn [r_end]; lia)
-          ltac:(cbn [r_end]; lia) ltac:(lia) A67 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) with "Hvt Hwvt HCR") as "Hloop".
-      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb H64 C64 Hmb Bmb H67 C67 HK] Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb] [H64 C64 Hmb Bmb H67 C67] HK").
-      { rewrite (Z.mod_small i (2 ^ 64)); [|lia].
-        unfold loop_regs. split_and!; try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence].
-        lookups. rewrite Z.sub_diag wpos_zero. reflexivity. }
+      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hwide Hstack HK] Hnb Hwide Hstack HK"); [first_pass i|].
       { rewrite /file_fields Hps Hcd Hwd. cbn [big_opL]. iFrame. done. }
-      { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-        apply window_ptrs_ok; [assumption|lia|lia]. }
-      iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
-      iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia].
     }
     rewrite Z.eqb_refl. branch. step. step. load "Hf" "P5" "Hbl". iEval (cbn [ptr_cap live_cap]) in "Hbl".
     step. check "Hf". load "Hf" "P3" "Hbl". step. step. step. step. step.
@@ -758,19 +740,8 @@ Proof using Type*.
     { rewrite Z.eqb_refl. branch. step.
       iAssert (buf_idle (NbHeap bb sz)) with "[Hbl Hxs Hcs]" as "Hnb".
       { iExists breg, xs, cs. iFrame. iPureIntro. split_and!; assumption. }
-      iPoseProof (wp_wdo_loop (NbHeap bb sz) (fs_lock st) wr i j a64 (mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live)
-          mb (mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live) a67 (mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live) Φ
-          B ltac:(lia) Hj ltac:(lia) A64 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) ltac:(lia) ltac:(cbn [r_end]; lia)
-          ltac:(cbn [r_end]; lia) ltac:(lia) A67 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) with "Hvt Hwvt HCR") as "Hloop".
-      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb H64 C64 Hmb Bmb H67 C67 HK] Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb] [H64 C64 Hmb Bmb H67 C67] HK").
-      { rewrite (Z.mod_small i (2 ^ 64)); [|lia].
-        unfold loop_regs. split_and!; try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence].
-        lookups. rewrite Z.sub_diag wpos_zero. reflexivity. }
+      iApply ("Hloop" $! _ i st with "[%] HL Herr Hf [-Hnb Hwide Hstack HK] Hnb Hwide Hstack HK"); [first_pass i|].
       { rewrite /file_fields Hps Hcd Hwd. cbn [big_opL]. iFrame. done. }
-      { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-        apply window_ptrs_ok; [assumption|lia|lia]. }
-      iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
-      iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia].
     }
     rewrite (proj2 (Z.eqb_neq _ _) Ha4). branch. step. step. check "Hf". load "Hf" "P3" "Hbl". step.
     load "Hf" "P4" "Hbl". load "Hf" "P3" "Hbl". step. step. step. norm.
@@ -792,26 +763,13 @@ Proof using Type*.
     { iExists breg, xs, cs. iFrame. iPureIntro. split_and!; assumption. }
     destruct Hr' as [-> | ->].
     + branch. step.
-      iPoseProof (wp_wdo_loop (NbHeap bb sz) (fs_lock st) wr i j a64 (mkRegion a64 (a64 + 16) (req_kind (heap_req 8 8)) Live)
-          mb (mkRegion mb (mb + 16) (req_kind (heap_req 4 16)) Live) a67 (mkRegion a67 (a67 + 16) (req_kind (heap_req 8 8)) Live) Φ
-          B ltac:(lia) Hj ltac:(lia) A64 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) ltac:(lia) ltac:(cbn [r_end]; lia)
-          ltac:(cbn [r_end]; lia) ltac:(lia) A67 ltac:(cbn [r_end]; lia) ltac:(cbn [r_end]; lia) with "Hvt Hwvt HCR") as "Hloop".
-      iApply ("Hloop" $! _ i st' with "[%] HL Herr Hf Hfields Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb] [H64 C64 Hmb Bmb H67 C67] HK").
-      { rewrite (Z.mod_small i (2 ^ 64)); [|lia].
-        unfold loop_regs. split_and!; try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence | (rewrite Hlk'; reflexivity)].
-        lookups. rewrite Z.sub_diag wpos_zero. reflexivity. }
-      { iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-        apply window_ptrs_ok; [assumption|lia|lia]. }
-      iFrame "H64 Hmb H67". iSplitL "C64"; [iExists _; iExact "C64"|]. iSplitL "Bmb"; [|iExists _; iExact "C67"].
-      iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia].
+      iApply ("Hloop" $! _ i st' with "[%] HL Herr Hf Hfields Hnb Hwide Hstack HK"). first_pass i.
     + branch. step.
       iApply wp_ret; [reflexivity | vx |]; iNext.
       lazymatch goal with |- environments.envs_entails _ (_ (Ret (WInt ?x))) => let y := eval vm_compute in x in change x with y end.
       change (WInt 4294967295) with (WInt (2 ^ 32 - 1)).
-      iApply ("HK" $! _ st' i j with "[%] HL Herr Hf Hfields Hnb [Hws Hwl Hst Hsta Hin Hout Hsb Hpad Hscs Hwvtp Hwb]").
+      iApply ("HK" $! _ st' i j with "[%] HL Herr Hf Hfields Hnb Hwide").
       { split_and!; try first [right; reflexivity | assumption | lia | congruence]. }
-      iExists ib, ie, ob, oe, ifl, icnt, ofl, ocnt, sb, scs. iFrame. iPureIntro. split_and!; try assumption.
-      apply window_ptrs_ok; [assumption|lia|lia].
 Qed.
 
 End loop.
