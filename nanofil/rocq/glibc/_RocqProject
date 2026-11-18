@@ -461,6 +461,7 @@ stdio/FxprintfStream.v
 stdio/PrintfLayout.v
 stdio/PrintfOut.v
 stdio/PrintfSpec.v
+stdio/ItoaWordSpec.v
 stdio/PrintfPutc.v
 stdio/PrintfCopy.v
 stdio/PrintfWrite.v
