@@ -166,7 +166,7 @@ Definition hello_ro_rest (ge : genv) (o : hello_objs) : iProp Σ :=
   HelloGlibcDebts.AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
   ([∗ list] s ∈ hello_lits_rest, str_ro (sym_ptr ge s)) ∗ version_ro ge ∗ error_progname_ro ge ∗
-  print_fmt_ro ge ∗ wvtables_ro ge (ho_vb o).
+  print_fmt_ro ge ∗ wvtables_ro ge (ho_vb o) ∗ greet_fmt_ro ge.
 
 (** The read-only objects that startup gives main are persistent. The
     proof goes conjunct by conjunct, because one search over the whole
@@ -174,7 +174,7 @@ Definition hello_ro_rest (ge : genv) (o : hello_objs) : iProp Σ :=
 #[global] Instance hello_ro_rest_persistent ge o : Persistent (hello_ro_rest ge o).
 Proof using Type.
   rewrite /hello_ro_rest /version_ro /str_ro /error_progname_ro /print_fmt_ro /AllocLogic.tcache_idle /liveq /pcellq /icellq
-    /wvtables_ro.
+    /wvtables_ro /greet_fmt_ro /bytesq.
   repeat (apply bi.sep_persistent; [apply _|]). apply _.
 Qed.
 
@@ -185,10 +185,10 @@ Lemma hello_ro_join ge o :
   hello_printf_ro ge ⊢ hello_ro ge o.
 Proof using Type.
   rewrite /hello_ro_rest /hello_ro.
-  iIntros "((#A & #B & #C & #D & #E & #F & #G & #H & #I & #J & #L & #V & #Q & #R & #W) & #S & #T & #P)".
+  iIntros "((#A & #B & #C & #D & #E & #F & #G & #H & #I & #J & #L & #V & #Q & #R & #W & #Fm) & #S & #T & #P)".
   iSplitR; [iExact "A"|]. iSplitR; [iExact "B"|]. iSplitR; [iExact "C"|]. iSplitR; [iExact "D"|].
   iSplitR; [iExact "E"|]. iSplitR; [iExact "F"|]. iSplitR; [iExact "G"|]. iSplitR; [iExact "H"|].
-  iSplitR; [iExact "I"|]. iSplitR; [iExact "J"|]. iSplit; [|iSplit; [iExact "V"|iSplit; [iExact "P"|iSplitR; [iExact "Q"|iSplitR; [iExact "R"|iExact "W"]]]]].
+  iSplitR; [iExact "I"|]. iSplitR; [iExact "J"|]. iSplit; [|iSplit; [iExact "V"|iSplit; [iExact "P"|iSplitR; [iExact "Q"|iSplitR; [iExact "R"|iSplitR; [iExact "W"|iExact "Fm"]]]]]].
   iEval (rewrite -(take_drop 10 hello_lits_rest)) in "L". iEval (rewrite big_sepL_app) in "L".
   iDestruct "L" as "[L1 L2]".
   change hello_lits with (take 10 hello_lits_rest ++ ["hello#str.69"%string; "hello#parse_options.longopts.64"%string] ++

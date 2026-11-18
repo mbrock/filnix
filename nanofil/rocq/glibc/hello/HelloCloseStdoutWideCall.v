@@ -211,7 +211,7 @@ Proof using Herr Hfd1 Hfd2 Hvf Hwrite.
     iSplitL "Hlt"; [iExact "Hlt"|]. iSplitL "Hlp"; [iExact "Hlp"|]. iSplitL "Hlg"; [iExact "Hlg"|].
     rewrite /pcellq -pts_ptsq. iExact "Hcat". }
   iDestruct "Hec" as (cb creg n Hc) "[Hcl Hcnt]".
-  iPoseProof "Hro" as "(#Hvt & #Hsg & #Hol & #Hop & #Hsl & #Hsp & _ & _ & _ & _ & _ & _ & _ & _ & _ & #Hwv)".
+  iPoseProof "Hro" as "(#Hvt & #Hsg & #Hol & #Hop & #Hsl & #Hsp & _ & _ & _ & _ & _ & _ & _ & _ & _ & #Hwv & _)".
   pose proof Hc as (Hn & Hna & Hne & Hnr).
   destruct (hk_frees _ _ L) as (Hfh & Hzf & Hzg).
   pose proof (hi_free_rule (glibc_program := close_call_program) (Hfree_fn := hk_free _ _ L) Hfh Hzf Hzg) as Hfree.
