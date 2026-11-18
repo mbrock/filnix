@@ -723,7 +723,7 @@ dir_words([W|Ws]) -->
 
 dir_keyword(W) :- memberchk(W, ['From', 'Require', 'Import', 'Export', 'Open', 'Close', 'Scope', 'Set', 'Unset',
                                 'Arguments', 'Hint', 'Local', 'Global', 'Declare', 'Delimit', 'Bind', 'Implicit',
-                                'Types', 'Generalizable', 'Create', 'HintDb', 'Opaque', 'Transparent', 'Coercion']).
+                                'Types', 'Generalizable', 'Create', 'HintDb', 'Opaque', 'Transparent', 'Typeclasses', 'Coercion']).
 
 item_(block(module(F-_, Kind, n(_, N), Bs, Open), Body, End)) --> !,
     { nb_getval(rq_mod, Mod0), qualify(Mod0, N, Q), ( Kind == section -> Mod1 = Mod0 ; append(Mod0, [N], Mod1) ),

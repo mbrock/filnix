@@ -625,6 +625,14 @@ Proof using Type*.
         split_and!; try first [right; reflexivity | assumption | lia | congruence].
 Qed.
 
+Local Ltac alloc b H := iApply wp_alloc; [vm_compute; reflexivity|vm_compute; congruence|vm_compute; congruence|
+  intros ? ? ? ? Hfresh Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hfresh Hw)|]; iNext; iIntros (b H) "Hobj".
+
+Local Ltac first_pass i :=
+  rewrite (Z.mod_small i (2 ^ 64)); [|lia]; unfold loop_regs; split_and!;
+  try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence];
+  lookups; rewrite Z.sub_diag wpos_zero; reflexivity.
+
 (** The rule [wp_wdo_write] is the whole flush of i characters from
     the base of the wide buffer. The caller holds the stream's fields and
     does not need its lock. The flush may first write the pending narrow
@@ -639,8 +647,6 @@ Proof using Type*.
   intros Hfr H B Hi Hj. injection Hfr as <-.
   iIntros "#Hvt #Hwvt #HCR HL Herr Hf Hfields Hnb Hwide HK".
   step.
-  Local Ltac alloc b H := iApply wp_alloc; [vm_compute; reflexivity|vm_compute; congruence|vm_compute; congruence|
-    intros ? ? ? ? Hfresh Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hfresh Hw)|]; iNext; iIntros (b H) "Hobj".
   alloc a64 Ha64. iDestruct (obj_zero_block with "Hobj") as "(H64 & Hb & Ha)"; [vm_compute; congruence|].
   iEval (change (Z.to_nat (req_extent (heap_req 8 8))) with (8 + 8)%nat) in "Hb Ha".
   iDestruct (zero_cell_prefix a64 0 8 with "Hb Ha") as "(C64 & _ & _)".
@@ -684,7 +690,7 @@ Proof using Type*.
   rewrite (Z.mod_small i); [|lia]. change (0 mod 2 ^ 64) with 0.
   replace (0 <? i) with true by (symmetry; apply Z.ltb_lt; lia). branch. step.
   destruct Ha64 as (Ha64 & Ma64 & Ea64), Hmb as (Hmb0 & Mmb & Emb), Ha67 as (Ha67 & Ma67 & Ea67).
-  change (8 `max` 16) with 16 in Ma64, Ma67. change (4 `max` 16) with 16 in Mmb.
+  change (Z.max 8 16) with 16 in Ma64, Ma67. change (Z.max 4 16) with 16 in Mmb.
   change ((8 + 15) / 16 * 16) with 16 in Ea64, Ea67. change ((16 + 15) / 16 * 16) with 16 in Emb.
   assert (A64 : a64 mod 8 = 0) by (clear -Ma64; apply Z.mod_divide in Ma64; [|lia]; apply Z.mod_divide; [lia|]; destruct Ma64 as [q ->]; exists (2 * q); lia).
   assert (A67 : a67 mod 8 = 0) by (clear -Ma67; apply Z.mod_divide in Ma67; [|lia]; apply Z.mod_divide; [lia|]; destruct Ma67 as [q ->]; exists (2 * q); lia).
@@ -699,10 +705,6 @@ Proof using Type*.
     iExists _. iFrame "Bmb". iPureIntro. split; [reflexivity|apply Forall_replicate; lia]. }
   iPoseProof (wp_wdo_loop nb (fs_lock st) wr i j a64 r64 mb rmb a67 r67 Φ
     with "Hvt Hwvt HCR") as "Hloop"; try solve [assumption | cbn [r64 rmb r67 r_end]; lia].
-  Local Ltac first_pass i :=
-    rewrite (Z.mod_small i (2 ^ 64)); [|lia]; unfold loop_regs; split_and!;
-    try (lookups; first [reflexivity | eassumption | (norm; reflexivity)]); try first [lia | assumption | congruence];
-    lookups; rewrite Z.sub_diag wpos_zero; reflexivity.
   destruct nb as [| |bb sz|b]; [exfalso; rewrite (Hnw eq_refl) in Hi; cbn in Hi; lia| | |iDestruct "Hnb" as "[]"].
   - cbn [buf_ptrs_ok nth take] in Bp'. destruct Bp' as (E6 & E7 & Hall). destruct Snb as (Hub & E43 & E36). cbn [nth] in E43, E36, E13, E01.
     clear E01. rewrite E36 in E13, E43. subst p1 p4 p3 p6 p7.
@@ -751,7 +753,7 @@ Proof using Type*.
     iApply wp_call_bind; [vx | exact Hdw | reflexivity |]. iNext.
     iApply (wp_wnarrow_heap Hreg Hext Hfw fd vb fb vr freg eb wd w tw tm Hfd Herr _ st bb sz breg bb breg 0
         (take (Z.to_nat (a4 - bb)) xs) with "Hvt Hwvt Herr Hf Hfields Hbl [] Hx0").
-    { rewrite length_take Z.add_0_r. replace (Z.of_nat (Z.to_nat (a4 - bb) `min` length xs)) with (a4 - bb) by lia.
+    { rewrite length_take Z.add_0_r. replace (Z.of_nat (Nat.min (Z.to_nat (a4 - bb)) (length xs))) with (a4 - bb) by lia.
       rewrite (Z.mod_small (a4 - bb) (2 ^ 64)); [reflexivity|lia]. }
     { exact H. }
     all: try (rewrite length_take; lia). all: try first [lia | (intros; reflexivity)].

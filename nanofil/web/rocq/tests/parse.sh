@@ -264,8 +264,11 @@ set -- "$@" "$tmp/tactics/Tactics.v"
 # reads it as Rocq does.
 mkdir "$tmp/terms"
 cat >"$tmp/terms/Terms.v" <<'ROCQ'
-From Stdlib Require Import List PArith.
+From Stdlib Require Import List PArith ZArith.
 Import ListNotations.
+Local Typeclasses Opaque Z.quot.
+Example quotient_level : (3 * 14 ÷ 6 * 2 + 1)%Z = 15%Z.
+Proof. reflexivity. Qed.
 Definition unfolded (l : list nat) : nat :=
   (fix len (xs : list nat) (acc : nat) {struct xs} : nat :=
      match xs with [] => acc | _ :: ys => len ys (S acc) end) l 0.
@@ -321,6 +324,9 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import iprop.
 Section by_tactics.
 Context {Σ : gFunctors}.
+(* iEval takes a rewrite script: the second rule is not an argument of the first. *)
+Lemma eval_rewrite (P : nat -> iProp Σ) n : P n -∗ P n.
+Proof. iIntros "H". iEval (rewrite -(Nat.add_0_r n) Nat.add_0_r) in "H". iExact "H". Qed.
 Lemma by_sequence : ⊢ (∃ xs : list nat, True ∨ ⌜xs = [1]⌝ : iProp Σ).
 Proof. by (iExists []; iLeft). Qed.
 Lemma by_ungrouped_sequence : ⊢ (∃ xs : list nat, True ∨ ⌜xs = [1]⌝ : iProp Σ).
