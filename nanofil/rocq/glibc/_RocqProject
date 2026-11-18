@@ -1210,6 +1210,7 @@ hello/HelloStartWitness.v
 hello/HelloStartWp.v
 hello/HelloClosedStdout.v
 hello/HelloWClosedStdout.v
+hello/HelloFcloseWide.v
 hello/HelloErrorClosed.v
 hello/HelloCloseReportLookup.v
 hello/HelloCloseReportMessages.v
