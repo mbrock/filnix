@@ -193,6 +193,7 @@ hi_atexit/HiAtexitCode12.v
 hi_atexit/HiAtexitCode22.v
 libio/FileInv.v
 libio/FileIdle.v
+libio/LibioWIdle.v
 libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
