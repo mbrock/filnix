@@ -64,6 +64,7 @@ mode = "checked"
 fixtures = '''
 Fflush|__GI__IO_fflush|libio/iofflush.os|__GI__IO_fflush
 FileSync|_IO_new_file_sync|libio/fileops.os|_IO_new_file_sync
+WFileSync|_IO_wfile_sync|libio/wfileops.os|__GI__IO_wfile_sync
 '''
 
 [[batch]]
