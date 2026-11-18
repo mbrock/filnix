@@ -165,7 +165,7 @@ Alongside region lifting and specification testing, four targeted improvements r
 
 ### 5.1 Actionable stop diagnostics and gated abduction
 
-When [GlibcSym.v](../rocq/glibc/GlibcSym.v) or [GlibcSymCall.v](../rocq/glibc/GlibcSymCall.v) stops today, it returns a raw [GlibcSym.stop_reason] such as `NoCell` or `NoLiveCap` at an integer offset. Joining that stop state with the `<Name>Src.v` tables for `block_src`, `footprint`, and call edges lets the executor and the interactive `rq` server report three facts together:
+When [GlibcSym.v](../rocq/glibc/GlibcSym.v) or [GlibcSymCall.v](../rocq/glibc/GlibcSymCall.v) stops today, it returns a raw [GlibcSym.stop_reason] such as `NoCell` or `NoLiveCap` at an integer offset. Joining that stop state with the `<Name>Src.v` tables for `block_src`, `footprint`, and call edges lets the executor and an interactive `rq` session report three facts together:
 
 1. First, the diagnostic names the C operation, including source file, line, and field path, such as `wfileops.c:412` reading `c: fp->_IO_buf_base`.
 2. Second, the diagnostic names the missing resource or field refinement, such as target-capability resolution for `b` on `struct _IO_FILE._IO_buf_base` via `buf_idle nb`.

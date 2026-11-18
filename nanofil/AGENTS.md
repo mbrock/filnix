@@ -139,24 +139,33 @@ these steps in this order and keep the slow ones out of the loop:
    imports of the file you work on, not the whole tree:
    `glibc-tools/imports.sh startup/StartEarlyInit.v` compiles just the
    files it imports, in dependency order and in parallel.
-2. While you write a proof, keep a persistent session open. It holds one
-   `rocq repl` with your file loaded up to the line you are working on,
-   so each try costs only the time of the tactics you send, and a chunk
-   that prints an error is rolled back. A try in `StartPtmallocInit.v`
-   went from about 75 s as a recompile to 1–20 s in the session; a small
-   tactic answers in 0.15 s. Do not recompile the file, or insert
+2. While you write a proof, keep an rq session open. A session is one
+   worker that holds Rocq with your file loaded up to the lemma or line
+   you are working on, and keeps the state after every sentence, so each
+   try costs only the time of the tactics you send. A step keeps every
+   sentence before the first failure and exits 1 when it stopped early.
+   After you edit the file, `rq reload` replays it from the first changed
+   byte, which took 1.4 s for an edit inside a proof of
+   `HelloSetlocaleAll.v` where a restart took 14 s; it restarts by itself
+   when an imported object changed. Do not recompile the file, or insert
    `Show.` markers, to see the next goal.
 
    ```sh
-   D=nanofil/rocq/scripts/glibc-tools/rq
-   $D/start.sh startup/StartTlsInitTp.v 120        # load lines 1..120; restart after an import changes
-   $D/rq.py 'iIntros "H". Show.'             # try tactics against the loaded state
-   $D/rq.py -f nanofil/rocq/glibc/startup/StartTlsInitTp.v 121 140   # replay edited lines
-   kill "$(cat /tmp/rq.pid)"                 # stop it; never pkill -f
+   rq=nanofil/rocq/scripts/glibc-tools/rq/rq
+   $rq open startup/StartTlsInitTp.v --theorem wp_tls_init_tp   # prints R1; or --line N
+   $rq step R1 -e 'iIntros "H".'          # or -f scratch.v; commits up to the first failure
+   $rq goals R1 --conclusion              # the goal without the Iris context
+   $rq try R1 -e 'iFrame.' -e 'done.'     # each from the same state; the session stays put
+   $rq check R1                           # Qed in a throwaway state
+   $rq reload R1                          # after editing the file
+   $rq ls; $rq stop R1                    # sessions, their memory, and stopping one
    ```
 
-   The header of `rq/server.py` describes the protocol. Copy a proof that
-   works back into the file and keep going.
+   Sentences have no time limit: Ctrl-C stops only the waiting, and
+   `rq cancel R1` interrupts the running sentence. A passing `rq check`
+   is not a passing `one.sh`. `rq --help` and `glibc-tools/README.md`
+   describe the rest. Copy a proof that works back into the file and
+   keep going.
 3. When a file is done, compile it alone against the objects beside it:
    `nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/glibc DIR/FILE.v`.
    After an edit to a file that others import, compile that file the

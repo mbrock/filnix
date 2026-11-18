@@ -37,7 +37,7 @@ nanofil/rocq/scripts/glibc-tools/warm.sh
 nanofil/rocq/scripts/glibc-tools/build.sh nanofil/rocq/glibc 16
 ```
 
-By default the glibc files compile against the model that Nix built, which is read-only. To edit a theory under `nanofil/rocq/theories`, source `env.sh` with `PE_THEORIES=1`. `PE_MODEL` is then the checkout's theories, and `warm.sh` copies the compiled objects of HEAD into them, except for theories that differ from HEAD. `one.sh` and `rq/start.sh` take that tree as well as a glibc tree:
+By default the glibc files compile against the model that Nix built, which is read-only. To edit a theory under `nanofil/rocq/theories`, source `env.sh` with `PE_THEORIES=1`. `PE_MODEL` is then the checkout's theories, and `warm.sh` copies the compiled objects of HEAD into them, except for theories that differ from HEAD. `one.sh` and `rq open --tree` take that tree as well as a glibc tree:
 
 ```sh
 PE_THEORIES=1 . nanofil/rocq/scripts/glibc-tools/env.sh
@@ -65,7 +65,7 @@ A step stops at the first syntax error, tactic failure or interrupt, and reports
 
 Sentences have no time limit. Ctrl-C on a waiting `rq` stops only the waiting, and `rq wait R1` returns the result later. A request that is still waiting in line is withdrawn instead. `rq cancel R1` interrupts the running sentence, and the session keeps what it committed before it. The worker runs Rocq in its main domain and serves the socket from a second one, so a busy session still answers `rq status` and `rq cancel` at once. With a systemd user manager, each session is a transient service in `rq.slice`. `rq ls` then shows the memory of the whole worker tree, and `--memory-high` and `--memory-max` set the service's limits. Without a user manager, the worker runs as a detached process group, and `rq` refuses a memory limit because it could not enforce it.
 
-A passing `rq check` does not mean that the file passes `one.sh`. The session loads the objects beside the sources, which may be interfaces with blanked proofs, and the file on disk may differ from what the session ran. `rq --help` lists every command. The older `rq/start.sh` and `rq/rq.py` still work.
+A passing `rq check` does not mean that the file passes `one.sh`. The session loads the objects beside the sources, which may be interfaces with blanked proofs, and the file on disk may differ from what the session ran. `rq --help` lists every command.
 
 ## Write a proof
 
