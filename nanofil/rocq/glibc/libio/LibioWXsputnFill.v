@@ -24,7 +24,7 @@ Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The word loop replaces only the borrowed interval. Replacing that
     interval with the same number of valid bytes leaves the allocation
     at its original length. *)
-Local Lemma lend_bytes b o xs k n : (k+n <= length xs)%nat -> Forall okbyte xs ->
+Lemma lend_bytes b o xs k n : (k+n <= length xs)%nat -> Forall okbyte xs ->
   bytes b o xs -∗ ∃ old, ⌜length old = n⌝ ∗ bytes b (o+Z.of_nat k) old ∗
   (∀ ys, ⌜length ys = n /\ Forall okbyte ys⌝ -∗ bytes b (o+Z.of_nat k) ys -∗
      ∃ xs', ⌜length xs' = length xs /\ Forall okbyte xs'⌝ ∗ bytes b o xs').
