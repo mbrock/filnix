@@ -207,18 +207,32 @@ Local Abbreviation at262 e := (ERun (mkFrame glibc_setlocale e [] None
 Local Ltac vmr := vm_compute; reflexivity.
 Local Ltac cl := first [cbn; lia | cbn; Z.div_mod_to_equations; lia].
 Local Ltac vl := first [vmr | cbn; lia].
+Local Ltac sl_cases H := repeat destruct H as [<-|H]; try contradiction.
+
+Local Lemma sl_index_words c : 0 <= c < 13 ->
+  sign_extension (2^32) (2^31) (c mod 2^32) mod 2^64 = c /\
+  (c mod 2^64 * 8) mod 2^64 = 8*c.
+Proof.
+  intros Hc. unfold sign_extension.
+  assert (E32 : c mod 2^32 = c) by (apply Z.mod_small; lia).
+  assert (Elt : (2^31 <=? c) = false) by (apply Z.leb_gt; lia).
+  rewrite !E32 Elt. split; unwrap2; lia.
+Qed.
+
+Local Ltac sl_index_offset c :=
+  let E := fresh in let S := fresh in
+  destruct (sl_index_words c ltac:(lia)) as [E S]; step; rewrite E; step; rewrite S; step.
+
+Local Ltac sl_next_index := cbn -[Z.modulo Z.pow Z.add]; f_equal; f_equal; unwrap2; lia.
 
 (** This tactic runs the lookup call for one category. *)
-Local Ltac find_call :=
-  match goal with Hpr : lookup (TAtom "pr.2") _ = Some (WInt (?c + 1)) |- _ =>
-    let r := eval vm_compute in (List.find (fun y => y.1.1.1.1 =? c) sl_rows) in
-    match r with Some (_, _, _, ?i, ?k) =>
-      iApply (wp_findlocale_c (glibc_program := all_program) dq dqa dqe bc rc be re counter ep es Himage Henv _ _ cb ib nb
-        i c (img_gd "_nl_category_name_idxs") DfracDiscarded DfracDiscarded k
-        with "H80 HC HP Hall Hk Hlang L103 N [$HG $HS $Hib $Hi] Hlb Hs Hd");
-      [ vmr | vmr | vmr | vmr | vmr | cl | cl | cl | cl | cl | vm_compute; tauto | vmr | vmr | vmr | vmr
-      | cl | cl | cl | cl | cl | vl | vl | vl | vl | vl | ]
-    end end.
+Local Ltac find_call c i key :=
+  iApply (wp_findlocale_c (glibc_program := all_program) dq dqa dqe bc rc be re counter ep es Himage Henv _ _ cb ib nb
+    i c (img_gd "_nl_category_name_idxs") DfracDiscarded DfracDiscarded key
+    with "H80 HC HP Hall Hk Hlang L103 N [$HG $HS $Hib $Hi] Hlb Hs Hd");
+  [ vmr | vmr | vmr | vmr | vmr | assumption | cl | cl | cl | assumption | assumption
+  | rewrite (Z.mod_small c (2^32)); [reflexivity|lia] | vmr | vmr | vmr
+  | cl | cl | cl | cl | cl | vl | vl | cl | vl | cl | ].
 
 (** This lemma runs one round of the search for a category other than LC_ALL. It looks
     up the category's C data, keeps it in the second array and puts the
@@ -240,27 +254,31 @@ Proof.
   iDestruct (ws_byte cv [67] 0 with "HC") as (cbb creg ([Hcc|Hcc] & _)) "[#Hcl _]"; [cbn; lia|discriminate Hcc|].
   injection Hcc as <-.
   iDestruct (big_sepL_elem_of with "T") as "Tc"; [apply list_elem_of_In; exact Hin|].
-  repeat destruct Hin as [<-|Hin]; [..|destruct Hin]; cbn [fst snd] in *; iDestruct "Tc" as "(Hs & Hd & Hu & Hi & Hk & _)".
-  all: cbn [sl_L262 b_insts b_jump]; step; closed_ints; step; closed_ints; branch; step; step; closed_ints; branch.
-  all: step; step; step; step; sums; check "L4".
-  all: iApply (wp_raw_load_null (glibc_program := all_program) with "L4 P4"); [reflexivity | vx | reflexivity | a2 | a2 |].
-  all: iNext; iIntros "L4 P4"; check "L5".
-  all: iApply (wp_raw_load with "L5 P5"); [reflexivity | vx | reflexivity | a2 |].
-  all: iNext; iIntros "L5 P5"; step; sums; closed_ints.
-  all: match goal with Hpr : lookup (TAtom "pr.2") _ = Some (WInt (?c + 1)) |- _ => normp "v283" (b103 + 8 * c) end.
-  all: iApply wp_call_bind; [vx | apply defines | reflexivity |]; iNext; find_call.
-  all: iNext; iIntros "L103 N (HG & HS & _ & _) _ _ _"; iExists _; iSplit; [iPureIntro; reflexivity|].
-  all: iNext; cbn [fr_fn fr_env fr_locals fr_at]; check "L104"; store "L104" "D"; check "L104".
-  all: load_pointer_dq "L104 D Hd" by a2; iNext; iIntros "L104 D _"; step; step; closed_ints; branch; step.
+  assert (Hrow : 0 <= x.1.1.1.1 < 13 /\ x.1.1.1.1 <> 6 /\ 0 < x.1.1.1.2 /\
+    x.1.1.1.2 + 44 <= r_end x.1.1.2 /\ r_end x.1.1.2 <= 2^48 /\ 0 <= x.1.2 < 256 /\ In x.2 locale_vars)
+    by (sl_cases Hin; cbn [fst snd r_end]; repeat split; first [lia | vm_compute; tauto]).
+  destruct Hrow as (Hbounds & Hne & Hb & Hbe44 & Hbend & Hidx & Hkey).
+  destruct x as [[[[c b] reg] i] key]; cbn [fst snd] in *. iDestruct "Tc" as "(Hs & Hd & Hu & Hi & Hk & _)".
+  cbn [sl_L262 b_insts b_jump]; step.
+  match goal with |- context [put (TAtom "v266") (WInt ?t) _] => replace t with c by (unwrap2; lia) end.
+  step; branch_as false; step; step; branch_as false; step. sl_index_offset c. check "L4".
+  iApply (wp_raw_load_null (glibc_program := all_program) with "L4 P4"); [reflexivity | vx | reflexivity | a2 | a2 |].
+  iNext; iIntros "L4 P4"; check "L5".
+  iApply (wp_raw_load with "L5 P5"); [reflexivity | vx | reflexivity | a2 |].
+  iNext; iIntros "L5 P5"; step; sums; closed_ints. normp "v283" (b103 + 8*c).
+  iApply wp_call_bind; [vx | apply defines | reflexivity |]; iNext; find_call c i key.
+  iNext; iIntros "L103 N (HG & HS & _ & _) _ _ _"; iExists _; iSplit; [iPureIntro; reflexivity|].
+  iNext; cbn [fr_fn fr_env fr_locals fr_at]; check "L104"; store "L104" "D"; check "L104".
+  load_pointer_dq "L104 D Hd" by a2; iNext; iIntros "L104 D _"; step; step; branch_as true; step.
   (* The use count already marks the data as never freed. *)
-  all: load_pointer_dq "L104 D Hd" by a2; iNext; iIntros "L104 D _"; step; sums.
-  all: check_read_dq "Hd" by a2; iNext; iIntros "_".
-  all: load_bytes_dq "Hd Hu" decode (vm_compute; reflexivity) by a2; iNext; iIntros "_ _"; step; closed_ints; branch; step.
+  load_pointer_dq "L104 D Hd" by a2; iNext; iIntros "L104 D _"; step; sums.
+  check_read_dq "Hd" by a2; iNext; iIntros "_".
+  load_bytes_dq "Hd Hu" decode (vm_compute; reflexivity) by a2; iNext; iIntros "_ _"; step; closed_ints; branch; step.
   (* The search left the name "C" in the slot, which needs no copy. *)
-  all: check "L103"; load_pointer_dq "L103 N Hcl" by a2; iNext; iIntros "L103 N _".
-  all: step; step; step; step; closed_ints; branch; step; cbn [edge_label].
-  all: iApply ("HK" with "[%] HG HS [$L4 $P4 $L5 $P5 $L103 $L104] N D").
-  all: split; [eapply sl_regs_keeps; [keeps_tac | exact Hr] | apply Symbolic.lookup_after_put_same].
+  check "L103"; load_pointer_dq "L103 N Hcl" by a2; iNext; iIntros "L103 N _".
+  step; step; step; step; closed_ints; branch; step; cbn [edge_label].
+  iApply ("HK" with "[%] HG HS [$L4 $P4 $L5 $P5 $L103 $L104] N D").
+  split; [eapply sl_regs_keeps; [keeps_tac | exact Hr] | sl_next_index].
 Qed.
 
 (** The search skips LC_ALL, which has no data of its own. *)
@@ -304,24 +322,28 @@ Lemma sl_comp_one x e b4 b5 b103 b104 Φ :
 Proof.
   intros Hin Hfr Hr (Hp5 & Hp9 & [t3 Hp3] & [t1 Hp1]). iIntros "#Hro L103 N0 N HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
-  iDestruct "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
+  iDestruct "Hro" as "(_ & #HC & _ & _ & _ & _ & _ & _ & #Hsl & #Hsz & _)".
   iDestruct (ws_byte cv [67] 0 with "HC") as (cbb creg ([Hcc|Hcc] & _)) "[#Hcl _]"; [cbn; lia|discriminate Hcc|].
   injection Hcc as <-.
-  repeat destruct Hin as [<-|Hin]; [..|destruct Hin]; cbn [fst snd] in *.
-  all: cbn [sl_C10 b_insts b_jump]; step; closed_ints; branch; step; step; closed_ints; branch; step.
-  all: step; step; step; sums; check "L103"; load_pointer_dq "L103 N Hcl" by a2; iNext; iIntros "L103 N _".
-  all: iApply (wp_call_glibc_strlen with "HC"); [vx | vm_compute; reflexivity | reflexivity |].
-  all: iNext; iIntros "_"; cbn [fr_fn fr_env fr_locals fr_at]; step; step; sums; check_read_dq "Hsl" by a2; iNext; iIntros "_".
-  all: match type of Hp5 with _ = Some (WInt ?c) =>
-    iDestruct (bytesq_nth _ _ _ (Z.to_nat c) with "Hsz") as "Hs1"; [reflexivity|] end.
-  all: load_bytes_dq "Hsl Hs1" decode (vm_compute; reflexivity) by a2.
-  all: iNext; iIntros "_ _"; step; step; step; step; step; branch.
+  set (c := x.1.1.1.1) in *.
+  assert (Hc : 1 <= c < 13 /\ c <> 6) by (subst c; sl_cases Hin; cbn [fst snd]; lia).
+  destruct Hc as [Hbounds Hne].
+  cbn [sl_C10 b_insts b_jump]; step; branch_as false; step; step; branch_as false; step.
+  sl_index_offset c.
+  check "L103"; load_pointer_dq "L103 N Hcl" by a2; iNext; iIntros "L103 N _".
+  iApply (wp_call_glibc_strlen with "HC"); [vx | vmr | reflexivity |].
+  iNext; iIntros "_"; cbn [fr_fn fr_env fr_locals fr_at]; step; step; sums; check_read_dq "Hsl" by a2; iNext; iIntros "_".
+  assert (Hsize : is_Some (hello_name_sizes !! Z.to_nat c)) by (apply lookup_lt_is_Some_2; cbn; lia).
+  destruct Hsize as [sz Hsize]. iDestruct (bytesq_nth _ _ _ _ _ Hsize with "Hsz") as "Hs1".
+  iEval (rewrite Z2Nat.id; [|lia]) in "Hs1". load_bytes_dq "Hsl Hs1" decode reflexivity by a2.
+  iNext; iIntros "_ _"; step; step; step; step; step; branch.
   (* The name is the first category's name itself. *)
-  all: step; check "L103"; load_pointer_dq "L103 N0 Hcl" by a2.
-  all: iNext; iIntros "L103 N0 _"; step; step; step; closed_ints; step; step; branch; step; branch.
-  all: step; step; step; step; step; step; cbn [edge_label].
-  all: iApply ("HK" with "[%] L103 N0 N"); split; [keeps_tac|].
-  all: split; [|split; [|split]]; [ | | eexists | eexists ]; cbn; reflexivity.
+  step; check "L103"; load_pointer_dq "L103 N0 Hcl" by a2.
+  iNext; iIntros "L103 N0 _"; step; step; step; closed_ints; step; step; branch; step; branch.
+  step; step; step; step; step; step; cbn [edge_label].
+  iApply ("HK" with "[%] L103 N0 N"); split; [keeps_tac|].
+  split; [|split; [|split]]; [ | | eexists | eexists ]; try reflexivity.
+  sl_next_index.
 Qed.
 
 (** The first round of the composite name compares the first name with
@@ -395,24 +417,28 @@ Lemma sl_set_one x e b4 b5 b103 b104 dn Φ :
 Proof.
   intros Hin Hfr Hr (Hp3 & Hv386 & Hv391). iIntros "#Hro Hgl L103 L104 N D G Gn HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
-  iDestruct "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
+  iDestruct "Hro" as "(_ & #HC & _ & _ & _ & _ & _ & _ & _ & _ & #Hpb & #T)".
   iDestruct (ws_byte cv [67] 0 with "HC") as (cbb creg ([Hcc|Hcc] & _)) "[#Hcl _]"; [cbn; lia|discriminate Hcc|].
   injection Hcc as <-.
   iDestruct (big_sepL_elem_of with "T") as "Tc"; [apply list_elem_of_In; right; exact Hin|].
-  repeat destruct Hin as [<-|Hin]; [..|destruct Hin]; cbn [fst snd] in *; iDestruct "Tc" as "(Hs & Hd & Hu & Hi & Hk & Hq)".
-  all: cbn [sl_L394 b_insts b_jump]; step; closed_ints; branch; step; step; closed_ints; branch; step.
-  all: step; step; step; sums; check "L104"; load_pointer_dq "L104 D Hd" by a2.
-  all: iNext; iIntros "L104 D _"; step; step; sums; check "Hgl"; store "Hgl" "G".
+  assert (Hrow : (1 <= x.1.1.1.1 < 13 /\ x.1.1.1.1 <> 6) /\ 0 <= x.1.1.1.2 < 2^64)
+    by (sl_cases Hin; cbn [fst snd]; lia).
+  destruct Hrow as [[Hbounds Hne] Hb]. destruct x as [[[[c b] reg] i] key]; cbn [fst snd] in *.
+  iDestruct "Tc" as "(_ & Hd & _ & _ & _ & Hq)".
+  cbn [sl_L394 b_insts b_jump]; step; branch_as false; step; step; branch_as false; step.
+  sl_index_offset c. check "L104"; load_pointer_dq "L104 D Hd" by a2.
+  iNext; iIntros "L104 D _"; step; step; sums; check "Hgl"; store "Hgl" "G".
   (* Only the character type has an update to run. *)
-  all: step; step; sums; check_read_dq "Hpb" by a2; iNext; iIntros "_".
-  all: iAssert (live_capq DfracDiscarded (ptr_cap null) glreg) as "Hn"; [done|]; iApply (wp_raw_load_pointer_dq with "Hpb Hq Hn"); [reflexivity | vx | right; reflexivity | a2 | a2 | cbn; lia |].
-  all: iNext; iIntros "_ _ _"; step; step; closed_ints; branch; step.
+  assert (Hnz : (c =? 0) = false) by (apply Z.eqb_neq; lia). iEval (rewrite Hnz) in "Hq".
+  step; step; sums; check_read_dq "Hpb" by a2; iNext; iIntros "_".
+  iAssert (live_capq DfracDiscarded (ptr_cap null) glreg) as "Hn"; [done|]; iApply (wp_raw_load_pointer_dq with "Hpb Hq Hn"); [reflexivity | vx | right; reflexivity | a2 | a2 | cbn; lia |].
+  iNext; iIntros "_ _ _"; step; step; closed_ints; branch; step.
   (* The name is already "C", so setname stores nothing. *)
-  all: step; sums; check "L103"; load_pointer_dq "L103 N Hcl" by a2.
-  all: iNext; iIntros "L103 N _"; step; step; step; sums; check "Hgl"; load_pointer_dq "Hgl Gn Hcl" by a2.
-  all: iNext; iIntros "Hgl Gn _"; step; step; step; closed_ints; branch; step; step; step; cbn [edge_label]; step.
-  all: iApply ("HK" with "[%] Hgl L103 L104 N D G Gn"); split; [keeps_tac|].
-  all: split; [vm_compute; reflexivity|]; split; lk_prove.
+  step; sums; check "L103"; load_pointer_dq "L103 N Hcl" by a2.
+  iNext; iIntros "L103 N _"; step; step; step; sums; check "Hgl"; load_pointer_dq "Hgl Gn Hcl" by a2.
+  iNext; iIntros "Hgl Gn _"; step; step; step; closed_ints; branch; step; step; step; cbn [edge_label]; step.
+  iApply ("HK" with "[%] Hgl L103 L104 N D G Gn"); split; [keeps_tac|].
+  split; [sl_next_index|split; lk_prove].
 Qed.
 
 Local Abbreviation lt := (img_a "__libc_tsd_LOCALE").
@@ -645,7 +671,6 @@ Proof.
   all: cbn [fr_fn fr_env fr_locals fr_at]; step; closed_ints; branch; step.
   all: do 8 first [branch | step | closed_ints].
   (* Switch every category to the data it already has. *)
-  all: iEval (unfold sl_gl_cells, sl_rows; rewrite !big_sepL_cons) in "Hgc".
   all: iDestruct "Hgc" as "([G0 Gn0] & [G1 Gn1] & [G2 Gn2] & [G3 Gn3] & [G4 Gn4] & [G5 Gn5] & [G7 Gn7] & [G8 Gn8]
     & [G9 Gn9] & [G10 Gn10] & [G11 Gn11] & [G12 Gn12] & _)".
   all: step; match goal with H : sl_regs ?a _ _ _ _ |- context [ERun {| fr_env := ?E |}] =>
@@ -670,7 +695,6 @@ Proof.
     [exact Hfr | eassumption | match goal with H : sl_set_regs ?e _ |- sl_set_regs ?e _ => exact H end | exact Hp |].
   all: iIntros "Hgl H176 Hc Hlk Hself".
   all: iApply ("HK" with "HG HS Hgl H176 [G0 Gn0 G1 Gn1 G2 Gn2 G3 Gn3 G4 Gn4 G5 Gn5 G7 Gn7 G8 Gn8 G9 Gn9 G10 Gn10 G11 Gn11 G12 Gn12] Hlt Hlc Hpc Hc Hlk Hself").
-  all: unfold sl_gl_cells, sl_rows; rewrite !big_sepL_cons.
   all: iFrame "G0 Gn0 G1 Gn1 G2 Gn2 G3 Gn3 G4 Gn4 G5 Gn5 G7 Gn7 G8 Gn8 G9 Gn9 G10 Gn10 G11 Gn11 G12 Gn12"; done.
 Qed.
 
