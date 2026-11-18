@@ -67,7 +67,7 @@ Lemma translit_fallback e wd wreg ib ireg di dqb ic io ws k tb treg to zs j fl p
   live a3 (mkRegion a3 (a3 + 16) Heap Live) -∗ (∃ x, pcell a3 0 x) -∗
   live a4 (mkRegion a4 (a4 + 16) Heap Live) -∗ (∃ x, pcell a4 0 x) -∗
   (∀ st k' j' zs' fl' cnt', ⌜k <= k' <= n /\ j <= j' <= m /\ length zs' = length zs /\
-       Forall (fun z => 0 <= z < 256) zs' /\ wflags_ok fl'⌝ -∗
+       Forall (fun z => 0 <= z < 256) zs' /\ wflags_ok fl' /\ (fl' = fl \/ fl' = Z.lor fl (2 ^ 30))⌝ -∗
      wlocale dl -∗ live wd wreg -∗ pcell wd 176 (mkPtr (tb + to + m) (Obj tb)) -∗ bytes wd 184 (int_bytes fl') -∗
      (if decide (ib = wd) then True else liveq di ib ireg) -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
      live pi pireg -∗ pcell pi 0 (mkPtr (ib + io + 4 * k') ic) -∗ live po poreg -∗ pcell po 0 (mkPtr (tb + to + j') (Obj tb)) -∗
@@ -93,19 +93,19 @@ Proof using Type*.
   iApply (wp_ia_inner _ (rop tmb) wd wreg s280 _ DfracDiscarded DfracDiscarded (Ro s280) 0 [63]
     tb treg to zs j fl a3 _ a4 _ _ with "Hwl Hoe Hfl Hsl Hword Htl Hzs H3l H3 H4l H4");
     try solve [reflexivity | assumption | right; reflexivity | cbn [length r_end]; lia | repeat constructor; lia].
-  iNext. iIntros (st ki jo out fl2 (Hki & Hjo & Hlen & Hout & Hfl2)) "Hwl Hoe Hfl _ _ Htl Hzs _ _ H4l H4".
+  iNext. iIntros (st ki jo out fl2 (Hki & Hjo & Hlen & Hout & ->)) "Hwl Hoe Hfl _ _ Htl Hzs _ _ H4l H4".
   block_resume. step. branch_cases.
-  - step. step. check "Hwl". pose proof (wflags_bits _ Hfl2) as (Hfl31 & _).
+  - step. step. check "Hwl". pose proof (wflags_bits _ Hfl) as (Hfl31 & _).
     load_bytes_dq "Hwl Hfl" decode (apply load_sw_int; lia) by a2. iNext. iIntros "Hwl Hfl".
     step. check "Hwl". store_int "Hwl" "Hfl". iApply wp_ret; [reflexivity | vx |]. iNext.
     iApply ("HK" $! _ k j out _ cnt with "[%] [$Hts $Hts0 $Hgl $Hgl0] Hwl Hoe Hfl Hil Hin Htl Hzs Hpil Hpi Hpol Hpo Hll Hcnt").
-    split_and!; try lia; try assumption. destruct Hfl2 as [-> | ->]; right; vm_compute; reflexivity.
+    split_and!; try lia; try assumption; destruct Hfl as [-> | ->]; right; vm_compute; reflexivity.
   - step. step. branch_cases.
     Local Ltac return_output k' :=
       step; check "H4l"; load_pointer_dq "H4l H4 Htl" by a2; iNext; iIntros "_ _ Htl";
       check "Hpol"; store "Hpol" "Hpo"; iApply wp_ret; [reflexivity | vx |]; iNext;
       iApply ("HK" $! _ k' _ _ _ _ with "[%] [$Hts $Hts0 $Hgl $Hgl0] Hwl Hoe Hfl Hil Hin Htl Hzs Hpil Hpi Hpol Hpo Hll Hcnt");
-      split_and!; try lia; assumption.
+      split_and!; try lia; first [assumption | left; reflexivity].
     + return_output k.
     + step. check "Hll". iApply (wp_raw_load with "Hll Hcnt"); [reflexivity | vx | reflexivity | a2 |].
       iNext. iIntros "Hll Hcnt". step. check "Hll". store_long "Hll" "Hcnt". check "Hpil".

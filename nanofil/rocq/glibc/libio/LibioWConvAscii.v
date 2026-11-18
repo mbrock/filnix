@@ -201,7 +201,7 @@ Lemma ia_loop wd wreg ib ireg di dqb ic io ws tb treg to ip ipreg op opreg (irr 
     live ip ipreg -∗ pcell ip 0 (mkPtr (ib + io + 4 * k) ic) -∗ live op opreg -∗ pcell op 0 (mkPtr (tb + to + j) (Obj tb)) -∗
     ▷ (∀ e' st' k' j' zs' fl', ⌜same_out ia_loop_names e e' /\ lookup (TAtom "iw_3.pr.3") e' = Some (WInt st') /\
          k <= k' <= n /\ j <= j' <= Z.of_nat (length zs) /\ length zs' = length zs /\
-         Forall (fun z => 0 <= z < 256) zs' /\ wflags_ok fl'⌝ -∗
+         Forall (fun z => 0 <= z < 256) zs' /\ fl' = fl⌝ -∗
        live wd wreg -∗ bytes wd 184 (int_bytes fl') -∗
        liveq di ib ireg -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
        live ip ipreg -∗ pcell ip 0 (mkPtr (ib + io + 4 * k') ic) -∗
@@ -297,7 +297,8 @@ Qed.
 (** Transliteration runs the step on one replacement, with no counter
     of irreversible conversions and with its own cells for the input
     and output positions. The step converts a prefix of the
-    replacement and moves both positions past what it converted. *)
+    replacement and moves both positions past what it converted.
+    It leaves the stream's flags unchanged even when it rejects a character. *)
 Lemma wp_ia_inner fr stp wd wreg ib ireg di dqb ic io ws tb treg to zs j fl pi pireg po poreg Φ :
   let n := Z.of_nat (length ws) in let m := Z.of_nat (length zs) in
   call_frame glibc_internal_ascii [WPtr stp; WPtr (mkPtr (wd + 168) (Obj wd)); WPtr (objp pi);
@@ -313,7 +314,7 @@ Lemma wp_ia_inner fr stp wd wreg ib ireg di dqb ic io ws tb treg to zs j fl pi p
   liveq di ib ireg -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs -∗
   live pi pireg -∗ pcell pi 0 (mkPtr (ib + io) ic) -∗ live po poreg -∗ pcell po 0 (mkPtr (tb + to + j) (Obj tb)) -∗
   ▷ (∀ st k' j' zs' fl', ⌜0 <= k' <= n /\ j <= j' <= m /\ length zs' = length zs /\
-       Forall (fun z => 0 <= z < 256) zs' /\ wflags_ok fl'⌝ -∗
+       Forall (fun z => 0 <= z < 256) zs' /\ fl' = fl⌝ -∗
      live wd wreg -∗ pcell wd 176 (mkPtr (tb + to + m) (Obj tb)) -∗ bytes wd 184 (int_bytes fl') -∗
      liveq di ib ireg -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
      live pi pireg -∗ pcell pi 0 (mkPtr (ib + io + 4 * k') ic) -∗

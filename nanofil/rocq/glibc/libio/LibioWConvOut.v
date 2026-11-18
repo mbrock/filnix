@@ -74,9 +74,9 @@ Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
     characters it consumed and the window's start past the j bytes it
     produced, and it may set the illegal-input flag. *)
 Definition ia_last_rule (dl : dfrac) : Prop :=
-  forall fr tm wd wreg sb sreg dq sc so ws tb treg to xs fl cnt pi pireg lb lbreg c0 Φ,
+  forall fr wd wreg sb sreg dq sc so ws tb treg to xs fl cnt pi pireg lb lbreg c0 Φ,
   let n := Z.of_nat (length ws) in let m := Z.of_nat (length xs) in
-  call_frame glibc_internal_ascii [WPtr tm; WPtr (mkPtr (wd + 168) (Obj wd)); WPtr (objp pi);
+  call_frame glibc_internal_ascii [WPtr (rop tmb); WPtr (mkPtr (wd + 168) (Obj wd)); WPtr (objp pi);
     WPtr (mkPtr (sb + so + 4 * n) sc); WPtr null; WPtr (objp lb); WInt 0; WInt 0] = Some fr ->
   wflags_ok fl ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
@@ -198,7 +198,7 @@ Proof using Type*.
   iAssert (icell lb 0 0) with "[Hlbc]" as "Hlbc".
   { rewrite /pcell /icell /pts big_sepL_cons. iDestruct "Hlbc" as "[_ $]". }
   destruct Hpi as (? & ? & ?), Hlb as (? & ? & ?).
-  iApply (Hlast _ (rop tmb) wd wreg sb sreg dq sc so ws tb treg to xs fl cnt pi _ lb _ 0
+  iApply (Hlast _ wd wreg sb sreg dq sc so ws tb treg to xs fl cnt pi _ lb _ 0
     with "Hro Hloc Hwl C168 C176 C184 C188 Hsl [Hsrc] Htl Htx Hpil Hpic Hlbl Hlbc");
     try first [reflexivity | assumption | lia | (apply mod16_mod8; assumption) | (cbn; lia)].
   { done. }
