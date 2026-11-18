@@ -1,8 +1,10 @@
 (** Printing to a byte-oriented stream does not require converting the
     format string to wide characters. This proof follows that route through
     __vfxprintf, including its temporary allocations and call to
-    __vfprintf_internal. The called formatter may fail or change errno.
-    Its contract must return the fields needed to release the stream lock. *)
+    __vfprintf_internal. The called formatter may fail, change errno, and
+    change the stream's flags word, for example to mark the stream as
+    writing. Its contract must return the fields needed to release the
+    stream lock. *)
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,22 +23,27 @@ Section narrow.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
-(** The cursor belongs to the caller; V identifies the same ap before and
-    after formatting. Q can record a changed orientation and errno. Format
-    and argument bytes are supplied in R, not inferred from pointer values. *)
+(** Printing can change the stream's flags word, for example to record
+    that the stream is writing or that a write failed. It never sets
+    the bit that says the caller locks the stream, and unlocking reads
+    that bit again. The formatter's contract does not promise to keep
+    the stream's region or its lock, so the rule lets both be new. The
+    result resource Q receives the result and all three. *)
 Definition vfxprintf_formatter fb freg fl lb lbreg fmt ap flags md dqf fmtreg
-    (V : ptr -> iProp Σ) (R : iProp Σ) (Q : Z -> iProp Σ) : Prop :=
+    (V : ptr -> iProp Σ) (R : iProp Σ) (Q : Z -> Z -> region -> Z -> region -> iProp Σ) : Prop :=
   exists fn fr, find_fn ge (TAtom "__vfprintf_internal") = Some (Defined fn) /\
     call_frame fn [WPtr (mkPtr fb (Obj fb));WPtr fmt;WPtr ap;WInt (flags mod 2 ^ 32)] = Some fr /\
     (⊢ live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
       lock_state lb lbreg 1 0 (ow_self w0) -∗ int_cell fb 192 md -∗
       live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ WP (ERun fr : gexpr)
-      {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live fb freg ∗ int_cell fb 0 fl ∗
-        pcell fb 136 (mkPtr lb (Obj lb)) ∗ lock_state lb lbreg 1 0 (ow_self w0) ∗
-        live_capq dqf (ptr_cap fmt) fmtreg ∗ V ap ∗ Q r }}).
+      {{ v, ∃ r fl' freg' lb' lbreg', ⌜v = Ret (WInt r) /\ Z.land fl' 32768 = 0 /\
+          fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ ∗ live fb freg' ∗ int_cell fb 0 fl' ∗
+        pcell fb 136 (mkPtr lb' (Obj lb')) ∗ lock_state lb' lbreg' 1 0 (ow_self w0) ∗
+        live_capq dqf (ptr_cap fmt) fmtreg ∗ V ap ∗ Q r fl' freg' lb' lbreg' }}).
 
+(** The narrow route calls the formatter between taking and releasing the lock. *)
 Lemma wp_vfxprintf_narrow e from fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb sreg
-    (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> iProp Σ) Φ :
+    (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> Z -> region -> Z -> region -> iProp Σ) Φ :
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk1") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v2") e = Some (WPtr fmt) -> lookup (TAtom "v4") e = Some (WPtr ap) ->
@@ -47,8 +54,9 @@ Lemma wp_vfxprintf_narrow e from fb freg fl lb lbreg fmt ap flags md dqf fmtreg 
   single_ro ge sb sreg -∗ live fb freg -∗ int_cell fb 0 fl -∗
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗ int_cell fb 192 md -∗
   live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ E -∗
-  ▷ (∀ r, live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
-    lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
+  ▷ (∀ r fl' freg' lb' lbreg', ⌜Z.land fl' 32768 = 0 /\ fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ -∗
+    live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
+    lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "iw_1.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
@@ -81,12 +89,12 @@ Proof using Type.
   iApply wp_call_bind; [vx | exact Hfn | exact Hframe |]. iNext.
   iApply (wp_wand with "[Hl Hfl Hlp Hlk Hmd Hfmt HV HR]").
   { iApply (Hcall with "Hl Hfl Hlp Hlk [Hmd] Hfmt HV HR"). iSplit; [done | iExact "Hmd"]. }
-  iIntros (v) "H". iDestruct "H" as (r ->) "(Hl & Hfl & Hlp & Hlk & Hfmt & HV & HQ)". resume. step.
-  iApply (wp_vfxprintf_return _ (r mod 2 ^ 32) fb freg fl lb lbreg sb sreg
-    (live_capq dqf (ptr_cap fmt) fmtreg ∗ V ap ∗ Q r ∗ E)%I
+  iIntros (v) "H". iDestruct "H" as (r fl' freg' lb' lbreg' (-> & Hfl' & Hend' & Hreg')) "(Hl & Hfl & Hlp & Hlk & Hfmt & HV & HQ)". resume. step.
+  iApply (wp_vfxprintf_return _ (r mod 2 ^ 32) fb freg' fl' lb' lbreg' sb sreg
+    (live_capq dqf (ptr_cap fmt) fmtreg ∗ V ap ∗ Q r fl' freg' lb' lbreg' ∗ E)%I
     with "Hs Hl Hfl Hlp Hlk [$Hfmt $HV $HQ $HE] [HK]"); try assumption; try lk_prove;
     try (apply Z.mod_pos_bound; lia).
   iNext. iIntros "Hl Hfl Hlp Hlk (Hfmt & HV & HQ & HE)".
-  iApply ("HK" with "Hl Hfl Hlp Hlk Hfmt HV HQ HE").
+  iApply ("HK" $! r fl' freg' lb' lbreg' with "[//] Hl Hfl Hlp Hlk Hfmt HV HQ HE").
 Qed.
 End narrow.

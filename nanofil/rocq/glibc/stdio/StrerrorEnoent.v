@@ -15,9 +15,20 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrap
   LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic RwunlockLogic
   StrlenLogic MemFwdCode WordString DcgettextCode DcigettextCode DcigettextRoute
   DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
-  StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText ErrorTextPrint Fix.
+  StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
+
+Section text.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+
+(** A borrowed string carries permission to read its bytes through the NUL.
+    A pointer value or an address range alone cannot supply that permission. *)
+Definition error_borrowed_text p : iProp Σ :=
+  ∃ b reg chars, ⌜StringLogic.string_ok p b reg chars⌝ ∗
+    live_capq DfracDiscarded (ptr_cap p) reg ∗
+    bytesq DfracDiscarded b (ptr_addr p - b) (chars ++ [0]).
+End text.
 
 Section known.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

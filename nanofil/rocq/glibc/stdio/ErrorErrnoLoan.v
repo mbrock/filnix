@@ -7,7 +7,7 @@ From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic ErrorFailure ErrorMessage ErrorMessageNarrow.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
@@ -35,25 +35,4 @@ Proof using Type.
     iExists cs. iFrame. iPureIntro. tauto.
 Qed.
 
-(** Success retains the formatter's errno in its spare resources. Failure
-    returns the current value, including any fallback mutation. Both paths
-    assemble one errno block and retain the actual mode without repairing it. *)
-Lemma error_message_errno_loan fb freg eb ereg r en md :
-  error_message_returned fb freg eb ereg r en md -∗
-  error_message_spare fb eb ereg r en md -∗ error_errno_aux eb -∗
-  ∃ now, ⌜0 <= now < 2 ^ 32 /\ (r mod 2 ^ 32 < 2 ^ 31 -> now = en)⌝ ∗
-    live eb ereg ∗ errno_own eb (le_bytes now 4) ∗ int_cell fb 192 md.
-Proof using Type.
-  rewrite /error_message_returned_q /error_message_spare /error_mode_own.
-  destruct (decide (2 ^ 31 <= r mod 2 ^ 32)) as [Hneg | Hpos].
-  - iIntros "(_ & Hl & [%now Hnow] & Hmode) Hsp Ha".
-    iAssert (⌜0 <= now < 2 ^ 32⌝ ∗ errno_own eb (le_bytes now 4))%I with "[Hnow Ha]" as "[%Hrange He]".
-    { rewrite -error_errno_pack. iFrame. }
-    iExists now. iSplit; [iPureIntro; split; [done | lia] |]. iFrame.
-    destruct (decide (en = 12)); [iDestruct "Hmode" as "[_ Hmode]" |]; iFrame.
-  - iIntros "_ (Hl & Hnow & Hmode) Ha".
-    iAssert (⌜0 <= en < 2 ^ 32⌝ ∗ errno_own eb (le_bytes en 4))%I with "[Hnow Ha]" as "[%Hrange He]".
-    { rewrite -error_errno_pack. iFrame. }
-    iExists en. iFrame. iPureIntro. tauto.
-Qed.
 End errno.

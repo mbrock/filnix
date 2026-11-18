@@ -13,7 +13,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrap
   LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic RwunlockLogic RwlockIdle
   StrlenLogic MemFwdCode WordString DcgettextCode DcigettextCode DcigettextRoute
   DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
-  StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText ErrorTextPrint StrerrorEnoent Fix.
+  StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText StrerrorEnoent Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 

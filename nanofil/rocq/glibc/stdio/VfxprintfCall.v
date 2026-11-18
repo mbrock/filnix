@@ -1,7 +1,8 @@
 (** The normal formatter accepts either stderr through a null argument or
     a nonnull stream directly. Only the null case needs the global stderr
-    cell. Both rules retain the original format, cursor and mode flags,
-    and return the formatter's result even when it indicates failure. *)
+    cell. Both rules retain the original format and cursor, return the
+    stream's possibly changed flags word, region and lock, and return the
+    formatter's result even when it indicates failure. *)
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,7 +22,7 @@ Context (Hregistry : holds_os registry) (Hext : sys_external ge).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (fb : Z) (freg : region) (fl lb : Z) (lbreg : region) (fmt ap : ptr) (flags md : Z)
   (dqf : dfrac) (fmtreg : region) (sb : Z) (sreg : region)
-  (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> iProp Σ) (Φ : outcome -> iProp Σ).
+  (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> Z -> region -> Z -> region -> iProp Σ) (Φ : outcome -> iProp Σ).
 Context (Hfb : 0 < fb) (Hal : fb mod 8 = 0) (Hend : fb + 224 <= r_end freg)
   (Hreg : r_end freg <= 2 ^ 63) (Huser : Z.land fl 32768 = 0)
   (Hfmtr : 0 <= ptr_addr fmt < 2 ^ 64) (Hmd : md = 0 \/ md = 2 ^ 32 - 1)
@@ -35,9 +36,10 @@ Lemma wp_vfxprintf_null gb greg :
   live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
   lock_state lb lbreg 0 0 null -∗ int_cell fb 192 md -∗
   live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ E -∗
-  ▷ (∀ r, live gb greg -∗ pcell gb 0 (mkPtr fb (Obj fb)) -∗
-    live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
-    lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
+  ▷ (∀ r fl' freg' lb' lbreg', ⌜Z.land fl' 32768 = 0 /\ fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ -∗
+    live gb greg -∗ pcell gb 0 (mkPtr fb (Obj fb)) -∗
+    live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
+    lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (vfxprintf_frame null fmt ap flags) : gexpr) {{ Φ }}.
 Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.
@@ -50,8 +52,8 @@ Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.
     V R (live gb greg ∗ pcell gb 0 (mkPtr fb (Obj fb)) ∗ E)%I Q Φ
     with "Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR [$Hgl $Hgp $HE] [HK]"); try assumption; try lk_prove.
   { left. split; [reflexivity | lk_prove]. }
-  iNext. iIntros (r) "Hl Hfl Hlp Hlk Hfmt HV HQ (Hgl & Hgp & HE)".
-  iApply ("HK" with "Hgl Hgp Hl Hfl Hlp Hlk Hfmt HV HQ HE").
+  iNext. iIntros (r fl' freg' lb' lbreg' Hf') "Hl Hfl Hlp Hlk Hfmt HV HQ (Hgl & Hgp & HE)".
+  iApply ("HK" $! r fl' freg' lb' lbreg' Hf' with "Hgl Hgp Hl Hfl Hlp Hlk Hfmt HV HQ HE").
 Qed.
 
 (** The explicit-stream route needs no stderr lookup or cell ownership. *)
@@ -59,8 +61,9 @@ Lemma wp_vfxprintf_explicit :
   single_ro ge sb sreg -∗ live fb freg -∗ int_cell fb 0 fl -∗
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ int_cell fb 192 md -∗
   live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ E -∗
-  ▷ (∀ r, live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
-    lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
+  ▷ (∀ r fl' freg' lb' lbreg', ⌜Z.land fl' 32768 = 0 /\ fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ -∗
+    live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
+    lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (vfxprintf_frame (mkPtr fb (Obj fb)) fmt ap flags) : gexpr) {{ Φ }}.
 Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.

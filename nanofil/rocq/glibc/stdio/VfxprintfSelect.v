@@ -30,13 +30,14 @@ Context (Hregistry : holds_os registry) (Hext : sys_external ge).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (fb : Z) (freg : region) (fl lb : Z) (lbreg : region) (fmt ap : ptr) (flags md : Z)
   (dqf : dfrac) (fmtreg : region) (sb : Z) (sreg : region)
-  (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> iProp Σ) (Φ : outcome -> iProp Σ).
+  (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> Z -> region -> Z -> region -> iProp Σ) (Φ : outcome -> iProp Σ).
 Context (Hfb : 0 < fb) (Hal : fb mod 8 = 0) (Hend : fb + 224 <= r_end freg)
   (Hreg : r_end freg <= 2 ^ 63) (Huser : Z.land fl 32768 = 0)
   (Hfmtr : 0 <= ptr_addr fmt < 2 ^ 64) (Hmd : md = 0 \/ md = 2 ^ 32 - 1)
   (Hself : ptr_addr (ow_self w0) <> 0) (Hselfr : 0 <= ptr_addr (ow_self w0) < 2 ^ 64)
   (Hcall : vfxprintf_formatter fb freg fl lb lbreg fmt ap flags md dqf fmtreg V R Q).
 
+(** The flags check before locking leads to taking the lock. *)
 Lemma wp_vfxprintf_selected e from :
   (from = TAtom "L8" /\ lookup (TAtom "v16") e = Some (WPtr (mkPtr fb (Obj fb)))) \/
   (from = TAtom "start" /\ lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb)))) ->
@@ -46,8 +47,9 @@ Lemma wp_vfxprintf_selected e from :
   single_ro ge sb sreg -∗ live fb freg -∗ int_cell fb 0 fl -∗
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ int_cell fb 192 md -∗
   live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ E -∗
-  ▷ (∀ r, live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
-    lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
+  ▷ (∀ r fl' freg' lb' lbreg', ⌜Z.land fl' 32768 = 0 /\ fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ -∗
+    live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
+    lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "L10") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hal Hcall Hend Hext Hfb Hfmtr Hmd Hreg Hregistry Hself Hselfr Huser.

@@ -2,7 +2,7 @@
     `c: __vfxprintf`, and Hello holds stderr idle between calls. This
     module proves that such a call gives the stream back idle. It opens
     the idle stream into the few fields that `c: __vfxprintf` touches,
-    runs the proof of [HelloVfxprintfFl](HelloVfxprintfFl.v), and lets
+    runs the proof of [VfxprintfCall](../stdio/VfxprintfCall.v), and lets
     the formatter's proved contract do the printing. *)
 
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic LibioCloseSteps
   WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec FxprintfStream FxprintfTidy FxprintfNormalCode
-  VfxprintfSelect FxprintfNormalCall HelloVfxprintfFl Fix.
+  VfxprintfNarrow VfxprintfSelect VfxprintfCall FxprintfNormalCall Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -38,7 +38,7 @@ Definition fx_close (vb fd mode fb : Z) (freg : region) (fl : Z) (lp : ptr) : iP
     lock_inv (ow_self w0) lp held' -∗ fx_stream vb (ow_self w0) (mkPtr fb (Obj fb)) fd mode flags2' held'.
 
 (** The formatter's contract is a rule of the form that
-    [HelloVfxprintfFl] asks for. The caller lends the second flags
+    [VfxprintfNarrow] asks for. The caller lends the second flags
     word, the wand that closes the stream, the format, the arguments,
     errno and the read-only data. The rule gives back the second flags
     word, the mode the formatter leaves, a wand that closes the stream
@@ -46,7 +46,7 @@ Definition fx_close (vb fd mode fb : Z) (freg : region) (fl : Z) (lp : ptr) : iP
 Lemma vfx_formatter_idle vb fd mode flags2 fb freg fl lb lbreg fmt fmtreg bytes ds ap skip xs :
   parse_narrow bytes = Some ds -> narrow_fits ds (skipn (Z.to_nat (skip / 8)) xs) [] ->
   0 <= skip -> skip mod 8 = 0 -> In fd (ow_fds w0) -> Z.land flags2 io_need_lock = 0 ->
-  vfxprintf_formatter_fl fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg (fun _ => True)%I
+  vfxprintf_formatter fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg (fun _ => True)%I
     (int_cell fb off_flags2 flags2 ∗ fx_close vb fd mode fb freg fl (mkPtr lb (Obj lb)) ∗
      word_string DfracDiscarded fmt bytes ∗ va_at ap skip xs ∗
      ([∗ list] a ∈ skipn (Z.to_nat (skip / 8)) xs, str_arg a) ∗ errno_any eb ∗
@@ -118,7 +118,7 @@ Proof using Herr Hext Hgerr Hregistry Hself Hselfr Hvf.
   injection Hfp as <-.
   iDestruct "Hlk" as (lb lbreg) "[-> Hlk]".
   iPoseProof "Hfro" as (vreg sb sreg) "[_ Hs]".
-  iApply (wp_vfxprintf_explicit_fl Hregistry Hext fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg sb sreg
+  iApply (wp_vfxprintf_explicit Hregistry Hext fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg sb sreg
     (fun _ => True)%I
     (int_cell fb off_flags2 flags2 ∗ fx_close vb fd mode fb freg fl (mkPtr lb (Obj lb)) ∗
      word_string DfracDiscarded fmt bytes ∗ va_at ap skip xs ∗
@@ -176,7 +176,7 @@ Proof using Herr Hext Hgerr Hregistry Hself Hselfr Hvf.
      cbn; unfold raw_address; rewrite !Z.add_0_r; apply Z.mod_small; lia | rewrite Z.add_0_r; exact Hga |
      cbn [ptr_addr]; unfold file_size in Hend; lia | iExact "Hl" |].
   iNext. iIntros "_ _ Hl". step.
-  iApply (wp_vfxprintf_selected_fl Hregistry Hext fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg sb sreg
+  iApply (wp_vfxprintf_selected Hregistry Hext fb freg fl lb lbreg fmt ap 0 mode DfracDiscarded fmtreg sb sreg
     (fun _ => True)%I
     (int_cell fb off_flags2 flags2 ∗ fx_close vb fd mode fb freg fl (mkPtr lb (Obj lb)) ∗
      word_string DfracDiscarded fmt bytes ∗ va_at ap skip xs ∗

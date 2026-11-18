@@ -21,7 +21,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hregistry : holds_os registry) (Hext : sys_external ge).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Lemma wp_vfxprintf_acquire e fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb sreg
-    (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> iProp Σ) Φ :
+    (V : ptr -> iProp Σ) (R E : iProp Σ) (Q : Z -> Z -> region -> Z -> region -> iProp Σ) Φ :
   lookup (TAtom "pr.1") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk1") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "v13") e = Some (WInt 0) ->
@@ -34,8 +34,9 @@ Lemma wp_vfxprintf_acquire e fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb s
   single_ro ge sb sreg -∗ live fb freg -∗ int_cell fb 0 fl -∗
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ int_cell fb 192 md -∗
   live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ R -∗ E -∗
-  ▷ (∀ r, live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
-    lock_state lb lbreg 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r -∗ E -∗
+  ▷ (∀ r fl' freg' lb' lbreg', ⌜Z.land fl' 32768 = 0 /\ fb + 224 <= r_end freg' /\ r_end freg' <= 2 ^ 63⌝ -∗
+    live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
+    lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
   WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "L24") (Some (TAtom "L10")))) : gexpr) {{ Φ }}.
 Proof using Type*.
