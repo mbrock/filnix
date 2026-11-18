@@ -654,6 +654,9 @@ getopt/GetoptSkipTest.v
 hello/HelloVersionLits.v
 hello/HelloGlibcDebts.v
 hello/HelloEmitBug.v
+hello/HelloVersionEtc.v
+hello/HelloVersionEtcVa.v
+hello/HelloVersionEtcCall.v
 libio/LibioCleanupFpLock.v
 libio/LibioDefaultXsputn.v
 libio/LibioFlushOver.v
