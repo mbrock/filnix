@@ -51,7 +51,9 @@ Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A completed replacement consumes the source characters that matched,
     not the number of characters in the replacement. An exhausted list
-    leaves those source characters available for the next probe. *)
+    leaves those source characters available for the next probe. The
+    caller states the return and the resumption as one conjunction:
+    only one of them runs, and both need the caller's own frame. *)
 Lemma translit_repl e wd wreg ib ireg di dqb ic io ws k tb treg to zs j fl pi pireg po poreg lb lbreg cnt dl a1 a2 med c Φ :
   let n := Z.of_nat (length ws) in let m := Z.of_nat (length zs) in
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2^63 ->
@@ -73,25 +75,25 @@ Lemma translit_repl e wd wreg ib ireg di dqb ic io ws k tb treg to zs j fl pi pi
   (if decide (ib = wd) then True else liveq di ib ireg) -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs -∗
   live pi pireg -∗ pcell pi 0 (mkPtr (ib+io+4*k) ic) -∗ live po poreg -∗ pcell po 0 (mkPtr (tb+to+j) (Obj tb)) -∗ live lb lbreg -∗ icell lb 0 cnt -∗
   live a1 (mkRegion a1 (a1+16) Heap Live) -∗ (∃ x, pcell a1 0 x) -∗ live a2 (mkRegion a2 (a2+16) Heap Live) -∗ (∃ x, pcell a2 0 x) -∗
-  (∀ st k' j' zs' fl' cnt', ⌜k <= k' <= n /\ j <= j' <= m /\ length zs' = length zs /\ Forall (fun z => 0 <= z < 256) zs' /\
+  ((∀ st k' j' zs' fl' cnt', ⌜k <= k' <= n /\ j <= j' <= m /\ length zs' = length zs /\ Forall (fun z => 0 <= z < 256) zs' /\
        wflags_ok fl' /\ (fl'=fl \/ fl'=Z.lor fl (2^30))⌝ -∗
      wlocale dl -∗ live wd wreg -∗ pcell wd 176 (mkPtr (tb+to+m) (Obj tb)) -∗ bytes wd 184 (int_bytes fl') -∗
      (if decide (ib = wd) then True else liveq di ib ireg) -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
      live pi pireg -∗ pcell pi 0 (mkPtr (ib+io+4*k') ic) -∗ live po poreg -∗ pcell po 0 (mkPtr (tb+to+j') (Obj tb)) -∗
-     live lb lbreg -∗ icell lb 0 cnt' -∗ Φ (Ret (WInt st))) -∗
+     live lb lbreg -∗ icell lb 0 cnt' -∗ Φ (Ret (WInt st))) ∧
   (∀ e' zs' fl', ⌜same_out repl_names e e' /\ length zs' = length zs /\ Forall (fun z => 0 <= z < 256) zs' /\
        wflags_ok fl' /\ (fl'=fl \/ fl'=Z.lor fl (2^30))⌝ -∗
      wlocale dl -∗ live wd wreg -∗ pcell wd 176 (mkPtr (tb+to+m) (Obj tb)) -∗ bytes wd 184 (int_bytes fl') -∗
      (if decide (ib = wd) then True else liveq di ib ireg) -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
      live pi pireg -∗ pcell pi 0 (mkPtr (ib+io+4*k) ic) -∗ live po poreg -∗ pcell po 0 (mkPtr (tb+to+j) (Obj tb)) -∗ live lb lbreg -∗ icell lb 0 cnt -∗
      live a1 (mkRegion a1 (a1+16) Heap Live) -∗ (∃ x, pcell a1 0 x) -∗ live a2 (mkRegion a2 (a2+16) Heap Live) -∗ (∃ x, pcell a2 0 x) -∗
-     WP (ERun (mkFrame glibc_translit e' [] None (body_at glibc_translit "L183")) : sexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame glibc_translit e' [] None (body_at glibc_translit "L183")) : sexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_translit e [] None (body_at glibc_translit "L181")) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n m Hwd Hw8 Hwe Hwr Hic Hib Hio Hie Hir Halias Hws Hk Htb Hto Hte Htr Hj Hzs Hpi Hpi8 Hpie Hpir
     Hpo Hpo8 Hpoe Hpor Hlb Hlb8 Hlbe Hlbr Hfl Ha1 Ha16 Ha1e Ha2 Ha26 Ha2e Hmed Hc Hkc V0 V2 V6 C0 V10 V12 V29 V211 V212 V85 V95 V132 P6.
   iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hil & Hidx & Hrl & Htbl)
-    Hloc Hwl Hoe Hfl His Hsrc Htl Hbuf Hpil Hpi Hpol Hpo Hll Hcnt H1l [%x1 H1] H2l [%x2 H2] HK HM".
+    Hloc Hwl Hoe Hfl His Hsrc Htl Hbuf Hpil Hpi Hpol Hpo Hll Hcnt H1l [%x1 H1] H2l [%x2 H2] HKM".
   destruct repl_table_info as (Hni & Hnt & Htbl & Hidx).
   destruct (lookup_lt_is_Some_2 wc_to_idx (Z.to_nat med) ltac:(lia)) as [z Hz]. destruct (Hidx _ _ Hz) as [Hz32 Hok].
   body_start glibc_translit "L181". step. check_read_dq "Hil" by a4. iNext. iIntros "Hil".
@@ -104,9 +106,10 @@ Proof using Type*.
   iIntros (er st jj out u (Hs & Hjj & Hl & Hb & V245 & C26 & C27)) "Hwl Hoe Hfl Htl Hbuf Hpol Hpo H1l H1 H2l H2".
   assert (Hs0 : same_out repl_names e er) by (eapply same_out_trans; [|exact Hs]; same_tac).
   destruct (st mod 2^32 =? 6).
-  - iApply ("HM" $! er out fl with "[%] Hloc Hwl Hoe Hfl His Hsrc Htl Hbuf Hpil Hpi Hpol Hpo Hll Hcnt H1l [H1] H2l [H2]");
+  - iDestruct "HKM" as "[_ HM]". iApply ("HM" $! er out fl with "[%] Hloc Hwl Hoe Hfl His Hsrc Htl Hbuf Hpil Hpi Hpol Hpo Hll Hcnt H1l [H1] H2l [H2]");
       [split_and!; first [assumption | left; reflexivity] | by iExists _ | by iExists _].
-  - Local Ltac remember_reg H s Hs := let T := fresh "V" in pose proof (Hs (TAtom s) eq_refl) as T; rewrite H in T.
+  - iDestruct "HKM" as "[HK _]".
+    Local Ltac remember_reg H s Hs := let T := fresh "V" in pose proof (Hs (TAtom s) eq_refl) as T; rewrite H in T.
     remember_reg V6 "v6" Hs0. remember_reg C0 "chk0" Hs0. remember_reg V10 "v10" Hs0. remember_reg V12 "v12" Hs0.
     remember_reg V212 "v212" Hs0. remember_reg P6 "pr.6" Hs0. pose proof (mod16_mod8 _ Ha26).
     body_start glibc_translit "L246". step. branch_cases.
