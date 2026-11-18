@@ -1,0 +1,16 @@
+; Rocq loads its tactic plugins with Dynlink, so the worker links all of
+; rocq-runtime for them to find the modules they expect.
+
+(executable
+ (name rq_worker)
+ (public_name rq-worker)
+ (package rq-worker)
+ (link_flags (-linkall))
+ (libraries
+  eio_main
+  eio.unix
+  yojson
+  str
+  unix
+  threads.posix
+  rocq-runtime.toplevel))

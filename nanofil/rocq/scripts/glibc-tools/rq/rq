@@ -31,7 +31,10 @@ interfaces, and the file on disk may differ from what the session ran.
 There is no time limit on any sentence. Interrupting a waiting rq call
 (Ctrl-C) only stops waiting; the job goes on, and `rq wait R1` returns its
 result. `rq cancel R1` interrupts the running sentence itself: the session
-keeps every sentence committed before it.
+keeps every sentence committed before it. A call that is still waiting
+in line when you press Ctrl-C withdraws its job instead. The worker
+answers ls, status, cancel and withdraw at once, even while Rocq is busy;
+requests for the session wait their turn.
 
 Exit status: 0 when the request ran to its end, 1 when it stopped at an
 error or an interrupt, 2 for a usage or session error. --json prints the
@@ -45,7 +48,7 @@ rq.slice, so rq ls reports the memory of the whole worker tree and
 one, the worker is a detached process group and rq reports its RSS; a
 requested cap is then refused, since it could not be enforced.
 """
-import argparse, json, os, re, select, signal, socket, subprocess, sys, time
+import argparse, json, os, re, signal, socket, subprocess, sys, time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 REPO = subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
@@ -140,7 +143,7 @@ def memory(meta, pid):
 
 # ## Talking to a worker
 
-def request(sid, req, wait=True):
+def connect(sid):
     d = sdir(sid)
     c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
     try:
@@ -148,26 +151,43 @@ def request(sid, req, wait=True):
     except OSError:
         st = read_json(os.path.join(d, "status.json"), {})
         die("session %s is not listening (%s); rq status %s" % (sid, st.get("state", "dead"), sid))
+    return c
+
+
+def control(sid, req):
+    """Send a request that the worker answers at once, even while busy."""
+    c = connect(sid)
     c.sendall((json.dumps(req) + "\n").encode())
+    line = c.makefile("r", encoding="utf-8", errors="replace").readline()
+    c.close()
+    return json.loads(line) if line else {}
+
+
+def request(sid, req, wait=True):
+    """Queue a job; print where it stands in line, and wait for its result.
+    Ctrl-C withdraws a job that has not started and leaves a running one
+    alone."""
+    c = connect(sid)
+    c.sendall((json.dumps(dict(req, detach=True) if not wait else req) + "\n").encode())
     f = c.makefile("r", encoding="utf-8", errors="replace")
-    if not select.select([c], [], [], 1.0)[0]:
-        st = read_json(os.path.join(d, "status.json"), {})
-        print("rq: %s is busy with job %s; waiting in line" % (sid, st.get("job")), file=sys.stderr)
-    try:
-        first = f.readline()
-    except KeyboardInterrupt:
-        print("\nrq: stopped waiting in line; the request may still run when %s is free" % sid, file=sys.stderr)
-        sys.exit(130)
-    if not first:
-        die("session %s closed the connection; rq status %s" % (sid, sid))
-    job = json.loads(first)["job"]
+    first = json.loads(f.readline() or "{}")
+    if "job" not in first:
+        die(first.get("error", "session %s closed the connection; rq status %s" % (sid, sid)))
+    job = first["job"]
     if not wait:
-        return {"job": job, "detached": True}
+        return {"job": job, "queued": first.get("queued", 0), "detached": True}
+    if first.get("queued"):
+        print("rq: %s has %d job(s) ahead of job %d; waiting in line" % (sid, first["queued"], job), file=sys.stderr)
     try:
         line = f.readline()
     except KeyboardInterrupt:
-        print("\nrq: stopped waiting; job %d still runs in %s. `rq wait %s %d` for its result, "
-              "`rq cancel %s` to interrupt it" % (job, sid, sid, job, sid), file=sys.stderr)
+        c.close()
+        state = control(sid, {"cmd": "withdraw", "job": job}).get("state")
+        if state == "withdrawn":
+            print("\nrq: withdrew job %d before it started" % job, file=sys.stderr)
+        else:
+            print("\nrq: stopped waiting; job %d is %s in %s. `rq wait %s %d` for its result, "
+                  "`rq cancel %s` to interrupt it" % (job, state, sid, sid, job, sid), file=sys.stderr)
         sys.exit(130)
     if not line:
         return wait_job(sid, job)
@@ -567,12 +587,11 @@ def cmd_wait(args):
 
 
 def cmd_cancel(args):
-    d, meta, st, state, *_ = describe(args.session)
-    if state != "busy":
-        print("%s is %s; nothing to cancel" % (args.session, state))
-        return 0
-    os.kill(meta["pid"], signal.SIGINT)
-    print("sent SIGINT to job %s of %s" % (st.get("job"), args.session))
+    rep = control(args.session, {"cmd": "cancel"})
+    if rep.get("cancelled") is None:
+        print("%s is running no job; nothing to cancel" % args.session)
+    else:
+        print("interrupting job %d of %s" % (rep["cancelled"], args.session))
     return 0
 
 
