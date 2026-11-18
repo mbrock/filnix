@@ -1201,6 +1201,7 @@ hello/HelloCloseReportInit.v
 hello/HelloCloseReportDone.v
 hello/HelloCloseReportFormat.v
 hello/HelloCloseReportSnprintf.v
+hello/HelloCloseReportText.v
 hello/HelloErrorCall.v
 hello/HelloErrorDefaultCall.v
 hello/HelloErrorReturning.v
