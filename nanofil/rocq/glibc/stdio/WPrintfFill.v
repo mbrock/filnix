@@ -1,6 +1,6 @@
-(** Hello specifies no field width, but the compiled formatter subtracts
-    the wide string length from zero in a 32-bit register. The signed
-    difference can be positive for a long greeting, so even this format
+(** Hello specifies no field width, but the compiled formatter compares
+    the low 32 bits of zero minus the wide string length. Those bits
+    can represent a positive int for a long greeting, so even this format
     can ask for padding. Each call to wide memset fills part of the
     private array. It writes four characters per iteration and checks the
     count before writing each of the last three. *)
