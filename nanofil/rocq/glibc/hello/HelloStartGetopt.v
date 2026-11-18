@@ -37,10 +37,12 @@ Local Abbreviation s276 := (img_a "glibc_dcigettext#str.276").
 Local Abbreviation s277 := (img_a "glibc_dcigettext#str.277").
 Local Abbreviation dmb := (img_a "__GI__libc_intl_domainname").
 
-(** Every call may read these constants: the nine formats, the two
-    pieces of a catalog's file name, the name of the message category
-    and its index, the locale name "C", the C library's domain and the
-    formatter's tables. *)
+(** Every call may read these constants, and nobody writes them: the
+    nine formats, the pieces of a catalog's file name, the message
+    category's name and index, the strings "C" and the C library's
+    domain, and the formatter's tables. The global locale's name slot for
+    messages belongs here too, because setlocale finds "C" there and
+    leaves it. *)
 Definition hello_getopt_ro : iProp Σ :=
   dgx_msgs hello_msg_bases ∗
   word_string DfracDiscarded (mkPtr s276 (Ro s276)) [47] ∗
@@ -49,22 +51,21 @@ Definition hello_getopt_ro : iProp Σ :=
   liveq DfracDiscarded ib (img_gd "_nl_category_name_idxs") ∗ bytesq DfracDiscarded ib 5 [lc_messages_off] ∗
   word_string DfracDiscarded (mkPtr cb (Ro cb)) lc_c ∗
   word_string DfracDiscarded (mkPtr dmb (Ro dmb)) libc_domain_text ∗
+  pcellq DfracDiscarded (img_a "_nl_global_locale") 168 (mkPtr cb (Ro cb)) ∗
   printf_ro.
 
 #[global] Instance hello_getopt_ro_persistent : Persistent hello_getopt_ro.
-Proof using Type. rewrite /hello_getopt_ro. apply _. Qed.
+Proof using Type. rewrite /hello_getopt_ro /pcellq. apply _. Qed.
 
 (** The private state owns gettext's three locks, which are free, its
-    cache, which is empty, and its list of domains, which is empty. It
-    also owns the name of the messages' locale, which is "C". *)
+    cache, which is empty, and its list of domains, which is empty. *)
 Definition hello_getopt_rw : iProp Σ :=
   rw_state (img_a "_nl_state_lock") (img_gd "_nl_state_lock") 0 0 0 0 ∗
   rw_state (img_a "__libc_setlocale_lock") (img_gd "__libc_setlocale_lock") 0 0 0 0 ∗
   rw_state (img_a "glibc_dcigettext#tree_lock") (img_gd "glibc_dcigettext#tree_lock") 0 0 0 0 ∗
   tfind_root (DfracOwn 1) (img_a "glibc_dcigettext#root") 0 (img_gd "glibc_dcigettext#root") ∗
   liveq (DfracOwn 1) (img_a "_nl_domain_bindings") (img_gd "_nl_domain_bindings") ∗
-  pcellq (DfracOwn 1) (img_a "_nl_domain_bindings") 0 null ∗
-  pcell (img_a "_nl_global_locale") 168 (mkPtr cb (Ro cb)).
+  pcellq (DfracOwn 1) (img_a "_nl_domain_bindings") 0 null.
 
 (** Eight zero bytes with no capabilities are a stored null pointer. *)
 Lemma zero_null_cell b reg : pts (obj_ps (b, reg) (repeat 0 8%nat)) ⊢ live b reg ∗ pcell b 0 null.
@@ -152,16 +153,17 @@ Proof using Type.
     [rewrite Hg; vm_compute; reflexivity | vm_compute; first [reflexivity | congruence]..|].
   iMod (null_global_own "__printf_va_arg_table" with "N3") as "#N3";
     [rewrite Hg; vm_compute; reflexivity | vm_compute; first [reflexivity | congruence]..|].
+  iEval (rewrite /hello_locale_slot_ps pts_ptsq) in "Sl". iMod (ptsq_persist with "Sl") as "#Sl".
   iModIntro. iSplitR.
   { rewrite /hello_getopt_ro /printf_ro.
     iSplit; [iExact "Hm"|]. iSplit; [iExact "H276"|]. iSplit; [iExact "H277"|]. iSplit; [iExact "Hcat"|].
     iSplit; [iExact "Hil"|]. iSplit; [iExact "Hib"|]. iSplit; [iExact "Hc"|]. iSplit; [iExact "Hd"|].
-    iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "Dg"|].
+    iSplit; [iExact "Sl"|]. iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "Dg"|].
     iSplit; [iExists _; iSplit; [|iExact "Nt"]; iPureIntro; rewrite Hg; vm_compute; reflexivity|].
     iSplit; [iExact "N1"|]. iSplit; [iExact "N2" | iExact "N3"]. }
   rewrite /hello_getopt_rw (zero_rw_lock _ _) (zero_rw_lock _ _) (zero_rw_lock _ _).
   iDestruct (zero_null_cell with "Rt") as "[Rl Rc]". iDestruct (zero_null_cell with "Db") as "[Dl Dc]".
-  iFrame "L1 L2 L3". rewrite /hello_locale_slot_ps. rewrite /tfind_root /liveq /pcellq /live /pcell -!pts_ptsq. iFrame.
+  iFrame "L1 L2 L3". rewrite /tfind_root /liveq /pcellq /live /pcell -!pts_ptsq. iFrame.
 Qed.
 
 End own.

@@ -144,7 +144,7 @@ Proof using Type.
   assert (Ht : dgx_msg_texts !! k = Some (getopt_fmt n)).
   { rewrite <- Et, En. change (map getopt_fmt dgx_msg_names) with (getopt_fmt <$> dgx_msg_names).
     rewrite list_lookup_fmap Hk. reflexivity. }
-  iIntros "#Hro". iPoseProof "Hro" as "(Hm & _ & _ & _ & _ & _ & _ & _ & Hpr)".
+  iIntros "#Hro". iPoseProof "Hro" as "(Hm & _ & _ & _ & _ & _ & _ & _ & _ & Hpr)".
   rewrite /dgx_msgs. iDestruct (big_sepL2_lookup with "Hm") as "#Hw"; [exact Hb | exact Ht|].
   iExists DfracDiscarded. iSplitR; [iExact "Hw"|]. iSplitR; [iExact "Hpr"|]. iIntros "_". iExact "Hro".
 Qed.

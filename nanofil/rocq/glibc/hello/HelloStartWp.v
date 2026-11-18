@@ -322,7 +322,7 @@ Proof using Hi.
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
   iDestruct "Hrest" as "(Hgl & #Hgro & Hcr)".
   iAssert (hello_printf_ro hge) as "#Hpr".
-  { iDestruct "Hgro" as "(_ & _ & _ & _ & _ & _ & _ & _ & Hp)". iExact "Hp". }
+  { iDestruct "Hgro" as "(_ & _ & _ & _ & _ & _ & _ & _ & _ & Hp)". iExact "Hp". }
   iMod (Hx with "[Gh2 Hgl Hcr]") as "HX".
   { iDestruct "Gh2" as "[A B]". iSplitL "A B"; [iFrame "A B"|]. rewrite /hello_hd_rest.
     iSplitL "Hgl"; [iExact "Hgl"|]. iSplitR; [iExact "Hgro" | iExact "Hcr"]. }

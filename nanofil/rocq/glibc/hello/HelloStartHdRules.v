@@ -43,7 +43,7 @@ Context (tb : Z).
 Definition hello_getopt_T : ptr -> ptr -> iProp Σ := fun mid q =>
   (∃ x : Z * Z * region, ⌜0 <= x.1.1 < 2 ^ 32⌝ ∗
     hello_dg_T w fr (ct_lt hello_ct_objs) 0 (ct_ltreg hello_ct_objs) (DfracOwn 1) (mkPtr gl (Obj gl)) gl
-      (ct_glreg hello_ct_objs) (DfracOwn 1) (DfracOwn 1) DfracDiscarded x.2
+      (ct_glreg hello_ct_objs) (DfracOwn 1) DfracDiscarded DfracDiscarded x.2
       (mkPtr (img_a "_nl_C_name") (Ro (img_a "_nl_C_name"))) (DfracOwn (1/2)) (DfracOwn (1/2/2)) (DfracOwn (1/2/2))
       tb (DfracOwn 1) x.1.1 x.1.2 mid q)%I.
 

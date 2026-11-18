@@ -90,7 +90,7 @@ Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
 Proof using Hself Hfd2.
   intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
-  iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb & Pms)]";
+  iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb)]";
     [reflexivity|].
   iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc".
   2: { iSplitL "Pgl"; [iExact "Pgl"|]. iSplitR; [iExact "Ro"|]. iSplitL "Hco"; [iExact "Hco"|].
@@ -111,7 +111,7 @@ Proof using Hself Hfd2.
     /int_cellq. cbn [fst snd].
   iEval (rewrite /hello_sec /bytes pts_ptsq; cbn [fst snd]) in "Bs".
   iEval (rewrite /hello_sec /live pts_ptsq; cbn [fst snd]) in "Ls".
-  iEval (rewrite /live pts_ptsq) in "Llt Lgl". iEval (rewrite /pcell pts_ptsq) in "Plt Pms".
+  iEval (rewrite /live pts_ptsq) in "Llt Lgl". iEval (rewrite /pcell pts_ptsq) in "Plt".
   iSplitR "Hps".
   { iExists bs. iPoseProof "Ro" as "(_ & H276 & H277 & Hcat & Hil & Hib & Hcc & Hdm & _)".
     iSplitL "Ldb Pdb Ls Bs".
@@ -126,9 +126,9 @@ Proof using Hself Hfd2.
     iSplitL "K3 Hl3 B3"; [iSplitL "K3"; [iExact "K3"|]; iSplitL "Hl3"; [iExact "Hl3"|];
       iSplit; [iPureIntro; lia | iExact "B3"]|].
     iSplitL "Rt"; [iExact "Rt"|].
-    iSplitL "Llt Plt Lgl Pms".
+    iSplitL "Llt Plt Lgl".
     { iSplitL "Llt"; [iExact "Llt"|]. iSplitL "Plt"; [iExact "Plt"|]. iSplitL "Lgl"; [iExact "Lgl"|].
-      iSplitL "Pms"; [iExact "Pms" | iExact "Cl"]. }
+      iSplit; [iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & _ & _ & $ & _)" | iExact "Cl"]. }
     iSplitR "He"; [|iExact "He"]. rewrite /hello_gettext_cache /hi_malloc_state.
     iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & _ & $ & _)". }
   iSplitL "Hps"; [|iPoseProof "Ro" as "($ & _)"].

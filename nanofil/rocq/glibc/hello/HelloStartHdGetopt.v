@@ -52,7 +52,7 @@ Context (tb : Z).
 (** A warning needs these resources. Their state depends on the flag v,
     the thread's id tid and the region treg of the string "C". *)
 Definition hello_dgx (v tid : Z) (treg : region) : iProp Σ :=
-  hello_dg_G w fr lt 0 ltreg (DfracOwn 1) lp gl glreg (DfracOwn 1) (DfracOwn 1) DfracDiscarded treg cv
+  hello_dg_G w fr lt 0 ltreg (DfracOwn 1) lp gl glreg (DfracOwn 1) DfracDiscarded DfracDiscarded treg cv
     (DfracOwn (1/2)) (DfracOwn (1/2/2)) (DfracOwn (1/2/2)) tb (DfracOwn 1) v tid.
 
 (** The reports print to stderr, which stays idle on descriptor 2
