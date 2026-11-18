@@ -95,7 +95,7 @@ Proof using Type.
     by (vm_compute; reflexivity).
   assert (Ett : byte_ps tta 0 (le_words wc_tt) = byte_ps tta 0 (le_words wc_to_tbl) ++ byte_ps tta (4 * 5886) (le_bytes 0 4))
     by (vm_compute; reflexivity).
-  rewrite /wconv_ro /wconv_consts /mbr_tables Ew Ef Et Etl. unfold liveq, pcellq, bytesq. rewrite Eft Ett.
+  rewrite /wconv_ro /wconv_consts /mbr_tables Ew Ef. unfold liveq, pcellq, bytesq. rewrite Eft Ett Et Etl.
   remember (le_words wc_from_idx) as A1 eqn:E1. remember (le_words wc_from_tbl) as A2 eqn:E2.
   remember (le_words wc_to_idx) as A3 eqn:E3. remember (le_words wc_to_tbl) as A4 eqn:E4.
   clear E1 E2 E3 E4 Ew Ef Et Etl Eft Ett.

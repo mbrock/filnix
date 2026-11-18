@@ -84,6 +84,9 @@ jobs:
       # On main, cachix watch-exec publishes each object as it is built, so a
       # run that fails or that a later push overtakes still fills the cache
       # that glibc-tools/warm.sh reads. The last step below remains a backstop.
+      # The runner has 4 cores and 16 GB. A Hello or libio compile peaks at
+      # 3.5 to 9 GB, so four at once exhausted memory and the runner killed
+      # the step (exit 143) or lost contact; three jobs leave headroom.
       - name: Compile and probe glibc contracts
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
@@ -94,7 +97,7 @@ jobs:
             publish=(cachix watch-exec filc --)
           fi
           python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
-            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
+            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs 3 --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock

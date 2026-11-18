@@ -141,7 +141,7 @@ Proof using Type. intros ->. iIntros "Hb Ha". iApply (zero_cell_prefix with "Hb 
 (** The first k zero bytes split off from the rest. *)
 Lemma zb b o o2 k n : o2 = o + Z.of_nat k -> bytes b o (replicate (k + n) 0) -∗ auxes b o (replicate (k + n) CNone) -∗
   bytes b o (replicate k 0) ∗ auxes b o (replicate k CNone) ∗ bytes b o2 (replicate n 0) ∗ auxes b o2 (replicate n CNone).
-Proof. intros ->. rewrite !replicate_add bytes_app auxes_app !length_replicate. iIntros "[$ $] [$ $]". Qed.
+Proof using Type. intros ->. rewrite !replicate_add bytes_app auxes_app !length_replicate. iIntros "[$ $] [$ $]". Qed.
 (** Sixteen zero bytes of a descriptor hold its flags, its call count,
     its marker word and four bytes of padding. *)
 Lemma zero16 b o : bytes b o (replicate 16 0) -∗
@@ -201,7 +201,7 @@ Context (vb : Z) (self : ptr).
 (** A wide stream reads its mode, finds 1 and returns it, and nothing
     in the stream changes. *)
 Lemma wprintf_fwide_wide dq : wprintf_fwide_wide_spec vb self (wfwide_res dq).
-Proof.
+Proof using Type.
   intros fr fp Φ Hfr. injection Hfr as <-. iIntros "HF HW HK".
   iDestruct "HF" as "(%fb & %freg & %st & %nb & %wd & %w & %tw' & %tm' & %Hp & Hl & Hfields & Hrest)".
   pose proof Hp as (-> & Ha & Hb & He & Hr & _ & _ & Hm & _). unfold file_size in He.
@@ -222,7 +222,7 @@ Qed.
     one, and sets its mode to 1. Its wide buffer stays empty, so the
     result meets [file_wide] with no wide buffer. *)
 Lemma wprintf_fwide_idle dq : wprintf_fwide_idle_spec vb self (wfwide_res dq).
-Proof.
+Proof using Defines0 Defines1 Hlk Hset Hset_fn Hset_sym Htm Hts Htw.
   intros fr fp vr Φ Hfr. injection Hfr as <-. iIntros "#Hvt HF HW HK".
   iDestruct "HF" as "(%fb & %freg & %st & %nb & %Hp & Hl & Hfields & Hlock & Hbuf & Hwi)".
   pose proof Hp as (-> & Hfa & Hfb0 & He & Hr & Hfo & Hid & Hvtb & Hbp & Hsi). unfold file_size in He.
