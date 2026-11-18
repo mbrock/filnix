@@ -1227,6 +1227,8 @@ hi_atexit/HiAtexitStdoutClose.v
 hi_atexit/HiAtexitXsputnOverflow.v
 libio/LibioOverflowHeapStart.v
 libio/LibioOverflowHeapBuffer.v
+libio/LibioOverflowHeapIdle.v
+libio/LibioOverflowHeap.v
 getopt/GetoptLongPfxLoop.v
 hi_atexit/HiAtexitExit.v
 hi_atexit/HiAtexitInitialList.v
