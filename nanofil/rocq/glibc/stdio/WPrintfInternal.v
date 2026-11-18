@@ -32,9 +32,11 @@ Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (vb : Z) (self : ptr).
 
 (** The first orientation check either refuses a narrow stream or returns
-    a wide one. The conversion objects and lock come back in both cases. *)
-Definition wprintf_fwide_idle_spec (W : iProp Σ) : Prop := forall fr fp Φ,
-  call_frame wprintf_fwide_fn [WPtr fp; WInt 1] = Some fr -> file_idle vb self fp 1 -∗ W -∗
+    a wide one. The conversion objects and lock come back in both cases.
+    A stream that becomes wide copies the wide jump table's address into
+    its own vtable field, so the check reads the jump tables' life. *)
+Definition wprintf_fwide_idle_spec (W : iProp Σ) : Prop := forall fr fp vr Φ,
+  call_frame wprintf_fwide_fn [WPtr fp; WInt 1] = Some fr -> vtables_ro ge vb vr -∗ file_idle vb self fp 1 -∗ W -∗
   ▷ (∀ r, ((⌜r = 4294967295⌝ ∗ file_idle vb self fp 1) ∨ (⌜r = 1⌝ ∗ file_wide ge vb self fp 1)) -∗ W -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 
@@ -124,7 +126,7 @@ Proof using Type*.
   alloc bb Hbb. iRename "Hobj" into "Hstage". change (0 < bb /\ bb mod 16 = 0 /\ bb+560 <= 2^48) in Hbb.
   destruct Hbb as (Hbb & Hb16 & Hbe). assert (Hb8 : bb mod 8 = 0) by (Z.div_mod_to_equations; lia).
   do 2 (let x := fresh in let Hx := fresh in alloc x Hx; clear Hx; iClear "Hobj").
-  iApply wp_call_bind; [vx|exact wfc_orient|reflexivity|]. iNext. iApply (Hidle with "HF HW"); [reflexivity|].
+  iApply wp_call_bind; [vx|exact wfc_orient|reflexivity|]. iNext. iApply (Hidle with "Hvt HF HW"); [reflexivity|].
   iNext. iIntros (n) "[[-> HF]|[-> HF]] HW"; resume; step; branch; step.
   { iApply wp_ret; [reflexivity|vx|]. iNext. iApply ("HK" $! 4294967295 with "[%] [HF] [HW Hrestore] Hl Hb"); [lia|by iLeft|by iApply "Hrestore"]. }
   iDestruct (wide_flags with "HF") as (fb sr fl f2 (-> & Hfb & Hfa & Hfe & Hsr & Hnw & _)) "(Hfl & [%Hfl Hflags] & Hf2 & Hback)".
