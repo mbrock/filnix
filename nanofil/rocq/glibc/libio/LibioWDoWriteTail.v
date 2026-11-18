@@ -32,6 +32,8 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 
+Local Typeclasses Opaque pcell.
+
 Section tail.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).

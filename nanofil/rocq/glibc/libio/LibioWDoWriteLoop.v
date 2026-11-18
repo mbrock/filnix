@@ -48,6 +48,10 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 
+(* Calls borrow whole fields. Frame those fields without searching inside
+   the descriptors and pointer cells for individual bytes. *)
+Local Typeclasses Opaque iconv_cell pcell icell bytes auxes live.
+
 (** The conversion function as Hello's image links it. *)
 Definition codecvt_out_fn := Eval vm_compute in
   code_function (code_module (TApp "module" [TList hello_image_items_125])) "__libio_codecvt_out".
