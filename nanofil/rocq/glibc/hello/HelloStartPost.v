@@ -234,6 +234,7 @@ Definition hello_start_post (av : Z) (ar : region) (p0 : ptr) (ps : list ptr) (y
 Definition hello_start_main_res (w : os_world) (av : Z) (ar : region) (p0 : ptr) (ps : list ptr) (y z : ptr) : iProp Σ :=
   hello_ro_rest ge o ∗
   word_string DfracDiscarded (sym_ptr ge "glibc_getopt#str.145") [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84] ∗
+  word_string DfracDiscarded (sym_ptr ge "hello#str.80") [] ∗
   pts hello_start_ps ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
   ncells o null y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] 0 ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
   hello_stdio w ge o ∗ getopt_cells o null 1.
@@ -340,7 +341,12 @@ Proof using Hi.
     iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 19
       ("hello#str.79"%string, [84; 114; 121; 32; 39; 37; 115; 32; 45; 45; 104; 101; 108; 112; 39; 32; 102; 111; 114; 32; 109; 111; 114; 101; 32; 105; 110; 102; 111; 114; 109; 97; 116; 105; 111; 110; 46; 10]) with "Hlf"); vm_compute; reflexivity|].
     done. }
-  iSplitR; [iExact "Hkey"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
+  iSplitR; [iExact "Hkey"|].
+  (* Hello's call setlocale (LC_ALL, "") passes the empty string str.80. *)
+  iSplitR.
+  { iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1.1) ns.1.2) _ 20
+      ("hello#str.80"%string, [], [0]) with "Hlr"). vm_compute. reflexivity. }
+  iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
   iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Lpn Hpn Lnb Hnb Lns Hns".
   { rewrite /ncells. iSplitL "Lpn"; [iExact "Lpn"|]. iSplitL "Hpn"; [iExact "Hpn"|].

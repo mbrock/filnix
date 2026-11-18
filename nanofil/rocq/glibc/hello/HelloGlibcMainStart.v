@@ -106,7 +106,7 @@ Proof using Type*.
   (* setlocale (LC_ALL, ""). *)
   step_global (hy_lits _ _ Hy "hello#str.80" ltac:(cbn; tauto)).
   iApply (wp_call_ptr w0 ge _ _ _ (fun _ => hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I with "[Hio Hpv]");
-    [exact (hd_setlocale_all _ _ _ D) | reflexivity |
+    [exact (hl_setlocale_all _ _ _ _ _ _ Lb) | reflexivity |
     iSplitR; [iExact "Hro" | iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]] |].
   iNext. iIntros (q) "[Hio Hpv]".
   (* The default greeting, stored in b4's cell. *)

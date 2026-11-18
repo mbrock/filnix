@@ -1091,6 +1091,10 @@ hello/HelloStartGetopt.v
 hello/HelloStartGetoptRules.v
 hello/HelloStartHdGetopt.v
 hello/HelloStartQuery.v
+hello/HelloSetlocalePostload.v
+hello/HelloSetlocaleAll.v
+hello/HelloSetlocaleState.v
+hello/HelloStartSetlocale.v
 hello/HelloStartHdRules.v
 hello/HelloStartHdBuild.v
 hello/HelloLocaleState.v

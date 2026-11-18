@@ -23,13 +23,14 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic HelloMain.
+From Glibc Require Import LocaleEnv.
 From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid StartCtors StartLogic StartCode StartState StartOwn
   StartJoin StartGetenv StartLibcStartMain StartLsmImage StartLsmHello StartEarlyInitSpec StartCtorRunnerSpec
   StartCallMainSpec StartPtmallocInitSpec StartCtypeInitSpec StartInitFirstSpec StartInitMiscSpec StartCtorChain StartImageEarly StartTunablesEarly CpuInitSpec
   WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloGlibcLibsT HelloImageModule
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
-  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery
+  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale
   HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage
   HelloCloseStdoutCall.
 From Glibc Require HelloGlibcJoin.
@@ -124,7 +125,7 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   call_frame start_libc_start_main_fn
     [WPtr (mkPtr (img_a "main") (Fn (TAtom "main"))); WInt argc; WPtr (mkPtr argv.1 (Obj argv.1));
      WPtr (mkPtr env.1 (Obj env.1)); WPtr (mkPtr av (Obj av))] = Some fr0 ->
-  string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> auxv_array m av aps ->
+  string_array m argv.1 argv.2 -> string_array m env.1 env.2 -> c_locale_env (map snd env.2) -> auxv_array m av aps ->
   argc = Z.of_nat (length argv.2) -> 1 <= argc < 2 ^ 31 ->
   Permutation order (ctor_names hello_image_module) ->
   (forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 -> hello_tb_contracts env tb) ->
@@ -137,7 +138,7 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   pointsto (PName k) (DfracOwn 1) (start_ghost null false false) -∗
   WP (ERun fr0 : sexpr) {{ _, ⌜False⌝ }}.
 Proof using Hi.
-  intros Hleaf Efr Hfd2 Hfd1 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
+  intros Hleaf Efr Hfd2 Hfd1 He Hfr Ha He2 Hloc Hv Hargc Hargc2 Hord Hc.
   assert (Hfree : frees_heap fr) by (rewrite Efr; exact R.free_succeeds).
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
@@ -150,8 +151,13 @@ Proof using Hi.
       ltac:(destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (_ & -> & _); cbn; lia)
       ltac:(rewrite Herr; vm_compute; reflexivity)).
     pose proof (hello_vfprintf_image (final_world w0 tb) fr (hello_link_all fr Hfree)) as Hvf.
+    assert (Hgi : getenv_image_ok hge (img_a "__environ_counter") (img_gd "__environ_counter")
+      (img_a "__environ") (img_gd "__environ")) by (split_and!; vm_compute; first [reflexivity | congruence]).
+    assert (Hle : c_locale_env (map entry_text (env_entries m env))) by (rewrite env_entries_text; exact Hloc).
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
+      (hello_setlocale_all (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ _ _ _ _ _ _ _ _ _
+         (hello_setlocale_lend (final_world w0 tb) fr) Hgi Hle Hfree Hpv)
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
       ltac:(unfold hello_tb_contracts in Hpv; clear Hc; subst fr; exact (hello_close_stdout_narrow (final_world w0 tb) tb Herr ltac:(rewrite Hfds; exact Hfd1)
          ltac:(rewrite Hfds; exact Hfd2) (Hvf := Hvf) _ _ _ Hpv))
@@ -333,7 +339,7 @@ Proof using Hi.
   pose proof (Hc tb ltac:(lia) ltac:(lia)) as Hpv.
   assert (Hfd2' : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
   iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
-  iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
+  iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "(#Hrr & #Hk145 & #H80 & Hres)".
   iDestruct "Hes" as (sv) "Hes".
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
   iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco Hlo Cl Ccells Hmb Hcx Hel Ro [Les] [Hes] Htid Hrr Loc")
@@ -341,7 +347,10 @@ Proof using Hi.
   iDestruct "Hrest" as "(Hgl & #Hgro & Hcr)".
   iAssert (hello_printf_ro hge) as "#Hpr".
   { iDestruct "Hgro" as "(_ & _ & _ & _ & _ & _ & _ & _ & _ & Hp)". iExact "Hp". }
-  iMod (hello_priv_build (final_world w0 tb) fr with "[Hgl Hcr]") as "HX".
+  assert (E80 : sym_ptr (mkGenv hello_image_module img_globals fr) "hello#str.80" =
+    mkPtr (img_a "hello#str.80") (Ro (img_a "hello#str.80"))) by (vm_compute; reflexivity).
+  iEval (rewrite E80) in "H80".
+  iMod (hello_priv_build (final_world w0 tb) fr with "H80 [Hgl Hcr]") as "HX".
   { rewrite /hello_hd_rest. iSplitL "Hgl"; [iExact "Hgl"|]. iSplitR; [iExact "Hgro" | iExact "Hcr"]. }
   pose (gg := getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp).
@@ -366,7 +375,7 @@ Proof using Hi.
     (hello_getopt_E (final_world w0 tb) fr tb)
     (fun mid q => gg ∗ (gs ∗ hello_getopt_T (final_world w0 tb) fr tb mid q))%I
     hello_dom envp (env_entries m env) sz tb avb (reg_of m avb) p0 ps p0 (short_name p0 q0s) Hself Rd Rl Hln Hg
-    with "[Hres] Hsz Hpv Hpr") as "Hpre"; [rewrite /hello_start_main_res; iSplitR; [iExact "Hrr" | iExact "Hres"]|].
+    with "[Hres] Hsz Hpv Hpr") as "Hpre"; [rewrite /hello_start_main_res; iSplitR; [iExact "Hrr"|]; iSplitR; [iExact "Hk145"|]; iSplitR; [iExact "H80" | iExact "Hres"]|].
   iModIntro. iExact "Hpre".
 Qed.
 

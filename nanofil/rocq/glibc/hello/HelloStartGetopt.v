@@ -42,12 +42,15 @@ Local Abbreviation dmb := (img_a "__GI__libc_intl_domainname").
     category's name and index, the strings "C" and the C library's
     domain, and the formatter's tables. The global locale's name slot for
     messages belongs here too, because setlocale finds "C" there and
-    leaves it. *)
+    leaves it. The words that hold the message category's name also
+    hold parts of two other names, so the state keeps those words as
+    they are, beside the string. *)
 Definition hello_getopt_ro : iProp Σ :=
   dgx_msgs hello_msg_bases ∗
   word_string DfracDiscarded (mkPtr s276 (Ro s276)) [47] ∗
   word_string DfracDiscarded (mkPtr s277 (Ro s277)) [46; 109; 111] ∗
-  word_string DfracDiscarded (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages ∗
+  (word_string DfracDiscarded (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages ∗
+   ptsq DfracDiscarded (lc_name_ps nb (img_gd "_nl_category_names"))) ∗
   liveq DfracDiscarded ib (img_gd "_nl_category_name_idxs") ∗ bytesq DfracDiscarded ib 5 [lc_messages_off] ∗
   word_string DfracDiscarded (mkPtr cb (Ro cb)) lc_c ∗
   word_string DfracDiscarded (mkPtr dmb (Ro dmb)) libc_domain_text ∗
@@ -132,7 +135,7 @@ Proof using Type.
   iDestruct (pts_app with "HP") as "[J HP]". iDestruct (pts_app with "HP") as "[S HP]".
   iDestruct (pts_app with "HP") as "[Dg HP]". iDestruct (pts_app with "HP") as "[Nt HP]".
   iDestruct (pts_app with "HP") as "[N1 HP]". iDestruct (pts_app with "HP") as "[N2 N3]".
-  iMod (lc_own with "Hlc") as "#(Hcat & Hil & Hib & Hc)"; [vm_compute; intuition congruence|].
+  iMod (lc_own with "Hlc") as "#(Hcat & Hil & Hib & Hc & Hraw)"; [vm_compute; intuition congruence|].
   iMod (dgx_msgs_own with "Hmsg") as "#Hm".
   { repeat apply Forall2_cons; try apply Forall2_nil; unfold lit_fit; vm_compute; split_and!; first [reflexivity | discriminate]. }
   iMod (dci_suffix_own with "Hsuf") as "#[H276 H277]"; [vm_compute; intuition congruence..|].
@@ -156,7 +159,7 @@ Proof using Type.
   iEval (rewrite /hello_locale_slot_ps pts_ptsq) in "Sl". iMod (ptsq_persist with "Sl") as "#Sl".
   iModIntro. iSplitR.
   { rewrite /hello_getopt_ro /printf_ro.
-    iSplit; [iExact "Hm"|]. iSplit; [iExact "H276"|]. iSplit; [iExact "H277"|]. iSplit; [iExact "Hcat"|].
+    iSplit; [iExact "Hm"|]. iSplit; [iExact "H276"|]. iSplit; [iExact "H277"|]. iSplit; [iSplit; [iExact "Hcat" | iExact "Hraw"]|].
     iSplit; [iExact "Hil"|]. iSplit; [iExact "Hib"|]. iSplit; [iExact "Hc"|]. iSplit; [iExact "Hd"|].
     iSplit; [iExact "Sl"|]. iSplit; [iExact "J"|]. iSplit; [iExact "S"|]. iSplit; [iExact "Dg"|].
     iSplit; [iExists _; iSplit; [|iExact "Nt"]; iPureIntro; rewrite Hg; vm_compute; reflexivity|].

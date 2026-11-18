@@ -118,7 +118,7 @@ Proof using Hself Hfd2.
   iEval (rewrite /hello_sec /live pts_ptsq; cbn [fst snd]) in "Ls".
   iEval (rewrite /live pts_ptsq) in "Llt Lgl". iEval (rewrite /pcell pts_ptsq) in "Plt".
   iSplitR "Hps".
-  { iExists bs. iPoseProof "Ro" as "(_ & H276 & H277 & Hcat & Hil & Hib & Hcc & Hdm & _)".
+  { iExists bs. iPoseProof "Ro" as "(_ & H276 & H277 & [Hcat _] & Hil & Hib & Hcc & Hdm & _)".
     iSplitL "Ldb Pdb Ls Bs".
     { iSplit; [iExact "Hdm"|]. iSplit; [iExact "Hcat"|]. iSplit; [iExact "Hcc"|]. iSplit; [iExact "H276"|].
       iSplit; [iExact "H277"|]. iSplitL "Ldb"; [iExact "Ldb"|]. iSplitL "Pdb"; [iExact "Pdb"|].

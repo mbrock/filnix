@@ -66,7 +66,7 @@ Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piec
   labelled_safe glibc_os_registry hello_start_ge (invocation start_libc_start_main_fn xs)
     m s w fuel (fun _ => False).
 Proof.
-  intros Hst Hfd1 Hfd2 _ Hleaf Hr Hc.
+  intros Hst Hfd1 Hfd2 Hloc Hleaf Hr Hc.
   destruct Hst as (g & m0 & mainp & tb & argc & argv & env & av & aps & order & Hi & Hm & Ht & Hxs & Hargc & Hargc2 &
     Ha & He & Hv & Hd & Hk & Hord & Hct & Hos & Hnd).
   destruct (hello_first_heap g m0 m w0 w tb argc argv env av aps order 0 Hi Ht Ha He Hv Hd Hk Hord Hct Hos Hnd)
@@ -81,7 +81,7 @@ Proof.
     Hr Hd Agr Wi).
   intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m R.free Hi debt fr argv env av aps order argc Hleaf eq_refl Hfd2 Hfd1 Herr Hfr Ha He Hv
+  iApply (hello_start_wp w0 0 m0 m R.free Hi debt fr argv env av aps order argc Hleaf eq_refl Hfd2 Hfd1 Herr Hfr Ha He (Hloc env.1 env.2 eq_refl He) Hv
     Hargc Hargc2 Hord with "L T A E V K").
   intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.

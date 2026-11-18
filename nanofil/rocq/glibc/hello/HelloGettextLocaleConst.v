@@ -188,27 +188,28 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The loader leaves raw bytes in memory, but the route wants strings
     it can read. This lemma turns the bytes into the three shares that
-    the route reads when each object is large enough. *)
+    the route reads when each object is large enough. It also keeps the
+    frozen words of the names themselves, because setlocale reads the
+    names of other categories that share those words. *)
 Lemma lc_own nb nr ib ir cb cr : lc_fit nb nr ib ir cb cr ->
   pts (lc_ps nb nr ib ir cb cr) ==∗
   □ (word_string DfracDiscarded (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages ∗
      liveq DfracDiscarded ib ir ∗ bytesq DfracDiscarded ib 5 [lc_messages_off] ∗
-     word_string DfracDiscarded (mkPtr cb (Ro cb)) lc_c).
+     word_string DfracDiscarded (mkPtr cb (Ro cb)) lc_c ∗ ptsq DfracDiscarded (lc_name_ps nb nr)).
 Proof using Type.
   intros ((Hn0 & Hn8 & Hne & Hnr) & _ & (Hc0 & Hc8 & Hce & Hcr)). unfold lc_ps. rewrite !pts_app.
-  iIntros "(Hn & Hi & Hc)".
-  iAssert (word_string (DfracOwn 1) (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages) with "[Hn]" as "Hn".
+  iIntros "(Hn & Hi & Hc)". iEval (rewrite pts_ptsq) in "Hn". iMod (ptsq_persist with "Hn") as "#Hraw".
+  iAssert (word_string DfracDiscarded (mkPtr (nb + lc_messages_off) (Ro nb)) lc_messages) as "#Hn".
   { iExists nb, nr, lc_words. iSplit; [iPureIntro; exact (lc_name_shape nb nr Hn0 Hn8 Hne Hnr)|].
     replace (wstart (mkPtr (nb + lc_messages_off) (Ro nb)) - nb) with 48.
-    - rewrite /lc_name_ps pts_ptsq (ptsq_app _ [_]). iExact "Hn".
+    - rewrite /lc_name_ps (ptsq_app _ [_]). iExact "Hraw".
     - unfold wstart, lc_messages_off. cbn [ptr_addr].
       assert (Hm : (nb + 51) mod 8 = 3) by (rewrite Z.add_mod; [rewrite Hn8|]; reflexivity || lia). lia. }
-  iMod (word_string_persist with "Hn") as "#Hn".
-  rewrite pts_ptsq. iMod (ptsq_persist with "Hi") as "#Hi". rewrite /lc_idx_ps (ptsq_app _ [_]).
+  iEval (rewrite pts_ptsq) in "Hi". iMod (ptsq_persist with "Hi") as "#Hi". iEval (rewrite /lc_idx_ps (ptsq_app _ [_])) in "Hi".
   iDestruct "Hi" as "[Hl Hb]".
   iMod (lit_own with "Hc") as "#Hc"; [exact Hc0 | exact Hc8 | exact Hce | exact Hcr | reflexivity|].
   iModIntro. iModIntro. rewrite /liveq /bytesq. iSplitR; [iExact "Hn"|]. iSplitR; [iExact "Hl"|].
-  iSplitR; [iExact "Hb" | iExact "Hc"].
+  iSplitR; [iExact "Hb"|]. iSplitR; [iExact "Hc" | iExact "Hraw"].
 Qed.
 
 End own.

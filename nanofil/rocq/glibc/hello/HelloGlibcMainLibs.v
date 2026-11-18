@@ -27,7 +27,8 @@ Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
     from the image's code, and are passed in. *)
 Parameter hello_libs : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloCore w0 ge o) c, D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt) ->
+  forall (debt : D.HelloCore w0 ge o) c, D.setlocale_all w0 ge o (D.hd_priv w0 ge o debt) ->
+  D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt) ->
   D.close_stdout_narrow w0 ge o (D.hd_priv w0 ge o debt) ->
   D.mbsrtowcs w0 ge o (D.hd_priv w0 ge o debt) ->
   D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt) ->
@@ -68,7 +69,8 @@ Proof using Hk.
 Qed.
 
 (** The initially empty handler list becomes a one-callback list. *)
-Lemma hello_libs (debt : D.HelloCore w0 ge o) c (Hq : D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt))
+Lemma hello_libs (debt : D.HelloCore w0 ge o) c (Ha : D.setlocale_all w0 ge o (D.hd_priv w0 ge o debt))
+    (Hq : D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt))
     (Hcl : D.close_stdout_narrow w0 ge o (D.hd_priv w0 ge o debt))
     (Hm : D.mbsrtowcs w0 ge o (D.hd_priv w0 ge o debt))
     (Hp : D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt)) :
@@ -76,7 +78,7 @@ Lemma hello_libs (debt : D.HelloCore w0 ge o) c (Hq : D.setlocale_query w0 ge o 
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
 Proof using Hk Hos.
-  constructor; [..| exact Hq | exact Hcl | exact Hm | exact Hp].
+  constructor; [..| exact Ha | exact Hq | exact Hcl | exact Hm | exact Hp].
   - exact (C.ST.libs_mbszero w0 ge o Hk).
   - exact (C.NM.libs_name w0 ge o Hk).
   - destruct (SY.libs_atexit w0 ge o Hk Hos c) as (gf & Hg & Hcall & Hspec).

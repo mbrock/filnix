@@ -279,6 +279,14 @@ Definition ncells (x y z : ptr) : iProp Σ :=
 (** Error reporting reads three name cells that point to read-only strings. *)
 Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y ∗ str_ro z.
 
+(** Hello's main first calls `c: setlocale (LC_ALL, "")`, which selects
+    the C locale that the environment asks for. The call writes cells
+    that the private state priv holds, with the values they already
+    hold, and gives priv back. *)
+Definition setlocale_all (priv : iProp Σ) : Prop :=
+  fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
+    (hello_ro ∗ hello_stdio ∗ priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ priv)%I.
+
 (** Hello asks `c: setlocale (LC_MESSAGES, NULL)` for the name of the
     message locale before it prints its help text. The query reads
     cells that the private state priv holds and gives priv back. *)
@@ -330,9 +338,6 @@ Definition wprintf_out : iProp Σ :=
     proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
-  hd_setlocale_all :
-    fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
-      (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_wprintf : forall bd n ws,
     0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
@@ -408,6 +413,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
     fn_triple (TAtom "close_stdout") [] (hello_ro ∗ S ∗ priv ∗ names) (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I ->
     fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
+  hl_setlocale_all : setlocale_all priv;
   hl_setlocale_query : setlocale_query priv;
   hl_close_stdout : close_stdout_narrow priv;
   hl_mbsrtowcs : mbsrtowcs priv;

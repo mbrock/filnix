@@ -38,6 +38,7 @@ Local Abbreviation hge := (mkGenv hello_image_module img_globals fr).
 #[local] Instance hl_program : GlibcProgram Σ := program_of w glibc_os_registry hge.
 Local Abbreviation gl := (ct_gl hello_ct_objs).
 Local Abbreviation cc := (ct_cc hello_ct_objs).
+Local Abbreviation empty_name := (mkPtr (img_a "hello#str.80") (Ro (img_a "hello#str.80"))).
 
 (** ## The three components
 
@@ -58,10 +59,12 @@ Definition hello_cat_cntr : iProp Σ :=
     holds the locale's category pointers and names, the table pointers
     and the old table globals. It also holds the counter that setlocale
     increments. Setlocale reads its constants as frozen shares, so
-    getenv can look up each category name as a frozen string. *)
+    getenv can look up each category name as a frozen string. Hello
+    also lends setlocale its empty string to request that lookup. *)
 Definition locale_c : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ pts hello_locale_objs_ps ∗ ct_lives hello_ct_objs ∗
-  ct_cells_set hello_ct_objs ∗ ptsq DfracDiscarded hello_clocale_objs_ps ∗ ct_ro hello_ct_objs ∗ hello_cat_cntr.
+  ct_cells_set hello_ct_objs ∗ ptsq DfracDiscarded hello_clocale_objs_ps ∗ ct_ro hello_ct_objs ∗ hello_cat_cntr ∗
+  word_string DfracDiscarded empty_name [].
 
 (** The conversion to wide characters only reads its constants: the
     character type data, the converter's step and the names "C" and
@@ -108,16 +111,16 @@ Proof using Type.
 Qed.
 
 (** What startup leaves is enough for the three components. *)
-Lemma hello_priv_build : hello_hd_rest w fr ==∗ hello_priv_rest.
+Lemma hello_priv_build : word_string DfracDiscarded empty_name [] -∗ hello_hd_rest w fr ==∗ hello_priv_rest.
 Proof using Type.
-  iIntros "(Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & Hel & #Hct)".
+  iIntros "#H80 (Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & Hel & #Hct)".
   rewrite hello_close_split. iDestruct "Hco" as "(Hcr & Hn & Hcro)".
   iEval (rewrite pts_app !pts_ptsq) in "Hmb". iDestruct "Hmb" as "[Hmb Hwo]".
   iMod (ptsq_persist with "Hmb") as "#Hmb". iMod (ptsq_persist with "Hwo") as "#Hwo".
   iEval (rewrite pts_ptsq) in "Hcx". iMod (ptsq_persist with "Hcx") as "#Hcx".
   iEval (rewrite pts_ptsq) in "Hel". iMod (ptsq_persist with "Hel") as "#Hel".
   iModIntro. iSplitL "Pgl Hlo Hcl Hcc Hn".
-  { iFrame "Pgl Hlo Hcl Hcc Hcx Hct". iExists 0. iExact "Hn". }
+  { iFrame "Pgl Hlo Hcl Hcc Hcx Hct H80". iExists 0. iExact "Hn". }
   iSplitR; [iSplit; [iExact "Hmb" | iExact "Hwo"]|]. iSplitR; [iExact "Ro"|].
   iSplitL "Hcr"; [iExact "Hcr"|]. iSplitL "Hcro"; [iExact "Hcro"|iExact "Hel"].
 Qed.

@@ -162,7 +162,7 @@ Proof using Hi Hk.
   assert (Etb : sym_ptr hge "hello#parse_options.longopts.64" =
     mkPtr (img_a "hello#parse_options.longopts.64") (Ro (img_a "hello#parse_options.longopts.64"))) by num.
   rewrite /hello_start_main_res.
-  iIntros "(Hro & #HN & Hst & #Hargs & Hav & Hnc & HX0 & Hio & Hgo) Hsz Hpv #Hpr".
+  iIntros "(Hro & #HN & _ & Hst & #Hargs & Hav & Hnc & HX0 & Hio & Hgo) Hsz Hpv #Hpr".
   iMod (CutoffLogic.stack_size_own (glibc_program := Pw) tb sz Hself with "Hsz") as "#HC".
   rewrite /hello_start_ps /hello_image_tab_ps /hello_image_getopt_ps /hello_tab_ps /getopt_start_ps.
   iDestruct (pts_app with "Hst") as "[Ht Hst]". iDestruct (pts_app with "Ht") as "[Ht L]".
