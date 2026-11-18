@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
   SysCode LibioReadCode LibioDoWriteCode LibioGenCode LibioUnlinkCode LibioCloseItCode LibioFcloseCode
   FileInv FileIdle LibioLogic SysWrappers AllocLogic LibioCloseSteps LibioRead LibioPendingShort
-  HelloClosedStdout HelloCloseIdle HelloCloseStreamRetain.
+  HelloClosedStdout HelloCloseIdle HelloCloseStreamRetain HelloCloseErrno.
 From Glibc Require LibioFcloseTail.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
@@ -125,10 +125,10 @@ End queries.
 
 (** ## Close_stream on an idle stream
 
-    The rule below chains the two queries and [wp_fclose_idle]. Like
-    [wp_hello_close_stream_stdout_retained], it hands the paths that
-    read or reset errno to the caller through [close_stream_errno_paths],
-    because what those paths do next depends on the caller. *)
+    Hello's exit callback closes stdout and then stderr, and it needs
+    only to know whether each close succeeded. The rule below chains
+    the two queries with fclose. It also proves the blocks that read or
+    clear errno, so its caller sees only a return of 0 or `c: EOF`. *)
 
 Section close.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -156,15 +156,17 @@ Context `{!Defines ge "__fpending" glibc___fpending}
   `{!Defines ge "__GI__IO_un_link" glibc__IO_un_link}
   `{!Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
   (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  `{!Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}.
+  `{!Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}
+  `{!Defines ge "__errno_location" LeavesLogic.errno_location_fn}.
 
-(** Close_stream on idle stdout or stderr returns 0 or `c: EOF`, or
-    reaches one of the two errno paths. Every outcome holds the closed
-    stream, errno and the rest of the stream list, and the caller may
-    frame any other resources in E. *)
+(** Close_stream on idle stdout or stderr returns 0 or `c: EOF`. Both
+    outcomes hold the closed stream, errno and the rest of the stream
+    list, and the caller may frame any other resources in E. The paths
+    that read or clear errno are proved here, so the caller sees only
+    the return value. *)
 Lemma wp_close_stream_idle pre post fp fd pin pout fcp vb vreg sb sreg eb (E : iProp Σ) Φ :
-  let Q := (tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge (pre ++ post) ∗
-    ([∗ list] g ∈ pre ++ post, stream_life g) ∗ errno_any eb ∗
+  let Q := (errno_any eb ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge (pre ++ post) ∗
+    ([∗ list] g ∈ pre ++ post, stream_life g) ∗
     (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) ∗ E)%I in
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
   (pout = fp \/ (ptr_addr pout <> ptr_addr fp /\ 0 <= ptr_addr pout < 2 ^ 64 /\
@@ -173,14 +175,18 @@ Lemma wp_close_stream_idle pre post fp fd pin pout fcp vb vreg sb sreg eb (E : i
   0 <= ptr_addr pin < 2 ^ 64 ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   fd <> 0 -> In fd (ow_fds w0) -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
   file_idle vb (ow_self w0) fp fd -∗ errno_any eb -∗
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ E -∗
-  (close_stream_errno_paths Q Φ ∧ (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r)))) -∗
+  (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (hello_close_stream_frame fp) : gexpr) {{ Φ }}.
 Proof using Type*.
-  intros Q Hgout Hout Hgin Hin Hinr Hfcg Hfcr Hfd0 Hfd He.
+  intros Q Hgout Hout Hgin Hin Hinr Hfcg Hfcr Hfd0 Hfd He Hglobal.
   iIntros "#Hvt #Hs Htcb Hf Herr Hio Hlives HE HK".
+  iAssert (close_stream_errno_paths Q Φ ∧ (∀ r, ⌜r = 0 ∨ r = 2 ^ 32 - 1⌝ -∗ Q -∗ Φ (Ret (WInt r))))%I
+    with "[HK]" as "HK".
+  { iSplit; [|iExact "HK"]. iApply (close_stream_errno_complete eb He Hglobal). iExact "HK". }
   unfold hello_close_stream_frame. step.
   iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
   iApply (wp_fpending_idle with "Hf"); [reflexivity|].
