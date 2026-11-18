@@ -177,7 +177,14 @@ Lemma hello_start_own :
   pts hello_priv_ps.
 Proof using Type.
   rewrite /hello_start_all_ps. iSplit.
-  - iIntros "H". do 8 (iDestruct (pts_app with "H") as "[$ H]"). iExact "H".
+  - iIntros "H".
+    iDestruct (pts_app with "H") as "[A H]". iDestruct (pts_app with "H") as "[B H]".
+    iDestruct (pts_app with "H") as "[C H]". iDestruct (pts_app with "H") as "[D H]".
+    iDestruct (pts_app with "H") as "[E H]". iDestruct (pts_app with "H") as "[F H]".
+    iDestruct (pts_app with "H") as "[G H]". iDestruct (pts_app with "H") as "[I H]".
+    iSplitL "A"; [iExact "A"|]. iSplitL "B"; [iExact "B"|]. iSplitL "C"; [iExact "C"|].
+    iSplitL "D"; [iExact "D"|]. iSplitL "E"; [iExact "E"|]. iSplitL "F"; [iExact "F"|].
+    iSplitL "G"; [iExact "G"|]. iSplitL "I"; [iExact "I"|iExact "H"].
   - iIntros "(A & B & C & D & E & F & G & H & I)".
     iApply pts_app; iSplitL "A"; [iExact "A"|]. iApply pts_app; iSplitL "B"; [iExact "B"|].
     iApply pts_app; iSplitL "C"; [iExact "C"|]. iApply pts_app; iSplitL "D"; [iExact "D"|].

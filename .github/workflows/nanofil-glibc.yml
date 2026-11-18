@@ -81,12 +81,20 @@ jobs:
       # it prints is the Hello proof's progress measure.
       - name: Count the open premises of hello_never_panics
         run: python3 nanofil/tests/hello_premises.py
+      - name: Add swap for overlapping heavy compiles
+        run: |
+          sudo fallocate -l 12G /mnt/nanofil.swap && sudo chmod 600 /mnt/nanofil.swap &&
+            sudo mkswap /mnt/nanofil.swap >/dev/null && sudo swapon /mnt/nanofil.swap ||
+            echo "::warning::could not add swap"
+          free -m
       # On main, cachix watch-exec publishes each object as it is built, so a
       # run that fails or that a later push overtakes still fills the cache
       # that glibc-tools/warm.sh reads. The last step below remains a backstop.
-      # The runner has 4 cores and 16 GB. A Hello or libio compile peaks at
-      # 3.5 to 9 GB, so four at once exhausted memory and the runner killed
-      # the step (exit 143) or lost contact; three jobs leave headroom.
+      # The runner has 4 cores and 16 GB. A glibc compile peaks at 3.5 GB
+      # (most files) to 9 GB (LibioWFwide), and three or four at once
+      # exhausted memory: the runner killed the step (exit 143) or lost
+      # contact. Two jobs fit unless two of the heaviest files coincide,
+      # and the swap step above gives that case room to page out.
       - name: Compile and probe glibc contracts
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
@@ -97,7 +105,7 @@ jobs:
             publish=(cachix watch-exec filc --)
           fi
           python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
-            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs 3 --cores 0 \
+            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs 2 --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock
@@ -153,11 +161,18 @@ jobs:
           skipPush: true
       - name: Require the cached staging toolchain
         run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
+      - name: Add swap for overlapping heavy compiles
+        run: |
+          sudo fallocate -l 12G /mnt/nanofil.swap && sudo chmod 600 /mnt/nanofil.swap &&
+            sudo mkswap /mnt/nanofil.swap >/dev/null && sudo swapon /mnt/nanofil.swap ||
+            echo "::warning::could not add swap"
+          free -m
       - name: Compile every general file against an abstract runtime
         run: |
           set -o pipefail
+          # Two jobs, like the push check, to stay within the runner's memory.
           python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 6000 -- \
-            nix build -L --no-link --keep-going --max-jobs auto --cores 0 \
+            nix build -L --no-link --keep-going --max-jobs 2 --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc-abstract 2>&1 | tee nanofil-glibc-abstract.log
       - name: Cache completed abstract objects
         if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
