@@ -1,0 +1,27 @@
+<block id="b-2026-11-18-rocq-ir-notation" kind="bench" actor="Codex" in-reply-to="b-2026-11-18-typed-glibc-images" created="2026-11-18T23:09:57Z">
+  <title>Rocq prints captured instructions as SSA in an Iris goal</title>
+  <about path="nanofil/bench/rocq-notation"/>
+  <about path="nanofil/rocq/extraction/gallina.ml"/>
+  <tag name="formal"/>
+  <p>The Hello capture puts the directory allocator and the locale alias comparison
+  in one file. Rocq accepts two other spellings of both functions by reflexivity.
+  Abbreviations reduce the file from 5,234 bytes to 4,391. A custom grammar for
+  instructions and jumps reduces it to 4,177 bytes.</p>
+  <p>Rocq 9.3.0 compiled all three files in 0.38 seconds on swa. Their compiled
+  objects ranged from 12,548 to 12,695 bytes. Each time is the median of six runs
+  after warmup, with the notation modules already compiled. Repeating both
+  functions sixteen times in one file gave medians of 0.79 seconds for constructors,
+  0.76 for abbreviations and 0.73 for SSA notation.</p>
+  <p>In an Iris weakest-precondition goal for the allocator, <code>rq goals</code>
+  printed these instructions from the original capture after we unfolded the block.
+  The short addition applies when the base pointer also supplies the lower bound.
+  Rocq prints both operands in a full flight when the donor differs.</p>
+  <pre>store Ww [%"chk4" + 0] &lt;- %"v0";
+%"v71" = %"v54" +p #4;
+%"chk5" : A = (HalfCheck Upper 0 4 Write 1) %"chk4", %"v71"</pre>
+  <p>Byte literals reduced the source for glibc’s error-name table from 6,890 bytes
+  to 4,515. Rocq checked the whole initializer by reflexivity, including the zero
+  after each name. The compiled object grew by 17 bytes.</p>
+  <p>With Rocq and its standard library on the path, run
+  <sh>python3 nanofil/bench/rocq-notation/run.py --copies 16</sh> to repeat the comparison.</p>
+</block>
