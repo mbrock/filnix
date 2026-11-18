@@ -86,7 +86,7 @@ Proof using Type*.
   intros H23 Hbd Hbd16 Hbde Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
   step. step_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
   iApply (wp_call_int with "[Hio Hpv Hwb]");
-    [exact (hd_wprintf _ _ _ D bd n ws Hbd Hbd16 Hbde Hw) | vx |
+    [exact (hl_wprintf _ _ _ _ _ _ Lb bd n ws Hbd Hbd16 Hbde Hw) | vx |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |].
   iNext. iIntros (k _) "(Hio & Hpv & Hwb)".
   iDestruct "Hwb" as (cs) "(_ & Hl & _ & _)".

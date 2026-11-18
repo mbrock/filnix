@@ -346,25 +346,22 @@ Definition close_stdout_wide (priv : iProp Σ) : Prop :=
 Definition wprintf_out : iProp Σ :=
   file_idle (ho_vb o) (ow_self w0) (ho_out o) 1 ∨ file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1.
 
-(** Setting the locale and printing the wide greeting must preserve
-    the callees' private state and the parts of the streams they share.
-    Printing the greeting usually orients stdout wide, so the close
-    callback must also handle a wide stdout. The narrow case is proved
-    and sits in [HelloLibs], so this record states only the wide one.
-    In the C locale the conversion of the greeting cannot fail, so main
-    never reaches its fatal error report. The close callback may read
-    the program-name cells, and so may an error report. glibc's option parser is
-    proved over its own code, so its contract is not a field here. *)
+(** Hello prints the greeting from the buffer that it filled with wide
+    characters. The formatter returns that buffer so main can free it,
+    and returns stdout so the exit callback can close it. *)
+Definition wprintf_greeting (priv : iProp Σ) : Prop := forall bd n ws,
+  0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
+  fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
+    (hello_ro ∗ hello_stdio ∗ priv ∗ wbuf bd n ws)%I
+    (ret_int (hello_stdio_wide wprintf_out ∗ priv ∗ wbuf bd n ws))%I.
+
+(** The call that sets the locale shares the streams and private state
+    with the other library calls. It must return both to main. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
   hd_setlocale_all :
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
-      (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
-  hd_wprintf : forall bd n ws,
-    0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
-    fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
-      (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I
+      (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I
 }.
 
 (** The version text and the bug-report address are printed with
@@ -435,6 +432,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_close_stdout : close_stdout_narrow priv;
   hl_close_stdout_wide : close_stdout_wide priv;
   hl_mbsrtowcs : mbsrtowcs priv;
+  hl_wprintf : wprintf_greeting priv;
   hl_prints : HelloPrints priv
 }.
 
