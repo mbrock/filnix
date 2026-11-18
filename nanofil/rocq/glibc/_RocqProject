@@ -202,6 +202,7 @@ hi_atexit/HiAtexitCode22.v
 libio/FileInv.v
 libio/FileIdle.v
 libio/LibioWIdle.v
+libio/LibioWFwide.v
 libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
@@ -1060,6 +1061,7 @@ hello/HelloImageDiagObjs.v
 hello/HelloImageCloseObjs.v
 hello/HelloImageLocaleObjs.v
 hello/HelloImageMbsObjs.v
+hello/HelloImageWFwideObjs.v
 locale/AsciiConvert.v
 locale/Mbrtowc.v
 hello/HelloConvHardLocale.v
