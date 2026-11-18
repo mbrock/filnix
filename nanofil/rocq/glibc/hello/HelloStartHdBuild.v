@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs StartEarlyInitSpec StartImageCpu
+  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageCLocaleObjs StartEarlyInitSpec StartImageCpu
   AllocRo LibioFputsSpec.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -72,30 +72,34 @@ Proof using Type.
     iSplit; [iPureIntro; split; [exact Hmp | exact Htc] | iExact "T"].
 Qed.
 
-(** The private state keeps what the reports do not need: the first
-    word of the global locale, Hello's read-only objects, the globals of
-    close_stdout and `c: error` with the conversion lock and the catalog
-    counter, the locale cells that setlocale writes, and the constant
-    data that the conversion to wide characters reads. The locale cells
-    include the thread's three table pointers, which early init has set. *)
+(** The private state keeps what the reports do not need. It keeps
+    the first word of the global locale and Hello's read-only objects.
+    It keeps close_stdout's globals, the conversion lock and the catalog
+    counter. It keeps the locale cells that setlocale writes, including
+    the thread's three table pointers that early init has set. Finally
+    it keeps the constants that setlocale and the conversion to wide
+    characters read, with early init's shares of the character tables. *)
 Definition hello_hd_rest : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ hello_getopt_ro ∗ pts hello_close_objs_ps ∗ pts hello_locale_objs_ps ∗
-  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps.
+  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps ∗ pts hello_clocale_objs_ps ∗
+  ct_ro hello_ct_objs.
 
 (** Startup leaves these objects, and they become the reports' part of
     the private state and the rest. *)
 Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ pts hello_close_objs_ps -∗ pts hello_locale_objs_ps -∗
-  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
+  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗
+  pts hello_clocale_objs_ps -∗ ct_ro hello_ct_objs -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
 Proof using Hself Hfd2.
-  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
+  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Hcx #Hctr Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
   iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb)]";
     [reflexivity|].
-  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb".
+  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb Hcx".
   2: { iSplitL "Pgl"; [iExact "Pgl"|]. iSplitR; [iExact "Ro"|]. iSplitL "Hco"; [iExact "Hco"|].
-       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iExact "Hmb". }
+       iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iSplitL "Hmb"; [iExact "Hmb"|].
+       iSplitL "Hcx"; [iExact "Hcx" | iExact "Hctr"]. }
   iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & (%cbb & %creg & %cws & %Csh & Cl & _) & _)".
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
