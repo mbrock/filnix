@@ -66,7 +66,7 @@ jobs:
   glibc:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
-    timeout-minutes: 90
+    timeout-minutes: 120
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -104,7 +104,9 @@ jobs:
           if [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$CACHIX_AUTH_TOKEN" ]; then
             publish=(cachix watch-exec filc --)
           fi
-          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 3600 -- \
+          # A change to Fix.v rebuilds its importers even with a warm cache.
+          # Each file still has its own watchdog in glibc.nix.
+          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 6000 -- \
             "${publish[@]}" nix build -L --no-link --keep-going --max-jobs 2 --cores 0 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
