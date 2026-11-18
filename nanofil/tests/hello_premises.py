@@ -15,13 +15,13 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts three
+  Its body, hello_tb_contracts in HelloStartWp.v, counts two
   obligations, each with its own label: the contract of glibc's
-  formatter (vfprintf_has_spec), the contract of fputs
-  (fputs_has_spec), and the build of the private state's free part X
-  from the objects that startup leaves.
+  formatter (vfprintf_has_spec) and the contract of fputs
+  (fputs_has_spec).
   The conjunct that fixes hd_priv's shape only says which state the
-  caller picks, so it is not counted.
+  caller picks, so it is not counted. Its components are concrete and
+  hello_priv_build proves that startup's objects build them.
 
 A section hypothesis that the proof uses (`Proof using H`) is a premise
 of the closed theorem even though the statement does not show it, so it
@@ -65,7 +65,6 @@ TAGS = [
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
     (r'fputs_has_spec', 'libio'),
-    (r'build X', 'locale'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
@@ -75,15 +74,14 @@ WITNESSED = SAT + ' (checked: hello_start_witness in HelloStartWitness.v)'
 STATUS = [
     (r'^In [12] |start_c_locale|ow_leaf4_ends', WITNESSED),
     (r'^R\.ready', SAT + ' for the interpreter\'s runtime, InterpRuntime.ready (checked: hello_start_witness)'),
-    (r'hd_setlocale_all', 'unknown: X holds every object on the locale worker\'s list for setlocale, and the lock '
-                          'is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
-    (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
+    (r'hd_setlocale_all', 'unknown: locale_c (HelloLocaleState.v) holds every cell setlocale writes and the constants it '
+                          'reads, and the lock is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
+    (r'hd_mbsrtowcs', 'unknown: hello_conv_ro holds the conversion constants, and __libc_tsd_LOCALE is reachable '
                       'by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
-    (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),
+    (r'hd_wprintf', 'unknown: the private state holds the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
     (r'vfprintf_has_spec|fputs_has_spec', SAT),
-    (r'build X', 'unknown: X holds every object listed for setlocale and mbsrtowcs; the two contracts are not yet proved'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
@@ -152,10 +150,8 @@ def tb_contracts():
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
         elif c.startswith('HasSpec') and '"fputs"' in c:
             out.append(f"contract: glibc's fputs, fputs_has_spec ({c})")
-        elif c.endswith('==∗ X'):
-            out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
-    if len(out) != 3:
-        sys.exit(f'hello_premises: expected 3 counted conjuncts in hello_tb_contracts, found {len(out)}')
+    if len(out) != 2:
+        sys.exit(f'hello_premises: expected 2 counted conjuncts in hello_tb_contracts, found {len(out)}')
     return out
 
 

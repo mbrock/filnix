@@ -1038,6 +1038,7 @@ hello/HelloStartHdGetopt.v
 hello/HelloStartQuery.v
 hello/HelloStartHdRules.v
 hello/HelloStartHdBuild.v
+hello/HelloLocaleState.v
 hello/HelloImageStart.v
 hello/HelloImageStartRefused.v
 hello/HelloImageCtors.v
