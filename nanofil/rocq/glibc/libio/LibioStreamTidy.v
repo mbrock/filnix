@@ -22,7 +22,10 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A buffered stream may not have allocated its buffer yet. The rule
     for writing a string therefore takes the allocator's read-only data
-    as well as the stream fields and the caller's share of the string. *)
+    as well as the stream fields and the caller's share of the string.
+    The string's object must start on an eight-byte boundary, because the
+    runtime copy reads the capability slots of the source object; the
+    string pointer itself may have any offset. *)
 Definition xsputn_heap_rule : Prop := forall fr vb self fb freg st nb flags2 held dq b reg o c ys eb Φ,
   let fp := mkPtr fb (Obj fb) in let n := Z.of_nat (length ys) in let fd := fs_fileno st in
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
@@ -33,7 +36,7 @@ Definition xsputn_heap_rule : Prop := forall fr vb self fb freg st nb flags2 hel
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
-  (c = Obj b \/ c = Ro b) -> 0 < b -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
+  (c = Obj b \/ c = Ro b) -> 0 < b -> b mod 8 = 0 -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
   fputs_ro vb -∗ malloc_ro -∗ live fb freg -∗ file_fields fb st -∗ lock_inv self (fs_lock st) held -∗ buf_idle nb -∗
   wide_idle vb (fs_wide st) (fs_codecvt st) -∗ errno_any eb -∗ liveq dq b reg -∗ bytesq dq b o ys -∗
   ▷ (∀ r, ⌜r = 2^64-1 \/ 0 <= r <= n⌝ -∗ file_tidy vb self fp fd flags2 held -∗ errno_any eb -∗
@@ -72,12 +75,12 @@ Lemma wp_xsputn_tidy (Hxs_heap : xsputn_heap_rule) fr vb self fp fd flags2 held 
   call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
-  (c = Obj b \/ c = Ro b) -> 0 < b -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
+  (c = Obj b \/ c = Ro b) -> 0 < b -> b mod 8 = 0 -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
   fputs_ro vb -∗ malloc_ro -∗ file_tidy vb self fp fd flags2 held -∗ errno_any eb -∗ liveq dq b reg -∗ bytesq dq b o ys -∗
   ▷ (∀ r, ⌜r = 2^64-1 \/ 0 <= r <= n⌝ -∗ file_tidy vb self fp fd flags2 held -∗ errno_any eb -∗
      liveq dq b reg -∗ bytesq dq b o ys -∗ Φ (Ret (WInt r))) -∗ WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type*.
-  intros n Hfr Hready He Hg Hin Hc Hb Ho Hend Hreg' Hy.
+  intros n Hfr Hready He Hg Hin Hc Hb Hb8 Ho Hend Hreg' Hy.
   iIntros "#Hro #Hm (%fb & %freg & %st & %nb & %Hp & Hl & Hf & Hlk & Hb & Hw) Herr Hbl Hys HK".
   destruct Hp as (-> & Hal & Hfb & Hsize & Hrf & Hok & Hi & Hf2 & Hvt & Hbp & Hshort).
   pose proof Hi as (_ & Hfd & _). change (fs_fileno st = fd) in Hfd. subst fd.
