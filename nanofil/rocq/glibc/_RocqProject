@@ -1177,6 +1177,7 @@ hello/HelloStartWitness.v
 hello/HelloStartWp.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
+hello/HelloCloseReportLookup.v
 hello/HelloErrorCall.v
 hello/HelloErrorDefaultCall.v
 hello/HelloErrorReturning.v
