@@ -123,6 +123,21 @@ Definition wbuf_ptrs_ok (wd : Z) (w : wbuf) (ps : list ptr) : Prop :=
       Forall (fun p => ptr_cap p = Obj wb /\ wb <= ptr_addr p <= wb + wsz) (take 8 ps)
   end.
 
+(** Closing a wide stream frees its wide buffer with `c: _IO_wsetb`,
+    unless bit 8 of `c: _flags2`, `c: _IO_FLAGS2_USER_WBUF`, says the
+    stream does not own it. `c: _IO_wdoallocbuf` sets that bit when it
+    gives an unbuffered stream its short buffer, and
+    `c: _IO_wfile_doallocate` clears it for a heap buffer. The
+    predicate [wbuf_user_ok] w f2 records this for the wide buffer w
+    and the flags f2, so that the close never frees a pointer into the
+    wide data object and always frees the heap buffer it owns. *)
+Definition wbuf_user_ok (w : wbuf) (f2 : Z) : Prop :=
+  match w with
+  | WbNone => True
+  | WbShort => Z.land f2 8 = 8
+  | WbHeap _ _ => Z.land f2 8 = 0
+  end.
+
 (** The predicate [wbuf_idle] w owns a heap wide buffer: its life, its
     bytes and its capability slots, as [buf_idle] does for a narrow
     one. The allocation is 8-aligned and holds whole wide characters. *)
@@ -189,7 +204,8 @@ Definition with_mode0 (st : fstate) : fstate :=
     stream's mode is 1, its jump table is the wide one, and its codecvt
     pointer names the descriptors inside its wide data. The narrow
     buffer holds no pending bytes, so its write pointer equals its
-    write base. The descriptors run the C locale's conversion steps,
+    write base. Its `c: _flags2` says whether it owns its wide
+    buffer, as [wbuf_user_ok] states. The descriptors run the C locale's conversion steps,
     which glibc calls `c: to_wc` and `c: to_mb`. *)
 Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
   ∃ fb freg st nb wd w tw tm,
@@ -197,7 +213,7 @@ Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\
      idle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
      fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
-     short_idle nb st /\ fs_ptr st 4 = fs_ptr st 3 /\
+     short_idle nb st /\ fs_ptr st 4 = fs_ptr st 3 /\ wbuf_user_ok w (fs_flags2 st) /\
      fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
      lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
      lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm⌝ ∗
