@@ -108,6 +108,7 @@ doc_label(filc, "How Fil-C works") :- !.
 doc_label(iris, "How Iris works") :- !.
 doc_label(zegarmistrz, "How zegarmistrz works") :- !.
 doc_label(logic, "A program logic") :- !.
+doc_label('glibc-proofs', "Proving glibc at scale") :- !.
 doc_label(poison, "Poison and constant time") :- !.
 doc_label('lambda-anf', "Lambda-ANF on nanofil IR") :- !.
 doc_label('nfb-guide-argon', "NFB guide (Argon)") :- !.

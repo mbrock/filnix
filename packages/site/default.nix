@@ -83,6 +83,7 @@ let
     "iris"
     "zegarmistrz"
     "logic"
+    "glibc-proofs"
     "poison"
     "lambda-anf"
     "nfb-guide-argon"
