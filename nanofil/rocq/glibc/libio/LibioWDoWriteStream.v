@@ -22,6 +22,10 @@ Open Scope Z_scope.
 
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 
+(* Rewinding restores whole FILE cells. Framing them does not need to search
+   the byte and capability ownership inside each cell. *)
+Local Typeclasses Opaque pcell icell bytes.
+
 (** ## The stream after a write
 
     After a write that sent at least one byte, glibc points every read
