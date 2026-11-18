@@ -233,6 +233,7 @@ locale/SetlocaleLayout.v
 locale/FindlocaleCode.v
 locale/FindlocaleSrc.v
 locale/FindlocaleLayout.v
+locale/FindlocaleEnv.v
 locale/PostloadCtypeCode.v
 locale/PostloadCtypeSrc.v
 locale/PostloadCtypeLayout.v
