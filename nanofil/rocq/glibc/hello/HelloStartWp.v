@@ -30,7 +30,8 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery
-  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage.
+  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage
+  HelloCloseStdoutCall.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -118,7 +119,7 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
 (** The run's memory, split into the parts the image proofs name, lets
     the startup body reach main and lets main run without a panic. *)
 Lemma hello_start_wp fr0 argv env av aps order argc :
-  ow_leaf4_ends w0 = true -> frees_heap fr -> In 2 (ow_fds w0) -> In 1 (ow_fds w0) ->
+  ow_leaf4_ends w0 = true -> fr = R.free -> In 2 (ow_fds w0) -> In 1 (ow_fds w0) ->
   lookup (TAtom "__libc_errno") img_globals = Some (ow_errno_cell w0) ->
   call_frame start_libc_start_main_fn
     [WPtr (mkPtr (img_a "main") (Fn (TAtom "main"))); WInt argc; WPtr (mkPtr argv.1 (Obj argv.1));
@@ -136,7 +137,8 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   pointsto (PName k) (DfracOwn 1) (start_ghost null false false) -∗
   WP (ERun fr0 : sexpr) {{ _, ⌜False⌝ }}.
 Proof using Hi.
-  intros Hleaf Hfree Hfd2 Hfd1 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
+  intros Hleaf Efr Hfd2 Hfd1 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
+  assert (Hfree : frees_heap fr) by (rewrite Efr; exact R.free_succeeds).
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
     HelloLibs (final_world w0 tb) hge o (hd_priv (final_world w0 tb) hge o (debt tb)) hello_exit0
@@ -151,6 +153,8 @@ Proof using Hi.
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
+      ltac:(unfold hello_tb_contracts in Hpv; clear Hc; subst fr; exact (hello_close_stdout_narrow (final_world w0 tb) tb Herr ltac:(rewrite Hfds; exact Hfd1)
+         ltac:(rewrite Hfds; exact Hfd2) (Hvf := Hvf) _ _ _ Hpv))
       (hello_mbsrtowcs (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) Herr _ _ Hpv)
       (hello_prints_image (final_world w0 tb) fr _ Hy (hello_link_all fr Hfree) Herr
          ltac:(rewrite Hfds; exact Hfd1) ltac:(rewrite Hfds; exact Hfd2) (hello_os_layout_final w0 tb He ltac:(lia))

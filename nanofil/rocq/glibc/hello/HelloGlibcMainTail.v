@@ -14,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   HelloModule HelloLeaf HelloMain.
-From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
+From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic LibioWIdle ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands.
 From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainOperands HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion LibioLogic.
@@ -75,7 +75,8 @@ Qed.
 
 (** `L29`, entered from `iw_1.join`: `wprintf` prints the wide
     greeting in the buffer bd, `free` frees it, and `exit (0)` is
-    called with stdout now wide. *)
+    called. The formatter leaves stdout narrow or wide, and exit's close
+    callback has a contract for each orientation. *)
 Lemma join_print e bd n ws Ψ :
   lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> wide_text ws ->
   hello_ro ge o -∗ io -∗ names o -∗ X -∗ wbuf bd n ws -∗
@@ -92,8 +93,12 @@ Proof using Type*.
     [eapply fn_triple_mono; [exact (hl_free _ _ _ _ _ _ Lb bd (mkRegion bd (bd + req_extent (wreq n)) Heap Live) eq_refl ltac:(lia))|];
      iIntros (r) "->"; iSplit; done | vx |].
   iNext. iIntros "_".
-  iApply (wp_exit_call_with w0 ge o D X0 X Lb (hello_stdio_wide w0 ge o (hd_wide w0 ge o D))
-    with "Hro Hio Hpv Hn HX"); [exact (hd_close_stdout _ _ _ D true) | vx].
+  iDestruct "Hio" as "([Hout | Hout] & Hrest)".
+  - iApply (wp_exit_call_with w0 ge o D X0 X Lb (hello_stdio w0 ge o)
+      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout _ _ _ _ _ _ Lb) | vx | iFrame].
+  - iApply (wp_exit_call_with w0 ge o D X0 X Lb
+      (hello_stdio_wide w0 ge o (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1))
+      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hd_close_stdout_wide _ _ _ D) | vx | iFrame].
 Qed.
 
 End tail.

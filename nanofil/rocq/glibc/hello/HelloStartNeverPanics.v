@@ -81,7 +81,7 @@ Proof.
     Hr Hd Agr Wi).
   intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m R.free Hi debt fr argv env av aps order argc Hleaf R.free_succeeds Hfd2 Hfd1 Herr Hfr Ha He Hv
+  iApply (hello_start_wp w0 0 m0 m R.free Hi debt fr argv env av aps order argc Hleaf eq_refl Hfd2 Hfd1 Herr Hfr Ha He Hv
     Hargc Hargc2 Hord with "L T A E V K").
   intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.

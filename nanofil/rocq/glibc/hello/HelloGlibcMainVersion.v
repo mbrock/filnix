@@ -109,7 +109,7 @@ Lemma wp_exit_call f e ls lab r args rest j n Ψ :
 Proof using Lb.
   intros Hx. iIntros "#Hro Hio Hpv Hn HX".
   iApply (wp_call_never with "[Hio Hpv Hn HX]");
-    [exact (hl_exit _ _ _ _ _ _ Lb n _ (hd_close_stdout _ _ _ D false)) | exact Hx |].
+    [exact (hl_exit _ _ _ _ _ _ Lb n _ (hl_close_stdout _ _ _ _ _ _ Lb)) | exact Hx |].
   iSplitR; [iExact "Hro"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Hpv"; [iExact "Hpv"|].
   iSplitL "Hn"; [iExact "Hn" | iExact "HX"].
 Qed.

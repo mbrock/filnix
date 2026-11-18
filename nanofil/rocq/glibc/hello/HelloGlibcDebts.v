@@ -17,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic HelloName.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv FileIdle SysWrappers AtexitLogic AllocLogic
-  LibioLogic HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
+  LibioLogic LibioWIdle HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
 From Glibc Require FileInv LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -298,20 +298,34 @@ Definition mbsrtowcs (priv : iProp Σ) : Prop := forall bd b4 b6 g gs,
     (fun r => ∃ k ws, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 64 /\ k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗
                 hello_stdio ∗ priv ∗ wbuf bd n ws)%I.
 
+(** Gnulib's `c: close_stdout` runs when main exits. When stdout is
+    still narrow, the callback closes both output streams and leaves
+    stdin open for exit's cleanup. It reads cells that the private
+    state priv holds, and it consumes them, because `c: exit` never
+    returns to the caller. *)
+Definition close_stdout_narrow (priv : iProp Σ) : Prop :=
+  fn_triple (TAtom "close_stdout") []
+    (hello_ro ∗ hello_stdio ∗ priv ∗ names)%I
+    (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
+
+(** The stream [wprintf_out] is stdout after main prints the wide
+    greeting. The proof of the formatter, [hello_wprintf_has_spec],
+    leaves stdout either narrow and idle or wide, as [file_wide]
+    describes, so main must close it in either orientation. *)
+Definition wprintf_out : iProp Σ :=
+  file_idle (ho_vb o) (ow_self w0) (ho_out o) 1 ∨ file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1.
+
 (** Setting the locale and printing the wide greeting must preserve
     the callees' private state and the parts of the streams they share.
-    Printing the greeting orients stdout wide, so close_stdout takes
-    stdout in either orientation.
+    Printing the greeting usually orients stdout wide, so the close
+    callback must also handle a wide stdout. The narrow case is proved
+    and sits in [HelloLibs], so this record states only the wide one.
     In the C locale the conversion of the greeting cannot fail, so main
     never reaches its fatal error report. The close callback may read
     the program-name cells, and so may an error report. glibc's option parser is
     proved over its own code, so its contract is not a field here. *)
 Record HelloCore : Type := mkHelloCore {
   hd_priv : iProp Σ;
-  (* The state of stdout once `c: wprintf` has oriented it wide: its
-     wide data, its wide buffer, its mode and its conversion steps. The
-     caller chooses it, like hd_priv, and close_stdout consumes it. *)
-  hd_wide : iProp Σ;
   hd_setlocale_all :
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
@@ -319,10 +333,10 @@ Record HelloCore : Type := mkHelloCore {
     wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
-      (ret_int (hello_stdio_wide hd_wide ∗ hd_priv ∗ wbuf bd n ws))%I;
-  hd_close_stdout : forall wide : bool,
+      (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I;
+  hd_close_stdout_wide :
     fn_triple (TAtom "close_stdout") []
-      (hello_ro ∗ (if wide then hello_stdio_wide hd_wide else hello_stdio) ∗ hd_priv ∗ names)%I
+      (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ hd_priv ∗ names)%I
       (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
 }.
 
@@ -391,6 +405,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
     fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
   hl_setlocale_query : setlocale_query priv;
+  hl_close_stdout : close_stdout_narrow priv;
   hl_mbsrtowcs : mbsrtowcs priv;
   hl_prints : HelloPrints priv
 }.

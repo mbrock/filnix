@@ -13,8 +13,7 @@ arrow's left side is one premise, except:
 - the last premise, which describes the initial heap for every ghost
   state, counts once per conjunct, plus once per field of the HelloCore
   record it chooses. The field hd_priv is the callees' private state,
-  which the caller picks rather than proves, so it is not counted, and
-  neither is hd_wide, the state of stdout once it is wide.
+  which the caller picks rather than proves, so it is not counted.
   Its body, hello_tb_contracts in HelloStartWp.v, counts no
   obligation: the contracts of fputs and the formatter are proved for
   the image by hello_fputs_image and hello_vfprintf_image in
@@ -61,7 +60,7 @@ RECORDS = {
     'hello_layout': GLIBC / 'hello' / 'HelloGlibcDebts.v',
     'HelloCore': GLIBC / 'hello' / 'HelloGlibcDebts.v',
 }
-NOT_PREMISES = {'hd_priv', 'hd_wide'}
+NOT_PREMISES = {'hd_priv'}
 SECTION_LABELS = {}
 # The first pattern that a premise's text matches gives its tag.
 TAGS = [
@@ -84,8 +83,9 @@ STATUS = [
     (r'hd_setlocale_all', 'unknown: locale_c (HelloLocaleState.v) holds every cell setlocale writes and the constants it '
                           'reads, and the lock is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_wprintf', 'unknown: the private state holds the conversion constants and __gconv_lock; not yet checked against a proof'),
-    (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
-                         'no start list owns'),
+    (r'hd_close_stdout_wide', 'unknown: the narrow case is proved (hello_close_stdout_narrow); the wide case reads '
+                              'the wide jump table, whose shares (wvtables_ro) hello_ro does not hold yet, as for '
+                              'hd_wprintf, and its failure branch needs a closed wide stdout for the report; not yet proved'),
 ]
 # These tags describe the world the theorem is about and stay; every
 # other tag is a proof debt that should reach zero.
