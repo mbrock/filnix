@@ -1021,6 +1021,7 @@ hello/HelloImageDiagObjs.v
 hello/HelloImageCloseObjs.v
 hello/HelloImageLocaleObjs.v
 hello/HelloImageMbsObjs.v
+locale/AsciiConvert.v
 hello/HelloConvHardLocale.v
 hello/HelloImageCLocaleObjs.v
 hello/HelloStartGetopt.v
