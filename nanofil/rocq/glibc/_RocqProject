@@ -510,6 +510,7 @@ stdio/PrintfFlushDirect.v
 stdio/PrintfFlushFileSpec.v
 stdio/PrintfFlushTidy.v
 stdio/PrintfDone.v
+stdio/PrintfFileEntry.v
 stdio/PrintfFileCalls.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
