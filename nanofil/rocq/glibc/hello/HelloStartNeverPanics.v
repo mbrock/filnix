@@ -13,10 +13,10 @@
     for the C locale, and its processor reports caches the way glibc
     expects. Its runtime also has a ready allocator.
 
-    The rest are promises about glibc calls that nobody has proved yet.
-    They cover setting the locale, printing and closing standard output.
-    A script in nanofil/tests lists these assumptions, says which ones
-    can hold, and counts them for CI.
+    One glibc call remains: startup must show that setting the locale
+    returns the streams and private state to main. A script in
+    nanofil/tests lists the assumptions and the remaining contract,
+    says which ones can hold, and counts them for CI.
 
     The proof divides the start memory into the objects that each part
     of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
