@@ -286,6 +286,21 @@ Proof using Type.
   cbn in Hsix. discriminate.
 Qed.
 
+(** A writer or closer can use these facts about the stream's fields
+    whether it holds the lock or not. They describe the values of the
+    fields without claiming ownership of their cells. *)
+Definition wide_file_ok (ge : genv) (vb : Z) (fp : ptr) (fd fb : Z) (freg : region)
+    (st : fstate) (nb : nbuf) (wd : Z) (w : wbuf) (tw tm : ptr) : Prop :=
+  fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
+  fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ wflags_ok st /\
+  widle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
+  fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
+  wshort_ok nb st /\ wbuf_user_ok w (fs_flags2 st) /\
+  fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
+  lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
+  lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm /\
+  (nb = NbNone -> w = WbNone).
+
 (** A caller that holds a wide stream between two calls owns all of it,
     as it would own a narrow one. The predicate [file_wide_at] owns the
     wide stream on the given descriptor: its object, its
@@ -303,15 +318,7 @@ Qed.
     wide allocation gives the stream a narrow buffer first. *)
 Definition file_wide_at (ge : genv) (vb : Z) (self fp : ptr) (fd fb : Z) (freg : region)
     (st : fstate) (nb : nbuf) (wd : Z) (w : wbuf) (tw tm : ptr) (data : iProp Σ) : iProp Σ :=
-    ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
-     fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ wflags_ok st /\
-     widle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
-     fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
-     wshort_ok nb st /\ wbuf_user_ok w (fs_flags2 st) /\
-     fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
-     lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
-     lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm /\
-     (nb = NbNone -> w = WbNone)⌝ ∗
+    ⌜wide_file_ok ge vb fp fd fb freg st nb wd w tw tm⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗ data.
 
 (** An idle wide stream hides the values of its fields. A caller that
