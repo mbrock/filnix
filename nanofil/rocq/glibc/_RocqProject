@@ -204,6 +204,7 @@ libio/FileIdle.v
 libio/LibioWIdle.v
 libio/LibioWFwide.v
 libio/LibioWRelease.v
+libio/LibioWFcloseRelease.v
 libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
