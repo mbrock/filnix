@@ -23,7 +23,7 @@ From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap StringLogic MemLogic.
 From Glibc Require Import HelloVersionLits FileInv StrlenLogic WordString HelloGetoptTable HelloGetoptStart StartImageUnique
   HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad HelloImageCtors
-  HelloImageStart HelloStartKeptAlloc.
+  HelloImageStart HelloStartKeptAlloc LibioWIdle.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -63,11 +63,19 @@ Definition hello_jumps_kept_ps : list (piece * pval) := Eval vm_compute in
   List.concat (map (fun sl => hello_pointer_ps (img_addr "__io_vtables") (vt_file + sl.1)
     (mkPtr (img_addr sl.2) (Fn (TAtom sl.2)))) file_jumps).
 
+(** The jump table of wide streams lies [vt_wfile] bytes into the same
+    object. A wide stream calls through its slots, so main keeps the
+    slots that Hello's wide output and close read. *)
+Definition hello_wjumps_kept_ps : list (piece * pval) := Eval vm_compute in
+  List.concat (map (fun sl => hello_pointer_ps (img_addr "__io_vtables") (vt_wfile + sl.1)
+    (mkPtr (img_addr sl.2) (Fn (TAtom sl.2)))) wfile_jumps).
+
 (** This list holds the three streams' fields and the globals stdout
     and stderr that point at two of them. It also holds the jump table,
     gnulib's program name, which starts null, and the parser's globals
     optarg, which starts null, and optind, which starts at one. Last
-    come the wide data objects of stderr and stdout. *)
+    come the wide data objects of stderr and stdout, and the slots of
+    the wide jump table. *)
 Definition hello_io_kept_ps : list (piece * pval) :=
   List.concat [
     hello_stream_kept_ps (img_a "_IO_2_1_stderr_") 4222427270 2 (img_a "glibc_stdfiles#_IO_stdfile_2_lock")
@@ -87,7 +95,8 @@ Definition hello_io_kept_ps : list (piece * pval) :=
     hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_2") (img_gd "glibc_stdfiles#_IO_wide_data_2")
       (img_a "__io_vtables");
     hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_1") (img_gd "glibc_stdfiles#_IO_wide_data_1")
-      (img_a "__io_vtables")].
+      (img_a "__io_vtables");
+    hello_wjumps_kept_ps].
 
 (** ## The strings *)
 
