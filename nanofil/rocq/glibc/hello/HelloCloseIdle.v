@@ -398,7 +398,8 @@ Lemma wp_fclose_idle fr pre post fp fd pin pout fcp vb vreg sb sreg eb Φ :
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
   ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ tcb_cleanup_inv (ow_self w0) -∗
      io_list_inv ge (pre ++ post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗
-     (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) -∗
+     (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗
+      closed_stdout fb freg vb lb lbreg) -∗
      errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
@@ -429,6 +430,6 @@ Proof using Type*.
       with "Hvt Hl Hfl Hps Hfd Hf2 Hcol Hoff Hmd Htot Hvtp Hb Herr HK"); assumption.
   - iNext. iIntros (k Hk) "Htcb Hio Hlives Hc Herr".
     iApply ("HK" with "[%] Htcb Hio Hlives [Hc] Herr"); [exact Hk|].
-    iExists fb, freg, lb, lreg. iSplit; [done | iExact "Hc"].
+    iExists fb, freg, lb, lreg. iSplit; [iPureIntro; split_and!; done | iExact "Hc"].
 Qed.
 End fclose_idle.

@@ -1232,6 +1232,7 @@ hello/HelloCloseShort.v
 hello/HelloCloseIdle.v
 hello/HelloCloseStreamIdle.v
 hello/HelloCloseStdoutIdle.v
+hello/HelloCloseStdoutCall.v
 hello/HelloCloseDispatch.v
 hello/HelloCloseStdout.v
 hello/HelloCloseStdoutRetain.v

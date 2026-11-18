@@ -167,7 +167,8 @@ Context `{!Defines ge "__fpending" glibc___fpending}
 Lemma wp_close_stream_idle pre post fp fd pin pout fcp vb vreg sb sreg eb (E : iProp Σ) Φ :
   let Q := (errno_any eb ∗ tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge (pre ++ post) ∗
     ([∗ list] g ∈ pre ++ post, stream_life g) ∗
-    (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) ∗ E)%I in
+    (∃ fb freg lb lbreg, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗
+      closed_stdout fb freg vb lb lbreg) ∗ E)%I in
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
   (pout = fp \/ (ptr_addr pout <> ptr_addr fp /\ 0 <= ptr_addr pout < 2 ^ 64 /\
     lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp)) ->

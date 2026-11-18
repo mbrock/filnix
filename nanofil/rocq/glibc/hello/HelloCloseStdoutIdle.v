@@ -174,7 +174,8 @@ Lemma wp_close_stdout_idle fo fe pin fcp vb vreg sb sreg eb ob oreg sc screg xc 
   live nb nreg -∗ pcell nb 0 null -∗
   file_idle vb (ow_self w0) fo 1 -∗ file_idle vb (ow_self w0) fe 2 -∗ errno_any eb -∗
   io_list_inv ge [fe; fo; pin] -∗ stream_life pin -∗ E -∗
-  (((∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) -∗
+  (((∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗
+      closed_stdout fb freg vb lb lbreg) -∗
       file_idle vb (ow_self w0) fe 2 -∗ tcb_cleanup_inv (ow_self w0) -∗ E -∗ R) ∧
    (tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge [pin] -∗ stream_life pin -∗ E -∗ Φ RetVoid)) -∗
   WP (ERun (mkFrame close_stdout_fn [] [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
@@ -197,7 +198,8 @@ Proof using Type*.
   resume.
   iApply (wp_close_stdout_dispatch _ r ib ireg flag eb
     (tcb_cleanup_inv (ow_self w0) ∗ io_list_inv ge ([fe] ++ [pin]) ∗ ([∗ list] g ∈ [fe] ++ [pin], stream_life g) ∗
-     (∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) ∗
+     (∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗
+      closed_stdout fb freg vb lb lbreg) ∗
      (stream_life fe -∗ file_idle vb (ow_self w0) fe 2) ∗ E ∗ live xc xcreg ∗ int_cell xc 0 status ∗
      live nb nreg ∗ pcell nb 0 null)%I
     with "Hil Hib Herr [Htcb Hio Hlives Hc Heb HE Hxl Hstatus Hnl Hnp] [HK]");
@@ -210,7 +212,8 @@ Proof using Type*.
     iApply (wp_load_idle with "Hsl Hsp Herf"); [reflexivity | exact Hsc |]. iIntros "Herf".
     iApply wp_call_bind; [vx | apply defines | reflexivity |]. iNext.
     iApply (wp_close_stream_idle Hreg Hext Hfw Hfh Hzf Hzg Hfc Hff [] [pin] fe 2 pin fo fcp vb vreg sb sreg eb
-      ((((∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb)⌝ ∗ closed_stdout fb freg vb lb lbreg) -∗
+      ((((∃ fb freg lb lbreg, ⌜fo = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗
+      closed_stdout fb freg vb lb lbreg) -∗
           file_idle vb (ow_self w0) fe 2 -∗ tcb_cleanup_inv (ow_self w0) -∗ E -∗ R) ∧
         (tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge [pin] -∗ stream_life pin -∗ E -∗ Φ RetVoid)) ∗
        E ∗ live xc xcreg ∗ int_cell xc 0 status)%I
