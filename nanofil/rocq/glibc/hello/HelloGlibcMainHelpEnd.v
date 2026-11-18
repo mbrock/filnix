@@ -30,8 +30,8 @@ Import HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlib
 
 Section help_end.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o)
   (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
@@ -42,7 +42,7 @@ Local Instance help_end_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry 
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation combines the stream state and the callees' private state. *)
-Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
+Local Notation io := (hello_stdio w0 ge o ∗ priv)%I.
 
 (** A call of `fprintf` or `fputs` at one of `main`'s sites: it returns
     an int and keeps the stdio state. *)
@@ -89,8 +89,8 @@ Proof using Type*.
   step. step. step.
   eapply step_wand; [eapply wp_branch; inst; vx |].
   lazymatch goal with |- context [if ?c then _ else _] => destruct c end; cbn [Z.eqb edge_label].
-  - step. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
-  - step. step. step. iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
+  - step. iApply (wp_exit_call w0 ge o priv X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
+  - step. step. step. iApply (wp_exit_call w0 ge o priv X0 X Lb with "Hro Hio Hpv Hn HX"). vx.
 Qed.
 
 (** A read-only string's address is positive and a machine word. *)

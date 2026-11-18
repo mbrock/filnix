@@ -43,7 +43,7 @@ Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
 
 Section call.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (Hy : hello_layout ge o).
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv : iProp Σ) (Hy : hello_layout ge o).
 
 (** ## The linked program
 
@@ -235,8 +235,8 @@ Context (Hro_m : hello_ro ge o ⊢ M).
 Lemma hello_getopt_ix_ro_sep_at (R : iProp Σ) av ar :
   GetenvCall.getenv_at_rule w0 glibc_os_registry ge G penv ->
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
-  (hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ R)) ->
-  loop_getopt w0 ge o D av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.
+  (hello_stdio w0 ge o ∗ priv ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ priv ∗ R)) ->
+  loop_getopt w0 ge o priv av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.
 Proof using H138 H139 H140 H141 H142 H143 H144 H145 H146 H147 H148 H149 H150 Hchr Hchrn Hcmp Hdiag Hfree Hgb Hgb0 Hgb8 Hgbe Hgbr Hgi Hgl Hgr Hldiag Hlen Hmalloc Hmemset Hncmp Hoa0 Hoe Hoe0 Hoee Hoer Hoi0 Hoo Hoo0 Hooe Hoor Hplo Hro_m Hse0 Hy.
   intros Hnamed Hcw HgR.
   intros ps a i. destruct (hello_getopt_lend_with_at av ar ps a i Hnamed Hcw) as (gf & Hgf & Hfr & Ht).

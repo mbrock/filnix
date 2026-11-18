@@ -90,17 +90,17 @@ Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_all w0 ge o (hd_priv w0 ge o debt) /\
-    setlocale_query w0 ge o (hd_priv w0 ge o debt) /\
-    close_stdout_narrow w0 ge o (hd_priv w0 ge o debt) /\ close_stdout_wide w0 ge o (hd_priv w0 ge o debt) /\
-    mbsrtowcs w0 ge o (hd_priv w0 ge o debt) /\ wprintf_greeting w0 ge o (hd_priv w0 ge o debt) /\
-    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
+    exists (priv X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_all w0 ge o priv /\
+    setlocale_query w0 ge o priv /\
+    close_stdout_narrow w0 ge o priv /\ close_stdout_wide w0 ge o priv /\
+    mbsrtowcs w0 ge o priv /\ wprintf_greeting w0 ge o priv /\
+    loop_getopt w0 ge o priv av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
       hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
         [45; 45] [45] [45; 87; 32] n1 n2 n3 n4 ∗ □ X)%I /\
     (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
       hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
       ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗
+      hello_stdio w0 ge o ∗ priv ∗ getopt_cells o a i ∗
       opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
       word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring)) ->
   labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
@@ -110,7 +110,7 @@ Proof.
     -> Hi Hr Hd Ha Hw Hnd Hdisj Hprints Hstart.
   apply (heap_labelled_safe Σ glibc_os_registry (os_wi w0) ge _ m s w _ (fun _ => True) Hr Hd Ha Hw).
   intros HinvG HheapG.
-  destruct (Hstart HinvG HheapG) as (debt & X & HX & Hsa & Hq & Hcl & Hcw & Hm & Hwp & Hix & Hpre).
+  destruct (Hstart HinvG HheapG) as (priv & X & HX & Hsa & Hq & Hcl & Hcw & Hm & Hwp & Hix & Hpre).
   rewrite big_sepM_union; [|exact Hdisj].
   rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hnd].
   iIntros "[H1 HP]".
@@ -125,8 +125,8 @@ Proof.
   iDestruct (int_global_own with "He") as "[Hel Hec]"; [lia|].
   iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
   destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
-  iApply (HelloGlibcMainFull.main_full_state w0 ge o debt _ _
-    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c Hsa Hq Hcl Hcw Hm Hwp (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
+  iApply (HelloGlibcMainFull.main_full_state w0 ge o priv _ _
+    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos priv c Hsa Hq Hcl Hcw Hm Hwp (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
     with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
   - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
   - iSplitL "Hz".
@@ -224,18 +224,18 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) -> NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs).*1 -> map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_all w0 ge o (hd_priv w0 ge o debt) /\
-    setlocale_query w0 ge o (hd_priv w0 ge o debt) /\
-    close_stdout_narrow w0 ge o (hd_priv w0 ge o debt) /\ close_stdout_wide w0 ge o (hd_priv w0 ge o debt) /\
-    mbsrtowcs w0 ge o (hd_priv w0 ge o debt) /\ wprintf_greeting w0 ge o (hd_priv w0 ge o debt) /\
-    loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
+    exists (priv X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_all w0 ge o priv /\
+    setlocale_query w0 ge o priv /\
+    close_stdout_narrow w0 ge o priv /\ close_stdout_wide w0 ge o priv /\
+    mbsrtowcs w0 ge o priv /\ wprintf_greeting w0 ge o priv /\
+    loop_getopt w0 ge o priv av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
       hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
         [45; 45] [45] [45; 87; 32] (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)) ∗
         □ X)%I /\
     (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
       hello_ro_rest ge o ∗ hello_printf_ro ge ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
       ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
-      hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i)) ->
+      hello_stdio w0 ge o ∗ priv ∗ getopt_cells o a i)) ->
   labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
     m s w fuel (fun _ => True).
 Proof.
@@ -257,8 +257,8 @@ Proof.
     try (assumption || reflexivity).
   - by apply map_disjoint_union_l_2.
   - intros HinvG HheapG.
-    destruct (Hstart HinvG HheapG) as (debt & X & HX & Hsa & Hq & Hcl & Hcw & Hm & Hwp & Hix & Hpre).
-    exists debt, X. split; [exact HX|]. split; [exact Hsa|]. split; [exact Hq|]. split; [exact Hcl|]. split; [exact Hcw|].
+    destruct (Hstart HinvG HheapG) as (priv & X & HX & Hsa & Hq & Hcl & Hcw & Hm & Hwp & Hix & Hpre).
+    exists priv, X. split; [exact HX|]. split; [exact Hsa|]. split; [exact Hq|]. split; [exact Hcl|]. split; [exact Hcw|].
     split; [exact Hm|]. split; [exact Hwp|]. split; [exact Hix|].
     rewrite big_sepM_union; [|exact Hd1].
     rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hn1].

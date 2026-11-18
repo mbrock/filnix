@@ -27,14 +27,14 @@ Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
     from the image's code, and are passed in. *)
 Parameter hello_libs : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloCore w0 ge o) c, D.setlocale_all w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.close_stdout_narrow w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.close_stdout_wide w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.mbsrtowcs w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.wprintf_greeting w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt) ->
-  D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
+  forall (priv : iProp Σ) c, D.setlocale_all w0 ge o priv ->
+  D.setlocale_query w0 ge o priv ->
+  D.close_stdout_narrow w0 ge o priv ->
+  D.close_stdout_wide w0 ge o priv ->
+  D.mbsrtowcs w0 ge o priv ->
+  D.wprintf_greeting w0 ge o priv ->
+  D.HelloPrints w0 ge o priv ->
+  D.HelloLibs w0 ge o priv
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
 End HelloMainLibsSig.
@@ -71,14 +71,14 @@ Proof using Hk.
 Qed.
 
 (** The initially empty handler list becomes a one-callback list. *)
-Lemma hello_libs (debt : D.HelloCore w0 ge o) c (Ha : D.setlocale_all w0 ge o (D.hd_priv w0 ge o debt))
-    (Hq : D.setlocale_query w0 ge o (D.hd_priv w0 ge o debt))
-    (Hcl : D.close_stdout_narrow w0 ge o (D.hd_priv w0 ge o debt))
-    (Hcw : D.close_stdout_wide w0 ge o (D.hd_priv w0 ge o debt))
-    (Hm : D.mbsrtowcs w0 ge o (D.hd_priv w0 ge o debt))
-    (Hw : D.wprintf_greeting w0 ge o (D.hd_priv w0 ge o debt))
-    (Hp : D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt)) :
-  D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
+Lemma hello_libs (priv : iProp Σ) c (Ha : D.setlocale_all w0 ge o priv)
+    (Hq : D.setlocale_query w0 ge o priv)
+    (Hcl : D.close_stdout_narrow w0 ge o priv)
+    (Hcw : D.close_stdout_wide w0 ge o priv)
+    (Hm : D.mbsrtowcs w0 ge o priv)
+    (Hw : D.wprintf_greeting w0 ge o priv)
+    (Hp : D.HelloPrints w0 ge o priv) :
+  D.HelloLibs w0 ge o priv
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
 Proof using Hk Hos.
@@ -94,7 +94,7 @@ Proof using Hk Hos.
   - exact (C.ST.libs_strncmp w0 ge o Hk).
   - exact (C.ST.libs_errno w0 ge o Hk).
   - exact (SY.libs_free w0 ge o Hk).
-  - intros n S' Hc. exact (EX.libs_exit w0 ge o Hk Hos debt ((c + 1) mod 2 ^ 64) n S' Hc).
+  - intros n S' Hc. exact (EX.libs_exit w0 ge o Hk Hos priv ((c + 1) mod 2 ^ 64) n S' Hc).
   - exact libs_proper_name.
 Qed.
 End libs.

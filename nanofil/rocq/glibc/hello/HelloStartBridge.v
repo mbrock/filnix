@@ -11,8 +11,7 @@
     already proved, and that proof starts from a fixed set of objects:
     the streams, the thread, the names and the arguments. The startup
     proof builds those objects, so it can hand them to main directly.
-    Some library calls, such as the locale and the wide printing calls,
-    are not proved yet, so their contracts remain parameters here. *)
+    Startup supplies the library proofs for that same private state. *)
 
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -26,8 +25,8 @@ Open Scope Z_scope.
 
 Section spec.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (debt : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o debt) X0 X) (Hy : hello_layout ge o).
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o).
 
 (** Main is called with the argument count and the argument vector. The
     binder holds the vector's object, the arguments, the three name
@@ -43,9 +42,9 @@ Definition hello_main_binder : Type :=
     between zero and the argument count. *)
 Definition hello_main_pre (b : hello_main_binder) : iProp Σ :=
   let '(av, ar, p0, ps, x, y, z, a, i, St) := b in
-  ⌜0 <= i <= Z.of_nat (length (p0 :: ps)) /\ loop_getopt w0 ge o debt av ar St⌝ ∗
+  ⌜0 <= i <= Z.of_nat (length (p0 :: ps)) /\ loop_getopt w0 ge o priv av ar St⌝ ∗
   hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-  ncells o x y z ∗ X0 ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o debt ∗ getopt_cells o a i ∗ St (p0 :: ps) i.
+  ncells o x y z ∗ X0 ∗ hello_stdio w0 ge o ∗ priv ∗ getopt_cells o a i ∗ St (p0 :: ps) i.
 
 (** Main takes `c: argc` and `c: argv` and never returns, because every
     path ends in `c: exit`. *)
@@ -69,7 +68,7 @@ Proof using Lb Hy.
   split; [eexists; exact Hfr|]. intros fr Φ Hf. rewrite Hfr in Hf. injection Hf as <-.
   cbn [fs_pre hello_main_spec hello_main_pre].
   iIntros "([%Hi %Hgr] & #Hro & #Hps & Hav & Hnc & HX0 & Hio & Hpv & Hgo & HS) _".
-  iApply (main_full_state w0 ge o debt X0 X Lb Hy av ar p0 ps x y z a i St Φ Hi Hgr
+  iApply (main_full_state w0 ge o priv X0 X Lb Hy av ar p0 ps x y z a i St Φ Hi Hgr
     with "Hro Hps Hav Hnc HX0 Hio Hpv Hgo HS").
 Qed.
 

@@ -27,11 +27,11 @@ Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp
 (** Exit invokes the registered callback and never returns to main. *)
 Parameter libs_exit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloCore w0 ge o) c n (S : iProp Σ),
-  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)
+  forall (priv : iProp Σ) c n (S : iProp Σ),
+  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)
     (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
+    (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
 End HelloLibsExitSig.
 
@@ -98,17 +98,17 @@ Proof using Hk.
 Qed.
 
 (** Exit invokes the registered callback and never returns to main. *)
-Lemma libs_exit (debt : D.HelloCore w0 ge o) c n (S : iProp Σ) :
-  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)
+Lemma libs_exit (priv : iProp Σ) c n (S : iProp Σ) :
+  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)
     (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
   D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o ∗
+    (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
 Proof using Hk Hos.
   intros Hclose. exists glibc_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame glibc_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
     in Hfr. injection Hfr as <-.
-  set (P := (D.hello_ro ge o ∗ S ∗ D.hd_priv w0 ge o debt ∗ D.names o)%I).
+  set (P := (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)%I).
   set (Q := fun i : nat => if Nat.eqb i 0 then D.exit_io w0 ge o else P).
   iIntros "(Hro & Hio & Hpv & Hnames & HX & Hl) _".
   iApply (ExitRun.wp_glibc_exit w0 ge (ho_x o) (ho_el o) (ho_elr o) [(ho_cp o, null, null)] c n P Q

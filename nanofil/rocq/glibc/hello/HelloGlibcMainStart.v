@@ -4,8 +4,8 @@
 
     Initialization allocates the greeting cell and conversion state,
     sets the program name and locale, and selects the default greeting.
-    It also registers the close callback. The locale call remains an
-    explicit debt; the other calls use their concrete library proofs. *)
+    It also registers the close callback. The call proofs preserve the
+    private state for the option loop. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -39,8 +39,8 @@ Import HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW
 
 Section start.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o).
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance start_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
@@ -69,10 +69,10 @@ Qed.
 Lemma main_start av ar p0 ps' x y z Φ :
   let ps := p0 :: ps' in
   hello_ro ge o -∗ ([∗ list] q ∈ ps, str_ro q) -∗ argv_own av ar ps -∗ ncells o x y z -∗ X0 -∗
-  hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗
+  hello_stdio w0 ge o -∗ priv -∗
   ▷ (∀ e b4 b6 pn sn, ⌜start_vars e (Z.of_nat (length ps)) av b4 b6 /\ fresh16 b4 /\ fresh16 b6⌝ -∗
        argv_own av ar ps -∗ ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ X -∗ hello_stdio w0 ge o -∗
-       hd_priv w0 ge o D -∗
+       priv -∗
        gcell b4 (sym_ptr ge "hello#str.81") -∗ obj b6 (heap_req 4 8) -∗
        WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av))]) : gexpr) {{ Φ }}.
@@ -105,7 +105,7 @@ Proof using Type*.
   iNext. iIntros "Hnc".
   (* setlocale (LC_ALL, ""). *)
   step_global (hy_lits _ _ Hy "hello#str.80" ltac:(cbn; tauto)).
-  iApply (wp_call_ptr w0 ge _ _ _ (fun _ => hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I with "[Hio Hpv]");
+  iApply (wp_call_ptr w0 ge _ _ _ (fun _ => hello_stdio w0 ge o ∗ priv)%I with "[Hio Hpv]");
     [exact (hl_setlocale_all _ _ _ _ _ _ Lb) | reflexivity |
     iSplitR; [iExact "Hro" | iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]] |].
   iNext. iIntros (q) "[Hio Hpv]".

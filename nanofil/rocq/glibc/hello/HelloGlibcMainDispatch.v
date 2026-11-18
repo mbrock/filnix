@@ -41,7 +41,7 @@ Import HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.F
 
 Section dispatch.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X : iProp Σ)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X : iProp Σ)
   (Hy : hello_layout ge o) (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
   (S : list ptr -> Z -> iProp Σ).
 
@@ -63,7 +63,7 @@ Local Notation gval := (language.val (nanofil_lang glibc_os_registry ge)).
     leaves it alone. *)
 Definition loop_res (ps : list ptr) (a : ptr) (i : Z) (g : ptr) : iProp Σ :=
   argv_own av ar ps ∗ ([∗ list] q ∈ ps, str_ro q) ∗ getopt_cells o a i ∗ gcell b4 g ∗ str_ro g ∗
-  ncells o pn pn sn ∗ str_ro pn ∗ str_ro sn ∗ X ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
+  ncells o pn pn sn ∗ str_ro pn ∗ str_ro sn ∗ X ∗ hello_stdio w0 ge o ∗ priv ∗
   obj b6 (heap_req 4 8) ∗ S ps i.
 
 (** A loop exit passes the invariant and the bounded error flag to its target block. *)
@@ -101,7 +101,7 @@ Definition loop_again (Φ : gval -> iProp Σ) : iProp Σ :=
 (** The loop invariant combines these owned resources. *)
 Lemma loop_res_fold ps a i g :
   argv_own av ar ps -∗ ([∗ list] q ∈ ps, str_ro q) -∗ getopt_cells o a i -∗ gcell b4 g -∗ str_ro g -∗
-  ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ X -∗ hello_stdio w0 ge o -∗ hd_priv w0 ge o D -∗
+  ncells o pn pn sn -∗ str_ro pn -∗ str_ro sn -∗ X -∗ hello_stdio w0 ge o -∗ priv -∗
   obj b6 (heap_req 4 8) -∗ S ps i -∗ loop_res ps a i g.
 Proof using Type.
   iIntros "H1 H2 H3 H4 H5 H6 H7 H8 H9 H10 H11 H12 H13".

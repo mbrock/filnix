@@ -131,16 +131,15 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   WP (ERun fr0 : sexpr) {{ _, ⌜False⌝ }}.
 Proof using Hi.
   intros Hleaf Hfd2 Hfd1 He Hfr Ha He2 Hloc Hv Hargc Hargc2 Hord.
-  pose (debt := fun tb => @mkHelloCore hlc Σ _ _ (final_world w0 tb) hge o (hello_main_priv env tb)).
   pose proof R.free_succeeds as Hfree.
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
-    HelloLibs (final_world w0 tb) hge o (hd_priv (final_world w0 tb) hge o (debt tb)) hello_exit0
+    HelloLibs (final_world w0 tb) hge o (hello_main_priv env tb) hello_exit0
       (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
        HelloGlibcJoin.Libs.exit_lock o)%I).
   { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
-    assert (Hpv : hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ hello_main_priv env tb) by reflexivity.
-    unfold hello_main_priv in Hpv.
+    assert (Hpv : hello_main_priv env tb ⊣⊢ hello_main_priv env tb) by reflexivity.
+    unfold hello_main_priv at 2 in Hpv.
     assert (F1 : In 1 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd1).
     assert (F2 : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
     assert (Hfputs := hello_fputs_image (final_world w0 tb) fr (hello_link_all fr Hfree)
@@ -151,7 +150,7 @@ Proof using Hi.
       (img_a "__environ") (img_gd "__environ")) by (split_and!; vm_compute; first [reflexivity | congruence]).
     assert (Hle : c_locale_env (map entry_text (env_entries m env))) by (rewrite env_entries_text; exact Hloc).
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
-      (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
+      (hello_os_layout_final w0 tb He ltac:(lia)) (hello_main_priv env tb) 0
       (hello_setlocale_all (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ _ _ _ _ _ _ _ _ _
          (hello_setlocale_lend (final_world w0 tb) fr) Hgi Hle Hfree Hpv)
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
@@ -178,7 +177,7 @@ Proof using Hi.
   iDestruct (zero_pcell with "Bdx Adx") as "Hdx". iDestruct (zero_pcell with "Bse Ase") as "Hse".
   pose proof (heap_object_bounds m av (8 * (2 * Z.of_nat (length aps) + 1)) ltac:(lia) (proj1 Hv)) as (Hav0 & _ & Have & _).
   destruct Hv as (_ & _ & Hpos & Hslots & _).
-  iApply (hello_libc_start_main_wp w0 k m0 fr Hi o debt hello_exit0 _ Lb Hy fr0 _ (mkPtr (img_a "main") (Fn (TAtom "main")))
+  iApply (hello_libc_start_main_wp w0 k m0 fr Hi o (hello_main_priv env) hello_exit0 _ Lb Hy fr0 _ (mkPtr (img_a "main") (Fn (TAtom "main")))
     argc (mkPtr argv.1 (Obj argv.1)) (mkPtr env.1 (Obj env.1)) av (reg_of m av) aps (DfracOwn 1) (DfracOwn 1) 0 null
     (mkRegion 0 0 Heap Live) (fun _ => ⌜False⌝)%I
     with "Hk Len [Hen] Ldx [Hdx] La Hc Ht Les [Bes] Ldm Bdm Leb [Lcf Fcf Ltl Ttl Lkn Kkn Sm] Lre Bre Lse Hse [] [-]").
@@ -363,14 +362,14 @@ Proof using Hi.
     tcb_cleanup_inv (ow_self (final_world w0 tb)) ∗
     (tcb_cleanup_inv (ow_self (final_world w0 tb)) -∗ gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb))).
   { iIntros "[A B]". iDestruct (Rn with "B") as "[$ W]". iIntros "C". iFrame "A". iApply ("W" with "C"). }
-  assert (Hg : hello_stdio (final_world w0 tb) hge o ∗ hd_priv (final_world w0 tb) hge o (debt tb) ⊢
+  assert (Hg : hello_stdio (final_world w0 tb) hge o ∗ hello_main_priv env tb ⊢
     (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb)) ∗
     (gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) -∗ hello_stdio (final_world w0 tb) hge o ∗
-      hd_priv (final_world w0 tb) hge o (debt tb))).
-  { cbn [debt hd_priv]. rewrite /hello_main_priv. iIntros "H".
+      hello_main_priv env tb)).
+  { rewrite /hello_main_priv. iIntros "H".
     iDestruct (hello_hd_lend (final_world w0 tb) fr tb Hfd2' (gg ∗ gs) _ with "H") as "[[[A B] C] W]".
     iFrame "A B C". iIntros "(A & B & C)". iApply ("W" with "[$A $B $C]"). }
-  iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (debt tb)
+  iMod (hello_main_entry (final_world w0 tb) m0 fr Hi (hello_link_all fr Hfree) (hello_main_priv env tb)
     (hello_getopt_E (final_world w0 tb) fr tb)
     (fun mid q => gg ∗ (gs ∗ hello_getopt_T (final_world w0 tb) fr tb mid q))%I
     hello_dom envp (env_entries m env) sz tb avb (reg_of m avb) p0 ps p0 (short_name p0 q0s) Hself Rd Rl Hln Hg

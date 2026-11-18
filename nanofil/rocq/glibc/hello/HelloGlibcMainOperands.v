@@ -59,8 +59,8 @@ Import HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibc
 
 Section operands.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o)
   (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr)
   (S : list ptr -> Z -> iProp Σ).
 
@@ -74,7 +74,7 @@ Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation selects values of the linked language. *)
 Local Notation gval := (language.val (nanofil_lang glibc_os_registry ge)).
 (** This notation combines the stream state and the callees' private state. *)
-Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
+Local Notation io := (hello_stdio w0 ge o ∗ priv)%I.
 
 (** The greeting continuation receives the selected text, conversion
     state, streams, program names and registered exit handler. *)
@@ -192,10 +192,10 @@ Proof using Hy Lb.
   iDestruct "Hn" as (x y z) "((Hpl & Hpc & Hncr) & #Hx & #Hy' & #Hz)".
   iApply (wp_name_load with "Hpl Hpc Hx"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
-  iApply (wp_print w0 ge o D X0 X Lb with "Hro Hio [] [-]"); [right; right; right; split; [reflexivity | eexists; reflexivity] | vx | |].
+  iApply (wp_print w0 ge o priv X0 X Lb with "Hro Hio [] [-]"); [right; right; right; split; [reflexivity | eexists; reflexivity] | vx | |].
   { iSplitL; [iApply (str_ro_arg with "Hx") | done]. }
   iNext. iIntros (n) "[Hio Hpv]".
-  iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv [Hpl Hpc Hncr] HX"); [reflexivity|].
+  iApply (wp_exit_call w0 ge o priv X0 X Lb with "Hro Hio Hpv [Hpl Hpc Hncr] HX"); [reflexivity|].
   iExists x, y, z. iSplitL; [|iSplitR; [iExact "Hx" | iSplitR; [iExact "Hy'" | iExact "Hz"]]].
   iSplitL "Hpl"; [iExact "Hpl"|]. iSplitL "Hpc"; [iExact "Hpc" | iExact "Hncr"].
 Qed.
@@ -233,7 +233,7 @@ Qed.
 
 (** The operand check either proceeds to the greeting or exits with status one. *)
 Lemma main_operands Φ :
-  hello_ro ge o -∗ join_cont Φ -∗ loop_exit w0 ge o D X av ar b4 b6 pn sn S "iw_1.L10" "iw_1.L8" Φ.
+  hello_ro ge o -∗ join_cont Φ -∗ loop_exit w0 ge o priv X av ar b4 b6 pn sn S "iw_1.L10" "iw_1.L8" Φ.
 Proof using Hy Lb.
   iIntros "#Hro HJ" (e ps a i g lose [Hf [Hpr Hlose]]) "Hr".
   destruct Hf as ((H0 & H2 & H4 & H6 & Hc1) & Hb4 & Hb6 & Hi).

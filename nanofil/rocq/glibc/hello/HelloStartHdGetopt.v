@@ -47,7 +47,7 @@ Local Abbreviation cv := (mkPtr cb (Ro cb)).
 (** The thread's object lies at tb. *)
 Context (tb : Z).
 
-(** ## The part of hd_priv that the reports need *)
+(** ## The private state that the reports need *)
 
 (** A warning needs these resources. Their state depends on the flag v,
     the thread's id tid and the region treg of the string "C". *)

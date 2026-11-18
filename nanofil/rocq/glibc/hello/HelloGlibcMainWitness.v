@@ -3,8 +3,8 @@
     streams with separate locks and an idle allocation prelude. Its keys
     are distinct, so Iris can allocate all these resources together.
 
-    This witness checks the resource contracts, not the remaining M4 and
-    M6 call proofs. It does not claim to construct HelloCore. *)
+    This witness checks that the resources coexist. The safety proof
+    constructs them from Hello's start state. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.

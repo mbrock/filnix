@@ -35,13 +35,13 @@ Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (k : Z).
 Context (m : mem) (fr : word -> mem -> option (res unit * mem)).
 Context (Hi : initial_memory hello_image_module = Some (img_globals, m)).
 
-(** Main's contract takes the library calls that are not proved yet,
-    as [HelloStartMain] does. *)
-Context (o : hello_objs) (debt : forall tb, HelloCore (final_world w0 tb) (mkGenv hello_image_module img_globals fr) o)
+(** Main takes the private state of the thread that startup creates.
+    The library proofs use that same state. *)
+Context (o : hello_objs) (priv : Z -> iProp Σ)
   (X0 X : iProp Σ)
   (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
      HelloLibs (final_world w0 tb) (mkGenv hello_image_module img_globals fr) o
-       (hd_priv (final_world w0 tb) (mkGenv hello_image_module img_globals fr) o (debt tb)) X0 X)
+       (priv tb) X0 X)
   (Hy : hello_layout (mkGenv hello_image_module img_globals fr) o).
 
 (** This is the linked Hello program. *)
@@ -104,9 +104,9 @@ Lemma hello_libc_start_main_wp fr0 xs mainp argc argv envp av avreg ps dqm dqe x
      ∃ x4, ⌜fs_args (ctor_runner_spec (glibc_program := P tb)) x4 = []⌝ ∗
        fs_pre (ctor_runner_spec (glibc_program := P tb)) x4 ∗
      ∀ v4, fs_post (ctor_runner_spec (glibc_program := P tb)) x4 v4 -∗ ⌜v4 = RetVoid⌝ ∗
-     ∃ x5, ⌜fs_args (hello_cm_spec w0 img_globals fr o debt X0 tb) x5 = [WPtr mainp; WInt argc; WPtr argv]⌝ ∗
-       fs_pre (hello_cm_spec w0 img_globals fr o debt X0 tb) x5 ∗
-     ∀ v5, fs_post (hello_cm_spec w0 img_globals fr o debt X0 tb) x5 v5 -∗ False) -∗
+     ∃ x5, ⌜fs_args (hello_cm_spec w0 img_globals fr o priv X0 tb) x5 = [WPtr mainp; WInt argc; WPtr argv]⌝ ∗
+       fs_pre (hello_cm_spec w0 img_globals fr o priv X0 tb) x5 ∗
+     ∀ v5, fs_post (hello_cm_spec w0 img_globals fr o priv X0 tb) x5 v5 -∗ False) -∗
   WP (ERun fr0 : sexpr) {{ Φ }}.
 Proof using Hi Lb Hy.
   intros Hleaf He Hfr Hxs Hargc Hav Have Hps Hx Hsp lo.
@@ -124,14 +124,14 @@ Proof using Hi Lb Hy.
     as Hei.
   pose proof (fun tb (H0 : 0 < tb) (H1 : tb + 2496 <= 2 ^ 48) => hello_ctor_runner_has_spec w0 img_globals fr tb)
     as Hcr.
-  pose proof (hello_call_main_has_spec w0 img_globals m fr Hi o debt X0 X Lb Hy) as Hcm.
+  pose proof (hello_call_main_has_spec w0 img_globals m fr Hi o priv X0 X Lb Hy) as Hcm.
   iIntros "Hk Len Hen Ldx Hdx La Hc Ht Les Hes Ldm Hdm Leb Hicf Lre Hre Lse Hse Hcap HK".
   iApply (wp_libc_start_main glibc_os_registry hge w0 k fr0 xs mainp argc argv envp av avreg ps
     (lo_en lo) (lo_enreg lo) (lo_dx lo) (lo_dxreg lo) (lo_es lo) (lo_esreg lo) (lo_dm lo) (lo_dmreg lo) dqm
     eb ereg dqe (lo_hp lo) (lo_dp lo) (lo_dn lo) (lo_cfp lo)
     (init_cpu_features_spec (glibc_program := P0)) hello_icf_objs (lo_re lo) (lo_rereg lo) x (lo_se lo) (lo_sereg lo)
     sp spreg (fun tb => early_init_spec (glibc_program := P tb)) (fun tb => ctor_runner_spec (glibc_program := P tb))
-    (fun tb => hello_cm_spec w0 img_globals fr o debt X0 tb) Φ (Hicf := Hicf) (Htls := Htls) Hei Hcr Hcm
+    (fun tb => hello_cm_spec w0 img_globals fr o priv X0 tb) Φ (Hicf := Hicf) (Htls := Htls) Hei Hcr Hcm
     with "Hk Len Hen Ldx Hdx La Hc Ht Les Hes Ldm Hdm Leb [Hicf] Lre Hre Lse Hse Hcap HK");
     try assumption; [reflexivity | reflexivity | reflexivity | ..].
   - vm_compute. reflexivity.

@@ -35,8 +35,8 @@ Ltac vxm := cbn -[put];
 
 Section greet.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context (w0 : os_world) (ge : genv) (o : hello_objs) (D : HelloCore w0 ge o) (X0 X : iProp Σ)
-  (Lb : HelloLibs w0 ge o (hd_priv w0 ge o D) X0 X) (Hy : hello_layout ge o)
+Context (w0 : os_world) (ge : genv) (o : hello_objs) (priv X0 X : iProp Σ)
+  (Lb : HelloLibs w0 ge o priv X0 X) (Hy : hello_layout ge o)
   (av : Z) (ar : region) (b4 b6 : Z) (pn sn : ptr).
 
 (** Collector safepoints preserve the concrete OS interpretation. *)
@@ -47,7 +47,7 @@ Local Instance greet_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge)
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang glibc_os_registry ge)).
 (** This notation combines the stream state and the callees' private state. *)
-Local Notation io := (hello_stdio w0 ge o ∗ hd_priv w0 ge o D)%I.
+Local Notation io := (hello_stdio w0 ge o ∗ priv)%I.
 
 (** The terminator and four-byte scaling fit when the greeting length is below 2^48. *)
 Lemma greet_len x : 0 <= x < 2 ^ 48 ->
@@ -61,7 +61,7 @@ Proof using Type*.
 Qed.
 
 (** The greeting branch converts the selected text and prints it or reports an error. *)
-Lemma main_join Φ : hello_ro ge o -∗ join_cont w0 ge o D X b4 b6 Φ.
+Lemma main_join Φ : hello_ro ge o -∗ join_cont w0 ge o priv X b4 b6 Φ.
 Proof using Hy Lb.
   iIntros "#Hro" (e g [(H4 & Hc1 & H6) [Hb4 Hb6]]) "Hgc #Hg Hb6 Hio Hn HX".
   pose proof Hb4 as (Hb40 & Hb416 & Hb448).
@@ -96,7 +96,7 @@ Proof using Hy Lb.
   { iSplitL "Hl4"; [iExact "Hl4"|]. iSplitL "Hp4"; [iExact "Hp4"|]. iSplitL "Hy4"; [iExact "Hy4" | iExact "Hc4"]. }
   iDestruct "Hio" as "[Hio Hpv]".
   iApply (wp_call_long w0 ge _ _ _
-            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗
+            (fun k => ∃ ws, ⌜k <> 2 ^ 64 - 1 /\ wide_text ws⌝ ∗ hello_stdio w0 ge o ∗ priv ∗
                         wbuf bd N ws)%I with "[Hio Hpv Hwb Hgc Hb6]");
     [eapply fn_triple_mono; [exact (hl_mbsrtowcs _ _ _ _ _ _ Lb bd b4 b6 g s Hb4 Hb6 (conj Hbd0 (conj Hbd16 Hbde)))|];
      iIntros (r) "(%k & %ws & %Hk & Hio & Hpv & Hwb)"; destruct Hk as (-> & Hk & Hk1 & Hw);
@@ -107,7 +107,7 @@ Proof using Hy Lb.
      iSplitL "Hwb"; [iExact "Hwb"|]; iSplitL "Hgc"; [iExact "Hgc"|]; iSplitR; [iExact "Hs" | iExact "Hb6"] |].
   iNext. iIntros (k Hk) "(%ws & [%Hk1 %Hw] & Hio & Hpv & Hwb)".
   step.
-  (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact Hbd16 | exact Hbde | exact Hw |].
+  (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o priv X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact Hbd16 | exact Hbde | exact Hw |].
   iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
 
