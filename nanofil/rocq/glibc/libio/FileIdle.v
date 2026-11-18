@@ -84,7 +84,10 @@ Definition buf_idle (nb : nbuf) : iProp Σ :=
     (index 0), and the write base, write pointer and write end are
     indices 3, 4 and 5. The saved, backup and marker pointers are
     indices 8, 9 and 11. The input-only stream, descriptor 0, has
-    `c: _IO_NO_WRITES` set, and the other two have it clear. *)
+    `c: _IO_NO_WRITES` set, and the other two have it clear. Every
+    standard stream stays on glibc's list of open streams, with
+    `c: _IO_LINKED` set, until `c: fclose` unlinks it. Its lock is a
+    static object at a nonzero address. *)
 Definition idle_ok (fd : Z) (st : fstate) : Prop :=
   (fd = 0 \/ fd = 1 \/ fd = 2) /\ fs_fileno st = fd /\
   (fs_mode st = 0 \/ fs_mode st = 2 ^ 32 - 1) /\
@@ -94,9 +97,9 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
   (ptr_addr (fs_ptr st 3) < ptr_addr (fs_ptr st 4) \/ ptr_addr (fs_ptr st 4) < ptr_addr (fs_ptr st 5) ->
    has (fs_flags st) io_currently_putting = true) /\
   (fd <> 0 -> has (fs_flags st) io_no_writes = false) /\
-  has (fs_flags st) io_is_appending = false /\
+  has (fs_flags st) io_is_appending = false /\ has (fs_flags st) io_linked = true /\
   Z.land (fs_flags2 st) 2 = 0 /\ Z.land (fs_flags2 st) 32 = 0 /\
-  take 2 (fs_column st) = [0; 0].
+  take 2 (fs_column st) = [0; 0] /\ 0 < ptr_addr (fs_lock st).
 
 (** An unbuffered stream writes through its one-byte `c: _shortbuf`
     and keeps nothing in it between calls. Glibc gives that buffer only

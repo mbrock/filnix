@@ -265,7 +265,7 @@ Proof using Type*.
   iDestruct "Hps" as "(P0 & P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & _)".
   pose proof Hok as (Hflr & Hmagic & Hfilebuf & Hbk & Hul & Hnl & Hunb).
   unfold idle_ok, fs_ptr in Hidle. cbn [nth fs_flags fs_ptrs fs_fileno fs_flags2 fs_column fs_mode] in Hidle.
-  destruct Hidle as (Hfd012 & -> & Hmd & E8 & E9 & E11 & E01 & E13 & Hle34 & Hput & Hnw & Happ & Hf2a & Hf2b & Hcol2).
+  destruct Hidle as (Hfd012 & -> & Hmd & E8 & E9 & E11 & E01 & E13 & Hle34 & Hput & Hnw & Happ & Hlnk & Hf2a & Hf2b & Hcol2 & Hlk0).
   subst p0 p1 p8 p9 p11.
   specialize (Hnw Hfd0). unfold has in Hnw, Happ, Hbk.
   apply negb_false_iff, Z.eqb_eq in Hnw, Happ, Hbk.

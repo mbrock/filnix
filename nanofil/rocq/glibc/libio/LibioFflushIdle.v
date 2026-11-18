@@ -356,7 +356,8 @@ Proof using Hdwf Hext Hfw Hreg Hsync Hwrite.
   pose proof (buf_ptrs_in fb nb _ 4 Hbok eq_refl ltac:(lia)) as Hin4. cbn [nth] in Hin3, Hin4.
   pose proof Hidle as Hidle'.
   unfold idle_ok, fs_ptr in Hidle'. cbn [nth fs_flags fs_ptrs fs_fileno fs_flags2 fs_column fs_mode] in Hidle'.
-  destruct Hidle' as (Hfd012 & -> & Hmd & E8 & E9 & E11 & E01 & E13 & Hle34 & Hput & Hnw & Happ & Hf2a & Hf2b & Hcol2).
+  destruct Hidle' as (Hfd012 & -> & Hmd & E8 & E9 & E11 & E01 & E13 & Hle34 & Hput & Hnw & Happ & Hlnk & Hf2a & Hf2b & Hcol2 & Hlk0).
+  cbn [fs_lock] in Hlk0. rewrite Hlb in Hlk0. cbn [ptr_addr] in Hlk0.
   subst p0 p1.
   iDestruct (in_buf_range fb nb p3 with "Hb") as %Hr3; try first [exact Hin3 | lia].
   iDestruct (in_buf_range fb nb p4 with "Hb") as %Hr4; try first [exact Hin4 | lia].

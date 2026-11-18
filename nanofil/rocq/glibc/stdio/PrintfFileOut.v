@@ -83,7 +83,7 @@ Proof.
   do 12 (destruct ps as [|? ps]; [discriminate Hlen|]). destruct ps; [|discriminate Hlen].
   unfold lent_ok, fs_with_wptr, idle_ok, short_idle, buf_ptrs_ok, fs_ptr, fs_with_flags2 in *.
   cbn [fs_ptrs fs_flags fs_flags2 fs_fileno fs_mode fs_column fs_vtable nth take] in *.
-  destruct H as (A1 & A2 & A3 & A4 & Hfl & (I1 & I2 & I3 & I4 & I5 & I6 & I7 & I8 & I9 & I10 & I11 & I12 & I13 & I14 & I15) & A5 & A6 & (B1 & B2 & B3) & ((S1 & S1b) & S2 & S3 & S4 & S5) & D1 & D2 & D3 & D4 & D5 & D6 & E4 & E5 & Hput & Hlo).
+  destruct H as (A1 & A2 & A3 & A4 & Hfl & (I1 & I2 & I3 & I4 & I5 & I6 & I7 & I8 & I9 & I10 & I11 & I12 & I13 & I14 & I15 & I16 & I17) & A5 & A6 & (B1 & B2 & B3) & ((S1 & S1b) & S2 & S3 & S4 & S5) & D1 & D2 & D3 & D4 & D5 & D6 & E4 & E5 & Hput & Hlo).
   destruct Hfl as (F1 & F2 & F3 & F4 & F5 & F6 & F7). cbn [fs_flags fs_flags2 fs_ptrs] in F1, F2, F3, F4, F5, F6, F7.
   unfold flags_ok. cbn [insert list_insert nth take fs_flags fs_flags2 fs_ptrs fs_fileno fs_mode fs_column fs_vtable].
   subst p4 p5. cbn [ptr_addr] in *.

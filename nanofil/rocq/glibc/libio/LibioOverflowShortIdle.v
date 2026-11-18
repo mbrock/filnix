@@ -62,7 +62,7 @@ Proof.
     destruct Hb as [Hb _]. assert (H6 : nth 6 (fs_ptrs st) null = nth 6 (take 8 (fs_ptrs st)) null).
     { destruct (fs_ptrs st) as [|x0 [|x1 [|x2 [|x3 [|x4 [|x5 [|x6 xs]]]]]]]; reflexivity. }
     rewrite H6 H in Hb. discriminate. }
-  destruct Hi as (Hfd & Hid & _ & H8 & H9 & H11 & _ & _ & _ & _ & Hnw & Happ & _).
+  destruct Hi as (Hfd & Hid & _ & H8 & H9 & H11 & _ & _ & _ & _ & Hnw & Happ & Hlnk & _ & _ & _ & Hlk0).
   unfold flags_ok, idle_ok, short_idle, short_after, fs_with_flags2, fs_ptr in *.
   cbn [fs_flags fs_flags2 fs_ptrs fs_mode fs_fileno fs_column app nth] in *.
   split_and!;
@@ -107,7 +107,7 @@ Proof using Type.
   cbn zeta. intros Hal Hfb Hend Hrend Hok Hi Hf2 Hvt Hb Hshort Hu Hnw0.
   iIntros "(%Hlen & Hfl & Hps & Hfd & Hf2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb & Hmd & Htw & Hvt) Hlk Hw Herr".
   pose proof (buf_ptrs_in _ _ _ 2 Hb Hlen ltac:(lia)) as Hin.
-  pose proof Hi as (_ & Hfd & _ & _ & _ & _ & H01 & H13 & _ & _ & _ & _ & _ & _ & Hcol).
+  pose proof Hi as (_ & Hfd & _ & _ & _ & _ & H01 & H13 & _ & _ & _ & _ & _ & _ & _ & Hcol & _).
   cbn [fs_with_flags2 fs_fileno fs_column] in Hfd, Hcol. subst fd flags2.
   destruct (fs_ptrs st) as [|p0 [|p1 [|p2 [|p3 [|p4 [|p5 [|p6 [|p7 [|p8 [|p9 [|p10 [|p11 [|]]]]]]]]]]]]] eqn:Hps; try discriminate Hlen.
   iDestruct "Hps" as "(P0 & P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & _)".

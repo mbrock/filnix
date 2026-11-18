@@ -56,7 +56,7 @@ Proof.
   { intros b Hb. destruct Hf as [-> | ->]; [reflexivity|]. unfold has. by rewrite Z.land_lor_distr_l Hb Z.lor_0_r. }
   rewrite !(Hhas io_is_filebuf eq_refl) !(Hhas io_in_backup eq_refl) !(Hhas io_user_lock eq_refl) !(Hhas io_unbuffered eq_refl)
     !(Hhas io_user_buf eq_refl) !(Hhas io_line_buf eq_refl) !(Hhas io_currently_putting eq_refl) !(Hhas io_no_writes eq_refl)
-    !(Hhas io_is_appending eq_refl).
+    !(Hhas io_is_appending eq_refl) !(Hhas io_linked eq_refl).
   assert (Hr : 0 <= fl < 2 ^ 32 /\ Z.land fl 4294901760 = io_magic).
   { destruct Hfl as (Hr & Hmagic & _). destruct Hf as [-> | ->]; [done|]. split; [apply lor_lt32; [exact Hr | unfold io_err_seen; lia]|].
     rewrite Z.land_lor_distr_l. change (Z.land io_err_seen 4294901760) with 0. by rewrite Z.lor_0_r. }
