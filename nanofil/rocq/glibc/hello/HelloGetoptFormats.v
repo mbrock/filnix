@@ -82,8 +82,7 @@ Proof using Herr Hgerr Hvf.
     2: { iDestruct "Hva" as (cb sb) "(%Hv & Hcur & Hsnap)". iExists cb, sb. iFrame "Hcur Hsnap". iPureIntro.
          cbn [length]. split_and!; first [apply Hv | lia]. }
     iPureIntro. unfold vfp_fits. cbn.
-    split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | | exact Herr | exact Hfd | exact Hgerr].
-    intros c Hcs. destruct held as [c0|]; cbn in Hcs; injection Hcs as <-; [destruct (Hc c0 eq_refl)|]; lia.
+    split_and!; [exact Hp | exact (narrow_fits_all _ _ Ha) | lia | reflexivity | exact Herr | exact Hfd | exact Hgerr].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%n & [-> %Hn] & Hs & Hf & He)".
     iDestruct (file_tidy_fx_stream with "Hs") as (m') "Hs". iDestruct (fx_stream_mode with "Hs") as %Hm'.

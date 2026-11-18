@@ -123,7 +123,7 @@ Proof using Hvf.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (16 / 8)) (WPtr fp :: WPtr fmt :: ys)) with ys.
     iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
-    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd | exact Hge].
+    split_and!; [exact Hp | exact Hfits | lia | reflexivity | exact Herr | exact Hfd | exact Hge].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
     cbn. iApply wp_ret; [reflexivity | vx |]. iNext. iApply "HK".
@@ -167,7 +167,7 @@ Proof using Hvf.
     cbn [vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     change (skipn (Z.to_nat (8 / 8)) (WPtr fmt :: ys)) with ys.
     iFrame "Hst Hf Hva Hargs He Hro Hfro Hmro". iPureIntro.
-    split_and!; [exact Hp | exact Hfits | lia | reflexivity | intros ? [=] | exact Herr | exact Hfd | exact Hge].
+    split_and!; [exact Hp | exact Hfits | lia | reflexivity | exact Herr | exact Hfd | exact Hge].
   - iIntros (v). cbn [fs_post vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_eb].
     iIntros "(%r & [-> %Hr] & Hst & Hf & He)". iExists _. iSplit; [iPureIntro; reflexivity|]. iNext.
     cbn. iApply wp_ret; [reflexivity | vx |]. iNext. iApply "HK".

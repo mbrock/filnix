@@ -95,9 +95,9 @@ Record vfp_mid : Type := VfpMid {
   vm_in : vfp_in; vm_fb : Z; vm_freg : region; vm_fl : Z; vm_bb : Z; vm_b2 : Z; vm_b3 : Z
 }.
 
-(** Once the orientation is settled, the function still holds its
-    four arguments. It also holds the addresses of the three objects
-    that it allocated for its local variables. *)
+(** After the entry block the function still holds its four
+    arguments. It has also allocated three objects for its local
+    variables, and it holds a pointer to each of them. *)
 Definition mid_sig : cut_sig := Eval vm_compute in cut_at S.temp_keys S.live_in "L28".
 
 Definition mid_vals (m : vfp_mid) : list (string * word) :=
@@ -148,7 +148,7 @@ Proof using Type.
   iIntros ([vb [fa fc] fd flags2 held [ma mc] dq fbs ds ap skip xs rest eb] e from Φ) "_ %He H HK".
   cbn [bs_sig bs_vals bs_label bs_pre bs_post fs_pre fs_post vfprintf_spec vfp_vals vi_vb vi_fp vi_fd vi_flags2 vi_held
     vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb] in *. c_env_open He.
-  iDestruct "H" as "((%Hp & %Hfit & %Hs0 & %Hs8 & %Hheld & %Herr & %Hfd & %Hge) & Htidy & Hs & Hva & Hargs & Herrno & #Hpro & #Hfro & #Hmro)".
+  iDestruct "H" as "((%Hp & %Hfit & %Hs0 & %Hs8 & %Herr & %Hfd & %Hge) & Htidy & Hs & Hva & Hargs & Herrno & #Hpro & #Hfro & #Hmro)".
   iDestruct (file_tidy_entry with "Htidy") as (fb freg fl md) "((%Hfp & %A1 & %A2 & %A3 & %A4 & %Hflr & %Hmd & %Hneed & %Hnw) & Hl & Hflg & Hfl2 & Hmode & Hback)".
   injection Hfp as -> ->.
   block_enter.
@@ -166,7 +166,8 @@ Proof using Type.
   { iIntros (m ->) "Hmode Hl". unfold mid_pre. cbn [vm_in vm_fb vm_freg vm_fl vm_bb vm_b2 vm_b3 x vi_vb vi_fp vi_fd vi_flags2 vi_held
       vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     iFrame "Hl Hflg Hfl2 Hbl Hs Hva Hargs Herrno Hpro Hfro Hmro". iSplit.
-    { iPureIntro. unfold file_size. split_and!; try first [assumption | reflexivity | lia]. unfold vfp_fits. cbn. tauto. }
+    { iPureIntro. unfold file_size. split; [unfold vfp_fits; cbn; tauto|].
+      split_and!; first [assumption | reflexivity | lia]. }
     iSplitL "Hmode"; [iSplit; [iPureIntro; lia|iExact "Hmode"]|]. iSplitL "Hback"; [|iFrame "Hbx Hbc"].
     iIntros (fl' Hfl') "Hl Hflg Hfl2 Hmode". iApply ("Hback" $! fl' (2 ^ 32 - 1) with "[%] Hl Hflg Hfl2 Hmode"). split; [exact Hfl' | by right]. }
   destruct Hmd as [-> | ->]; branch.
@@ -189,8 +190,8 @@ Proof using Type*.
   c_env_open He.
   iDestruct "H" as "((%Hfits & %Hfp & %A1 & %A2 & %A3 & %A4 & %Hflr & %Hneed & %Hnw & %B1 & %B2 & %B3) & Hl & Hflg & Hfl2 & Hmode & Hback & Hbl & Hbx & Hbc & Hs & Hva & Hargs & Herrno & #Hpro & #Hfro & #Hmro)".
   cbn [vm_in vm_fb vm_freg vm_fl vm_bb vm_b2 vm_b3 vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb] in *.
-  subst fp. unfold file_size in A3. pose proof Hfits as (Hp & Hfit & Hs0 & Hs8 & Hheld & Herr & Hfd & Hge).
-  cbn [vi_bytes vi_ds vi_skip vi_xs vi_rest vi_held vi_eb vi_fd] in Hp, Hfit, Hs0, Hs8, Hheld, Herr, Hfd, Hge.
+  subst fp. unfold file_size in A3. pose proof Hfits as (Hp & Hfit & Hs0 & Hs8 & Herr & Hfd & Hge).
+  cbn [vi_bytes vi_ds vi_skip vi_xs vi_rest vi_eb vi_fd] in Hp, Hfit, Hs0, Hs8, Herr, Hfd, Hge.
   block_enter. step. iDestruct "Hmode" as "[%Hmdr Hmode]". load_s32 "Hl" "Hmode". step. branch.
   step. check "Hl". iDestruct "Hflg" as "[_ Hflg]". load_s32 "Hl" "Hflg". step.
   branch_symbolic. rewrite (Z.mod_small fl); [|lia]. change (8 mod 2 ^ 32) with 8. rewrite (Z.mod_small (Z.land fl 8)); [|apply fx_land_lt32; lia]. destruct (Z.land fl 8 =? 0) eqn:Enw; cbn [edge_label]; last first.
@@ -209,7 +210,7 @@ Proof using Type*.
     branch_symbolic. rewrite (Z.mod_small ma); [|lia]. change ((0 mod 2 ^ 64) mod 2 ^ 64) with 0.
     destruct (Z.eqb_spec ma 0) as [Hz|_]; [lia|]. cbn [edge_label].
     step. step. load_s32 "Hl" "Hmode". step. branch. step. step. load_s32 "Hl" "Hmode". step. branch.
-    step. step. iDestruct "Hfl2" as "[%Hf2r Hfl2]". load_s32 "Hl" "Hfl2". step_named. step_named. step_named. step. Show.
+    step. step. iDestruct "Hfl2" as "[%Hf2r Hfl2]". load_s32 "Hl" "Hfl2". step_named. step_named. step_named. step.
     assert (Hx0 : x0 = fx_field flags2) by exact (fx_shift_field flags2 x x0 Hf2r E E0).
     assert (Hx1 : x1 = 0).
     { rewrite E1 Hx0 (Z.mod_small (fx_field flags2)); [|apply fx_field_range]. change (128 mod 2 ^ 32) with 128.
@@ -219,7 +220,7 @@ Proof using Type*.
   iDestruct ("Hback" $! fl with "[%] Hl [Hflg] [Hfl2] [Hmode]") as "Htidy";
     [by left | iSplit; [done|iExact "Hflg"] | iSplit; [done|iExact "Hfl2"] | iSplit; [done|iExact "Hmode"] |].
   set (a := FOut vb (ow_self w0) fb fd flags2 held eb).
-  assert (Hok : fout_ok a) by (unfold fout_ok; cbn [a fo_self fo_eb fo_fd fo_held]; tauto).
+  assert (Hok : fout_ok a) by (unfold fout_ok; cbn [a fo_self fo_eb fo_fd]; tauto).
   pose proof (Hformat a Hok) as Hformat_a. pose proof (Hdone a Hok) as Hdone_a.
   set (br := mkRegion bb (bb + 176) Heap Live).
   iDestruct (fresh_file_buffer bb with "[$Hbl $Hbx $Hbc]") as "(Hbl & Hfp & Hb & Hstage)"; [lia | Z.div_mod_to_equations; lia | lia|].

@@ -151,18 +151,15 @@ Record vfp_in : Type := VfpIn {
     format must parse in the narrow grammar. The arguments after the
     named ones must fit its conversions: a pointer for each `%s` and an
     integer for each `%c` and `%d`. The cursor must stand at the start
-    of an argument, and each argument is 8 bytes wide. The formatter
-    takes the stream's lock once more, so the count of a lock that this
-    thread holds must have room for one more. When the buffer is full
-    the formatter writes to the stream's descriptor, so that descriptor
-    must be open. The formatter saves errno when it starts, and it
-    reads errno through the global `c: __libc_errno`, so this global
-    must be the errno cell of the thread. *)
+    of an argument, and each argument is 8 bytes wide. When the buffer
+    is full the formatter writes to the stream's descriptor, so that
+    descriptor must be open. The formatter saves errno when it starts,
+    and it reads errno through the global `c: __libc_errno`, so this
+    global must be the errno cell of the thread. *)
 Definition vfp_fits (x : vfp_in) : Prop :=
   parse_narrow (vi_bytes x) = Some (vi_ds x) /\
   narrow_fits (vi_ds x) (skipn (Z.to_nat (vi_skip x / 8)) (vi_xs x)) (vi_rest x) /\
   0 <= vi_skip x /\ vi_skip x mod 8 = 0 /\
-  (forall c, vi_held x = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) /\
   ow_errno w0 = Some (mkPtr (vi_eb x) (Obj (vi_eb x))) /\ In (vi_fd x) (ow_fds w0) /\
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (vi_eb x) (Obj (vi_eb x))).
 

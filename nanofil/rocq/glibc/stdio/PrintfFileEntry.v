@@ -105,15 +105,13 @@ Qed.
     The stream's lock is taken, if at all, by the thread that is
     running. The object of errno is that thread's errno cell, and the
     global `c: __libc_errno` points to it. The stream's descriptor is
-    open. A lock that the thread already holds can be taken once more.
-    The precondition of `c: __vfprintf_internal` implies all of these
-    facts for its stream. *)
+    open. The precondition of `c: __vfprintf_internal` implies all of
+    these facts for its stream. *)
 Definition fout_ok (a : fout) : Prop :=
   fo_self a = ow_self w0 /\
   ow_errno w0 = Some (mkPtr (fo_eb a) (Obj (fo_eb a))) /\
   In (fo_fd a) (ow_fds w0) /\
-  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (fo_eb a) (Obj (fo_eb a))) /\
-  (forall c, fo_held a = Some c -> 0 <= c /\ c + 1 < 2 ^ 32).
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (fo_eb a) (Obj (fo_eb a))).
 
 (** ## A fresh buffer *)
 

@@ -51,7 +51,7 @@ Lemma file_done_tidy_has_spec `{!Defines ge "__printf_buffer_done" glibc___print
     `{!Defines ge "__printf_buffer_to_file_done" glibc___printf_buffer_to_file_done} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_done") (file_done_spec (file_R a)).
 Proof using Type*.
-  destruct Hok as (_ & He & Hin & Hg & _).
+  destruct Hok as (_ & He & Hin & Hg).
   apply file_done_has_spec; first [apply flush_to_file_tidy_has_spec; first [assumption | apply file_write_ready]
     | apply buffer_done_has_spec; assumption | assumption].
 Qed.

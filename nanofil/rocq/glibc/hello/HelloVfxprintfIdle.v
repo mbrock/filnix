@@ -68,8 +68,7 @@ Proof using Herr Hgerr Hvf.
   - cbn [fs_pre vfprintf_spec vi_vb vi_fp vi_fd vi_flags2 vi_held vi_fmt vi_dq vi_bytes vi_ds vi_ap vi_skip vi_xs vi_rest vi_eb].
     iSplitR.
     { iPureIntro. unfold vfp_fits. cbn.
-      split_and!; [exact Hp | exact Hfits | exact Hs0 | exact Hs8 | | exact Herr | exact Hfd | exact Hgerr].
-      intros c [= <-]. lia. }
+      split_and!; [exact Hp | exact Hfits | exact Hs0 | exact Hs8 | exact Herr | exact Hfd | exact Hgerr]. }
     iSplitL "Hs"; [iExact "Hs"|]. iSplitL "Hws"; [iExact "Hws"|]. iSplitL "Hva"; [iExact "Hva"|].
     iSplitL "Hys"; [iExact "Hys"|]. iSplitL "He"; [iExact "He"|].
     iSplitR; [iExact "Hpro"|]. iSplitR; [iExact "Hfro" | iExact "Hmro"].
