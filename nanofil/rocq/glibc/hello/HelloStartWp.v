@@ -30,7 +30,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt
-  HelloStartHdRules HelloStartHdBuild HelloStartGetoptRules.
+  HelloStartHdRules HelloStartHdBuild HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -102,7 +102,7 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 (** Hello's main calls glibc functions, and some of those calls have
     no proof yet. To prove main anyway, this definition lists what those
     calls must provide for one thread and one environment. Glibc's
-    formatter must keep its contract, and the objects that startup
+    formatter and `c: fputs` must keep their contracts, and the objects that startup
     leaves unused must give the private state everything else. *)
 Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let envp := mkPtr env.1 (Obj env.1) in
@@ -111,6 +111,8 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
     getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
   HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
     (vfprintf_spec (glibc_program := P tb)) /\
+  HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "fputs")
+    (fputs_spec (glibc_program := P tb)) /\
   exists X : iProp Σ,
   (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢ half ∗ hello_hd_getopt (final_world w0 tb) fr tb ∗ X) /\
   (half ∗ hello_hd_rest (final_world w0 tb) fr ==∗ X).
@@ -118,7 +120,7 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
 (** The run's memory, split into the parts the image proofs name, lets
     the startup body reach main and lets main run without a panic. *)
 Lemma hello_start_wp fr0 argv env av aps order argc :
-  ow_leaf4_ends w0 = true -> frees_heap fr -> In 2 (ow_fds w0) ->
+  ow_leaf4_ends w0 = true -> frees_heap fr -> In 2 (ow_fds w0) -> In 1 (ow_fds w0) ->
   lookup (TAtom "__libc_errno") img_globals = Some (ow_errno_cell w0) ->
   call_frame start_libc_start_main_fn
     [WPtr (mkPtr (img_a "main") (Fn (TAtom "main"))); WInt argc; WPtr (mkPtr argv.1 (Obj argv.1));
@@ -136,14 +138,18 @@ Lemma hello_start_wp fr0 argv env av aps order argc :
   pointsto (PName k) (DfracOwn 1) (start_ghost null false false) -∗
   WP (ERun fr0 : sexpr) {{ _, ⌜False⌝ }}.
 Proof using Hi.
-  intros Hleaf Hfree Hfd2 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
+  intros Hleaf Hfree Hfd2 Hfd1 He Hfr Ha He2 Hv Hargc Hargc2 Hord Hc.
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
     HelloLibs (final_world w0 tb) hge o (hd_priv (final_world w0 tb) hge o (debt tb)) hello_exit0
       (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
        HelloGlibcJoin.Libs.exit_lock o)%I).
-  { intros tb H0 H1. exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
-      (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0). }
+  { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
+    destruct (Hc tb H0 H1) as (Hvf & Hfputs & _).
+    exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
+      (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
+      (hello_prints_image (final_world w0 tb) fr _ Hy (hello_link_all fr Hfree) Herr
+         ltac:(rewrite Hfds; exact Hfd1) Hvf Hfputs)). }
   iIntros "Hall (Tc & Tv & Te & Tp) Harg Henv (La & Hc & Ht) Hk".
   iDestruct (hello_start_own with "Hall") as "(Hcpu & Hearly & Hrun & Hctor & Hkept & Hlsm & Hso & Hcnt & Hpriv)".
   iDestruct (pts_app with "Hctor") as "[Hil Hctor]". iDestruct (pts_app with "Hctor") as "[Hif Hvt]".
@@ -310,7 +316,7 @@ Proof using Hi.
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".
   rewrite /StartTlsInitTpSpec.tp_fields. iDestruct "Htp" as "(Htid & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hsz)".
-  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & X & Hpv & Hx).
+  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & _ & X & Hpv & Hx).
   assert (Hfd2' : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
   iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".

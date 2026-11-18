@@ -7,15 +7,17 @@
     never returns to the runtime, so the theorem also says that no run
     returns normally.
 
-    The premises say what remains open. Standard output and
-    standard error are open descriptors, the process environment
-    selects the C locale, the processor reports its caches in the way
-    glibc reads them, the allocator's cursor is ready, and the
-    environment's free releases heap objects. The calls that print,
-    convert or read the locale are still contracts, the fields of
-    [HelloCore]. So is glibc's formatter, and so is the fact that stderr
-    is narrow when getopt prints a warning. A script in nanofil/tests
-    lists and counts these premises, and CI prints the count.
+    Some parts of the proof are still missing, so the theorem assumes
+    them. A few assumptions describe the machine that runs Hello. Its
+    standard output and standard error are open, its environment asks
+    for the C locale, and its processor reports caches the way glibc
+    expects. Its runtime also has a ready allocator and a free that
+    releases heap objects.
+
+    The rest are promises about glibc calls that nobody has proved yet.
+    They cover the calls that print, convert text or read the locale.
+    A script in nanofil/tests lists these assumptions, says which ones
+    can hold, and counts them for CI.
 
     The proof divides the start memory into the objects that each part
     of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
@@ -51,8 +53,8 @@ Proof. eexists. reflexivity. Qed.
     returns. The last premise gives the open contracts. For each ghost
     state, it chooses the library calls of [HelloCore]. For every
     environment array and thread object, it gives the contracts that
-    [hello_tb_contracts] states: the formatter's contract and the
-    private state's shape. *)
+    [hello_tb_contracts] states: the contracts of the formatter and of
+    `c: fputs`, and the private state's shape. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 m s w xs frt fuel :
   start_state hello_image_module w0 m w xs ->
@@ -67,7 +69,7 @@ Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piec
   labelled_safe glibc_os_registry (hello_start_ge frt) (invocation start_libc_start_main_fn xs)
     m s w fuel (fun _ => False).
 Proof.
-  intros Hst _ Hfd2 _ Hleaf Hr Hf Hc.
+  intros Hst Hfd1 Hfd2 _ Hleaf Hr Hf Hc.
   destruct Hst as (g & m0 & mainp & tb & argc & argv & env & av & aps & order & Hi & Hm & Ht & Hxs & Hargc & Hargc2 &
     Ha & He & Hv & Hd & Hk & Hord & Hct & Hos & Hnd).
   destruct (hello_first_heap g m0 m w0 w tb argc argv env av aps order 0 Hi Ht Ha He Hv Hd Hk Hord Hct Hos Hnd)
@@ -82,7 +84,7 @@ Proof.
     Hr Hd Agr Wi).
   intros HinvG HheapG. destruct (Hc HinvG HheapG) as [debt Hdebt]. iIntros "H".
   iDestruct (start_ps_own with "H") as "(L & T & A & E & V & K)"; [exact Nd|].
-  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc Hleaf Hf Hfd2 Herr Hfr Ha He Hv
+  iApply (hello_start_wp w0 0 m0 m frt Hi debt fr argv env av aps order argc Hleaf Hf Hfd2 Hfd1 Herr Hfr Ha He Hv
     Hargc Hargc2 Hord with "L T A E V K").
   intros tb Htb Htb2. destruct env as [b ss]. exact (Hdebt b ss eq_refl He tb Htb Htb2).
 Qed.

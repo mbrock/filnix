@@ -15,10 +15,11 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts two
+  Its body, hello_tb_contracts in HelloStartWp.v, counts three
   obligations, each with its own label: the contract of glibc's
-  formatter (vfprintf_has_spec), and the build of the private state's
-  free part X from the objects that startup leaves.
+  formatter (vfprintf_has_spec), the contract of fputs
+  (fputs_has_spec), and the build of the private state's free part X
+  from the objects that startup leaves.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted.
 
@@ -30,6 +31,11 @@ PREMISE_LABELS, such as runtime contracts, print with their label.
 Each premise also carries a tag from TAGS, naming the work that
 discharges it, and the script prints how many premises each tag has
 under the total. A premise that no tag matches is tagged untagged.
+
+Each premise also has a status from STATUS, kept by hand: satisfiable,
+or unsatisfiable with the reason. An unsatisfiable premise makes the
+theorem vacuous, so the script prints how many there are. A premise that
+no STATUS entry matches prints as unknown.
 
 The binders (addresses, regions, argv) are not premises. The conclusion
 is not counted. The script exits 1 if it cannot find the statement.
@@ -56,10 +62,27 @@ TAGS = [
     (r'^R\.ready', 'adequacy'),
     (r'hd_setlocale_|hd_mbsrtowcs', 'locale'),
     (r'hd_wprintf', 'wprintf (gap W)'),
-    (r'hd_version_etc|hd_print|hd_emit_bug|hd_error_', 'printf'),
+    (r'hd_print|hd_error_', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
+    (r'fputs_has_spec', 'libio'),
     (r'build X', 'locale'),
+]
+# Kept by hand from the satisfiability audit and the fixes after it.
+# The first pattern that a premise's text matches gives its status.
+SAT = 'satisfiable'
+STATUS = [
+    (r'^In [12] |frees_heap|start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
+    (r'hd_setlocale_all', 'unsatisfiable: X lacks __libc_setlocale_lock as rw_state and the read-only C-locale data'),
+    (r'hd_setlocale_query', SAT),
+    (r'hd_print|hd_error_operand', SAT),
+    (r'hd_mbsrtowcs', 'unsatisfiable: reads C-locale conversion objects (_nl_C_LC_CTYPE, __wcsmbs_gconv_fcts_c) '
+                      'that no start list owns'),
+    (r'hd_wprintf', 'unsatisfiable (likely): __wcsmbs_clone_conv reads the same unowned conversion objects'),
+    (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
+                         'no start list owns'),
+    (r'vfprintf_has_spec|fputs_has_spec', SAT),
+    (r'build X', 'unsatisfiable: X lacks the setlocale lock and the C-locale objects that setlocale and mbsrtowcs read'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
@@ -127,15 +150,21 @@ def tb_contracts():
         c = strip_parens(c)
         if c.startswith('HasSpec') and '__vfprintf_internal' in c:
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
+        elif c.startswith('HasSpec') and '"fputs"' in c:
+            out.append(f"contract: glibc's fputs, fputs_has_spec ({c})")
         elif c.endswith('==∗ X'):
             out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
-    if len(out) != 2:
-        sys.exit(f'hello_premises: expected 2 counted conjuncts in hello_tb_contracts, found {len(out)}')
+    if len(out) != 3:
+        sys.exit(f'hello_premises: expected 3 counted conjuncts in hello_tb_contracts, found {len(out)}')
     return out
 
 
 def tag(p):
     return next((t for pat, t in TAGS if re.search(pat, p)), 'untagged')
+
+
+def status(p):
+    return next((st for pat, st in STATUS if re.search(pat, p)), 'unknown')
 
 
 def premises():
@@ -182,7 +211,10 @@ if __name__ == '__main__':
     for n, p in enumerate(ps, 1):
         line = f'[{tag(p)}] {p}'
         print(f'{n:3d}. {line if len(line) <= 110 else line[:107] + "..."}')
+        print(f'       status: {status(p)}')
     print(f'open premises: {len(ps)}')
+    bad = [p for p in ps if status(p) != SAT]
+    print(f'not known satisfiable: {len(bad)} (the theorem is vacuous while any is unsatisfiable)')
     counts = {}
     for p in ps:
         counts[tag(p)] = counts.get(tag(p), 0) + 1

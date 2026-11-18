@@ -70,9 +70,11 @@ Qed.
     memory, build glibc's objects and Hello's table from it, and run
     Hello's main function. *)
 
-(** Hello's main function runs safely if two things hold. Each call to
-    getopt_long must keep the promise that the loop relies on, and
-    glibc's objects must start zeroed beside the rest of memory. The
+(** Hello's main function runs safely if three things hold. The two
+    print calls of [HelloPrints] must keep their contracts for any
+    private state, each call to getopt_long must keep the promise that
+    the loop relies on, and glibc's objects must start zeroed beside
+    the rest of memory. The
     proof can also take a few extra pieces xs of the starting memory,
     freeze them, and carry the frozen resource X through the loop. *)
 Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
@@ -86,6 +88,7 @@ Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   os_wi w0 m w (h1 ∪ list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) -> NoDup (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs).*1 ->
   map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
     exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\
     loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
@@ -101,7 +104,7 @@ Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
     m s w fuel (fun _ => True).
 Proof.
   intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
-    -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+    -> Hi Hr Hd Ha Hw Hnd Hdisj Hprints Hstart.
   apply (heap_labelled_safe Σ glibc_os_registry (os_wi w0) ge _ m s w _ (fun _ => True) Hr Hd Ha Hw).
   intros HinvG HheapG.
   destruct (Hstart HinvG HheapG) as (debt & X & HX & Hix & Hpre).
@@ -120,7 +123,7 @@ Proof.
   iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
   destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
   iApply (HelloGlibcMainFull.main_full_state w0 ge o debt _ _
-    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c) Hy av ar p0 ps x y z a i _ _ Hi Hix
+    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
     with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
   - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
   - iSplitL "Hz".
@@ -214,6 +217,7 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   argc = Z.of_nat (length (p0 :: ps)) -> 0 <= i <= argc ->
   R.ready s m -> live_disjoint m -> agrees m (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) -> NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs).*1 -> map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
+  (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
     exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\
     loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
@@ -229,7 +233,7 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
 Proof.
   intros Hk Hy Hos Hgb0 Hgb8 Hgbe Hgbr Hd0 Hd8 Hde Hdr H70 H78 H7e H7r H00 H08 H0e H0r
     Htb Htb0 Htb8 Htbe Htbr H69 Hb10 Hb18 Hb1e Hb1r Hb20 Hb28 Hb2e Hb2r Hb30 Hb38 Hb3e Hb3r
-    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r -> Hi Hr Hd Ha Hw Hnd Hdisj Hstart.
+    Hb40 Hb48 Hb4e Hb4r Hb50 Hb58 Hb5e Hb5r -> Hi Hr Hd Ha Hw Hnd Hdisj Hprints Hstart.
   set (tab := hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5) in *.
   set (st := getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs) in *.
   rewrite list_to_map_app map_union_assoc in Ha, Hw.

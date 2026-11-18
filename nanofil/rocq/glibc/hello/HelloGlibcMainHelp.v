@@ -91,7 +91,7 @@ Proof using Hy Lb.
   step_global (hy_lits _ _ Hy "hello#str.60" ltac:(cbn; tauto)).
   iApply (wp_fputs w0 ge o D "hello#str.60" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n7) "Hio".
   iApply (wp_call_void with "[Hio]");
-    [exact (hd_emit_bug _ _ _ D) | reflexivity | iSplitR; [iExact "Hro" | iExact "Hio"] |].
+    [exact (hp_emit_bug _ _ _ _ (hl_prints _ _ _ _ _ _ Lb)) | reflexivity | iSplitR; [iExact "Hro" | iExact "Hio"] |].
   iNext. iIntros "Hio".
   (* The note on translations, when the message locale is not English. *)
   iApply (help_note w0 ge o D X0 X Lb Hy with "Hro Hio Hq Hn HX"); lk_prove.

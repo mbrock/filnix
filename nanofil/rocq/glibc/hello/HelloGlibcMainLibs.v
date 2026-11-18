@@ -22,10 +22,12 @@ Import LG0 LG0.L D D.SW.FI.ML.
 Definition exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
   live (ho_el o) (ho_elr o) ∗ bytes (ho_el o) 0 [0; 0; 0; 0] ∗ bytes (ho_el o) 4 [0; 0; 0; 0] ∗
   pcell (ho_el o) 8 null.
-(** The initially empty handler list becomes a one-callback list. *)
+(** The initially empty handler list becomes a one-callback list. The
+    print calls are proved elsewhere, from the image's code, and are
+    passed in. *)
 Parameter hello_libs : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
   (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (debt : D.HelloCore w0 ge o) c,
+  forall (debt : D.HelloCore w0 ge o) c, D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt) ->
   D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
@@ -63,12 +65,12 @@ Proof using Hk.
 Qed.
 
 (** The initially empty handler list becomes a one-callback list. *)
-Lemma hello_libs (debt : D.HelloCore w0 ge o) c :
+Lemma hello_libs (debt : D.HelloCore w0 ge o) c (Hp : D.HelloPrints w0 ge o (D.hd_priv w0 ge o debt)) :
   D.HelloLibs w0 ge o (D.hd_priv w0 ge o debt)
     (AX.exit_funcs_inv (ho_x o) [] c ∗ exit_lock o)%I
     (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64) ∗ exit_lock o)%I.
 Proof using Hk Hos.
-  constructor.
+  constructor; [..| exact Hp].
   - exact (C.ST.libs_mbszero w0 ge o Hk).
   - exact (C.NM.libs_name w0 ge o Hk).
   - destruct (SY.libs_atexit w0 ge o Hk Hos c) as (gf & Hg & Hcall & Hspec).

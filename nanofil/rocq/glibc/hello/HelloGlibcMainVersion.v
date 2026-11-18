@@ -162,7 +162,7 @@ Proof using Hy Lb.
   step_global (hy_lits _ _ Hy "hello#str.75" ltac:(cbn; tauto)).
   iApply (wp_proper_name "hello#str.75" with "Hro Hio Hpv"); [cbn; tauto | lk_prove |]. iNext. iIntros (q4) "Hio Hpv #Hq4".
   iApply (wp_call_void with "[Hio Hpv]");
-    [exact (hd_version_etc _ _ _ D q1 q2 q3 q4) | vx |
+    [exact (hp_version_etc _ _ _ _ (hl_prints _ _ _ _ _ _ Lb) q1 q2 q3 q4) | vx |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv"|];
      iSplitR; [iExact "Hq1"|]; iSplitR; [iExact "Hq2"|]; iSplitR; [iExact "Hq3" | iExact "Hq4"] |].
   iNext. iIntros "[Hio Hpv]".

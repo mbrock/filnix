@@ -258,18 +258,9 @@ Record HelloCore : Type := mkHelloCore {
     fn_triple (TAtom "setlocale") [WInt 5; WPtr null]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I
       (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I;
-  hd_version_etc : forall q1 q2 q3 q4,
-    fn_triple (TAtom "version_etc")
-      [WPtr (ho_out o); WPtr (sym_ptr ge "hello#str.70"); WPtr (sym_ptr ge "hello#str.63");
-       WPtr (sym_ptr ge "hello#str.71"); WPtr q1; WPtr q2; WPtr q3; WPtr q4; WPtr null]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ str_ro q1 ∗ str_ro q2 ∗ str_ro q3 ∗ str_ro q4)%I
-      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_print : forall g xs, print_site g xs ->
     fn_triple g xs (hello_ro ∗ hello_stdio ∗ hd_priv ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
       (ret_int (hello_stdio ∗ hd_priv))%I;
-  hd_emit_bug :
-    fn_triple (TAtom "emit_bug_reporting_address") [] (hello_ro ∗ hello_stdio ∗ hd_priv)%I
-      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_error_operand : forall q,
     fn_triple (TAtom "error")
       [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
@@ -293,6 +284,23 @@ Record HelloCore : Type := mkHelloCore {
     fn_triple (TAtom "close_stdout") []
       (hello_ro ∗ (if wide then hello_stdio_wide hd_wide else hello_stdio) ∗ hd_priv ∗ names)%I
       (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
+}.
+
+(** The version text and the bug-report address are printed with
+    `c: fprintf`, `c: printf` and `c: fputs`, and these two calls are
+    proved from the image's code over those contracts. The record
+    [HelloPrints] states them for any private state priv of the
+    callees, because the calls do not touch it. *)
+Record HelloPrints (priv : iProp Σ) : Prop := mkHelloPrints {
+  hp_version_etc : forall q1 q2 q3 q4,
+    fn_triple (TAtom "version_etc")
+      [WPtr (ho_out o); WPtr (sym_ptr ge "hello#str.70"); WPtr (sym_ptr ge "hello#str.63");
+       WPtr (sym_ptr ge "hello#str.71"); WPtr q1; WPtr q2; WPtr q3; WPtr q4; WPtr null]
+      (hello_ro ∗ hello_stdio ∗ priv ∗ str_ro q1 ∗ str_ro q2 ∗ str_ro q3 ∗ str_ro q4)%I
+      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv)%I;
+  hp_emit_bug :
+    fn_triple (TAtom "emit_bug_reporting_address") [] (hello_ro ∗ hello_stdio ∗ priv)%I
+      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv)%I
 }.
 
 (** The record [HelloLibs] holds the contracts of the library calls
@@ -329,7 +337,8 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_exit : forall n (S : iProp Σ),
     fn_triple (TAtom "close_stdout") [] (hello_ro ∗ S ∗ priv ∗ names) (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I ->
     fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
-  hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I
+  hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
+  hl_prints : HelloPrints priv
 }.
 
 End debts.
