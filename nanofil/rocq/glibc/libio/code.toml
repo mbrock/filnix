@@ -24,4 +24,5 @@ LibioFlush|||__GI__IO_flush_all
 LibioCleanup|||_IO_cleanup
 ExitRun|||__run_exit_handlers __GI_exit
 LibioStdfiles|||glibc_stdfiles#_IO_stdfiles_init
+LibioWAlloc|_IO_wsetb _IO_wdoallocbuf _IO_wfile_doallocate|libio/wgenops.os libio/wfiledoalloc.os|__GI__IO_wsetb __GI__IO_wdoallocbuf _IO_wfile_doallocate
 '''

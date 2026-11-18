@@ -70,6 +70,7 @@ libio/LibioGenCode.v
 libio/LibioPutsCode.v
 libio/LibioReadCode.v
 libio/LibioStdfilesCode.v
+libio/LibioWAllocCode.v
 libio/LibioUnlinkCode.v
 libio/LibioXsputnCode.v
 libio/SysCode.v
