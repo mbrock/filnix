@@ -26,7 +26,7 @@ Context `{!gen_heapGS piece pval Σ}.
 (** Close reads two input cursors in read mode or two output cursors in
     put mode. Borrowing the cells keeps their exact values available to
     the converter when close hands the whole stream to it. *)
-Local Lemma close_cursors vb tw tm wd w : wide_data vb tw tm wd w -∗ ∃ wr i j,
+Lemma close_cursors vb tw tm wd w : wide_data vb tw tm wd w -∗ ∃ wr i j,
   ⌜0 < wd /\ wd mod 8 = 0 /\ wd+232 <= r_end wr /\ r_end wr <= 2^63 /\
     window_bound w /\ 0 <= i <= window_size w /\ 0 <= j <= window_size w⌝ ∗
   live wd wr ∗ pcell wd 0 (wpos wd w 0) ∗ pcell wd 8 (wpos wd w 0) ∗
