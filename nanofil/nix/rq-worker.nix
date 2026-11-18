@@ -44,6 +44,7 @@ ocamlPackages.buildDunePackage {
   pname = "rq-worker";
   version = "0";
   src = ../rocq/scripts/glibc-tools/rq/worker;
+  doCheck = true;
   buildInputs = [
     rocq.rocq-core
     ocamlPackages.eio_main

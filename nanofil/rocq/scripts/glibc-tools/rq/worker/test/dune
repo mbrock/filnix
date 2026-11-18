@@ -1,0 +1,7 @@
+(test
+ (name test_worker)
+ (libraries
+  eio_main
+  yojson
+  unix
+  rq_worker_lib))

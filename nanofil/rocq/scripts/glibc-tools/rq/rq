@@ -302,13 +302,22 @@ def tree_and_flags(file, tree):
     return tree, path, ["-q"] + flags
 
 
+def worker_newest_mtime(src):
+    newest = 0.0
+    for root, dirs, files in os.walk(src):
+        dirs[:] = [d for d in dirs if d != "_build"]
+        for f in files:
+            newest = max(newest, os.path.getmtime(os.path.join(root, f)))
+    return newest
+
+
 def worker_binary():
     link = os.path.join(os.environ.get("PE_CACHE", "/tmp"), "rq-worker")
     src = os.path.join(HERE, "worker")
-    newest = max(os.path.getmtime(os.path.join(src, f)) for f in os.listdir(src))
+    newest = worker_newest_mtime(src)
     if not os.path.exists(link) or os.lstat(link).st_mtime < newest:
         expr = ('import %s/nanofil/nix/rq-worker.nix { pkgs = import (builtins.getFlake "%s").inputs.nixpkgs '
-                '{ system = "x86_64-linux"; }; }' % (REPO, REPO))
+                '{ system = builtins.currentSystem; }; }' % (REPO, REPO))
         r = subprocess.run(["nix", "build", "--impure", "-o", link, "--expr", expr])
         if r.returncode:
             die("could not build the rq worker")

@@ -1,16 +1,36 @@
-; Rocq loads its tactic plugins with Dynlink, so the worker links all of
-; rocq-runtime for them to find the modules they expect.
+; Rocq loads its tactic plugins with Dynlink, so the worker executable links
+; all of rocq-runtime (-linkall) so dynamically loaded plugins find every
+; module they reference.
+
+(library
+ (name rq_worker_lib)
+ (modules
+  source
+  interrupt
+  vernac_ast
+  rocq_goals
+  rocq_engine
+  history
+  session
+  protocol
+  job_queue
+  session_dir
+  server)
+ (libraries
+  eio
+  eio.unix
+  yojson
+  unix
+  threads.posix
+  rocq-runtime.toplevel))
 
 (executable
  (name rq_worker)
  (public_name rq-worker)
  (package rq-worker)
+ (modules rq_worker)
  (link_flags (-linkall))
  (libraries
   eio_main
-  eio.unix
-  yojson
-  str
-  unix
-  threads.posix
-  rocq-runtime.toplevel))
+  rocq-runtime.toplevel
+  rq_worker_lib))
