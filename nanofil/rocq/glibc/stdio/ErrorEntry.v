@@ -4,8 +4,8 @@
 
     Hello may report a failure after closing stdout. This rule still needs
     proof that the stdout object is alive and that flushing its closed state
-    is safe. The current close_stdout proof discards the object's ownership,
-    so it cannot yet use this rule. Looking up stdout does not restore it. *)
+    is safe. The global cells of stdout and the callback may be shared,
+    and a null callback needs no contract for the function it would call. *)
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -71,7 +71,7 @@ Qed.
     argument stays unchanged. The caller lends resources R to flushing,
     then S to the prefix call, and receives Q before message formatting.
     Resources E remain untouched, including any saved argument cursor. *)
-Lemma wp_error_internal_entry status errnum fmt ap mode tb treg state
+Lemma wp_error_internal_entry {dqs dqp : dfrac} status errnum fmt ap mode tb treg state
     ob oreg stdout dqo outr pb preg callback dqc cbr nb nreg pname dqn namer prefix
     flushfn flushframe prefixfn prefixframe cbname cbfn cbframe
     (R S Q E : iProp Σ) Φ :
@@ -101,19 +101,19 @@ Lemma wp_error_internal_entry status errnum fmt ap mode tb treg state
       live_capq dqn (ptr_cap pname) namer ∗ Q }}) ->
   (ptr_addr callback <> 0 -> ptr_cap callback = Fn cbname) ->
   (ptr_addr callback <> 0 -> function_check_res ge callback = Some ok) ->
-  find_fn ge cbname = Some (Defined cbfn) ->
-  indirect_call_conv cbfn CVoid [] [] = Some (Converted [] None) ->
-  call_frame cbfn [] = Some cbframe ->
-  (⊢ S -∗ WP (ERun cbframe : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Q }}) ->
+  (ptr_addr callback <> 0 -> find_fn ge cbname = Some (Defined cbfn)) ->
+  (ptr_addr callback <> 0 -> indirect_call_conv cbfn CVoid [] [] = Some (Converted [] None)) ->
+  (ptr_addr callback <> 0 -> call_frame cbfn [] = Some cbframe) ->
+  (ptr_addr callback <> 0 -> ⊢ S -∗ WP (ERun cbframe : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Q }}) ->
   live tb treg -∗ int_cell tb 792 state -∗
-  live ob oreg -∗ pcell ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
-  live pb preg -∗ pcell pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
+  liveq dqs ob oreg -∗ pcellq dqs ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
+  liveq dqp pb preg -∗ pcellq dqp pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
   live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ R -∗ E -∗
   (∀ e from cb, ⌜error_inputs e status errnum fmt ap mode cb⌝ -∗
     live tb treg -∗ int_cell tb 792 1 -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 state -∗
-    live ob oreg -∗ pcell ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
-    live pb preg -∗ pcell pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
+    liveq dqs ob oreg -∗ pcellq dqs ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
+    liveq dqp pb preg -∗ pcellq dqp pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
     live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ Q -∗ E -∗
     WP (ERun (mkFrame glibc_error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
@@ -141,16 +141,16 @@ Proof using Type*.
     try reflexivity; try assumption; try (cbn; lia).
   { iSplit; [done | iExact "Hsave"]. }
   iNext. iIntros "Ht Hstate Hcl Hsave". resume.
-  step. iApply (wp_live_fit1 with "Hol"). iIntros ([Ho0 Ho48]) "Hol".
-  check "Hol".
+  step. iApply (wp_live_fit with "Hol"). iIntros ([Ho0 Ho48]) "Hol".
+  check_read_dq "Hol" by a2. iNext. iIntros "Hol".
   iApply (wp_raw_load_pointer_dq with "Hol Hop Hout");
     [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hou |].
   iNext. iIntros "Hol Hop Hout".
   iApply wp_call_bind; [vx | exact Hflush | exact Hff |]. iNext.
   iApply (wp_wand with "[Hout HR]"); [iApply (Hflushcall with "Hout HR") |].
   iIntros (v) "H". iDestruct "H" as (r ->) "[Hout HS]". resume.
-  step. iApply (wp_live_fit1 with "Hpl"). iIntros ([Hp0 Hp48]) "Hpl".
-  check "Hpl".
+  step. iApply (wp_live_fit with "Hpl"). iIntros ([Hp0 Hp48]) "Hpl".
+  check_read_dq "Hpl" by a2. iNext. iIntros "Hpl".
   iApply (wp_raw_load_pointer_dq with "Hpl Hpp Hcb");
     [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hcu |].
   iNext. iIntros "Hpl Hpp Hcb". step. step.
@@ -166,15 +166,15 @@ Proof using Type*.
     iIntros (v) "H". iDestruct "H" as (r' ->) "[Hname HQ]". resume. step.
     iApply ("HK" with "[%] Ht Hstate Hcl Hsave Hol Hop Hout Hpl Hpp Hcb Hnl Hnp Hname HQ HE").
     unfold error_inputs. repeat split; lk_prove.
-  - branch_as false. step. step. check "Hpl".
+  - branch_as false. step. step. check_read_dq "Hpl" by a2. iNext. iIntros "Hpl".
     iApply (wp_raw_load_pointer_dq with "Hpl Hpp Hcb");
       [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hcu |].
     iNext. iIntros "Hpl Hpp Hcb".
     iApply wp_check_function; [vx | apply Hcheck; exact Hz |]. iNext.
     iApply wp_raw_call_bind; [vx | apply Hcap; exact Hz | apply Hcheck; exact Hz | vx |
-      exact Hcbfn | exact Hconv | |].
-    { destruct (variadic_func cbfn); cbn; rewrite ?skipn_nil; exact Hcbframe. }
-    iNext. iApply (wp_wand with "[HS]"); [iApply (Hcbcall with "HS") |].
+      exact (Hcbfn Hz) | exact (Hconv Hz) | |].
+    { destruct (variadic_func cbfn); cbn; rewrite ?skipn_nil; exact (Hcbframe Hz). }
+    iNext. iApply (wp_wand with "[HS]"); [iApply (Hcbcall Hz with "HS") |].
     iIntros (v) "[-> HQ]". resume. step.
     iApply ("HK" with "[%] Ht Hstate Hcl Hsave Hol Hop Hout Hpl Hpp Hcb Hnl Hnp Hname HQ HE").
     unfold error_inputs. repeat split; lk_prove.

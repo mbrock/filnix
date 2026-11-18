@@ -126,7 +126,7 @@ Proof using Hext Hreg Hsync.
     glibc__IO_fflush _ prefixfn prefixframe cbname cbfn cbframe
     (error_closed_flush vbreg sb sreg D) (error_closed_flush vbreg sb sreg D) Q E
     with "Ht Hstate Hol Hop Hout Hpl Hpp Hcb Hnl Hnp Hname HR HE");
-    try assumption; try reflexivity; try (cbn; lia); try exact Hflushcall.
+    try assumption; try reflexivity; try (cbn; lia); try exact Hflushcall; try (intros _; assumption).
   iIntros (e from cb Hinputs) "Ht Hflag Hcl Hsave Hol Hop Hout Hpl Hpp Hcb Hnl Hnp Hname HQ HE".
   iApply ("HK" with "[%] Ht Hflag Hcl Hsave [Hol Hop Hout] [Hpl Hpp Hcb Hnl Hnp Hname] HQ HE");
     [exact Hinputs | unfold error_stdout_loan; iFrame | unfold error_private_cells; iFrame].

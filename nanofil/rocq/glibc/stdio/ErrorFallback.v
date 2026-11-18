@@ -21,7 +21,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** The mode cell belongs to the real stderr object. The wide callee
     borrows that ownership and may return an error; its integer result
     does not affect the subsequent counter update. *)
-Lemma wp_error_fallback e status errnum fmt ap mode cb sb sreg fb freg dq md
+Lemma wp_error_fallback {dqs : dfrac} e status errnum fmt ap mode cb sb sreg fb freg dq md
     wide widefn wideframe (R E : iProp Σ) Φ :
   error_inputs e status errnum fmt ap mode cb ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
@@ -33,10 +33,10 @@ Lemma wp_error_fallback e status errnum fmt ap mode cb sb sreg fb freg dq md
   (0 < md < 2 ^ 31 -> ⊢ liveq dq fb freg -∗ int_cell fb 192 md -∗ R -∗
     WP (ERun wideframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
       liveq dq fb freg ∗ int_cell fb 192 md ∗ R }}) ->
-  live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
   int_cell fb 192 md -∗ R -∗ E -∗
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
-    live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
+    liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
     int_cell fb 192 md -∗ R -∗ E -∗
     WP (ERun (mkFrame glibc_error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
@@ -46,16 +46,16 @@ Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Hfb Hfe Hfr Hwide Hfn Hframe Hcall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hsl Hsp Hfl [%Hmd Hmb] HR HE HK".
-  iApply (wp_live_fit1 with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
   iApply (wp_live_fit with "Hfl"). iIntros ([Hf0 Hf48]) "Hfl".
-  step. step. check "Hsl".
+  step. step. check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
   iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hfl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; lia |].
   iNext. iIntros "Hsl Hsp Hfl". step.
   check_read_dq "Hfl" by a2. iNext. iIntros "Hfl".
   load_s32 "Hfl" "Hmb". step. step. step.
   destruct (decide (0 < md < 2 ^ 31)) as [Hpos | Hpos].
-  - branch_as false. step. step. step. check "Hsl".
+  - branch_as false. step. step. step. check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
     iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hfl");
       [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; lia |].
     iNext. iIntros "Hsl Hsp Hfl".

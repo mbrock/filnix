@@ -45,9 +45,11 @@ Local Instance error_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The cursor owns its cell and the snapshot, including the named words.
-    The internal callee may consume this temporary ownership. *)
+    The internal callee may consume this temporary ownership. The cursor
+    is an aligned heap object, because the formatter loads a pointer from it. *)
 Definition error_va (ap : ptr) (xs : list word) : iProp Σ :=
-  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < sb /\ sb mod 16 = 0 /\
+  ∃ cb sb, ⌜ap = mkPtr cb (Obj cb) /\ 0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= 2 ^ 48 /\
+      0 < sb /\ sb mod 16 = 0 /\
       sb + req_extent (fx_req xs) <= 2 ^ 48⌝ ∗
     pts (va_cursor_ps cb (mkRegion cb (cb + 32) Heap Live) (mkPtr (sb + 24) (Ro sb))) ∗
     pts (snapshot_ps xs sb (fx_req xs)).

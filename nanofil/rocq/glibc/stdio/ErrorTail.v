@@ -26,6 +26,7 @@ Context (tb : Z) (treg : region) (old : Z)
   (sb : Z) (sreg : region) (stderr : ptr) (dq : dfrac) (rreg : region)
   (newline : ptr) (newlinefn : func) (newlineframe : frame) (flushfn : func) (flushframe : frame)
   (R S Q E : iProp Σ).
+Context {dqs : dfrac}.
 Context (Hold : old = 0 \/ old = 1) (Hself : ow_self w0 = mkPtr tb (Obj tb))
   (Htb : 0 < tb) (Hta : tb mod 8 = 0) (Hte : tb + 796 <= r_end treg) (Htr : r_end treg <= 2 ^ 63)
   (Hcancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate))
@@ -51,21 +52,21 @@ Context (Hfxcall : ⊢ R -∗ WP (ERun newlineframe : gexpr)
     For nonzero status, this rule stops before the call to __GI_exit and
     leaves cancellation disabled. The saved flag remains available there. *)
 Lemma wp_error_tail_loan
-    (Hnewline_loan : ⊢ live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗
+    (Hnewline_loan : ⊢ liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗
       WP (ERun newlineframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
-        live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ S }})
+        liveq dqs sb sreg ∗ pcellq dqs sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ S }})
     e from status errnum fmt ap mode cb Φ :
   error_inputs e status errnum fmt ap mode cb -> 0 <= status < 2 ^ 32 ->
   live tb treg -∗ int_cell tb 792 1 -∗
   live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-  live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
   ((live tb treg -∗ int_cell tb 792 old -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) ∧
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) ∧
     (∀ e', ⌜status <> 0⌝ -∗ ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
       live tb treg -∗ int_cell tb 792 1 -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
       WP (ERun (mkFrame glibc_error_internal e' [] None
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
@@ -77,8 +78,8 @@ Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewlin
   iApply wp_call_bind; [vx | exact Hfx | exact Hfxframe |]. iNext.
   iApply (wp_wand with "[Hsl Hsp Hr HR]"); [iApply (Hnewline_loan with "Hsl Hsp Hr HR") |].
   iIntros (v) "H". iDestruct "H" as (r ->) "(Hsl & Hsp & Hr & HS)". resume.
-  step. iApply (wp_live_fit1 with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
-  check "Hsl".
+  step. iApply (wp_live_fit with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
+  check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
   iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hr");
     [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hptr |].
   iNext. iIntros "Hsl Hsp Hr".
@@ -88,7 +89,7 @@ Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewlin
   destruct (Z.eq_dec status 0) as [Hz | Hz].
   - branch_as true. iDestruct "HK" as "[HK _]".
     iApply (wp_error_restore Hreg Hext _ _ status errnum fmt ap mode cb old tb treg
-      (live sb sreg ∗ pcell sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ Q ∗ E)%I
+      (liveq dqs sb sreg ∗ pcellq dqs sb 0 stderr ∗ live_capq dq (ptr_cap stderr) rreg ∗ Q ∗ E)%I
       with "Ht Hflag Hcl Hsaved [$Hsl $Hsp $Hr $HQ $HE]"); try assumption.
     { unfold error_inputs. repeat split; lk_prove. }
     iIntros "Ht Hflag Hcl Hsaved (Hsl & Hsp & Hr & HQ & HE)".
@@ -104,14 +105,14 @@ Lemma wp_error_tail e from status errnum fmt ap mode cb Φ :
   error_inputs e status errnum fmt ap mode cb -> 0 <= status < 2 ^ 32 ->
   live tb treg -∗ int_cell tb 792 1 -∗
   live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-  live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
   ((live tb treg -∗ int_cell tb 792 old -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) ∧
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) ∧
     (∀ e', ⌜status <> 0⌝ -∗ ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
       live tb treg -∗ int_cell tb 792 1 -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-      live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
+      liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
       WP (ERun (mkFrame glibc_error_internal e' [] None
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
@@ -129,10 +130,10 @@ Lemma wp_error_tail_zero e from errnum fmt ap mode cb Φ :
   error_inputs e 0 errnum fmt ap mode cb ->
   live tb treg -∗ int_cell tb 792 1 -∗
   live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-  live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ R -∗ E -∗
   (live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
-    live sb sreg -∗ pcell sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
+    liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame glibc_error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.

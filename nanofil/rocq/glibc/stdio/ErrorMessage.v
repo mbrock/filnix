@@ -39,7 +39,7 @@ Definition error_message_returned fb freg eb ereg r en md : iProp Σ :=
     ⌜error_errno_bounds eb ereg⌝ ∗ live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ error_mode_own fb freg en md
    else emp)%I.
 
-Lemma wp_error_message e from status errnum fmt ap mode cb sb sreg fb freg dq eb ereg
+Lemma wp_error_message {dqs : dfrac} e from status errnum fmt ap mode cb sb sreg fb freg dq eb ereg
     formatter formatterframe wide widefn wideframe (V : ptr -> iProp Σ)
     (R : iProp Σ) (S : Z -> Z -> Z -> iProp Σ) (E : iProp Σ) Φ :
   error_inputs e status errnum fmt ap mode cb ->
@@ -59,9 +59,9 @@ Lemma wp_error_message e from status errnum fmt ap mode cb sb sreg fb freg dq eb
     WP (ERun wideframe : gexpr) {{ v, ∃ result, ⌜v = Ret (WInt result)⌝ ∗
       liveq dq fb freg ∗ int_cell fb 192 md ∗
       (live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ S r en md) }}) ->
-  live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ R -∗ E -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ R -∗ E -∗
   (∀ e' predecessor r en md, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
-    live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗
+    liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗
     error_message_returned fb freg eb ereg r en md -∗ S r en md -∗ E -∗
     WP (ERun (mkFrame glibc_error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
@@ -71,8 +71,8 @@ Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Hfb Hfmtfn Hfmtframe Hwide Hfn Hframe Hformat Hwidecall.
   destruct Hinputs as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   iIntros "Hsl Hsp Hfl HV HR HE HK".
-  iApply (wp_live_fit1 with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
-  step. step. check "Hsl".
+  iApply (wp_live_fit with "Hsl"). iIntros ([Hs0 Hs48]) "Hsl".
+  step. step. check_read_dq "Hsl" by a2. iNext. iIntros "Hsl".
   iApply (wp_raw_load_pointer_dq with "Hsl Hsp Hfl");
     [reflexivity | vx | left; reflexivity | a2 | a2 | exact Hfb |].
   iNext. iIntros "Hsl Hsp Hfl".

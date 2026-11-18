@@ -24,7 +24,7 @@ Definition error_mode_own fb freg en md : iProp Σ :=
     ⌜0 < fb /\ fb + 196 <= r_end freg /\ r_end freg <= 2 ^ 63⌝ ∗ int_cell fb 192 md
    else emp)%I.
 
-Lemma wp_error_failure e status errnum fmt ap mode cb sb sreg fb freg dq eb ereg en md
+Lemma wp_error_failure {dqs : dfrac} e status errnum fmt ap mode cb sb sreg fb freg dq eb ereg en md
     wide widefn wideframe (R E : iProp Σ) Φ :
   error_inputs e status errnum fmt ap mode cb ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
@@ -39,10 +39,10 @@ Lemma wp_error_failure e status errnum fmt ap mode cb sb sreg fb freg dq eb ereg
     WP (ERun wideframe : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
       liveq dq fb freg ∗ int_cell fb 192 md ∗
       (live eb ereg ∗ (∃ now, int_cell eb 0 now) ∗ R) }}) ->
-  live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
+  liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
   live eb ereg -∗ int_cell eb 0 en -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
-    live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
+    liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
     live eb ereg -∗ (∃ now, int_cell eb 0 now) -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
     WP (ERun (mkFrame glibc_error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
