@@ -52,8 +52,7 @@ Proof. eexists. reflexivity. Qed.
     returns. The last premise gives the open contracts. For each ghost
     state, it chooses the library calls of [HelloCore]. For every
     environment array and thread object, it gives the contracts that
-    [hello_tb_contracts] states: the contract of `c: fputs` and the
-    private state's shape. *)
+    [hello_tb_contracts] states: the private state's shape. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 m s w xs fuel :
   start_state hello_image_module w0 m w xs ->

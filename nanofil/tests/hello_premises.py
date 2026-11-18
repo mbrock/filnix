@@ -15,10 +15,10 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts one
-  obligation with its own label: the contract of fputs
-  (fputs_has_spec). The formatter's contract is proved for the image
-  by hello_vfprintf_image in HelloVfprintfImage.v.
+  Its body, hello_tb_contracts in HelloStartWp.v, counts no
+  obligation: the contracts of fputs and the formatter are proved for
+  the image by hello_fputs_image and hello_vfprintf_image in
+  HelloVfprintfImage.v, and any HasSpec conjunct added back would count.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted. Its components are concrete and
   hello_priv_build proves that startup's objects build them.
@@ -72,8 +72,6 @@ TAGS = [
     (r'hd_setlocale_', 'locale'),
     (r'hd_wprintf', 'wprintf (gap W)'),
     (r'hd_close_stdout', 'close_stdout'),
-    (r'vfprintf_has_spec', 'printf'),
-    (r'fputs_has_spec', 'libio'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
@@ -88,7 +86,6 @@ STATUS = [
     (r'hd_wprintf', 'unknown: the private state holds the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
-    (r'vfprintf_has_spec|fputs_has_spec', SAT),
 ]
 # These tags describe the world the theorem is about and stay; every
 # other tag is a proof debt that should reach zero.
@@ -156,12 +153,10 @@ def tb_contracts():
     out = []
     for c in split_top(body, '/\\'):
         c = strip_parens(c)
-        if c.startswith('HasSpec') and '__vfprintf_internal' in c:
-            out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
-        elif c.startswith('HasSpec') and '"fputs"' in c:
-            out.append(f"contract: glibc's fputs, fputs_has_spec ({c})")
-    if len(out) != 1:
-        sys.exit(f'hello_premises: expected 1 counted conjunct in hello_tb_contracts, found {len(out)}')
+        if c.startswith('HasSpec'):
+            out.append(f"contract: {c}")
+    if out:
+        sys.exit(f'hello_premises: expected no counted conjunct in hello_tb_contracts, found {len(out)}')
     return out
 
 

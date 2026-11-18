@@ -662,6 +662,7 @@ libio/LibioDefaultXsputnRoom.v
 libio/LibioFlush.v
 libio/LibioFlushOverCall.v
 libio/LibioFputs.v
+libio/LibioFputsIdle.v
 libio/LibioFputsSpec.v
 libio/LibioFflushSpec.v
 libio/LibioFflushIdle.v

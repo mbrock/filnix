@@ -1,7 +1,7 @@
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c) over a string at any share and a stream as
-    LibioPutsInv.v's [file_at] has it ([wp_glibc__IO_fputs]):
+    the caller's stream predicate F has it ([wp_glibc__IO_fputs]):
 
     ```c
     size_t len = strlen (str);
@@ -17,12 +17,13 @@ From Glibc Require Import GlibcProgram.
     Each part of the function is proved in its own file, and this
     file adds the branch on whether the whole string was written and
     puts the parts together. The write through the jump table stays a
-    hypothesis of LibioPutsInv.v.
+    hypothesis, LibioPutsInv.v's [xsputn_spec_for] over F, and
+    LibioFputsIdle.v discharges it for a buffered stream.
 
     | Part | Blocks | File |
     |---|---|---|
     | the length and the lock | start to `c: L29` | LibioFputsLock.v |
-    | the orientation and the write | `c: L113` to `c: iw_1.join` | LibioFputsCall.v, over [xsputn_spec] |
+    | the orientation and the write | `c: L113` to `c: iw_1.join` | LibioFputsCall.v, over [xsputn_spec_for] |
     | the result, 1 or `c: EOF` | `c: L162`, `c: L106` | here |
     | the release | `c: L107` | LibioFputsUnlock.v | *)
 
@@ -59,26 +60,28 @@ Context (vb : Z)
   (vreg : region)
   (Rx : iProp Σ).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hxs : xsputn_spec w0 registry ge vb Rx).
+Context (F : ptr -> Z -> option Z -> iProp Σ).
+Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
+Context (Hxs : xsputn_spec_for w0 registry ge F (fun _ fp _ held => ∃ mode', F fp mode' held)%I Rx).
 
 
 (** Expressions of the language. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-(** Block `c: L107` of `c: fputs` over a [file_at] stream whose lock is
+(** Block `c: L107` of `c: fputs` over a stream F whose lock is
     held once: LibioFputsUnlock.v's [wp_fputs_unlock], the lock free
     again after it. *)
 Lemma wp_fputs_L107 e r fb m sb sreg Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v2") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
   lookup (TAtom "pr.1") e = Some (WInt r) -> 0 <= r < 2 ^ 32 ->
-  single_ro ge sb sreg -∗ file_at vb (ow_self w0) fp m (Some 0) -∗
-  ▷ (file_at vb (ow_self w0) fp m None -∗ Φ (Ret (WInt r))) -∗
+  single_ro ge sb sreg -∗ F fp m (Some 0) -∗
+  ▷ (F fp m None -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
         : sexpr) {{ Φ }}.
-Proof using Type.
+Proof using Hopen.
   intros fp Hv2 Hc0 Hr Hrr. subst fp. iIntros "#Hs Hf HK".
-  iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  iDestruct (Hopen with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
@@ -88,22 +91,21 @@ Proof using Type.
 Qed.
 
 (** `c: fputs(s, fp)`, s at p the string at the share dq and fp a
-    [file_at] stream at any mode with its lock free: the string and the
-    stream come back, the stream oriented ([oriented]) and its lock
-    free, and the result is 1 when the whole string was written, else
+    stream F at any mode with its lock free: the string and the
+    stream come back, the stream at some mode and its lock free, and the result is 1 when the whole string was written, else
     `c: EOF`. *)
 Lemma wp_glibc__IO_fputs fr p dq s fp mode sb sreg Φ :
   call_frame glibc__IO_fputs [WPtr p; WPtr fp] = Some fr ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ word_string dq p s -∗
-  file_at vb (ow_self w0) fp mode None -∗ Rx -∗
+  F fp mode None -∗ Rx -∗
   ▷ (∀ r, ⌜r = 1 \/ r = 2 ^ 32 - 1⌝ -∗ word_string dq p s -∗
-     file_at vb (ow_self w0) fp (oriented mode) None -∗ Rx -∗ Φ (Ret (WInt r))) -∗
+     (∃ mode', F fp mode' None) -∗ Rx -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof using Hext Hreg Hxs Hxs_fn.
+Proof using Hext Hopen Hreg Hxs Hxs_fn.
   intros Hfr Hstr Hsz. iIntros "#Hvt #Hs Hstr Hf HRx HK".
-  iDestruct (file_at_open with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  iDestruct (Hopen with "Hf") as (fb freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (-> & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv).
   iDestruct "Hlk" as (lb' lreg Hlb) "Hlk". injection Hlb as <-.
   pose proof Hul as Hul'. unfold has, io_user_lock in Hul'. apply negb_false_iff, Z.eqb_eq in Hul'.
@@ -113,8 +115,8 @@ Proof using Hext Hreg Hxs Hxs_fn.
   iDestruct ("Hcl" $! mode (Some 0) with "[//] Hl Hfl Hlp [Hlk] Hmd Hvtp") as "Hf";
     [iExists lb, lreg; iSplit; done|].
   (* The orientation and the write. *)
-  iApply (wp_fputs_L113 vb vreg Rx Hxs_fn Hxs with "Hvt Hf Hstr HRx"); try eassumption.
-  iNext. iIntros (e1 c (Hsame & Hc)) "Hf Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
+  iApply (wp_fputs_L113 vb vreg Rx Hxs_fn F Hopen Hxs with "Hvt Hf Hstr HRx"); try eassumption.
+  iNext. iIntros (e1 c (Hsame & Hc)) "[%m1 Hf] Hstr HRx". rewrite keeps_forall in Hsame; cbn [atoms List.map List.In] in Hsame.
   assert (Hv2' : lookup (TAtom "v2") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   assert (Hc0' : lookup (TAtom "chk0") e1 = Some (WPtr (mkPtr fb (Obj fb)))) by (rewrite Hsame; auto).
   clear Hsame. unfold fp_j162.
@@ -124,11 +126,11 @@ Proof using Hext Hreg Hxs Hxs_fn.
   - (* The write fell short: L106, then L107 with `c: EOF`. *)
     step. step. iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_fputs_L107 _ (2 ^ 32 - 1) with "Hs Hf"); [lk_prove | lk_prove | lookups; reflexivity | lia |].
-    iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hf HRx"). right. reflexivity.
+    iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr [Hf] HRx"); [right; reflexivity | by iExists _].
   - (* The whole string written: L107 with 1. *)
     iApply wp_enter; [reflexivity | vx | iNext].
     iApply (wp_fputs_L107 _ 1 with "Hs Hf"); [lk_prove | lk_prove | lookups; reflexivity | lia |].
-    iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr Hf HRx"). left. reflexivity.
+    iNext. iIntros "Hf". iApply ("HK" with "[%] Hstr [Hf] HRx"); [left; reflexivity | by iExists _].
 Qed.
 
 End rules.

@@ -11,7 +11,8 @@ From Glibc Require Import GlibcProgram.
     `c: _IO_fwide(fp, -1)` makes an unoriented stream narrow, its
     `c: _mode` 0 becoming -1, and a narrow stream's string goes to the
     jump table's `c: _IO_new_file_xsputn` ([wp_fputs_L161]), whose
-    triple is LibioPutsInv.v's hypothesis [xsputn_spec]; a wide stream,
+    triple is the hypothesis [Hxs], LibioPutsInv.v's [xsputn_spec_for]
+    over the caller's stream predicate F; a wide stream,
     `c: _mode` 1, skips the write ([wp_fputs_L113]). Both reach block
     `c: L162`, whose flag `c: v176` is nonzero only when the call wrote
     the whole string. The code is LibioPutsMode.v's and
@@ -51,7 +52,9 @@ Context (vb : Z)
   (vreg : region)
   (Rx : iProp Σ).
 Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context (Hxs : xsputn_spec w0 registry ge vb Rx).
+Context (F : ptr -> Z -> option Z -> iProp Σ).
+Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
+Context (Hxs : xsputn_spec_for w0 registry ge F (fun _ fp _ held => ∃ mode', F fp mode' held)%I Rx).
 
 
 (** Expressions of the language. *)
@@ -65,16 +68,16 @@ Lemma wp_fputs_L161 e p dq s fb Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WInt (Z.of_nat (length s))) ->
   lookup (TAtom "v2") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
-  vtables_ro ge vb vreg -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  vtables_ro ge vb vreg -∗ F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
-     file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+     (∃ mode', F fp mode' (Some 0)) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L161") (Some (TAtom "L125")))) : sexpr) {{ Φ }}.
-Proof using Hxs Hxs_fn.
+Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".
   iDestruct (word_string_len with "Hstr") as %Hlen.
-  iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  iDestruct (Hopen with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   unfold file_size in Hfend.
   rewrite (mode_vtable_narrow _ _ Hmv); [|lia].
@@ -112,21 +115,21 @@ Qed.
 (** Block `c: L113` of `c: fputs`, the stream fb at any mode with its
     lock held once: an unoriented stream's `c: _mode` becomes -1, a
     narrow one's string is written by [wp_fputs_L161], and block
-    `c: L162` is reached with the stream at its [oriented] mode, its
+    `c: L162` is reached with the stream at some mode, its
     flag `c: v176` 0 for a wide stream. *)
 Lemma wp_fputs_L113 e p dq s fb mode Φ :
   let fp := mkPtr fb (Obj fb) in
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WInt (Z.of_nat (length s))) ->
   lookup (TAtom "v2") e = Some (WPtr fp) -> lookup (TAtom "chk0") e = Some (WPtr fp) ->
-  vtables_ro ge vb vreg -∗ file_at vb (ow_self w0) fp mode (Some 0) -∗ word_string dq p s -∗ Rx -∗
+  vtables_ro ge vb vreg -∗ F fp mode (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
-     file_at vb (ow_self w0) fp (oriented mode) (Some 0) -∗ word_string dq p s -∗ Rx -∗
+     (∃ mode', F fp mode' (Some 0)) -∗ word_string dq p s -∗ Rx -∗
      WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}.
-Proof using Hxs Hxs_fn.
+Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".
-  iDestruct (file_at_open with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
+  iDestruct (Hopen with "Hf") as (fb' freg fl lb vt) "(%Hp & Hl & Hfl & Hlp & Hlk & Hmd & Hvtp & Hcl)".
   destruct Hp as (Hfp & Hfb & Hfal & Hfend & Hfreg & Hflr & Hul & Hmv). injection Hfp as <-.
   unfold file_size in Hfend.
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hf0 Hf48]) "Hl".
@@ -157,7 +160,7 @@ Proof using Hxs Hxs_fn.
     iDestruct ("Hcl" $! 1%Z (Some 0) with "[%] Hl Hfl Hlp Hlk [$Hmd //] Hvtp") as "Hf";
       [right; split; reflexivity|].
     iApply wp_enter; [reflexivity | vx | iNext].
-    iApply ("HK" with "[%] Hf Hstr HRx").
+    iApply ("HK" with "[%] [Hf] Hstr HRx"); last (by iExists _).
     split; [rewrite keeps_forall; cbn [atoms List.map List.In]; intros x Hx; destruct Hx as [<- | [<- | [<- | [<- | []]]]]; lookups; reflexivity | lk_prove].
 Qed.
 

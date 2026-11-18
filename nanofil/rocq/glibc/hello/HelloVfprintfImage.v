@@ -22,7 +22,8 @@ From Glibc Require Import OsWorld OsRegistry SysCode LibioLogic LibioSetb LibioR
   LibioGenCode LibioXsputnCode LibioStreamTidy LibioOverflowHeap PrintfSpec PrintfBufferFileCode PrintfBufferIoCode
   PrintfStateCode StrlenLogic StrchrCode MemFwdCode FormatterCode FormatterScan FormatterLiteral PrintfPutcOneCode
   PrintfPadOneCode ItoaWordCode PrintfFileEntry PrintfFileCalls PrintfInternal HiAtexitSetb HelloGlibcLibsT
-  LibioXsputnHeap.
+  LibioXsputnHeap
+  LibioFputsSpec LibioPutsCode LibioFputsIdle.
 From Glibc Require LibioCleanupExit AllocLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01 HelloImageLayout.
 Import ListNotations.
@@ -37,6 +38,40 @@ Local Ltac image_defines := unfold Defines; vm_compute; reflexivity.
     address in the image. *)
 Local Ltac image_fn n :=
   exists (img_addr n); split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]].
+
+(** The image runs glibc's own string writer on a buffered stream. The
+    formatter's flush and `c: fputs` both call it, and LibioXsputnHeap.v
+    proves it for every program that links the functions it calls. *)
+Lemma hello_xsputn_heap_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr :
+  hello_link (mkGenv hello_image_module img_globals fr) hello_image_objs ->
+  xsputn_heap_rule (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr)).
+Proof.
+  intros Hk.
+  set (ge := mkGenv hello_image_module img_globals fr) in *.
+  set (P := program_of w0 glibc_os_registry ge) in *.
+  destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
+  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
+  assert (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat) by image_fn "__GI__IO_file_stat".
+  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
+  assert (Hmove : find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None)
+    by (split; vm_compute; reflexivity).
+  assert (Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf) by image_defines.
+  assert (Defines ge "__GI__IO_setb" glibc__IO_setb) by image_defines.
+  assert (Defines ge "__GI___write" glibc___libc_write) by image_defines.
+  assert (Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
+  assert (Defines ge "__GI_memcpy" glibc_memcpy) by image_defines.
+  assert (Defines ge "__GI_mempcpy" glibc_mempcpy) by image_defines.
+  assert (Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn) by image_defines.
+  assert (Defines ge "__GI___fstat64" glibc___fstat64) by image_defines.
+  assert (Defines ge "__gnu_dev_major" glibc___gnu_dev_major) by image_defines.
+  assert (Defines ge "__isatty_nostatus" glibc___isatty_nostatus) by image_defines.
+  assert (Defines ge "free" AllocLogic.free_fn) by exact (hk_free _ _ Hk).
+  assert (Defines ge "malloc" AllocLogic.malloc_fn) by exact (hk_malloc _ _ Hk).
+  assert (Defines ge "glibc_malloc#__libc_malloc2" AllocLogic.malloc2_fn) by exact (hk_malloc2 _ _ Hk).
+  exact (wp_xsputn_heap (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hstat Hfh Hzf Hzg Hda
+    Hfw Hov eq_refl (proj1 Hmove) (proj2 Hmove)).
+Qed.
 
 (** A call of `c: __vfprintf_internal` in the Hello image is safe
     when the caller meets the formatter's contract. The image runs
@@ -90,13 +125,10 @@ Proof.
   assert (Defines ge "__GI___fstat64" glibc___fstat64) by image_defines.
   assert (Defines ge "__gnu_dev_major" glibc___gnu_dev_major) by image_defines.
   assert (Defines ge "__isatty_nostatus" glibc___isatty_nostatus) by image_defines.
-  assert (Defines ge "__GI_mempcpy" glibc_mempcpy) by image_defines.
-  assert (Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn) by image_defines.
   assert (Defines ge "free" AllocLogic.free_fn) by exact (hk_free _ _ Hk).
   assert (Defines ge "malloc" AllocLogic.malloc_fn) by exact (hk_malloc _ _ Hk).
   assert (Defines ge "glibc_malloc#__libc_malloc2" AllocLogic.malloc2_fn) by exact (hk_malloc2 _ _ Hk).
-  pose proof (wp_xsputn_heap (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hstat Hfh Hzf Hzg Hda
-    Hfw Hov eq_refl (proj1 Hmove) (proj2 Hmove)) as Hxs_heap.
+  pose proof (hello_xsputn_heap_image w0 fr Hk) as Hxs_heap.
   pose proof (wp_overflow_heap (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hstat
     Hfh Hzf Hzg Hda Hfw Hov) as Hov_heap.
   refine (vfprintf_has_spec (glibc_program := P) _ _); intros a Hok.
@@ -104,4 +136,32 @@ Proof.
       Hfw Hov Hxs Hxs_heap Hov_heap a Hok Hmove (hk_zmemset _ _ Hk)).
   - exact (file_done_tidy_has_spec (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hfree
       Hfw Hov Hxs Hxs_heap Hov_heap a Hok).
+Qed.
+
+(** A call of `c: fputs` in the Hello image is safe when the caller
+    meets its contract. The image runs glibc's own `c: fputs`, which
+    takes the stream lock, orients the stream and calls the string
+    writer. The stream lock records the thread pointer, which must not
+    be null, and the error cell is the one the image links. *)
+Lemma hello_fputs_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr :
+  hello_link (mkGenv hello_image_module img_globals fr) hello_image_objs ->
+  ptr_addr (ow_self w0) <> 0 -> lookup (TAtom "__libc_errno") img_globals = ow_errno w0 ->
+  HasSpec glibc_os_registry (os_wi w0) (mkGenv hello_image_module img_globals fr) (TAtom "fputs")
+    (fputs_spec (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr))).
+Proof.
+  intros Hk Hself He.
+  set (ge := mkGenv hello_image_module img_globals fr) in *.
+  set (P := program_of w0 glibc_os_registry ge) in *.
+  destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
+  pose proof (hi_free_rule (glibc_program := P) (Hfree_fn := hk_free _ _ Hk) Hfh Hzf Hzg) as Hfree.
+  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
+  assert (Hxs : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn) by image_fn "_IO_new_file_xsputn".
+  assert (Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf) by image_defines.
+  assert (Defines ge "__GI__IO_setb" glibc__IO_setb) by image_defines.
+  assert (Defines ge "__GI___write" glibc___libc_write) by image_defines.
+  assert (Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
+  assert (Defines ge "fputs" glibc__IO_fputs) by image_defines.
+  exact (fputs_has_spec (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hfree Hfw Hov Hxs
+    (hello_xsputn_heap_image w0 fr Hk) (hk_gi_strlen _ _ Hk) He Hself).
 Qed.
