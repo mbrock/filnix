@@ -81,7 +81,7 @@ Context (Hwrite : forall E : iProp Σ, (E ⊢ □ wconv_ro) -> (E ⊢ wlocale (D
 
 (** The warning resources split into the stream resources, the locale
     cells and the rest, which takes both back. *)
-Local Lemma dgx_locale_lend v tid treg : hello_dgx w R.free tb v tid treg ⊢
+Lemma dgx_locale_lend v tid treg : hello_dgx w R.free tb v tid treg ⊢
   tcb_cleanup_inv self ∗ errno_any eb ∗ err_idle ∗
   (live lt ltreg ∗ pcell lt 0 (mkPtr gl (Obj gl)) ∗ live gl glreg) ∗
   (tcb_cleanup_inv self ∗ errno_any eb ∗ err_idle -∗
@@ -118,7 +118,7 @@ Qed.
     locale cells out and keep its streams. Returning the cells gives
     back a closed warning state, which accepts the streams again at the
     next warning. *)
-Local Lemma hd_locale_lend :
+Lemma hd_locale_lend :
   hello_hd_getopt w R.free tb ∗ tcb_cleanup_inv self ∗ errno_any eb ∗ err_idle ⊢
   (live lt ltreg ∗ pcell lt 0 (mkPtr gl (Obj gl)) ∗ live gl glreg) ∗
   tcb_cleanup_inv self ∗ errno_any eb ∗ err_idle ∗
@@ -127,6 +127,21 @@ Proof using Hfd2.
   iIntros "((%x & %Hx & W) & Ht & He & Hs)". iDestruct ("W" with "[$Ht $He $Hs]") as "HG".
   iDestruct (dgx_locale_lend with "HG") as "(Ht & He & Hs & Hc & W)". iFrame "Hc Ht He Hs".
   iIntros "Hc". iExists x. iSplit; [done|]. iIntros "S". iApply ("W" with "S Hc").
+Qed.
+
+(** The conversion's read-only tables come from two persistent parts
+    of the private state. The locale part holds the C character data's
+    lifetime, and the conversion part holds the converter path and the
+    wide constants. *)
+Lemma hello_wconv_ro : ct_ro hello_ct_objs ∗ hello_conv_ro ⊢ wconv_ro.
+Proof using Type.
+  iIntros "[#Hct #Hconv]". iPoseProof "Hct" as "[#Hcc _]". iPoseProof (hello_conv_tables with "Hconv") as "#Htab".
+  iPoseProof "Hconv" as "[_ Hwo]". iEval (rewrite /hello_wide_objs_ps (ptsq_app _ hello_wfwide_ps)
+    (ptsq_app _ hello_wrelease_ps) (ptsq_app _ hello_wc_tables_ps) (ptsq_app _ hello_wc_words_ps)
+    (ptsq_app _ hello_wc_tails_ps)) in "Hwo".
+  iDestruct "Hwo" as "(#Hwf & _ & #Hwt & #Hww & #Hwl & _)".
+  iSplit; [iSplit; [iExact "Hcc" | iExact "Htab"]|].
+  iSplit; [iExact "Hwf"|]. iSplit; [iExact "Hwt"|]. iSplit; [iExact "Hww" | iExact "Hwl"].
 Qed.
 
 (** ## The callback's globals
@@ -187,13 +202,12 @@ Proof using Herr Hfd1 Hfd2 Hvf Hwrite.
   iDestruct (close_cells_wide with "Hrest") as "((Hxl & Hxc) & (Hil & Hib) & (Hnl & Hnp) & Hlk)".
   iDestruct (hd_locale_lend with "[$Hg $Htcb $He $Hse]") as "((Hlt & Hlp & Hlg) & Htcb & He & Hse & Wg)".
   iDestruct "Hloc" as "(Hcat & _ & _ & _ & _ & #Hct & _)".
-  iPoseProof "Hct" as "[#Hcc _]". iPoseProof (hello_conv_tables with "Hconv") as "#Htab".
+  iAssert wconv_ro as "#Hwc".
+  { iApply hello_wconv_ro. iSplit; [iExact "Hct" | iExact "Hconv"]. } iPoseProof "Hwc" as "(#Hmb & #Hwf & _)".
   iPoseProof "Hconv" as "[_ Hwo]". iEval (rewrite /hello_wide_objs_ps (ptsq_app _ hello_wfwide_ps)
-    (ptsq_app _ hello_wrelease_ps) (ptsq_app _ hello_wc_tables_ps) (ptsq_app _ hello_wc_words_ps) (ptsq_app _ hello_wc_tails_ps)) in "Hwo".
-  iDestruct "Hwo" as "(#Hwf & #Hwr & #Hwt & #Hww & #Hwl & _)".
-  iAssert mbr_tables as "#Hmb"; [iSplit; [iExact "Hcc" | iExact "Htab"]|].
+    (ptsq_app _ hello_wrelease_ps)) in "Hwo". iDestruct "Hwo" as "(_ & #Hwr & _)".
   iAssert (wconv_ro ∗ wlocale (DfracOwn 1))%I with "[Hlt Hlp Hlg Hcat]" as "HL".
-  { iSplit; [iSplit; [iExact "Hmb"|]; iSplit; [iExact "Hwf"|]; iSplit; [iExact "Hwt"|]; iSplit; [iExact "Hww" | iExact "Hwl"]|].
+  { iSplit; [iExact "Hwc"|].
     iSplitL "Hlt"; [iExact "Hlt"|]. iSplitL "Hlp"; [iExact "Hlp"|]. iSplitL "Hlg"; [iExact "Hlg"|].
     rewrite /pcellq -pts_ptsq. iExact "Hcat". }
   iDestruct "Hec" as (cb creg n Hc) "[Hcl Hcnt]".
