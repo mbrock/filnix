@@ -192,6 +192,16 @@ Proof using Type.
   iExists tbreg, jb. iSplit; [done|]. iFrame "Hcl Hj Hx". iApply ("Hb" with "Hc0").
 Qed.
 
+(** G lends the locale cells that Hello's own query reads. *)
+Lemma dtx_locale v :
+  dtx_G v ⊢ word_string DfracDiscarded cv [67] ∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg ∗
+    (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg -∗ dtx_G v).
+Proof using Type.
+  unfold dtx_G, dtx_G0. iIntros "(%tbreg & %jb & %Hc & Hcl & Hj & Hx & H0)".
+  iDestruct (dgx_locale with "H0") as "(#Hcv & HC & Hb)". iSplitR; [iExact "Hcv"|]. iSplitL "HC"; [iExact "HC"|].
+  iIntros "HC". iExists tbreg, jb. iSplit; [done|]. iFrame "Hcl Hj Hx". iApply ("Hb" with "HC").
+Qed.
+
 (** The old T gives back the message and the old G. *)
 Lemma dtx_T0_G tbreg v mid q : dtx_T0 tbreg v mid q ⊢ ⌜q = mid⌝ ∗ dtx_G0 tbreg v.
 Proof using Type.

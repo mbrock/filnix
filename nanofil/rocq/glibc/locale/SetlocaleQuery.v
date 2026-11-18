@@ -35,13 +35,15 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A caller who asks for the name of category 5 gets the pointer that
     glibc keeps for that category, and it gets back every share it lent.
-    The pointer sits 168 bytes into `c: _nl_global_locale`. *)
-Lemma wp_setlocale_query fr gb greg dq cn treg dqt Φ :
+    The pointer sits 168 bytes into `c: _nl_global_locale`. The caller
+    may lend the object's lifetime and the name's cell at different
+    fractions, because the function only reads them. *)
+Lemma wp_setlocale_query fr gb greg dql dqc cn treg dqt Φ :
   call_frame glibc_setlocale [WInt 5; WPtr null] = Some fr ->
   lookup (TAtom "_nl_global_locale") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
   0 < gb -> gb mod 8 = 0 -> gb + 232 <= r_end greg -> r_end greg <= 2 ^ 48 -> 0 <= ptr_addr cn < 2 ^ 64 ->
-  liveq dq gb greg -∗ pcellq dq gb 168 cn -∗ live_capq dqt (ptr_cap cn) treg -∗
-  ▷ (liveq dq gb greg -∗ pcellq dq gb 168 cn -∗ live_capq dqt (ptr_cap cn) treg -∗ Φ (Ret (WPtr cn))) -∗
+  liveq dql gb greg -∗ pcellq dqc gb 168 cn -∗ live_capq dqt (ptr_cap cn) treg -∗
+  ▷ (liveq dql gb greg -∗ pcellq dqc gb 168 cn -∗ live_capq dqt (ptr_cap cn) treg -∗ Φ (Ret (WPtr cn))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfr Hgl Hgb Hal Hend Hmax Hcn. injection Hfr as <-.

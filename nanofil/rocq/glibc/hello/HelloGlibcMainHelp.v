@@ -60,7 +60,7 @@ Proof using Hy Lb.
   (* setlocale (LC_MESSAGES, NULL). *)
   iApply (wp_call_ptr w0 ge _ _ _
             (fun q => hello_stdio w0 ge o ∗ hd_priv w0 ge o D ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I with "[Hio Hpv]");
-    [exact (hd_setlocale_query _ _ _ D) | reflexivity |
+    [exact (hl_setlocale_query _ _ _ _ _ _ Lb) | reflexivity |
      iSplitR; [iExact "Hro" | iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]] |].
   iNext. iIntros (q) "(Hio & Hpv & Hq)".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].

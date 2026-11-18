@@ -1020,6 +1020,7 @@ hello/HelloImageCLocaleObjs.v
 hello/HelloStartGetopt.v
 hello/HelloStartGetoptRules.v
 hello/HelloStartHdGetopt.v
+hello/HelloStartQuery.v
 hello/HelloStartHdRules.v
 hello/HelloStartHdBuild.v
 hello/HelloImageStart.v

@@ -29,7 +29,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloGlibcLibsT HelloImageModule
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
-  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt
+  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery
   HelloStartHdRules HelloStartHdBuild HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
@@ -146,9 +146,10 @@ Proof using Hi.
       (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
        HelloGlibcJoin.Libs.exit_lock o)%I).
   { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
-    destruct (Hc tb H0 H1) as (Hvf & Hfputs & _).
+    destruct (Hc tb H0 H1) as (Hvf & Hfputs & X & Hpv & _).
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
+      (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ X _ Hpv)
       (hello_prints_image (final_world w0 tb) fr _ Hy (hello_link_all fr Hfree) Herr
          ltac:(rewrite Hfds; exact Hfd1) ltac:(rewrite Hfds; exact Hfd2) (hello_os_layout_final w0 tb He ltac:(lia))
          Hvf Hfputs)). }

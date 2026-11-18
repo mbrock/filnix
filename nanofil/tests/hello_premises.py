@@ -74,7 +74,6 @@ STATUS = [
     (r'^In [12] |frees_heap|start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
     (r'hd_setlocale_all', 'unknown: X holds every object on the locale worker\'s list for setlocale, and the lock '
                           'is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
-    (r'hd_setlocale_query', SAT),
     (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
                       'by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),

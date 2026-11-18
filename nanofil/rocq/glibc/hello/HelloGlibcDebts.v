@@ -275,6 +275,14 @@ Definition ncells (x y z : ptr) : iProp Σ :=
 (** Error reporting reads three name cells that point to read-only strings. *)
 Definition names : iProp Σ := ∃ x y z, ncells x y z ∗ str_ro x ∗ str_ro y ∗ str_ro z.
 
+(** Hello asks `c: setlocale (LC_MESSAGES, NULL)` for the name of the
+    message locale before it prints its help text. The query reads
+    cells that the private state priv holds and gives priv back. *)
+Definition setlocale_query (priv : iProp Σ) : Prop :=
+  fn_triple (TAtom "setlocale") [WInt 5; WPtr null]
+    (hello_ro ∗ hello_stdio ∗ priv)%I
+    (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I.
+
 (** The remaining milestones must prove these call contracts while
     preserving the standard streams and the callees' private state.
     Milestone M6 covers locale queries, conversion and wide output.
@@ -294,10 +302,6 @@ Record HelloCore : Type := mkHelloCore {
   hd_setlocale_all :
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
-  hd_setlocale_query :
-    fn_triple (TAtom "setlocale") [WInt 5; WPtr null]
-      (hello_ro ∗ hello_stdio ∗ hd_priv)%I
-      (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
     fn_triple (TAtom "rpl_mbsrtowcs")
@@ -382,6 +386,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
     fn_triple (TAtom "close_stdout") [] (hello_ro ∗ S ∗ priv ∗ names) (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I ->
     fn_triple (TAtom "exit") [WInt n] (hello_ro ∗ S ∗ priv ∗ names ∗ X) (fun _ => False)%I;
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
+  hl_setlocale_query : setlocale_query priv;
   hl_prints : HelloPrints priv
 }.
 

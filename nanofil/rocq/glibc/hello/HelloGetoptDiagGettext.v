@@ -315,6 +315,23 @@ Proof using Type.
   iSplitL "H5"; [iExact "H5"|]. iSplitL "H6"; [iExact "H6"|]. iSplitL "H7"; [iExact "H7"|]. iExact "He".
 Qed.
 
+(** Hello's own call `c: setlocale (LC_MESSAGES, NULL)` reads the
+    cells that the translation's locale query reads. G lends them, with
+    a copy of the name "C" that the cell holds, and takes them back. *)
+Lemma dgx_locale v :
+  dgx_G v ⊢ word_string DfracDiscarded cv [67] ∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg ∗
+    (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg -∗ dgx_G v).
+Proof using Type.
+  unfold dgx_G, dgx_before, dcg_before_v, DcigettextRouteV.dci_reads_v.
+  iIntros "((%bs & (Hr & H2 & H3 & H4 & H5 & HC & H7 & He)) & HS & HL)".
+  iDestruct "Hr" as "(Hd & Hc & #Hcv & Hr)". iSplitR; [iExact "Hcv"|]. iSplitL "HC"; [iExact "HC"|].
+  iIntros "HC". iSplitR "HS HL"; [|iSplitL "HS"; [iExact "HS" | iExact "HL"]].
+  iExists bs. iSplitL "Hd Hc Hr"; [iSplitL "Hd"; [iExact "Hd"|]; iSplitL "Hc"; [iExact "Hc"|];
+    iSplitR; [iExact "Hcv" | iExact "Hr"]|]. iSplitL "H2"; [iExact "H2"|]. iSplitL "H3"; [iExact "H3"|].
+  iSplitL "H4"; [iExact "H4"|]. iSplitL "H5"; [iExact "H5"|]. iSplitL "HC"; [iExact "HC"|].
+  iSplitL "H7"; [iExact "H7" | iExact "He"].
+Qed.
+
 (** A print lends the stream to the wrapper, and the wrapper lends the
     errno cell and F to the formatter. The caller keeps the rest of its
     resources. After the call it gets the stream back in the mode that

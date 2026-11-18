@@ -90,7 +90,7 @@ Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   map_disjoint h1 (list_to_map (getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\
+    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_query w0 ge o (hd_priv w0 ge o debt) /\
     loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
       hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
         [45; 45] [45] [45; 87; 32] n1 n2 n3 n4 ∗ □ X)%I /\
@@ -107,7 +107,7 @@ Proof.
     -> Hi Hr Hd Ha Hw Hnd Hdisj Hprints Hstart.
   apply (heap_labelled_safe Σ glibc_os_registry (os_wi w0) ge _ m s w _ (fun _ => True) Hr Hd Ha Hw).
   intros HinvG HheapG.
-  destruct (Hstart HinvG HheapG) as (debt & X & HX & Hix & Hpre).
+  destruct (Hstart HinvG HheapG) as (debt & X & HX & Hq & Hix & Hpre).
   rewrite big_sepM_union; [|exact Hdisj].
   rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hnd].
   iIntros "[H1 HP]".
@@ -123,7 +123,7 @@ Proof.
   iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
   destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
   iApply (HelloGlibcMainFull.main_full_state w0 ge o debt _ _
-    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
+    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos debt c Hq (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
     with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
   - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
   - iSplitL "Hz".
@@ -220,7 +220,7 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
   os_wi w0 m w (h1 ∪ list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) -> NoDup (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs).*1 -> map_disjoint h1 (list_to_map (hello_tab_ps tb treg b1 b2 b3 b4 b5 r1 r2 r3 r4 r5 ++ getopt_start_ps gb greg oe roe oo roo bdd rdd b7 r7 b0 r0 ++ xs)) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ) (P : iProp Σ), HelloPrints w0 ge o P) ->
   (forall (HinvG : invGS_gen HasNoLc Σ) (HheapG : gen_heapGS piece pval Σ),
-    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\
+    exists (debt : HelloCore w0 ge o) (X : iProp Σ), (pts xs ==∗ □ X) /\ setlocale_query w0 ge o (hd_priv w0 ge o debt) /\
     loop_getopt w0 ge o debt av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗
       hello_getopt_globals ge oe roe oo roo (mkPtr bdd (Ro bdd)) (mkPtr b7 (Ro b7)) (mkPtr b0 (Ro b0))
         [45; 45] [45] [45; 87; 32] (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4)) ∗
@@ -250,8 +250,8 @@ Proof.
     try (assumption || reflexivity).
   - by apply map_disjoint_union_l_2.
   - intros HinvG HheapG.
-    destruct (Hstart HinvG HheapG) as (debt & X & HX & Hix & Hpre).
-    exists debt, X. split; [exact HX|]. split; [exact Hix|].
+    destruct (Hstart HinvG HheapG) as (debt & X & HX & Hq & Hix & Hpre).
+    exists debt, X. split; [exact HX|]. split; [exact Hq|]. split; [exact Hix|].
     rewrite big_sepM_union; [|exact Hd1].
     rewrite (big_sepM_list_to_map (fun l v => pointsto l (DfracOwn 1) v)); [|exact Hn1].
     iIntros "[H1 HT]". iAssert (pts tab) with "[HT]" as "HT"; [rewrite /pts; iExact "HT"|].

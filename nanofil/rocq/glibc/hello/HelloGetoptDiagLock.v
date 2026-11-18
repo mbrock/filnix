@@ -141,6 +141,19 @@ Proof using Type.
   iApply ("Hb" with "Hc").
 Qed.
 
+(** G lends the locale cells that Hello's own query reads. *)
+Lemma dlk_locale v :
+  dlk_G v ⊢ word_string DfracDiscarded cv [67] ∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg ∗
+    (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg -∗ dlk_G v).
+Proof using Type.
+  iIntros "(%s1 & %s2 & %s3 & %Hr & H)". unfold dlk_G0.
+  iDestruct (dtx_locale eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg ob dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
+    a1 ar1 (dl_r s1) (dl_cw s1) (dl_sh s1) (dl_fl s1) i1 a2 ar2 (dl_r s2) (dl_cw s2) (dl_sh s2) (dl_fl s2) i2 a3 ar3 (dl_r s3) (dl_cw s3) (dl_sh s3) (dl_fl s3) i3
+    tb tid vb sb sreg fp F Lm v with "H") as "(#Hcv & HC & Hb)".
+  iSplitR; [iExact "Hcv"|]. iSplitL "HC"; [iExact "HC"|].
+  iIntros "HC". iExists s1, s2, s3. iSplit; [done|]. unfold dlk_G0. iApply ("Hb" with "HC").
+Qed.
+
 (** ## The facts each report needs *)
 
 (** A report needs the same program and global cells as before. Only
