@@ -462,7 +462,8 @@ Proof using Hdwf Hext Hfw Hreg Hsync Hwrite.
       - cbn. split_and!; try reflexivity.
         unfold base, be; destruct Hwe2 as [-> | ->]; repeat constructor; cbn; lia.
       - unfold short_idle in Hshort |- *. cbn [fs_flags] in Hshort |- *.
-        rewrite !Hhas; try reflexivity. exact Hshort. }
+        rewrite !Hhas; try reflexivity. destruct Hshort as [Hs1 [Hs2 _]].
+        split; [exact Hs1|]. split; [exact Hs2|]. unfold fs_ptr; cbn; split; reflexivity. }
     iSplitR "Hlk Hbl Hxs Hcs"; [|iSplitL "Hlk"; [iExists lb, lreg; iSplit; done|]].
     { rewrite /file_fields. cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset
         fs_codecvt fs_wide fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable big_opL].

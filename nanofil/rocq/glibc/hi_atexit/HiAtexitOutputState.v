@@ -23,6 +23,38 @@ Import LibioXsputnSetp.
 Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
+(** In the `c: atexit` program, stdout keeps every flag at its linked
+    value except the error, line-buffering and putting bits. It starts
+    putting when it obtains a buffer. The proofs of its output read the
+    other flags from this fact. *)
+Definition hi_xs_flags (nb : option (Z * Z)) (fl : Z) : Prop :=
+  Z.land fl (Z.lnot 2592) = 4222427268 /\
+  match nb with None => Z.land fl 2048 = 0 | Some _ => Z.land fl 2048 <> 0 end.
+
+(** Setting the error bit keeps the buffer's putting state and every
+    fixed flag, so a failed write keeps the fact. *)
+Lemma hi_xs_flags_error nb fl : hi_xs_flags nb fl -> hi_xs_flags nb (Z.lor fl io_err_seen).
+Proof.
+  intros [Hfixed Hput]. unfold hi_xs_flags. rewrite !Z.land_lor_distr_l.
+  change (Z.land io_err_seen (Z.lnot 2592)) with 0.
+  change (Z.land io_err_seen 2048) with 0.
+  rewrite !Z.lor_0_r. split; assumption.
+Qed.
+
+(** The output proofs of the `c: atexit` program keep stdout's fact. *)
+#[export] Instance hi_xs_flags_inst : XsFlags :=
+  {| xs_flags := hi_xs_flags; xs_flags_error := hi_xs_flags_error |}.
+
+(** A fixed flag mask can be read from stdout's fact. The premise
+    excludes the three bits that output may change. *)
+Lemma xs_flags_mask nb fl mask :
+  Z.land (Z.lnot 2592) mask = mask -> xs_flags nb fl ->
+  Z.land fl mask = Z.land 4222427268 mask.
+Proof.
+  intros Hmask [Hfixed _]. apply (f_equal (fun f => Z.land f mask)) in Hfixed.
+  rewrite -Z.land_assoc Hmask in Hfixed. exact Hfixed.
+Qed.
+
 (** Buffer allocation clears the user-buffer bit and sets the writing
     bit. Those changes preserve stdout's fixed flags. *)
 Lemma hi_xs_flags_alloc fl fl' bb sz :
@@ -33,7 +65,7 @@ Proof.
   assert (Hfixed : Z.land fl (Z.lnot 2592) = 4222427268) by exact (proj1 Hflags).
   assert (Hbase : forall f, Z.land f (Z.lnot 2592) = 4222427268 ->
     xs_flags (Some (bb, sz)) (Z.lor (setb_flags f 1) 2048)).
-  { intros f Hf. unfold xs_flags, setb_flags. cbn [Z.eqb].
+  { intros f Hf. cbn [xs_flags hi_xs_flags_inst]. unfold hi_xs_flags, setb_flags. cbn [Z.eqb].
     rewrite !Z.land_lor_distr_l.
     change (Z.land 2048 (Z.lnot 2592)) with 0.
     rewrite Z.lor_0_r.

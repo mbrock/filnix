@@ -59,6 +59,7 @@ Qed.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{XF : !XsFlags}.
 (** The program supplies glibc's copy routines and default stream writer.
     Memory moves use the registered external contract. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))

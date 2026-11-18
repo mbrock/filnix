@@ -41,6 +41,7 @@ Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn Libio
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{XF : !XsFlags}.
 (** The program must provide the copying routines and the default stream writer used by the continuation. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)

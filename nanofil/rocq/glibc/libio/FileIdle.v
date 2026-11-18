@@ -109,15 +109,23 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
     pointer, and `c: new_do_write` sets the write base, the write
     pointer and the write end to the buffer's base, whether the write
     succeeds or fails. So the stream has no pending output and no room,
-    and the next call never copies into the buffer. The predicate
+    and the next call never copies into the buffer.
+
+    A stream that only writes keeps its read base and its write base at
+    the start of its heap buffer. Its first overflow sets the read
+    pointers and the write pointers to the buffer's base, and every
+    flush by `c: new_do_write` sets them there again. A stream without a
+    buffer has never written, so it is not putting. The predicate
     [short_idle] nb st states these facts for the stream's buffer nb. *)
 Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
   (has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
   match nb with
   | NbShort => has (fs_flags st) io_unbuffered = true /\
       fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4
-  | NbHeap _ _ => has (fs_flags st) io_unbuffered = false
-  | _ => True
+  | NbHeap _ _ => has (fs_flags st) io_unbuffered = false /\
+      fs_ptr st 2 = fs_ptr st 6 /\ fs_ptr st 3 = fs_ptr st 6
+  | NbNone => has (fs_flags st) io_currently_putting = false
+  | NbFreeres _ => True
   end.
 
 (** ## An idle stream

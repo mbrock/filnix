@@ -56,6 +56,7 @@ Qed.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{XF : !XsFlags}.
 (** The genv's copies and `c: __GI__IO_default_xsputn` are glibc's, as
     LibioXsputnBase.v asks. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))

@@ -54,6 +54,7 @@ Import LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXspu
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{XF : !XsFlags}.
 (** The linked program provides glibc's copy functions and default stream writer. *)
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)

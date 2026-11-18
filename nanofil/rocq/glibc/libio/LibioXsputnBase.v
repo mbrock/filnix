@@ -68,39 +68,24 @@ Definition xs_L178 : block := Eval vm_compute in
 Definition xs_scan_names : list name :=
   map TAtom ["pr.14"; "v56"; "v57"; "v58"; "v63"; "chk4"; "v64"; "v65"; "v68"; "v70"; "v71"; "pr.10"; "pr.6"].
 
-(** A buffered output stream keeps the standard file flags except for
-    the error, line-buffering and writing bits. It starts writing when
-    it obtains a buffer. Naming this relation lets callers recover the
-    overflow premises after the flags have been existentially hidden. *)
-Definition xs_flags (nb : option (Z * Z)) (fl : Z) : Prop :=
-  Z.land fl (Z.lnot 2592) = 4222427268 /\
-  match nb with None => Z.land fl 2048 = 0 | Some _ => Z.land fl 2048 <> 0 end.
-
-(** Setting the error bit preserves the buffer's writing state and
-    every fixed flag. A failed write therefore keeps the output invariant. *)
-Lemma xs_flags_error nb fl : xs_flags nb fl -> xs_flags nb (Z.lor fl io_err_seen).
-Proof.
-  intros [Hfixed Hput]. unfold xs_flags. rewrite !Z.land_lor_distr_l.
-  change (Z.land io_err_seen (Z.lnot 2592)) with 0.
-  change (Z.land io_err_seen 2048) with 0.
-  rewrite !Z.lor_0_r. split; assumption.
-Qed.
-
-(** A fixed flag mask can be read from the output invariant. The
-    premise excludes the three bits that output may change. *)
-Lemma xs_flags_mask nb fl mask :
-  Z.land (Z.lnot 2592) mask = mask -> xs_flags nb fl ->
-  Z.land fl mask = Z.land 4222427268 mask.
-Proof.
-  intros Hmask [Hfixed _]. apply (f_equal (fun f => Z.land f mask)) in Hfixed.
-  rewrite -Z.land_assoc Hmask in Hfixed. exact Hfixed.
-Qed.
-
+(** String output keeps a fact about the stream's flags from one
+    call to the next. The proofs of overflow and of the direct write
+    read some flags, and they need the stream to be putting exactly
+    when it has a buffer. The fact must survive a failed write, which
+    sets the error bit. Different callers keep different facts: the
+    proof of the `c: atexit` program fixes every flag of stdout but
+    three, and an idle stream keeps only what its next call needs. The
+    class [XsFlags] lets each caller choose its fact. *)
+Class XsFlags : Type := {
+  xs_flags : option (Z * Z) -> Z -> Prop;
+  xs_flags_error : forall nb fl, xs_flags nb fl -> xs_flags nb (Z.lor fl io_err_seen)
+}.
 
 Import LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 Section defs.
 Context `{!gen_heapGS piece pval Σ}.
+Context `{XF : !XsFlags}.
 
 (** String output needs an open descriptor and flags that allow
     writing and later closing the stream. These fields retain those
@@ -159,6 +144,7 @@ Context {hlc : has_lc}
   (w0 : os_world)
   (registry : name -> option (contract os_world))
   (ge : genv).
+Context `{XF : !XsFlags}.
 Existing Instance invGS_gen0.
 Existing Instance gen_heapGS0.
 Local Instance xs_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
@@ -199,6 +185,7 @@ Qed.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context `{XF : !XsFlags}.
 (** The registry holds `c: zmemmove`'s contract, and the genv's
     `c: __GI_memcpy`, `c: __GI_mempcpy` and
     `c: __GI__IO_default_xsputn` are glibc's. *)
