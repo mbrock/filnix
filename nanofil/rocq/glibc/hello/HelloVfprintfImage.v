@@ -6,9 +6,11 @@
     image's formatter meets [vfprintf_spec].
 
     When the formatter's buffer is full, the formatter writes the
-    text to the stream. The stream then stores the text in a buffer on
-    the heap. The proofs of those two writes are not finished, so the
-    lemma here assumes them. *)
+    text to the stream, and the stream stores the text in a buffer on
+    the heap. The stream takes one byte with its overflow function,
+    which [LibioOverflowHeap](../libio/LibioOverflowHeap.v) proves. It
+    takes a run of bytes with another function, whose proof is not
+    finished, so the lemma here assumes the rule for that write. *)
 
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -17,10 +19,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls Pieces Heap.
 From Glibc Require Import OsWorld OsRegistry SysCode LibioLogic LibioSetb LibioReadCode LibioDoWriteCode
-  LibioGenCode LibioXsputnCode LibioStreamTidy PrintfSpec PrintfBufferFileCode PrintfBufferIoCode
+  LibioGenCode LibioXsputnCode LibioStreamTidy LibioOverflowHeap PrintfSpec PrintfBufferFileCode PrintfBufferIoCode
   PrintfStateCode StrlenLogic StrchrCode MemFwdCode FormatterCode FormatterScan FormatterLiteral PrintfPutcOneCode
   PrintfPadOneCode ItoaWordCode PrintfFileEntry PrintfFileCalls PrintfInternal HiAtexitSetb HelloGlibcLibsT.
-From Glibc Require LibioCleanupExit.
+From Glibc Require LibioCleanupExit AllocLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01 HelloImageLayout.
 Import ListNotations.
 Open Scope Z_scope.
@@ -40,16 +42,15 @@ Local Ltac image_fn n :=
     glibc's own code for the formatter and for every function that the
     formatter calls, and the proof checks each of them by computation.
     The image also frees memory with glibc's `c: free` and leaves the
-    system calls to the kernel. The lemma assumes only the two writes
-    to a stream that has a buffer on the heap. *)
+    system calls to the kernel. The lemma assumes only the write of a
+    run of bytes to a stream that has a buffer on the heap. *)
 Lemma hello_vfprintf_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr :
   hello_link (mkGenv hello_image_module img_globals fr) hello_image_objs ->
   xsputn_heap_rule (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr)) ->
-  overflow_heap_rule (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr)) ->
   HasSpec glibc_os_registry (os_wi w0) (mkGenv hello_image_module img_globals fr) (TAtom "__vfprintf_internal")
     (vfprintf_spec (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr))).
 Proof.
-  intros Hk Hxs_heap Hov_heap.
+  intros Hk Hxs_heap.
   set (ge := mkGenv hello_image_module img_globals fr) in *.
   set (P := program_of w0 glibc_os_registry ge) in *.
   destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
@@ -85,6 +86,16 @@ Proof.
   assert (Defines ge "_itoa_word" glibc_itoa_word) by image_defines.
   assert (Defines ge "__printf_buffer" glibc_printf_buffer) by image_defines.
   assert (Defines ge "__vfprintf_internal" glibc_vfprintf_internal) by image_defines.
+  assert (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat) by image_fn "__GI__IO_file_stat".
+  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
+  assert (Defines ge "__GI___fstat64" glibc___fstat64) by image_defines.
+  assert (Defines ge "__gnu_dev_major" glibc___gnu_dev_major) by image_defines.
+  assert (Defines ge "__isatty_nostatus" glibc___isatty_nostatus) by image_defines.
+  assert (Defines ge "free" AllocLogic.free_fn) by exact (hk_free _ _ Hk).
+  assert (Defines ge "malloc" AllocLogic.malloc_fn) by exact (hk_malloc _ _ Hk).
+  assert (Defines ge "glibc_malloc#__libc_malloc2" AllocLogic.malloc2_fn) by exact (hk_malloc2 _ _ Hk).
+  pose proof (wp_overflow_heap (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hstat
+    Hfh Hzf Hzg Hda Hfw Hov) as Hov_heap.
   refine (vfprintf_has_spec (glibc_program := P) _ _); intros a Hok.
   - exact (file_format_tidy_has_spec (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hfree
       Hfw Hov Hxs Hxs_heap Hov_heap a Hok Hmove (hk_zmemset _ _ Hk)).
