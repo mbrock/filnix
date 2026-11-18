@@ -30,6 +30,11 @@ Lemma idle_ok_flags2 fd st :
   idle_ok fd (fs_with_flags2 st 0) /\ Z.land (fs_flags2 st) 2 = 0 /\ Z.land (fs_flags2 st) 32 = 0.
 Proof. unfold idle_ok, fs_with_flags2. cbn. tauto. Qed.
 
+(** The fact [short_idle] does not mention the second flags word
+    either, so a new value of that word keeps it. *)
+Lemma short_idle_flags2 nb st x : short_idle nb (fs_with_flags2 st x) <-> short_idle nb st.
+Proof. destruct nb; reflexivity. Qed.
+
 Section tidy.
 Context `{!gen_heapGS piece pval Σ}.
 
@@ -47,7 +52,8 @@ Definition file_tidy (vb : Z) (self fp : ptr) (fd flags2 : Z) (held : option Z) 
   ∃ fb freg st nb, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\
      idle_ok fd (fs_with_flags2 st 0) /\ fs_flags2 st = flags2 /\
-     fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st)⌝ ∗
+     fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
+     short_idle nb st⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) held ∗ buf_idle nb ∗
     wide_idle vb (fs_wide st) (fs_codecvt st).
 
@@ -112,12 +118,13 @@ Lemma file_tidy_flags2 vb self fp fd flags2 held :
       int_cell fb off_flags2 flags2' -∗ file_tidy vb self fp fd flags2' held).
 Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %Hp & Hl & Hf & Hk & Hb)".
-  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hi & Hf2 & Hvt & Hbok).
+  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hi & Hf2 & Hvt & Hbok & Hshort).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hflags2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd &
     Hfrl & Hfrb & Hmd & Htot & Hvtp)".
   iExists fb, freg. rewrite Hf2. iFrame "Hl Hflags2".
   iSplitR; [iPureIntro; tauto|]. iIntros (flags2' Hmask) "Hl Hflags2".
   iExists fb, freg, (fs_with_flags2 st flags2'), nb.
+  apply (proj2 (short_idle_flags2 nb st flags2')) in Hshort. unfold fs_with_flags2 in Hshort.
   unfold fs_with_flags2, file_fields.
   cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
     fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable].
@@ -135,7 +142,7 @@ Lemma file_tidy_stream vb self fp fd flags2 held :
   ∃ mode, ⌜mode = 0 \/ mode = 2 ^ 32 - 1⌝ ∗ printf_stream vb self fp mode flags2 held.
 Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %Hp & Hl & Hf & Hlk & Hb & _)".
-  destruct Hp as (? & ? & ? & ? & ? & ? & (_ & _ & Hm & _) & ? & ? & ?).
+  destruct Hp as (? & ? & ? & ? & ? & ? & (_ & _ & Hm & _) & ? & ? & ? & _).
   iExists (fs_mode st). iSplit; [done|].
   iExists fb, freg, st, nb, vt_file. iFrame "Hl Hf Hlk". iSplit.
   { iPureIntro. unfold mode_vtable. eauto 20. }

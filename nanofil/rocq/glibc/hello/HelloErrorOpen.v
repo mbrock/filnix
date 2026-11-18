@@ -33,7 +33,7 @@ Lemma file_idle_open vb self fb fd :
     (live fb freg -∗ int_cell fb 192 md -∗ file_idle vb self (mkPtr fb (Obj fb)) fd).
 Proof using Type.
   iIntros "(%fb' & %freg & %st & %nb & %Hp & Hl & Hf & Hlk & Hb & Hw)".
-  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hfl & Hidle & Hvt & Hbuf).
+  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hfl & Hidle & Hvt & Hbuf & Hshort).
   injection Hfp as <-.
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfn & Hf2 & Hoo & %Hcol & Hc & Hlock & Hoff & Hcv & Hwd &
     Hfr1 & Hfr2 & Hmd & Htot & Hvt)".

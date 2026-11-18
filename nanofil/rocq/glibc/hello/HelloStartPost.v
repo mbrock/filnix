@@ -156,7 +156,7 @@ Proof using Type.
   iExists fb, freg, (hello_kept_state fl fd lk wd vb), NbNone.
   iSplit.
   { iPureIntro. split; [reflexivity|]. split; [exact Hal|]. split; [exact Hb|]. split; [exact Hend|].
-    split; [lia|]. split; [exact Hok|]. split; [|split; reflexivity].
+    split; [lia|]. split; [exact Hok|]. split; [|split_and!; first [reflexivity | exact I]].
     unfold idle_ok, hello_kept_state, fs_ptr; cbn [fs_fileno fs_mode fs_ptrs fs_flags fs_flags2 fs_column].
     cbn. split_and!; auto; lia. }
   iFrame "Hl". iSplitL "Hfl P0 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 Hfd Hf2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvt".

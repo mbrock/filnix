@@ -30,7 +30,8 @@ Definition fx_stream (vb : Z) (self fp : ptr) (fd mode flags2 : Z) (held : optio
   ∃ fb freg st nb, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\
      idle_ok fd (fs_with_flags2 st 0) /\ fs_flags2 st = flags2 /\
-     fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\ fs_mode st = mode⌝ ∗
+     fs_vtable st = mkPtr (vb + vt_file) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\ fs_mode st = mode /\
+     short_idle nb st⌝ ∗
     live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) held ∗ buf_idle nb ∗
     wide_idle vb (fs_wide st) (fs_codecvt st).
 
@@ -52,7 +53,7 @@ Lemma fx_stream_mode vb self fp fd mode flags2 held :
   fx_stream vb self fp fd mode flags2 held ⊢ ⌜mode = 0 \/ mode = 2 ^ 32 - 1⌝.
 Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %Hp & _)". iPureIntro.
-  destruct Hp as (_ & _ & _ & _ & _ & _ & (_ & _ & Hm & _) & _ & _ & _ & <-). exact Hm.
+  destruct Hp as (_ & _ & _ & _ & _ & _ & (_ & _ & Hm & _) & _ & _ & _ & <- & _). exact Hm.
 Qed.
 
 (** The locking function reads the stream's flags and mode, sets and
@@ -74,7 +75,7 @@ Lemma fx_stream_fx vb self fp fd mode flags2 held :
        lock_inv self lp held' -∗ fx_stream vb self fp fd mode flags2' held').
 Proof using Type.
   iIntros "(%fb & %freg & %st & %nb & %Hp & Hl & Hf & Hk & Hb & Hw)".
-  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hi & Hf2 & Hvt & Hbok & Hm).
+  destruct Hp as (Hfp & Hal & Hfb & Hend & Hreg & Hok & Hi & Hf2 & Hvt & Hbok & Hm & Hshort).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hflags2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd &
     Hfrl & Hfrb & Hmd & Htot & Hvtp)".
   iDestruct "Hfl" as "[%Hflr Hfl]". iDestruct "Hflags2" as "[%Hf2r Hflags2]".
@@ -88,6 +89,7 @@ Proof using Type.
   iSplitL "Hmd"; [iSplit; [done|iExact "Hmd"]|].
   iIntros (flags2' held' Hmask) "Hl Hfl Hflags2 Hmd Hlp Hk".
   iExists fb, freg, (fs_with_flags2 st flags2'), nb.
+  apply (proj2 (short_idle_flags2 nb st flags2')) in Hshort. unfold fs_with_flags2 in Hshort.
   unfold fs_with_flags2, file_fields.
   cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
     fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable].
