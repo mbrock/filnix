@@ -1215,6 +1215,7 @@ hello/HelloWClosedStdout.v
 hello/HelloFcloseWide.v
 hello/HelloCloseStreamWide.v
 hello/HelloCloseStdoutWide.v
+hello/HelloCloseStdoutWideCall.v
 hello/HelloErrorClosed.v
 hello/HelloCloseReportLookup.v
 hello/HelloCloseReportMessages.v
