@@ -647,6 +647,7 @@ hello/HelloGlibcDebts.v
 hello/HelloEmitBug.v
 hello/HelloVersionEtc.v
 hello/HelloVersionEtcVa.v
+hello/HelloPrintSites.v
 hello/HelloVersionEtcCall.v
 hello/HelloVfxprintfIdle.v
 hello/HelloErrorOpen.v

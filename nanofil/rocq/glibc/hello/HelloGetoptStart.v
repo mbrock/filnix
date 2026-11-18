@@ -165,14 +165,14 @@ Definition hello_ro_rest (ge : genv) (o : hello_objs) : iProp Σ :=
   HelloGlibcDebts.AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
   ([∗ list] s ∈ hello_lits_rest, str_ro (sym_ptr ge s)) ∗ version_ro ge ∗ error_progname_ro ge ∗
-  error_fmt_ro ge.
+  print_fmt_ro ge.
 
 (** The read-only objects that startup gives main are persistent. The
     proof goes conjunct by conjunct, because one search over the whole
     conjunction takes minutes. *)
 #[global] Instance hello_ro_rest_persistent ge o : Persistent (hello_ro_rest ge o).
 Proof using Type.
-  rewrite /hello_ro_rest /version_ro /str_ro /error_progname_ro /error_fmt_ro /AllocLogic.tcache_idle /liveq /pcellq /icellq.
+  rewrite /hello_ro_rest /version_ro /str_ro /error_progname_ro /print_fmt_ro /AllocLogic.tcache_idle /liveq /pcellq /icellq.
   repeat (apply bi.sep_persistent; [apply _|]). apply _.
 Qed.
 

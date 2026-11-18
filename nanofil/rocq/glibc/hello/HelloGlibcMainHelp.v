@@ -69,7 +69,7 @@ Proof using Hy Lb.
   step_global (hy_pb _ _ Hy).
   iDestruct "Hnc" as "(Hpl & Hpc & Hncr)".
   iApply (wp_name_load with "Hpl Hpc Hpn"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
-  iApply (wp_print w0 ge o D with "Hro Hio [] [-]"); [right; left; split; [reflexivity | eexists; reflexivity] | vx | |].
+  iApply (wp_print w0 ge o D X0 X Lb with "Hro Hio [] [-]"); [right; left; split; [reflexivity | eexists; reflexivity] | vx | |].
   { iSplitL; [iApply (str_ro_arg with "Hpn") | done]. }
   iNext. iIntros (n0) "Hio".
   iAssert (names o) with "[Hpl Hpc Hncr]" as "Hn".
@@ -77,19 +77,19 @@ Proof using Hy Lb.
     iSplitL "Hpl"; [iExact "Hpl"|]. iSplitL "Hpc"; [iExact "Hpc" | iExact "Hncr"]. }
   (* The help text. *)
   step_global (hy_lits _ _ Hy "hello#str.55" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.55" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n1) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.55" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n1) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n2) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n2) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.57" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.57" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n3) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.57" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n3) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.58" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.58" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n4) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.58" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n4) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.56" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n5) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.56" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n5) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.59" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.59" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n6) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.59" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n6) "Hio".
   step_global (hy_lits _ _ Hy "hello#str.60" ltac:(cbn; tauto)).
-  iApply (wp_fputs w0 ge o D "hello#str.60" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n7) "Hio".
+  iApply (wp_fputs w0 ge o D X0 X Lb "hello#str.60" with "Hro Hio"); [cbn; tauto | lk_prove | lk_prove |]. iNext. iIntros (n7) "Hio".
   iApply (wp_call_void with "[Hio]");
     [exact (hp_emit_bug _ _ _ _ (hl_prints _ _ _ _ _ _ Lb)) | reflexivity | iSplitR; [iExact "Hro" | iExact "Hio"] |].
   iNext. iIntros "Hio".

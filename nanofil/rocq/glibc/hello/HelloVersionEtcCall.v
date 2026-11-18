@@ -14,7 +14,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc HelloVersionEtcVa
-  PrintfWrap FprintfCode PrintfCode HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall.
+  PrintfWrap FprintfCode PrintfCode HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall
+  HelloPrintSites.
 From Glibc Require LibioCleanupExit.
 From Glibc Require Import SysCode LibioReadCode LibioDoWriteCode FileSyncCode FflushCode.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01.
@@ -103,17 +104,23 @@ Proof using Type*.
     iSplitL "Hin"; [iExact "Hin"|]. iSplitL "Hio"; [iExact "Hio"|]. iSplitL "Htcb"; [iExact "Htcb"|]. iSplitL "He"; [iExact "He" | iExact "Hec"].
 Qed.
 
-(** Hello's main prints with three calls, and none of them may disturb
-    what the other callees keep for later. This lemma collects the two
-    proofs above and the caller's proof of the error report into one
-    record for that kept state P. *)
+(** Hello's main prints with several calls, and none of them may
+    disturb what the other callees keep for later. This lemma collects
+    the two proofs above and the caller's proofs of the error report
+    and the print sites into one record for that kept state P. *)
 Lemma hello_prints_of (P : iProp Σ) :
   (forall q, fn_triple w0 ge (TAtom "error")
      [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
      (hello_ro ge o ∗ hello_stdio w0 ge o ∗ P ∗ names o ∗ str_arg (WPtr q))%I
      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio w0 ge o ∗ P ∗ names o)%I) ->
+  (forall g xs, print_site ge o g xs ->
+     fn_triple w0 ge g xs (hello_ro ge o ∗ hello_stdio w0 ge o ∗ P ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
+       (ret_int (hello_stdio w0 ge o ∗ P))%I) ->
   HelloPrints w0 ge o P.
-Proof using Type*. intros Herr_op. constructor; [exact (version_etc_hello P) | exact (emit_bug_hello P) | exact Herr_op]. Qed.
+Proof using Type*.
+  intros Herr_op Hprint.
+  constructor; [exact (version_etc_hello P) | exact (emit_bug_hello P) | exact Herr_op | exact Hprint].
+Qed.
 
 End call.
 
@@ -154,5 +161,6 @@ Proof.
   pose proof (fprintf_has_spec (glibc_program := program_of w0 glibc_os_registry _) "fprintf") as Hfp.
   pose proof (printf_has_spec (glibc_program := program_of w0 glibc_os_registry _) "printf") as Hpp.
   exact (hello_prints_of w0 _ hello_image_objs Hy Hk (emit_link_image fr) (version_link_image fr) Herr Hfd P
-    (error_operand_hello w0 _ hello_image_objs Hy Hk (hello_error_link_image fr) Hos Herr Hfd Hfd2 P)).
+    (error_operand_hello w0 _ hello_image_objs Hy Hk (hello_error_link_image fr) Hos Herr Hfd Hfd2 P)
+    (print_hello w0 _ hello_image_objs Hy Hk Herr Hfd Hfd2 P)).
 Qed.

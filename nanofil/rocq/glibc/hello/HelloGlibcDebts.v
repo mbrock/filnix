@@ -67,6 +67,15 @@ Record hello_layout (ge : genv) (o : hello_objs) : Prop := mkHelloLayout {
 Definition fputs_lits : list string :=
   ["hello#str.55"; "hello#str.56"; "hello#str.57"; "hello#str.58"; "hello#str.59"; "hello#str.60"]%string.
 
+(** These are the formats that main hands to glibc's formatter, each
+    with its bytes before the terminating zero. *)
+Definition print_fmts : list (string * list Z) :=
+  [("hello#str.77", [37; 115; 58; 32; 37; 115]);
+   ("hello#str.54", [85; 115; 97; 103; 101; 58; 32; 37; 115; 32; 91; 79; 80; 84; 73; 79; 78; 93; 46; 46; 46; 10]);
+   ("hello#str.62",
+    [82; 101; 112; 111; 114; 116; 32; 37; 115; 32; 116; 114; 97; 110; 115; 108; 97; 116; 105; 111; 110; 32; 98; 117; 103; 115; 32; 116; 111; 32; 60; 104; 116; 116; 112; 115; 58; 47; 47; 116; 114; 97; 110; 115; 108; 97; 116; 105; 111; 110; 112; 114; 111; 106; 101; 99; 116; 46; 111; 114; 103; 47; 116; 101; 97; 109; 47; 62; 10]);
+   ("hello#str.79", [84; 114; 121; 32; 39; 37; 115; 32; 45; 45; 104; 101; 108; 112; 39; 32; 102; 111; 114; 32; 109; 111; 114; 101; 32; 105; 110; 102; 111; 114; 109; 97; 116; 105; 111; 110; 46; 10])]%string.
+
 (** These literals name the authors printed by the version branch. *)
 Definition author_lits : list string := ["hello#str.72"; "hello#str.73"; "hello#str.74"; "hello#str.75"]%string.
 
@@ -151,11 +160,13 @@ Definition error_progname_ro : iProp Σ :=
       pb mod 8 = 0 /\ pb + 8 <= r_end preg /\ r_end preg <= 2 ^ 63⌝ ∗
     liveq DfracDiscarded pb preg ∗ pcellq DfracDiscarded pb 0 null.
 
-(** Hello reports an extra operand with the format `"%s: %s"`. The
-    formatter's contract reads the format, so the read-only promise
-    holds that string with its exact bytes. *)
-Definition error_fmt_ro : iProp Σ :=
-  word_string DfracDiscarded (sym_ptr ge "hello#str.77") [37; 115; 58; 32; 37; 115].
+(** Main prints through four formats: `"%s: %s"` for an extra
+    operand, the usage line, the translation-bugs line and the hint to
+    try `--help`. The formatter's contract parses a format's bytes, so
+    the read-only promise holds each of these strings with its exact
+    bytes, and [print_fmts] lists them. *)
+Definition print_fmt_ro : iProp Σ :=
+  [∗ list] ns ∈ print_fmts, word_string DfracDiscarded (sym_ptr ge ns.1) ns.2.
 
 (** The callback global is persistent. Stating the instance here keeps
     proof search from unfolding the program's globals. *)
@@ -211,11 +222,11 @@ Definition hello_ro : iProp Σ :=
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
   ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro ∗
-  error_fmt_ro.
+  print_fmt_ro.
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.
-Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /error_fmt_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
+Proof using Type. rewrite /hello_ro /version_ro /str_ro /error_progname_ro /print_fmt_ro /AL.tcache_idle /liveq /pcellq /icellq. apply _. Qed.
 
 (** Final cleanup owns stdin as the only remaining open stream.
     Its output buffer is empty, and the thread still owns its cleanup fields. *)
@@ -287,9 +298,6 @@ Record HelloCore : Type := mkHelloCore {
     fn_triple (TAtom "setlocale") [WInt 5; WPtr null]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I
       (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I;
-  hd_print : forall g xs, print_site g xs ->
-    fn_triple g xs (hello_ro ∗ hello_stdio ∗ hd_priv ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
-      (ret_int (hello_stdio ∗ hd_priv))%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
     fn_triple (TAtom "rpl_mbsrtowcs")
@@ -313,8 +321,10 @@ Record HelloCore : Type := mkHelloCore {
 (** The version text and the bug-report address are printed with
     `c: fprintf`, `c: printf` and `c: fputs`. An extra operand is
     reported with `c: error`, which reads the program-name cells and
-    flushes both streams with `c: fflush`. These three calls are proved
-    from the image's code over the contracts of the calls they make.
+    flushes both streams with `c: fflush`. The help text, the usage
+    line and the hint to try `--help` are printed with `c: fputs` and
+    `c: fprintf`. These calls are proved from the image's code over the
+    contracts of the calls they make.
     The record [HelloPrints] states them for any private state priv of
     the callees, because the calls do not touch it. *)
 Record HelloPrints (priv : iProp Σ) : Prop := mkHelloPrints {
@@ -331,7 +341,10 @@ Record HelloPrints (priv : iProp Σ) : Prop := mkHelloPrints {
     fn_triple (TAtom "error")
       [WInt 0; WInt 0; WPtr (sym_ptr ge "hello#str.77"); WPtr (sym_ptr ge "hello#str.78"); WPtr q]
       (hello_ro ∗ hello_stdio ∗ priv ∗ names ∗ str_arg (WPtr q))%I
-      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv ∗ names)%I
+      (fun r => ⌜r = RetVoid⌝ ∗ hello_stdio ∗ priv ∗ names)%I;
+  hp_print : forall g xs, print_site g xs ->
+    fn_triple g xs (hello_ro ∗ hello_stdio ∗ priv ∗ [∗ list] x ∈ skipn 2 xs, str_arg x)%I
+      (ret_int (hello_stdio ∗ priv))%I
 }.
 
 (** The record [HelloLibs] holds the contracts of the library calls

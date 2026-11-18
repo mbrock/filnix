@@ -62,7 +62,6 @@ TAGS = [
     (r'^R\.ready', 'adequacy'),
     (r'hd_setlocale_|hd_mbsrtowcs', 'locale'),
     (r'hd_wprintf', 'wprintf (gap W)'),
-    (r'hd_print', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
     (r'fputs_has_spec', 'libio'),
@@ -76,7 +75,6 @@ STATUS = [
     (r'hd_setlocale_all', 'unknown: X holds every object on the locale worker\'s list for setlocale, and the lock '
                           'is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_setlocale_query', SAT),
-    (r'hd_print', SAT),
     (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
                       'by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),

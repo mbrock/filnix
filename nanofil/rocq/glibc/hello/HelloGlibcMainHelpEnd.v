@@ -51,9 +51,9 @@ Lemma wp_print g xs f e ls lab d args rest j Ψ :
   hello_ro ge o -∗ io -∗ ([∗ list] x ∈ skipn 2 xs, str_arg x) -∗
   ▷ (∀ n, io -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : gexpr) {{ Ψ }}.
-Proof using Type.
+Proof using Lb.
   intros Hs Hx. iIntros "#Hro [Hio Hpv] Hxs HK".
-  iApply (wp_call_int with "[Hio Hpv Hxs]"); [exact (hd_print _ _ _ D g xs Hs) | exact Hx |
+  iApply (wp_call_int with "[Hio Hpv Hxs]"); [exact (hp_print _ _ _ _ (hl_prints _ _ _ _ _ _ Lb) g xs Hs) | exact Hx |
     iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hxs"] |].
   iNext. iIntros (n _) "HQ". iApply ("HK" with "HQ").
 Qed.
@@ -65,7 +65,7 @@ Lemma wp_fputs s f e ls lab d vs vo rest j Ψ :
   ▷ (∀ n, io -∗ WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global (TAtom "fputs"))
                                              [Arg P (Tmp vs); Arg P (Tmp vo)] :: rest) j)) : gexpr) {{ Ψ }}.
-Proof using Type.
+Proof using Lb.
   intros Hs Hvs Hvo. iIntros "#Hro Hio HK".
   iApply (wp_print with "Hro Hio [] HK"); [left; split; [reflexivity | exists s; split; [exact Hs | reflexivity]] |
     cbn; rewrite Hvs Hvo; reflexivity |].

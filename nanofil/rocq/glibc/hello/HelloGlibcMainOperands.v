@@ -192,7 +192,7 @@ Proof using Hy Lb.
   iDestruct "Hn" as (x y z) "((Hpl & Hpc & Hncr) & #Hx & #Hy' & #Hz)".
   iApply (wp_name_load with "Hpl Hpc Hx"); [exact Hy | lk_prove |]. iIntros "Hpl Hpc".
   iAssert io with "[Hio Hpv]" as "Hio"; [iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"]|].
-  iApply (wp_print w0 ge o D with "Hro Hio [] [-]"); [right; right; right; split; [reflexivity | eexists; reflexivity] | vx | |].
+  iApply (wp_print w0 ge o D X0 X Lb with "Hro Hio [] [-]"); [right; right; right; split; [reflexivity | eexists; reflexivity] | vx | |].
   { iSplitL; [iApply (str_ro_arg with "Hx") | done]. }
   iNext. iIntros (n) "[Hio Hpv]".
   iApply (wp_exit_call w0 ge o D X0 X Lb with "Hro Hio Hpv [Hpl Hpc Hncr] HX"); [reflexivity|].

@@ -320,8 +320,16 @@ Proof using Hi.
     iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iSplitR; [iExact "Hepn"|].
     iAssert ([∗ list] ns ∈ (fun ns : string * list Z * list Z => (ns.1.1, ns.1.2)) <$> take 24 (drop 3 hello_lit_strs),
       word_string DfracDiscarded (sym_ptr ge ns.1) ns.2)%I as "#Hlf"; [rewrite big_sepL_fmap; iExact "Hlr"|].
-    iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 17
-      ("hello#str.77"%string, [37; 115; 58; 32; 37; 115]) with "Hlf"). vm_compute. reflexivity. }
+    rewrite /print_fmt_ro /print_fmts. cbn [big_opL].
+    iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 17
+      ("hello#str.77"%string, [37; 115; 58; 32; 37; 115]) with "Hlf"); vm_compute; reflexivity|].
+    iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 0
+      ("hello#str.54"%string, [85; 115; 97; 103; 101; 58; 32; 37; 115; 32; 91; 79; 80; 84; 73; 79; 78; 93; 46; 46; 46; 10]) with "Hlf"); vm_compute; reflexivity|].
+    iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 8
+      ("hello#str.62"%string, [82; 101; 112; 111; 114; 116; 32; 37; 115; 32; 116; 114; 97; 110; 115; 108; 97; 116; 105; 111; 110; 32; 98; 117; 103; 115; 32; 116; 111; 32; 60; 104; 116; 116; 112; 115; 58; 47; 47; 116; 114; 97; 110; 115; 108; 97; 116; 105; 111; 110; 112; 114; 111; 106; 101; 99; 116; 46; 111; 114; 103; 47; 116; 101; 97; 109; 47; 62; 10]) with "Hlf"); vm_compute; reflexivity|].
+    iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 19
+      ("hello#str.79"%string, [84; 114; 121; 32; 39; 37; 115; 32; 45; 45; 104; 101; 108; 112; 39; 32; 102; 111; 114; 32; 109; 111; 114; 101; 32; 105; 110; 102; 111; 114; 109; 97; 116; 105; 111; 110; 46; 10]) with "Hlf"); vm_compute; reflexivity|].
+    done. }
   iSplitR; [iExact "Hkey"|]. iSplitL "Hst"; [iExact "Hst"|]. iSplitR; [iExact "Hargs"|].
   iSplitL "Hav"; [iExact "Hav"|].
   iSplitL "Lpn Hpn Lnb Hnb Lns Hns".
