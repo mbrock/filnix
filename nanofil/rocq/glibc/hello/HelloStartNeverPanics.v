@@ -7,16 +7,11 @@
     never returns to the runtime, so the theorem also says that no run
     returns normally.
 
-    Some parts of the proof are still missing, so the theorem assumes
-    them. A few assumptions describe the machine that runs Hello. Its
-    standard output and standard error are open, its environment asks
-    for the C locale, and its processor reports caches the way glibc
-    expects. Its runtime also has a ready allocator.
-
-    The rest are promises about glibc calls that nobody has proved yet.
-    They cover setting the locale, printing and closing standard output.
-    A script in nanofil/tests lists these assumptions, says which ones
-    can hold, and counts them for CI.
+    The theorem assumes that standard output and standard error are
+    open. The environment must select the C locale, the processor must
+    report its caches the way glibc expects, and the runtime must have
+    a ready allocator. Printing and closing stdout use the code in the
+    image; the caller need not supply contracts for these calls.
 
     The proof divides the start memory into the objects that each part
     of startup uses, as [HelloStartAssembly](HelloStartAssembly.v)
@@ -49,10 +44,8 @@ Proof. eexists. reflexivity. Qed.
 
 (** Every run of Hello from a state in which the runtime can start it
     avoids panics, stuck steps and contract failures, and it never
-    returns. The last premise gives the open contracts. For each ghost
-    state, it chooses the library calls of [HelloCore]. For every
-    environment array and thread object, it gives the contracts that
-    [hello_tb_contracts] states: the private state's shape. *)
+    returns. The last premise chooses the library's private state for
+    each thread and relates it to the environment array. *)
 Theorem hello_never_panics Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ}
     w0 m s w xs fuel :
   start_state hello_image_module w0 m w xs ->

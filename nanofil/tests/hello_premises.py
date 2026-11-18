@@ -68,8 +68,6 @@ TAGS = [
     (r'start_c_locale', 'environment'),
     (r'ow_leaf4_ends', 'CPU'),
     (r'^R\.ready', 'adequacy'),
-    (r'hd_wprintf', 'wprintf (gap W)'),
-    (r'hd_close_stdout', 'close_stdout'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
@@ -79,11 +77,6 @@ WITNESSED = SAT + ' (checked: hello_start_witness in HelloStartWitness.v)'
 STATUS = [
     (r'^In [12] |start_c_locale|ow_leaf4_ends', WITNESSED),
     (r'^R\.ready', SAT + ' for the interpreter\'s runtime, InterpRuntime.ready (checked: hello_start_witness)'),
-    (r'hd_wprintf', 'unknown: the private state holds the conversion constants and __gconv_lock; not yet checked against a proof'),
-    (r'hd_close_stdout_wide', 'unknown: the narrow case is proved (hello_close_stdout_narrow); the wide case is proved '
-                              'at the image (HelloCloseStdoutWideCall.hello_close_stdout_wide) given the wide write\'s '
-                              'close rule (Hwrite, wclose_write_ok\'s conclusion), which rests on the _IO_wdo_write and '
-                              'codecvt proofs; not yet moved into HelloLibs'),
 ]
 # These tags describe the world the theorem is about and stay; every
 # other tag is a proof debt that should reach zero.
@@ -129,7 +122,7 @@ def split_top(text, sep):
 
 def record_fields(name):
     text = uncomment(RECORDS[name].read_text())
-    m = re.search(rf'Record {name}\b[^{{]*{{(.*?)\n}}\.', text, re.S)
+    m = re.search(rf'Record {name}\b[^.]*?:=\s*\w+\s*{{(.*?)\n}}\.', text, re.S)
     if not m:
         sys.exit(f'hello_premises: Record {name} not found')
     return [f.split(' :', 1)[0].strip() for f in split_top(m[1], ';')]

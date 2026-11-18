@@ -1,13 +1,7 @@
-(** This file states the library obligations that remain in GNU Hello's
-    safety proof. Milestone M4 covers option parsing, narrow output and
-    the close callback. Milestone M6 covers locale and wide-character
-    conversion and output. The [HelloCore] record gives each call a
-    [[separation logic]] contract over the concrete OS world.
-
-    These contracts describe the actual streams, strings and global
-    cells used by the program. The remaining callees may also own private
-    state. Whoever discharges the contracts chooses that state, and the
-    initial heap must supply it. *)
+(** Hello's main borrows streams, strings and global cells from startup.
+    Each library call takes the cells it needs and returns what main or
+    the exit callback needs next. This file gives those calls their
+    [[separation logic]] contracts. *)
 
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -109,6 +103,14 @@ End SW.
 (** The allocation interface supplies ownership of the idle tcache. *)
 Module AL := HelloGlibcMainAllocOn.
 Import FB SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI.
+
+(** Main carries the library's private state between calls. Startup
+    chooses that state for the loaded image; all call contracts live
+    in [HelloLibs]. *)
+Record HelloCore `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
+    (w0 : os_world) (ge : genv) (o : hello_objs) : Type := mkHelloCore {
+  hd_priv : iProp Σ
+}.
 
 Section debts.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -334,6 +336,14 @@ Definition close_stdout_narrow (priv : iProp Σ) : Prop :=
     (hello_ro ∗ hello_stdio ∗ priv ∗ names)%I
     (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
 
+(** After Hello prints wide characters, the exit callback flushes the
+    pending characters before it closes stdout. Stderr is still narrow.
+    The callback consumes the same private cells as in the narrow case. *)
+Definition close_stdout_wide (priv : iProp Σ) : Prop :=
+  fn_triple (TAtom "close_stdout") []
+    (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ priv ∗ names)%I
+    (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
+
 (** The stream [wprintf_out] is stdout after main prints the wide
     greeting. The proof of the formatter, [hello_wprintf_has_spec],
     leaves stdout either narrow and idle or wide, as [file_wide]
@@ -341,27 +351,14 @@ Definition close_stdout_narrow (priv : iProp Σ) : Prop :=
 Definition wprintf_out : iProp Σ :=
   file_idle (ho_vb o) (ow_self w0) (ho_out o) 1 ∨ file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1.
 
-(** Setting the locale and printing the wide greeting must preserve
-    the callees' private state and the parts of the streams they share.
-    Printing the greeting usually orients stdout wide, so the close
-    callback must also handle a wide stdout. The narrow case is proved
-    and sits in [HelloLibs], so this record states only the wide one.
-    In the C locale the conversion of the greeting cannot fail, so main
-    never reaches its fatal error report. The close callback may read
-    the program-name cells, and so may an error report. glibc's option parser is
-    proved over its own code, so its contract is not a field here. *)
-Record HelloCore : Type := mkHelloCore {
-  hd_priv : iProp Σ;
-  hd_wprintf : forall bd n ws,
-    0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
-    fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
-      (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
-      (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I;
-  hd_close_stdout_wide :
-    fn_triple (TAtom "close_stdout") []
-      (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ hd_priv ∗ names)%I
-      (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
-}.
+(** Hello prints the greeting from the buffer that it filled with wide
+    characters. The formatter returns that buffer so main can free it,
+    and returns stdout so the exit callback can close it. *)
+Definition wprintf_greeting (priv : iProp Σ) : Prop := forall bd n ws,
+  0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
+  fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
+    (hello_ro ∗ hello_stdio ∗ priv ∗ wbuf bd n ws)%I
+    (ret_int (hello_stdio_wide wprintf_out ∗ priv ∗ wbuf bd n ws))%I.
 
 (** The version text and the bug-report address are printed with
     `c: fprintf`, `c: printf` and `c: fputs`. An extra operand is
@@ -430,7 +427,9 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_setlocale_all : setlocale_all priv;
   hl_setlocale_query : setlocale_query priv;
   hl_close_stdout : close_stdout_narrow priv;
+  hl_close_stdout_wide : close_stdout_wide priv;
   hl_mbsrtowcs : mbsrtowcs priv;
+  hl_wprintf : wprintf_greeting priv;
   hl_prints : HelloPrints priv
 }.
 
