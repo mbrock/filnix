@@ -171,47 +171,42 @@ Qed.
 Lemma pcell_congr b o x y c : x = y -> pcell b o (mkPtr x c) ⊢ pcell b o (mkPtr y c).
 Proof using Type. intros ->. done. Qed.
 
-(** This lemma proves the loop from its head when transliteration
-    calls the step. The input holds the wide characters ws from offset
-    io of the object ib, and the step has consumed k of them. The
-    output window holds the bytes zs from offset to of the object tb,
-    and the step has written j of them. *)
-Lemma ia_loop wd wreg ib ireg di dqb ic io ws tb treg to ip ipreg op opreg (irr : option Z) Φ :
+(** Both callers copy ASCII characters and skip tags the same way.
+    The loop either reaches its exit with a status or stops at a character
+    for which the outer caller must try transliteration. The inner caller
+    has no irreversible counter and returns an error at that character. *)
+Lemma ia_loop ib ireg di dqb ic io ws tb treg to ip ipreg op opreg (irr : option Z) Φ :
   let n := Z.of_nat (length ws) in
-  0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   ic = Obj ib \/ ic = Ro ib -> 0 < ib -> 0 <= io -> ib + io + 4 * n <= r_end ireg -> r_end ireg <= 2 ^ 63 ->
   Forall (fun c => 0 <= c < 2 ^ 32) ws ->
   0 < tb -> 0 <= to -> r_end treg <= 2 ^ 63 ->
   0 < ip -> ip mod 8 = 0 -> ip + 8 <= r_end ipreg -> r_end ipreg <= 2 ^ 63 ->
   0 < op -> op mod 8 = 0 -> op + 8 <= r_end opreg -> r_end opreg <= 2 ^ 63 ->
-  irr = None ->
-  ⊢ ∀ e st k j zs fl fl0, ⌜let m := Z.of_nat (length zs) in
-      lookup (TAtom "v2") e = Some (WPtr (mkPtr (wd + 168) (Obj wd))) /\
-      lookup (TAtom "chk0") e = Some (WPtr (mkPtr (wd + 184) (Obj wd))) /\
+  ⊢ ∀ e st k j zs, ⌜let m := Z.of_nat (length zs) in
       lookup (TAtom "v6") e = Some (WPtr (mkPtr (ib + io + 4 * n) ic)) /\
       lookup (TAtom "iw_3.v19") e = Some (WPtr (objp ip)) /\ lookup (TAtom "chk87") e = Some (WPtr (objp ip)) /\
       lookup (TAtom "iw_3.v22") e = Some (WPtr (objp op)) /\ lookup (TAtom "chk88") e = Some (WPtr (objp op)) /\
       lookup (TAtom "v101") e = Some (WPtr (mkPtr (tb + to + m) (Obj tb))) /\
       lookup (TAtom "v111") e = Some (WPtr (irr_ptr irr)) /\ lookup (TAtom "v89") e = Some (WInt 0) /\
-      lookup (TAtom "iw_3.v17") e = Some (WInt fl0) /\ lookup (TAtom "iw_3.pr.2") e = Some (WInt st) /\
-      0 <= st < 2 ^ 32 /\ wflags_ok fl0 /\ wflags_ok fl /\ 0 <= k <= n /\ 0 <= j <= m /\ tb + to + m <= r_end treg /\
+      lookup (TAtom "iw_3.pr.2") e = Some (WInt st) /\
+      0 <= st < 2 ^ 32 /\ 0 <= k <= n /\ 0 <= j <= m /\ tb + to + m <= r_end treg /\
       Forall (fun z => 0 <= z < 256) zs⌝ -∗
-    live wd wreg -∗ bytes wd 184 (int_bytes fl) -∗
     liveq di ib ireg -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs -∗
     live ip ipreg -∗ pcell ip 0 (mkPtr (ib + io + 4 * k) ic) -∗ live op opreg -∗ pcell op 0 (mkPtr (tb + to + j) (Obj tb)) -∗
-    ▷ (∀ e' st' k' j' zs' fl', ⌜same_out ia_loop_names e e' /\ lookup (TAtom "iw_3.pr.3") e' = Some (WInt st') /\
+    ▷ (∀ e' (st' : option Z) k' j' zs', ⌜same_out ia_loop_names e e' /\
+         (match st' with Some r => lookup (TAtom "iw_3.pr.3") e' = Some (WInt r) | None => irr <> None /\ k' < n end) /\
          k <= k' <= n /\ j <= j' <= Z.of_nat (length zs) /\ length zs' = length zs /\
-         Forall (fun z => 0 <= z < 256) zs' /\ fl' = fl⌝ -∗
-       live wd wreg -∗ bytes wd 184 (int_bytes fl') -∗
+         Forall (fun z => 0 <= z < 256) zs'⌝ -∗
        liveq di ib ireg -∗ bytesq dqb ib io (le_words ws) -∗ live tb treg -∗ bytes tb to zs' -∗
        live ip ipreg -∗ pcell ip 0 (mkPtr (ib + io + 4 * k') ic) -∗
        live op opreg -∗ pcell op 0 (mkPtr (tb + to + j') (Obj tb)) -∗
-       WP (ERun (mkFrame glibc_internal_ascii e' [] None (body_at glibc_internal_ascii "iw_3.L27")) : sexpr) {{ Φ }}) -∗
+       WP (ERun (mkFrame glibc_internal_ascii e' [] None (body_at glibc_internal_ascii
+         (if st' then "iw_3.L27" else "iw_3.L93"))) : sexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame glibc_internal_ascii e [] None (body_at glibc_internal_ascii "iw_3.L25")) : sexpr) {{ Φ }}.
 Proof using Type*.
-  intros n Hwd Hwd8 Hwe Hwr Hic Hib Hio Hie Hir Hws Htb Hto Htr Hip Hip8 Hipe Hipr Hop Hop8 Hope Hopr Hirr.
-  iLöb as "IH". iIntros (e st k j zs fl fl0 Hlk) "Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop HK".
-  destruct Hlk as (Hv2 & Hc0 & Hv6 & Hv19 & Hc87 & Hv22 & Hc88 & Hv101 & Hv111 & Hv89 & Hv17 & Hst & Hst32 & Hfl0 & Hfl & Hk & Hj & Hte & Hzs).
+  intros n Hic Hib Hio Hie Hir Hws Htb Hto Htr Hip Hip8 Hipe Hipr Hop Hop8 Hope Hopr.
+  iLöb as "IH". iIntros (e st k j zs Hlk) "Hil Hin Htl Hzs Hipl Hip Hopl Hop HK".
+  destruct Hlk as (Hv6 & Hv19 & Hc87 & Hv22 & Hc88 & Hv101 & Hv111 & Hv89 & Hst & Hst32 & Hk & Hj & Hte & Hzs).
   assert (Hlc : forall dq, live_capq dq ic ireg = liveq dq ib ireg) by (intros; destruct Hic as [-> | ->]; reflexivity).
   assert (Hn0 : 0 <= n) by lia.
   body_start glibc_internal_ascii "iw_3.L25".
@@ -220,12 +215,12 @@ Proof using Type*.
   Local Ltac exit_side := split_and!; try same_tac; try lia; try assumption;
     rewrite Symbolic.lookup_after_put_same; do 2 f_equal; first [apply Z.mod_small; lia | reflexivity].
   destruct (Z.eq_dec k n) as [-> | Hkn].
-  { branch_as true. step. iApply ("HK" $! _ st n j zs fl with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side. }
+  { branch_as true. step. iApply ("HK" $! _ (Some st) n j zs with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side. }
   branch_as false. step. iEval (rewrite -Hlc) in "Hil". load_pointer_dq "Hipl Hip Hil" by a2. iNext. iIntros "Hipl Hip Hil".
   iEval (rewrite Hlc) in "Hil". step. step. step. branch_as true. step.
   set (m := Z.of_nat (length zs)) in *. check "Hopl". load_pointer_dq "Hopl Hop Htl" by a2. iNext. iIntros "Hopl Hop Htl".
   step. step. step. destruct (Z.eq_dec j m) as [-> | Hjm].
-  { branch_as false. step. iApply ("HK" $! _ 5 k m zs fl with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side. }
+  { branch_as false. step. iApply ("HK" $! _ (Some 5) k m zs with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side. }
   branch_as true. step.
   destruct (lookup_lt_is_Some_2 ws (Z.to_nat k) ltac:(lia)) as [c Hc].
   assert (Hc32 : 0 <= c < 2 ^ 32) by exact (Forall_lookup_1 _ _ _ _ Hws Hc).
@@ -256,17 +251,17 @@ Proof using Type*.
     iDestruct (bytes_put_at tb to zs (Z.to_nat j) c with "[Hz1 Hzb Hz2]") as "Hzs"; [lia | rewrite Ej; iFrame |].
     iEval (rewrite -Hlc) in "Hil". load_pointer_dq "Hipl Hip Hil" by a2. iNext. iIntros "Hipl Hip Hil".
     iEval (rewrite Hlc) in "Hil". step. check "Hipl". store "Hipl" "Hip". step. step.
-    iApply ("IH" $! _ st (k + 1) (j + 1) (<[Z.to_nat j := c]> zs) fl fl0 with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl [Hip] Hopl [Hop] [HK]").
+    iApply ("IH" $! _ st (k + 1) (j + 1) (<[Z.to_nat j := c]> zs) with "[%] Hil Hin Htl Hzs Hipl [Hip] Hopl [Hop] [HK]").
     + rewrite length_insert. split_and!; try (repeat (rewrite Symbolic.lookup_after_put_other; [|reflexivity]); assumption);
         try lia; try assumption.
       * rewrite Symbolic.lookup_after_put_same Z.mod_small; [reflexivity | lia].
       * apply Forall_insert; [assumption | lia].
     + iApply (pcell_congr with "Hip"). cbn [ptr_addr]. unwrap2. lia.
     + iApply (pcell_congr with "Hop"). cbn [ptr_addr]. unwrap2. lia.
-    + iNext. iIntros (e' st' k' j' zs' fl' (Hs & Hp3 & Hk' & Hj' & Hl' & Hz' & Hf')).
+    + iNext. iIntros (e' st' k' j' zs' (Hs & Hp3 & Hk' & Hj' & Hl' & Hz')).
       rewrite length_insert in Hj' Hl'.
-      iIntros "Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop".
-      iApply ("HK" $! e' st' k' j' zs' fl' with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop").
+      iIntros "Hil Hin Htl Hzs Hipl Hip Hopl Hop".
+      iApply ("HK" $! e' st' k' j' zs' with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop").
       split_and!; try lia; try assumption. eapply same_out_trans; [|exact Hs]. same_tac.
   - (* A character above 127 is skipped when it is a tag character and
        otherwise ends the loop, because this caller has no counter of
@@ -284,15 +279,17 @@ Proof using Type*.
     + branch_as false. step.
       iEval (rewrite -Hlc) in "Hil". load_pointer_dq "Hipl Hip Hil" by a2. iNext. iIntros "Hipl Hip Hil".
       iEval (rewrite Hlc) in "Hil". step. check "Hipl". store "Hipl" "Hip". step. step.
-      iApply ("IH" $! _ st (k + 1) j zs fl fl0 with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl [Hip] Hopl Hop [HK]").
+      iApply ("IH" $! _ st (k + 1) j zs with "[%] Hil Hin Htl Hzs Hipl [Hip] Hopl Hop [HK]").
       * split_and!; try (repeat (rewrite Symbolic.lookup_after_put_other; [|reflexivity]); assumption); try lia; try assumption.
         rewrite Symbolic.lookup_after_put_same Z.mod_small; [reflexivity | lia].
       * iApply (pcell_congr with "Hip"). cbn [ptr_addr]. unwrap2. lia.
-      * iNext. iIntros (e2 st2 k2 j2 zs2 fl2 (Hs & Hp3 & Hk2 & Hj2 & Hl2 & Hz2 & Hf2)) "Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop".
-        iApply ("HK" $! e2 st2 k2 j2 zs2 fl2 with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop").
+      * iNext. iIntros (e2 st2 k2 j2 zs2 (Hs & Hp3 & Hk2 & Hj2 & Hl2 & Hz2)) "Hil Hin Htl Hzs Hipl Hip Hopl Hop".
+        iApply ("HK" $! e2 st2 k2 j2 zs2 with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop").
         split_and!; try lia; try assumption. eapply same_out_trans; [|exact Hs]. same_tac.
-    + branch_as true. step. subst irr. step. step. branch_as false. step.
-      iApply ("HK" $! _ 6 k j zs fl with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side.
+    + branch_as true. step. destruct irr as [lb|].
+      * iApply ("HK" $! _ None k j zs with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop"). split_and!; first [same_tac | congruence | lia | assumption].
+      * step. step. branch_as false. step.
+        iApply ("HK" $! _ (Some 6) k j zs with "[%] Hil Hin Htl Hzs Hipl Hip Hopl Hop"). exit_side.
 Qed.
 (** Transliteration runs the step on one replacement, with no counter
     of irreversible conversions and with its own cells for the input
@@ -351,19 +348,18 @@ Proof using Type*.
   iEval (rewrite Hlc) in "Hil". check "Hipl". store "Hipl" "Hip". check "Hopl". store "Hopl" "Hop". step.
   cbn [edge_label]. iApply wp_enter; [reflexivity | vx | iNext; cbn [b_insts b_jump]].
   destruct Hip as (Hip & Hip16 & Hipe). destruct Hoq as (Hoq & Hoq16 & Hoqe).
-  iApply (ia_loop wd wreg ib ireg di dqb ic io ws tb treg to ip _ oq _ None Φ with "[%] Hwl Hfl Hil Hin Htl Hzs Hipl [Hip] Hopl Hop");
+  iApply (ia_loop ib ireg di dqb ic io ws tb treg to ip _ oq _ None Φ with "[%] Hil Hin Htl Hzs Hipl [Hip] Hopl Hop");
     try solve [cbn [r_end]; lia | assumption | reflexivity | apply mod16_mod8; assumption].
-  { split_and!; try solve [reflexivity | lia | assumption]. 2: vm_compute; congruence.
-    cbn. do 3 f_equal. unwrap2. lia. }
+  { split_and!; try solve [reflexivity | lia | assumption | vm_compute; congruence]. }
   { iApply (pcell_congr with "Hip"). lia. }
-  iNext. iIntros (e2 st2 k2 j2 zs2 fl2 (Hs & Hp3 & Hk2 & Hj2 & Hl2 & Hz2 & Hf2)) "Hwl Hfl Hil Hin Htl Hzs Hipl Hip Hopl Hop".
+  iNext. iIntros (e2 [st2|] k2 j2 zs2 (Hs & Hp3 & Hk2 & Hj2 & Hl2 & Hz2)) "Hil Hin Htl Hzs Hipl Hip Hopl Hop"; [|tauto].
   keep Hs "chk87". keep Hs "iw_3.v19". keep Hs "chk6". keep Hs "v4". keep Hs "chk88". keep Hs "iw_3.v22".
   keep Hs "v88". keep Hs "v89". keep Hs "v8". clear Hs.
   body_start glibc_internal_ascii "iw_3.L27". check "Hipl". iEval (rewrite -Hlc) in "Hil".
   load_pointer_dq "Hipl Hip Hil" by a2. iNext. iIntros "Hipl Hip Hil". iEval (rewrite Hlc) in "Hil".
   check "Hpil". store "Hpil" "Hpi". check "Hopl". load_pointer_dq "Hopl Hop Htl" by a2. iNext. iIntros "Hopl Hop Htl".
   step. branch_as false. step. check "Hpol". store "Hpol" "Hpo". iApply wp_ret; [reflexivity | vx |]. iNext.
-  iApply ("HK" $! (st2 mod 2 ^ 32) k2 j2 zs2 fl2 with "[%] Hwl Hoe Hfl Hil Hin Htl Hzs Hpil [Hpi] Hpol [Hpo]").
+  iApply ("HK" $! (st2 mod 2 ^ 32) k2 j2 zs2 fl with "[%] Hwl Hoe Hfl Hil Hin Htl Hzs Hpil [Hpi] Hpol [Hpo]").
   - split_and!; try lia; assumption.
   - iApply (pcell_congr with "Hpi"). unwrap2. lia.
   - iApply (pcell_congr with "Hpo"). unwrap2. lia.
