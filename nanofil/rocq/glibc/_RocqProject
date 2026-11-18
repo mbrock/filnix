@@ -1215,6 +1215,7 @@ hello/HelloCloseErrno.v
 hello/HelloErrorOperand.v
 hello/HelloErrorOperandCall.v
 hello/HelloCloseReportBody.v
+hello/HelloCloseReportFinish.v
 hello/HelloCloseRetain.v
 hello/HelloCloseShort.v
 hello/HelloCloseIdle.v
