@@ -1034,6 +1034,7 @@ locale/Mbrtowc.v
 hello/HelloConvHardLocale.v
 hello/HelloConvByte.v
 hello/HelloConvWindow.v
+hello/HelloConvString.v
 hello/HelloImageCLocaleObjs.v
 hello/HelloStartGetopt.v
 hello/HelloStartGetoptRules.v
