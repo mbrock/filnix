@@ -1193,6 +1193,7 @@ hello/HelloCloseReportLookup.v
 hello/HelloCloseReportMessages.v
 hello/HelloCloseReportLocale.v
 hello/HelloCloseReportStrerror.v
+hello/HelloCloseReportWindow.v
 hello/HelloErrorCall.v
 hello/HelloErrorDefaultCall.v
 hello/HelloErrorReturning.v
