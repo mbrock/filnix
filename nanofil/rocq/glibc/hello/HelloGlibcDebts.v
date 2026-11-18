@@ -304,6 +304,9 @@ Record HelloCore : Type := mkHelloCore {
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_mbsrtowcs : forall bd b4 b6 g gs,
     let n := 4 * (Z.of_nat (length gs) + 1) in
+    (0 < b4 /\ b4 mod 16 = 0 /\ b4 + 16 <= 2 ^ 48) ->
+    (0 < b6 /\ b6 mod 16 = 0 /\ b6 + 16 <= 2 ^ 48) ->
+    (0 < bd /\ bd mod 16 = 0 /\ bd + req_extent (wreq n) <= 2 ^ 48) ->
     fn_triple (TAtom "rpl_mbsrtowcs")
       [WPtr (mkPtr bd (Obj bd)); WPtr (mkPtr b4 (Obj b4)); WInt (Z.of_nat (length gs) + 1);
        WPtr (mkPtr b6 (Obj b6))]
