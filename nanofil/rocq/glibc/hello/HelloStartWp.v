@@ -317,7 +317,8 @@ Proof using Hi.
   iDestruct "Hes" as (sv) "Hes".
   assert (Esec : hello_sec = (lo_es hello_lsm_objs, lo_esreg hello_lsm_objs)) by (vm_compute; reflexivity).
   iEval (rewrite /hello_priv_ps) in "Hpriv". iDestruct (pts_app with "Hpriv") as "[Hpriv Hco]".
-  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco [Les] [Hes] Htid Hrr Loc")
+  iDestruct (pts_app with "Hco") as "[Hco Hlo]".
+  iMod (hello_hd_build (final_world w0 tb) fr tb Hself Hfd2' sv t Ht0 with "Hpriv Hco Hlo Cl Ccells [Les] [Hes] Htid Hrr Loc")
     as "[Hgo Hrest]"; [rewrite Esec; iExact "Les" | rewrite Esec; iExact "Hes" |].
   iDestruct "Hrest" as "(Hgl & #Hgro & Hcr)".
   iAssert (hello_printf_ro hge) as "#Hpr".

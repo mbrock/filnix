@@ -18,7 +18,7 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
-  HelloImageDiagObjs HelloImageCloseObjs
+  HelloImageDiagObjs HelloImageCloseObjs HelloImageLocaleObjs
   HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
@@ -50,9 +50,10 @@ Qed.
 (** Some library calls in Hello read globals that neither startup nor
     main touches. Hello's private state owns those globals from the
     start, and this list names them. It holds what getopt's warnings
-    read and what close_stdout and its error report read. The cells of
-    the locale will join it later. *)
-Definition hello_priv_ps : list (piece * pval) := hello_getopt_priv_ps ++ hello_close_objs_ps.
+    read, what close_stdout and its error report read, and the cells of
+    the global locale that setlocale writes. *)
+Definition hello_priv_ps : list (piece * pval) :=
+  hello_getopt_priv_ps ++ hello_close_objs_ps ++ hello_locale_objs_ps.
 
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
@@ -78,7 +79,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_stdout_life_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_environ_counter_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_getopt_priv_agree g m0 Hi)|].
-  exact (hello_close_objs_agree g m0 Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_close_objs_agree g m0 Hi)|].
+  exact (hello_locale_objs_agree g m0 Hi).
 Qed.
 
 (** This test says that a piece is no byte or capability slot of the
