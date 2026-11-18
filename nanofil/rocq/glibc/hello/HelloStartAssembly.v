@@ -18,8 +18,8 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
-  HelloImageDiagObjs HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageCLocaleObjs HelloCloseReportImage
-  HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
+  HelloImageDiagObjs HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs
+  HelloCloseReportImage HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -52,11 +52,13 @@ Qed.
     start, and this list names them. It holds what getopt's warnings
     read, what close_stdout and its error report read, and the cells of
     the global locale that setlocale writes, and the constant data that
-    the conversion to wide characters reads. It also holds the two
-    globals of `c: error` for now. *)
+    the conversion to wide characters reads. Beside those it holds the
+    constants that the wide print call reads to make stdout wide, to
+    convert wide characters back to bytes and to close a wide stream.
+    It also holds the two globals of `c: error` for now. *)
 Definition hello_priv_ps : list (piece * pval) :=
-  hello_getopt_priv_ps ++ hello_close_objs_ps ++ hello_locale_objs_ps ++ hello_mbs_objs_ps ++ hello_clocale_objs_ps ++
-  hello_errlist_ps ++ hello_error_objs_ps.
+  hello_getopt_priv_ps ++ hello_close_objs_ps ++ hello_locale_objs_ps ++ (hello_mbs_objs_ps ++ hello_wide_objs_ps) ++
+  hello_clocale_objs_ps ++ hello_errlist_ps ++ hello_error_objs_ps.
 
 (** These are all the pieces that Hello's startup owns or hands to main
     unchanged. *)
@@ -84,7 +86,8 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_getopt_priv_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_close_objs_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_locale_objs_agree g m0 Hi)|].
-  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_mbs_objs_agree g m0 Hi)|].
+  apply (proj2 (all_agree_app _ _ _)). split;
+    [exact (proj2 (all_agree_app _ _ _) (conj (hello_mbs_objs_agree g m0 Hi) (hello_wide_objs_agree g m0 Hi)))|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_clocale_objs_agree g m0 Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_errlist_agree g m0 Hi)|].
   exact (hello_error_objs_agree g m0 Hi).

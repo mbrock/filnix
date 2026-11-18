@@ -26,7 +26,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString StartCtypeInitSpec StartEarlyInitSpec
   StartImageCpu HelloImageModule HelloImageLoad HelloImageEarly HelloImageCloseObjs HelloImageLocaleObjs
-  HelloImageMbsObjs HelloImageCLocaleObjs HelloStartGetopt HelloStartHdBuild HelloCloseReportImage.
+  HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs HelloStartGetopt HelloStartHdBuild HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -65,9 +65,10 @@ Definition locale_c : iProp Σ :=
 
 (** The conversion to wide characters only reads its constants: the
     character type data, the converter's step and the names "C" and
-    "POSIX". So the private state holds them as shares that never
-    change. *)
-Definition hello_conv_ro : iProp Σ := ptsq DfracDiscarded hello_mbs_objs_ps.
+    "POSIX". The wide print call also only reads its constants, which
+    [hello_wide_objs_ps] lists. So the private state holds both lists
+    as shares that never change. *)
+Definition hello_conv_ro : iProp Σ := ptsq DfracDiscarded hello_mbs_objs_ps ∗ ptsq DfracDiscarded hello_wide_objs_ps.
 
 (** This list holds close_stdout's writable globals and the conversion
     lock. It leaves out the catalog counter, which the locale part holds. *)
@@ -111,12 +112,13 @@ Lemma hello_priv_build : hello_hd_rest w fr ==∗ hello_priv_rest.
 Proof using Type.
   iIntros "(Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & Hel & #Hct)".
   rewrite hello_close_split. iDestruct "Hco" as "(Hcr & Hn & Hcro)".
-  iEval (rewrite pts_ptsq) in "Hmb". iMod (ptsq_persist with "Hmb") as "#Hmb".
+  iEval (rewrite pts_app !pts_ptsq) in "Hmb". iDestruct "Hmb" as "[Hmb Hwo]".
+  iMod (ptsq_persist with "Hmb") as "#Hmb". iMod (ptsq_persist with "Hwo") as "#Hwo".
   iEval (rewrite pts_ptsq) in "Hcx". iMod (ptsq_persist with "Hcx") as "#Hcx".
   iEval (rewrite pts_ptsq) in "Hel". iMod (ptsq_persist with "Hel") as "#Hel".
   iModIntro. iSplitL "Pgl Hlo Hcl Hcc Hn".
   { iFrame "Pgl Hlo Hcl Hcc Hcx Hct". iExists 0. iExact "Hn". }
-  iSplitR; [iExact "Hmb"|]. iSplitR; [iExact "Ro"|].
+  iSplitR; [iSplit; [iExact "Hmb" | iExact "Hwo"]|]. iSplitR; [iExact "Ro"|].
   iSplitL "Hcr"; [iExact "Hcr"|]. iSplitL "Hcro"; [iExact "Hcro"|iExact "Hel"].
 Qed.
 

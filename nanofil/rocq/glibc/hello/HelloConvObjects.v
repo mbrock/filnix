@@ -31,7 +31,7 @@ Lemma hello_conv_tables : hello_conv_ro ⊢
   pcellq DfracDiscarded (img_addr "glibc_wcsmbsload#to_wc") 0 null ∗
   pcellq DfracDiscarded (img_addr "glibc_wcsmbsload#to_wc") 40 mbs_ascii_fct.
 Proof using Type.
-  rewrite /hello_conv_ro /hello_mbs_objs_ps ptsq_app /hello_mbs_conv_ps.
+  rewrite /hello_conv_ro. iIntros "[H _]". iRevert "H". rewrite /hello_mbs_objs_ps ptsq_app /hello_mbs_conv_ps.
   repeat first [rewrite mbs_life_cons | rewrite ptsq_app]. iIntros "[$ _]".
 Qed.
 
@@ -41,7 +41,7 @@ Qed.
 Lemma hello_conv_c_name : hello_conv_ro ⊢
   word_string DfracDiscarded (mbs_ro "hard-locale#str.31") [67].
 Proof using Type.
-  rewrite /hello_conv_ro /hello_mbs_objs_ps /hello_mbs_ro_ps !ptsq_app.
+  rewrite /hello_conv_ro. iIntros "[H _]". iRevert "H". rewrite /hello_mbs_objs_ps /hello_mbs_ro_ps !ptsq_app.
   iIntros "[_ [H _]]". iExists (img_addr "hard-locale#str.31"), (img_obj "hard-locale#str.31").2, (lit_words hello_c_text).
   iSplit; [iPureIntro; apply str_shape_b_sound; vm_compute; reflexivity|].
   replace (wstart (mbs_ro "hard-locale#str.31") - img_addr "hard-locale#str.31") with 0 by (vm_compute; reflexivity).

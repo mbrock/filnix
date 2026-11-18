@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageCLocaleObjs StartEarlyInitSpec StartImageCpu
+  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs StartEarlyInitSpec StartImageCpu
   AllocRo LibioFputsSpec HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -81,14 +81,14 @@ Qed.
     characters read, with early init's shares of the character tables. *)
 Definition hello_hd_rest : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ hello_getopt_ro ∗ pts hello_close_objs_ps ∗ pts hello_locale_objs_ps ∗
-  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps ∗ pts hello_clocale_objs_ps ∗
+  ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts (hello_mbs_objs_ps ++ hello_wide_objs_ps) ∗ pts hello_clocale_objs_ps ∗
   pts hello_errlist_ps ∗ ct_ro hello_ct_objs.
 
 (** Startup leaves these objects, and they become the reports' part of
     the private state and the rest. *)
 Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ pts hello_close_objs_ps -∗ pts hello_locale_objs_ps -∗
-  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗
+  ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts (hello_mbs_objs_ps ++ hello_wide_objs_ps) -∗
   pts hello_clocale_objs_ps -∗ pts hello_errlist_ps -∗ ct_ro hello_ct_objs -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
