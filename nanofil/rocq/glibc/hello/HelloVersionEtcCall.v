@@ -14,7 +14,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc HelloVersionEtcVa
-  PrintfWrap FprintfCode PrintfCode HelloImageLayout LibioFflushSpec HelloErrorOperandCall.
+  PrintfWrap FprintfCode PrintfCode HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall.
+From Glibc Require LibioCleanupExit.
+From Glibc Require Import SysCode LibioReadCode LibioDoWriteCode FileSyncCode FflushCode.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01.
 From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
@@ -116,10 +118,12 @@ Proof using Type*. intros Herr_op. constructor; [exact (version_etc_hello P) | e
 End call.
 
 (** The real Hello image runs the three calls safely when glibc's
-    formatter, `c: fputs` and `c: fflush` keep their contracts. The
-    image's `c: fprintf` and `c: printf` are glibc's own wrappers, and
-    they are proved from the formatter's contract. The error report
-    also needs stderr open and a thread with an identity. *)
+    formatter and `c: fputs` keep their contracts. The image's
+    `c: fprintf` and `c: printf` are glibc's own wrappers, and they are
+    proved from the formatter's contract. The image's `c: fflush` and
+    the functions it calls are glibc's own, so its contract is proved
+    here. The error report also needs stderr open and a thread with an
+    identity. *)
 Lemma hello_prints_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr (P : iProp Σ) :
   hello_layout (mkGenv hello_image_module img_globals fr) hello_image_objs ->
   hello_link (mkGenv hello_image_module img_globals fr) hello_image_objs ->
@@ -129,11 +133,20 @@ Lemma hello_prints_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr (
     (vfprintf_spec (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr))) ->
   HasSpec glibc_os_registry (os_wi w0) (mkGenv hello_image_module img_globals fr) (TAtom "fputs")
     (fputs_spec (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr))) ->
-  HasSpec glibc_os_registry (os_wi w0) (mkGenv hello_image_module img_globals fr) (TAtom "__GI__IO_fflush")
-    (fflush_spec (glibc_program := program_of w0 glibc_os_registry (mkGenv hello_image_module img_globals fr))) ->
   HelloPrints w0 (mkGenv hello_image_module img_globals fr) hello_image_objs P.
 Proof.
-  intros Hy Hk Herr Hfd Hfd2 Hos Hvf Hfputs Hff.
+  intros Hy Hk Herr Hfd Hfd2 Hos Hvf Hfputs.
+  set (ge := mkGenv hello_image_module img_globals fr) in *.
+  assert (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync)
+    by (exists (img_addr "_IO_new_file_sync"); split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
+  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+    by (exists (img_addr "_IO_new_file_write"); split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
+  assert (Dw : Defines ge "__GI___write" glibc___libc_write) by (unfold Defines; vm_compute; reflexivity).
+  assert (Dd : Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by (unfold Defines; vm_compute; reflexivity).
+  assert (Dff : Defines ge "__GI__IO_fflush" glibc__IO_fflush) by (unfold Defines; vm_compute; reflexivity).
+  assert (Hself : ptr_addr (ow_self w0) <> 0) by (destruct Hos as [? _]; lia).
+  pose proof (fflush_has_spec (glibc_program := program_of w0 glibc_os_registry ge)
+    LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hsync Hfw Hself) as Hff.
   assert (Df : Defines (mkGenv hello_image_module img_globals fr) "fprintf" glibc_fprintf)
     by (unfold Defines; vm_compute; reflexivity).
   assert (Dp : Defines (mkGenv hello_image_module img_globals fr) "printf" glibc_printf)

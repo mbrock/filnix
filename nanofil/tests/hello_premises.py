@@ -15,12 +15,11 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts four
+  Its body, hello_tb_contracts in HelloStartWp.v, counts three
   obligations, each with its own label: the contract of glibc's
   formatter (vfprintf_has_spec), the contract of fputs
-  (fputs_has_spec), the contract of fflush (fflush_has_spec), and the
-  build of the private state's free part X from the objects that
-  startup leaves.
+  (fputs_has_spec), and the build of the private state's free part X
+  from the objects that startup leaves.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted.
 
@@ -66,7 +65,7 @@ TAGS = [
     (r'hd_print', 'printf'),
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
-    (r'fputs_has_spec|fflush_has_spec', 'libio'),
+    (r'fputs_has_spec', 'libio'),
     (r'build X', 'locale'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
@@ -83,7 +82,7 @@ STATUS = [
     (r'hd_wprintf', 'unknown: X now owns the conversion constants and __gconv_lock; not yet checked against a proof'),
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
-    (r'vfprintf_has_spec|fputs_has_spec|fflush_has_spec', SAT),
+    (r'vfprintf_has_spec|fputs_has_spec', SAT),
     (r'build X', 'unknown: X holds every object listed for setlocale and mbsrtowcs; the two contracts are not yet proved'),
 ]
 PREMISE_LABELS = {
@@ -154,12 +153,10 @@ def tb_contracts():
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
         elif c.startswith('HasSpec') and '"fputs"' in c:
             out.append(f"contract: glibc's fputs, fputs_has_spec ({c})")
-        elif c.startswith('HasSpec') and '__GI__IO_fflush' in c:
-            out.append(f"contract: glibc's fflush, fflush_has_spec ({c})")
         elif c.endswith('==∗ X'):
             out.append(f"contract: build X, the setlocale and close_stdout state, from what startup leaves ({c})")
-    if len(out) != 4:
-        sys.exit(f'hello_premises: expected 4 counted conjuncts in hello_tb_contracts, found {len(out)}')
+    if len(out) != 3:
+        sys.exit(f'hello_premises: expected 3 counted conjuncts in hello_tb_contracts, found {len(out)}')
     return out
 
 
