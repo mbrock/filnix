@@ -11,16 +11,18 @@
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs
-  HelloImageWConvObjs.
+  HelloImageWConvObjs HelloImageWPrintfObjs.
 Import ListNotations.
 
 (** Making stdout wide copies words from the C locale's table of
     converters, and closing it reads the slots that release them.
     Converting wide characters back to bytes reads the replacement
     tables, the words that lead to them and the zero word that ends
-    each table of strings. *)
+    each table of strings. Formatting the greeting reads entries of the
+    formatter's jump tables. *)
 Definition hello_wide_objs_ps : list (piece * pval) :=
-  hello_wfwide_ps ++ hello_wrelease_ps ++ hello_wc_tables_ps ++ hello_wc_words_ps ++ hello_wc_tails_ps.
+  hello_wfwide_ps ++ hello_wrelease_ps ++ hello_wc_tables_ps ++ hello_wc_words_ps ++ hello_wc_tails_ps ++
+  hello_wprintf_tables_ps.
 
 (** Hello starts with each of these constants as listed, because each
     part was checked against the loaded image. *)
@@ -32,5 +34,6 @@ Proof.
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_wrelease_agree g m Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_wc_tables_agree g m Hi)|].
   apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_wc_words_agree g m Hi)|].
-  exact (hello_wc_tails_agree g m Hi).
+  apply (proj2 (all_agree_app _ _ _)). split; [exact (hello_wc_tails_agree g m Hi)|].
+  exact (hello_wprintf_agree g m Hi).
 Qed.

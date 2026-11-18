@@ -78,14 +78,15 @@ Qed.
     called. The formatter leaves stdout narrow or wide, and exit's close
     callback has a contract for each orientation. *)
 Lemma join_print e bd n ws Ψ :
-  lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> wide_text ws ->
+  lookup (TAtom "v23") e = Some (WPtr (mkPtr bd (Obj bd))) -> 0 < bd -> bd mod 16 = 0 ->
+  bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
   hello_ro ge o -∗ io -∗ names o -∗ X -∗ wbuf bd n ws -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "L29") (Some (TAtom "iw_1.join")))) : gexpr) {{ Ψ }}.
 Proof using Type*.
-  intros H23 Hbd Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
+  intros H23 Hbd Hbd16 Hbde Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
   step. step_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
   iApply (wp_call_int with "[Hio Hpv Hwb]");
-    [exact (hd_wprintf _ _ _ D bd n ws Hw) | vx |
+    [exact (hd_wprintf _ _ _ D bd n ws Hbd Hbd16 Hbde Hw) | vx |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |].
   iNext. iIntros (k _) "(Hio & Hpv & Hwb)".
   iDestruct "Hwb" as (cs) "(_ & Hl & _ & _)".

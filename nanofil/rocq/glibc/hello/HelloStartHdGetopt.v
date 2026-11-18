@@ -111,10 +111,12 @@ Qed.
 
 (** Main lends the warnings what they need from its streams and its
     private state. After a warning, main gets both back, whatever the
-    warning wrote. N and X are other parts that main keeps. *)
-Lemma hello_hd_lend (N X : iProp Σ) :
-  hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X) ⊢
-    (N ∗ hello_getopt_E) ∗ (N ∗ hello_getopt_E -∗ hello_stdio w hge ob ∗ (N ∗ hello_hd_getopt ∗ X)).
+    warning wrote. N and X are other parts that main keeps. The
+    warnings never touch stdout, so main may hold stdout as any S, in
+    either orientation. *)
+Lemma hello_hd_lend (N X S : iProp Σ) :
+  hello_stdio_wide w hge ob S ∗ (N ∗ hello_hd_getopt ∗ X) ⊢
+    (N ∗ hello_getopt_E) ∗ (N ∗ hello_getopt_E -∗ hello_stdio_wide w hge ob S ∗ (N ∗ hello_hd_getopt ∗ X)).
 Proof using Hfd2.
   iIntros "[(Ho & He & Hi & Hl & Ht & Hn & Hc) (HN & (%x & %Hx & Hw) & HX)]".
   iDestruct ("Hw" with "[Ht Hn He]") as "HG"; [iFrame "Ht He"; iExact "Hn"|].

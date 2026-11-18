@@ -334,7 +334,7 @@ Record HelloCore : Type := mkHelloCore {
     fn_triple (TAtom "setlocale") [WInt 6; WPtr (sym_ptr ge "hello#str.80")]
       (hello_ro ∗ hello_stdio ∗ hd_priv)%I (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio ∗ hd_priv)%I;
   hd_wprintf : forall bd n ws,
-    wide_text ws ->
+    0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
       (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I;

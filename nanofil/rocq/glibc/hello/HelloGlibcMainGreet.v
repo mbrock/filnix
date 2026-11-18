@@ -107,7 +107,7 @@ Proof using Hy Lb.
      iSplitL "Hwb"; [iExact "Hwb"|]; iSplitL "Hgc"; [iExact "Hgc"|]; iSplitR; [iExact "Hs" | iExact "Hb6"] |].
   iNext. iIntros (k Hk) "(%ws & [%Hk1 %Hw] & Hio & Hpv & Hwb)".
   step.
-  (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact Hw |].
+  (branch_symbolic; LeavesLogic.decide_branch). iApply (join_print w0 ge o D X0 X Lb Hy with "Hro [Hio Hpv] Hn HX Hwb"); [lk_prove | exact Hbd0 | exact Hbd16 | exact Hbde | exact Hw |].
   iSplitL "Hio"; [iExact "Hio" | iExact "Hpv"].
 Qed.
 

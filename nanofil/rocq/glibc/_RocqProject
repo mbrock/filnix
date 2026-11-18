@@ -1077,7 +1077,9 @@ hello/HelloImageMbsObjs.v
 hello/HelloImageWFwideObjs.v
 hello/HelloImageWReleaseObjs.v
 hello/HelloImageWideObjs.v
+hello/HelloImageWPrintfObjs.v
 hello/HelloWideState.v
+hello/HelloWPrintfCall.v
 locale/AsciiConvert.v
 locale/Mbrtowc.v
 hello/HelloConvHardLocale.v

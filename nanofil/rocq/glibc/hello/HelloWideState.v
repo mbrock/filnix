@@ -50,17 +50,19 @@ Qed.
     constants sit in the read-only part, and the lock sits with
     close_stdout's globals. *)
 
-(** Main lends half of the global locale's first word, because the
-    locale part keeps the other half, and it gets every part back when
-    the call returns the resource. The hypothesis on priv says how main's
-    private state splits, as in [hello_conv_lend]. *)
-Lemma hello_wfwide_lend tb (Hfd : In 2 (ow_fds w)) (N priv : iProp Σ) :
+(** Main lends the call what making stdout wide needs, and it gets
+    all of it back unchanged. It lends only half of the global locale's
+    first word, because the locale part keeps the other half. The
+    private state must split as it does for the narrow conversion. The
+    loan never reads stdout, so main can keep stdout apart in either
+    orientation. *)
+Lemma hello_wfwide_lend tb (Hfd : In 2 (ow_fds w)) (N priv S : iProp Σ) :
   (priv ⊣⊢ N ∗ hello_hd_getopt w fr tb ∗ (N ∗ hello_priv_rest w fr)) ->
-  hello_stdio w hge hello_image_objs ∗ priv ⊢
-  wfwide_res (DfracOwn (1/2)) ∗ (wfwide_res (DfracOwn (1/2)) -∗ hello_stdio w hge hello_image_objs ∗ priv).
+  hello_stdio_wide w hge hello_image_objs S ∗ priv ⊢
+  wfwide_res (DfracOwn (1/2)) ∗ (wfwide_res (DfracOwn (1/2)) -∗ hello_stdio_wide w hge hello_image_objs S ∗ priv).
 Proof using Type.
   intros HP. iIntros "[Hio Hp]". iDestruct (HP with "Hp") as "(HN & HG & HN' & Hloc & #Hro & Hr)".
-  iDestruct (hello_hd_lend w fr tb Hfd N N with "[$Hio $HN $HG $HN']") as "[[HN (%x & %Hx & HG)] Hb]".
+  iDestruct (hello_hd_lend w fr tb Hfd N N S with "[$Hio $HN $HG $HN']") as "[[HN (%x & %Hx & HG)] Hb]".
   iDestruct (conv_dgx_lend with "HG") as "(_ & (Ht & Hp & Hg & %es & %Les & He) & HG)".
   iDestruct "Hloc" as "(Hcat & Hnames & Hl & Hc & Hcl & #Hct & Hcnt)".
   iPoseProof "Hct" as "[#Hcc _]". iPoseProof (hello_conv_tables with "Hro") as "#Htab".
