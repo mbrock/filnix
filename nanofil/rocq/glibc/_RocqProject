@@ -484,6 +484,7 @@ stdio/PrintfLoop.v
 stdio/PrintfFileInit.v
 stdio/PrintfFlushSwitch.v
 stdio/PrintfFlushStage.v
+stdio/PrintfFlushPublish.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
