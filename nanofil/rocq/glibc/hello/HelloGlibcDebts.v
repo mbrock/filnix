@@ -312,6 +312,15 @@ Definition close_stdout_narrow (priv : iProp Σ) : Prop :=
     (hello_ro ∗ hello_stdio ∗ priv ∗ names)%I
     (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
 
+(** When the greeting has made stdout wide, the callback closes a
+    wide stdout, which [file_wide] describes, and stderr, which is
+    still narrow. It reads and consumes the same cells of priv as the
+    narrow case. *)
+Definition close_stdout_wide (priv : iProp Σ) : Prop :=
+  fn_triple (TAtom "close_stdout") []
+    (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ priv ∗ names)%I
+    (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
+
 (** The stream [wprintf_out] is stdout after main prints the wide
     greeting. The proof of the formatter, [hello_wprintf_has_spec],
     leaves stdout either narrow and idle or wide, as [file_wide]
@@ -337,11 +346,7 @@ Record HelloCore : Type := mkHelloCore {
     0 < bd -> bd mod 16 = 0 -> bd + req_extent (wreq n) <= 2 ^ 48 -> wide_text ws ->
     fn_triple (TAtom "wprintf") [WPtr (sym_ptr ge "hello#str.83"); WPtr (mkPtr bd (Obj bd))]
       (hello_ro ∗ hello_stdio ∗ hd_priv ∗ wbuf bd n ws)%I
-      (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I;
-  hd_close_stdout_wide :
-    fn_triple (TAtom "close_stdout") []
-      (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ hd_priv ∗ names)%I
-      (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I
+      (ret_int (hello_stdio_wide wprintf_out ∗ hd_priv ∗ wbuf bd n ws))%I
 }.
 
 (** The version text and the bug-report address are printed with
@@ -410,6 +415,7 @@ Record HelloLibs (priv X0 X : iProp Σ) : Prop := mkHelloLibs {
   hl_proper_name : forall p, fn_triple (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I;
   hl_setlocale_query : setlocale_query priv;
   hl_close_stdout : close_stdout_narrow priv;
+  hl_close_stdout_wide : close_stdout_wide priv;
   hl_mbsrtowcs : mbsrtowcs priv;
   hl_prints : HelloPrints priv
 }.
