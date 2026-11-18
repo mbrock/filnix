@@ -53,15 +53,15 @@ Local Abbreviation cc := (ct_cc hello_ct_objs).
 Definition hello_cat_cntr : iProp Σ :=
   ∃ n, pts (obj_ps (img_ob "_nl_msg_cat_cntr") (le_bytes n 4)).
 
-(** The locale component holds every cell that setlocale writes in the
-    C locale, with the value that it writes. That is the character type
-    data pointer of the global locale, the other category pointers and
-    names, the three table pointers, the thread's three table cells and
-    the six old table globals. It also holds the constants that
-    setlocale reads and the counter. *)
+(** Setlocale in the C locale writes each locale cell with the value it
+    already holds, so this part of the state fixes those values. It
+    holds the locale's category pointers and names, the table pointers
+    and the old table globals. It also holds the counter that setlocale
+    increments. Setlocale reads its constants as frozen shares, so
+    getenv can look up each category name as a frozen string. *)
 Definition locale_c : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ pts hello_locale_objs_ps ∗ ct_lives hello_ct_objs ∗
-  ct_cells_set hello_ct_objs ∗ pts hello_clocale_objs_ps ∗ ct_ro hello_ct_objs ∗ hello_cat_cntr.
+  ct_cells_set hello_ct_objs ∗ ptsq DfracDiscarded hello_clocale_objs_ps ∗ ct_ro hello_ct_objs ∗ hello_cat_cntr.
 
 (** The conversion to wide characters only reads its constants: the
     character type data, the converter's step and the names "C" and
@@ -112,6 +112,7 @@ Proof using Type.
   iIntros "(Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & #Hct)".
   rewrite hello_close_split. iDestruct "Hco" as "(Hcr & Hn & Hcro)".
   iEval (rewrite pts_ptsq) in "Hmb". iMod (ptsq_persist with "Hmb") as "#Hmb".
+  iEval (rewrite pts_ptsq) in "Hcx". iMod (ptsq_persist with "Hcx") as "#Hcx".
   iModIntro. iFrame "Pgl Hlo Hcl Hcc Hcx Hct Ro Hcr Hcro Hmb". iExists 0. iExact "Hn".
 Qed.
 
