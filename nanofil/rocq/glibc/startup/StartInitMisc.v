@@ -12,6 +12,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedIN.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -31,7 +32,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __init_misc`. *)
-Definition start_init_misc_fn : func := Eval vm_compute in start_fn "__init_misc".
+Definition start_init_misc_fn : func := hi_fn___init_misc.
 
 (** The image defines `c: __init_misc` with that body. *)
 Lemma start_init_misc_defined :

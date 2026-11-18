@@ -63,18 +63,18 @@ fi
 grep -E 'stdio: [0-9]+ files, 3 differ, 1 stale' "$work/rejected"
 grep -E 'getopt: [0-9]+ files, 0 differ, 1 stale' "$work/rejected"
 
-# The whole-image slices: a changed atom, a missing decoder, a reordered
+# The whole-image slices: a changed atom, a missing item group, a reordered
 # join and two stale slices must all fail.
 python3 - "$work/staged/hello" <<'PY'
 from pathlib import Path
 import re
 import sys
 hello = Path(sys.argv[1])
-p = hello / 'HelloImageCode01.v'
-p.write_text(re.sub(r'TAtom "([^"]+)"', r'TAtom "\1_changed"', p.read_text(), count=1))
-(hello / 'HelloImageDec03.v').unlink()
-p = hello / 'HelloImageTerm.v'
-first, second = re.findall(r'hello_image_items_\d+', p.read_text().split('Definition hello_image_term')[1])[:2]
+p = hello / 'HelloImageTypedVE.v'
+p.write_text(re.sub(r'\(a "([^"]+)"', r'(a "\1_changed"', p.read_text(), count=1))
+(hello / 'HelloImageTypedItems03.v').unlink()
+p = hello / 'HelloImageCode.v'
+first, second = re.findall(r'hello_image_items_\d+', p.read_text().split('Definition hello_image_decoded')[1])[:2]
 p.write_text(p.read_text().replace(f'{first} ++ {second}', f'{second} ++ {first}', 1))
 (hello / 'HelloImageCode999.v').write_text('stale\n')
 (hello / 'HelloImageDec99.v').write_text('stale\n')
@@ -145,7 +145,7 @@ reject_sync missing-default 'missing fixture:'
 mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
 cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
-cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
+cp "$here/generate.py" "$here/prelude.py" "$here/typed.py" "$here/names.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
    "$here/layout.py" "$here/layout.pl" "$here/block-facts.py" "$here/block-facts.pl" \
    "$work/nanofil/rocq/scripts/glibc-code/"
 cp "$here/../../glibc/CodePrelude.v" "$work/nanofil/rocq/glibc/"

@@ -3,19 +3,19 @@
     not bytes. When a full buffer flush succeeds, overflow needs to know
     that the cursor is back at the base before it stores another character. *)
 
+From Glibc Require Import HelloImageTypedIO.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode133 Fix OsWorld FileInv LibioLogic
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioWIdle LibioWXsputnWindow LibioWXsputnRoom.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition wdo_write_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_133])) "__GI__IO_wdo_write".
+Definition wdo_write_fn := hello_image_fn___GI__IO_wdo_write.
 
 Section write.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

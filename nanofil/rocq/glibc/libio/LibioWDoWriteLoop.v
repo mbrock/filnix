@@ -26,6 +26,7 @@
     pass converts into a sixteen-byte array on the stack. In either
     case it writes the bytes from the chosen buffer to the descriptor. *)
 
+From Glibc Require Import HelloImageTypedLI.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,7 +34,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic VariadicLogic.
-From Glibc Require Import CodePrelude HelloImageCode125 Fix OsBlocks OsWorld OsRegistry SysCode FileInv FileIdle
+From Glibc Require Import CodePrelude Fix OsBlocks OsWorld OsRegistry SysCode FileInv FileIdle
   LibioLogic LibioReadCode LibioDoWriteCode LibioPutsInv LibioCloseSteps LibioWIdle LibioWXsputnWindow
   LibioWXsputnRoom LibioWOverflowWrite LibioWDoWriteStream LibioWDoWriteTail CBlocks SysWrappers.
 Module WdVL := VariadicLogicOn R LG0.
@@ -51,8 +52,7 @@ Local Typeclasses Opaque iconv_cell pcell icell bytes auxes live.
 
 (** To read the conversion instructions that Hello actually runs, we
     look up the function in its linked image. *)
-Definition codecvt_out_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_125])) "__libio_codecvt_out".
+Definition codecvt_out_fn := hello_image_fn___libio_codecvt_out.
 
 (** ## The wide characters as words
 

@@ -4,19 +4,19 @@
     xsputn slot with a character count; the formatter never calls the
     stream's overflow slot. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode239 Fix OsWorld FileInv LibioLogic LibioCloseSteps.
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic LibioCloseSteps.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 (** Hello calls this function before it copies the first character into the array. *)
-Definition wprintf_file_init_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_239])) "__wprintf_buffer_to_file_init".
+Definition wprintf_file_init_fn := hello_image_fn___wprintf_buffer_to_file_init.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

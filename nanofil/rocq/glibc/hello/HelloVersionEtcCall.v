@@ -18,7 +18,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdl
   HelloPrintSites.
 From Glibc Require LibioCleanupExit.
 From Glibc Require Import SysCode LibioReadCode LibioDoWriteCode FileSyncCode FflushCode.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01.
+From Glibc Require Import HelloImageModule HelloImageLoad.
 From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.

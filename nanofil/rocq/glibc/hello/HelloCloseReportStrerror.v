@@ -4,6 +4,7 @@
     passes it and the original errno to snprintf. This proof runs both
     translations. Only the second path needs a proof of the print. *)
 
+From Glibc Require Import HelloImageTypedSN.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,7 +18,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString CodePre
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
-Definition report_snprintf : func := Eval vm_compute in code_function hello_image_module "__GI___snprintf".
+Definition report_snprintf : func := hello_image_fn___GI___snprintf.
 Definition unknown_fmt := Eval vm_compute in hello_sym "glibc__strerror#str.136".
 Definition unknown_prefix := Eval vm_compute in hello_sym "glibc__strerror#str.137".
 

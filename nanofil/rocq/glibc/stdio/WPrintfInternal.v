@@ -4,13 +4,14 @@
     then initializes its private staging array, prints the greeting and
     flushes the array before returning an integer result. *)
 
+From Glibc Require Import HelloImageTypedIO HelloImageTypedVF.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
-From Glibc Require Import CodePrelude HelloImageCode125 HelloImageCode236 Fix OsBlocks OsWorld FileInv FileIdle
+From Glibc Require Import CodePrelude Fix OsBlocks OsWorld FileInv FileIdle
   LibioLogic LibioCloseSteps LibioWIdle LibioPutsInv PrintfSpec PrintfWrap FxprintfStream WPrintfFileInit
   WPrintfFileFlush WPrintfDispatch WPrintfLength WPrintfPad WPrintfWrite WPrintfParse WPrintfScan WPrintfOut WPrintfBuffer WPrintfDone.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld WrapVL.
@@ -21,10 +22,8 @@ Local Abbreviation stage_reg b := (mkRegion b (b+560) Heap Live).
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 
-Definition wprintf_internal_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_236])) "__vfwprintf_internal".
-Definition wprintf_fwide_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_125])) "_IO_fwide".
+Definition wprintf_internal_fn := hello_image_fn___vfwprintf_internal.
+Definition wprintf_fwide_fn := hello_image_fn__IO_fwide.
 
 Section internal.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

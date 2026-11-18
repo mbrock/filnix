@@ -33,6 +33,7 @@
     makes it run as the last step of its chain. This file proves the
     function against a rule for that run of the step. *)
 
+From Glibc Require Import HelloImageTypedLI.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -40,7 +41,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageCode125 HelloImageLoad HelloImageWConvObjs OsWorld FileInv
+From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld FileInv
   LibioLogic LibioCloseSteps LibioWIdle Mbrtowc CBlocks Fix LibioWConvAscii LibioWConvConsts.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -54,8 +55,7 @@ Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
 Local Abbreviation fct := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** This definition is the conversion function as Hello's image holds it. *)
-Definition glibc_codecvt_out := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_125])) "__libio_codecvt_out".
+Definition glibc_codecvt_out := hello_image_fn___libio_codecvt_out.
 
 Section out.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

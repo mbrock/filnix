@@ -12,6 +12,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedCT.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -30,7 +31,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __GI___ctype_init`. *)
-Definition start_ctype_init_fn : func := Eval vm_compute in start_fn "__GI___ctype_init".
+Definition start_ctype_init_fn : func := hi_fn___GI___ctype_init.
 
 (** The image defines `c: __GI___ctype_init` with that body. *)
 Lemma start_ctype_init_defined :

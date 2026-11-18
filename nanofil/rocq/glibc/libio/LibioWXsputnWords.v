@@ -3,13 +3,14 @@
     register and the default writer uses a 64-bit register. In both loops
     a zero count exits before the next load or store. *)
 
+From Glibc Require Import HelloImageTypedIO.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode144 Fix OsWorld FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic LibioCloseSteps
   LibioDefaultXsputnBuf CBlocks WPrintfFileFlush WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -19,8 +20,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation size cs := (Z.of_nat (length cs)).
 Local Abbreviation at_off b o := (mkPtr (b+o) (Obj b)).
 
-Definition wdefault_xsputn_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_144])) "__GI__IO_wdefault_xsputn".
+Definition wdefault_xsputn_fn := hello_image_fn___GI__IO_wdefault_xsputn.
 
 Definition wcopy_names (file : bool) := map TAtom (if file then
   ["pr.16"; "pr.15"; "pr.3"; "v155"; "v156"; "v158"; "v160"; "chk21"; "v161"; "chk22"] else

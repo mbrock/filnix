@@ -4,6 +4,7 @@
     Establishing that entry state is separate from this execution proof;
     in particular, the loader image alone is not its precondition. *)
 
+From Glibc Require Import HiAtexitTypedMA.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,11 +21,7 @@ Open Scope Z_scope.
 Import ExitRun ExitRunTail AtexitLogic OsWorld HLG HLG.L LibioFlushInv FileInv.
 
 (** This is main's body in the actual linked module. *)
-Definition hi_main_fn : func := Eval vm_compute in
-  match find_direct (TAtom "main") hi_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom "main") (TAtom "export") (RClass W) [] []
-  end.
+Definition hi_main_fn : func := hi_fn_main.
 
 (** Main has no parameters in this fixture. *)
 Definition hi_main_frame : frame := mkFrame hi_main_fn [] [] None (Enter (TAtom "start") None).

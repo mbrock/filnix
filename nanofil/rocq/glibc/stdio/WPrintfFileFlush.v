@@ -3,23 +3,22 @@
     cursor. A short write leaves the cursor in place and marks the buffer
     failed, so later appends stop. *)
 
+From Glibc Require Import HelloImageTypedIO HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode239 HelloImageCode142 Fix OsWorld FileInv
+From Glibc Require Import CodePrelude Fix OsWorld FileInv
   LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 (** The first function reads the stream's jump table. The second takes
     the array pointer and the number of characters to write. *)
-Definition wprintf_file_flush_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_239])) "__wprintf_buffer_flush_to_file".
-Definition wprintf_xsputn_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_142])) "__GI__IO_wfile_xsputn".
+Definition wprintf_file_flush_fn := hello_image_fn___wprintf_buffer_flush_to_file.
+Definition wprintf_xsputn_fn := hello_image_fn___GI__IO_wfile_xsputn.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

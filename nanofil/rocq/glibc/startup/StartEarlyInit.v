@@ -11,6 +11,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedGE HiAtexitTypedLI.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -31,10 +32,10 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __libc_early_init`. *)
-Definition start_early_init_fn : func := Eval vm_compute in start_fn "__libc_early_init".
+Definition start_early_init_fn : func := hi_fn___libc_early_init.
 
 (** This constant is the empty body of `c: __getrandom_early_init`. *)
-Definition start_getrandom_early_init_fn : func := Eval vm_compute in start_fn "__getrandom_early_init".
+Definition start_getrandom_early_init_fn : func := hi_fn___getrandom_early_init.
 
 (** The image defines both functions with those bodies. *)
 Lemma start_early_init_defined :

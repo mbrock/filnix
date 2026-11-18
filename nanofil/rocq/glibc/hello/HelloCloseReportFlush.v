@@ -3,6 +3,7 @@
     further output to its own discard buffer. Later flushes reset the
     discard buffer without touching the caller's string. *)
 
+From Glibc Require Import HelloImageTypedPR.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -14,7 +15,7 @@ From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct Printf
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_flush := Eval vm_compute in code_function hello_image_module "__printf_buffer_flush_snprintf".
+Definition report_flush := hello_image_fn___printf_buffer_flush_snprintf.
 
 Section flush.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

@@ -14,6 +14,7 @@
     gets it back with the result. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedLI.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -95,7 +96,7 @@ End calls.
     `c: AT_SECURE`, and then calls the startup functions in order. *)
 
 (** This constant is the body of `c: __libc_start_main`. *)
-Definition start_libc_start_main_fn : func := Eval vm_compute in start_fn "__libc_start_main".
+Definition start_libc_start_main_fn : func := hi_fn___libc_start_main.
 
 (** The image defines `c: __libc_start_main` with that body. *)
 Lemma start_libc_start_main_defined :

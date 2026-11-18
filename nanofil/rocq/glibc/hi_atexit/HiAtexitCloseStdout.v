@@ -12,6 +12,7 @@ From Glibc Require Import GlibcProgram.
     with stdout out of the list, or ends the process in `c: _exit`.
     Either way any postcondition of a return holds. *)
 
+From Glibc Require Import HiAtexitTypedCL.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -28,11 +29,7 @@ Open Scope Z_scope.
 Import LibioFcloseTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** hi_atexit.c's `c: close_stdout_hi`, renamed by link.pl. *)
-Definition hi_close_fn : func := Eval vm_compute in
-  match find_direct (TAtom "hi_atexit#close_stdout_hi") hi_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom "hi_atexit#close_stdout_hi") (TAtom "local") RVoid [] []
-  end.
+Definition hi_close_fn : func := hi_fn_hi_atexit'23close_stdout_hi.
 
 (** A call of `c: close_stdout_hi` runs [hi_close_fn]. *)
 Lemma hi_find_close : find_fn hge (TAtom "hi_atexit#close_stdout_hi") = Some (Defined hi_close_fn).

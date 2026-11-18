@@ -11,6 +11,25 @@ parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("tree", type=Path, help="glibc tree whose proof styles should be recorded")
 args = parser.parse_args()
 
+def check_typed_image(directory, name):
+    """Check the fixed-style files without trying to convert their proofs."""
+    pending = [name + "Code"]
+    seen = set()
+    while pending:
+        stem = pending.pop()
+        if stem in seen:
+            continue
+        seen.add(stem)
+        path = directory / (stem + ".v")
+        if not path.is_file():
+            parser.error(f"missing fixture: {path}")
+        text = path.read_text()
+        if "Do not edit." not in text[:1000]:
+            parser.error(f"unrecognized generated header in {path}")
+        for group in re.findall(r"From Glibc Require (?:Import|Export) ([^.]+)\.", text):
+            pending.extend(n for n in group.split() if n.startswith(name + "Typed"))
+
+
 updates = []
 for manifest in sorted(manifests.rglob("code.toml")):
     old = manifest.read_text()
@@ -25,7 +44,7 @@ for manifest in sorted(manifests.rglob("code.toml")):
             if not row.strip():
                 continue
             name = row.strip().split("|")[0]
-            if batch["layout"] in ("getopt", "hi_atexit"):
+            if batch["layout"] == "getopt":
                 term = directory / (name + "Term.v")
                 if not term.is_file():
                     parser.error(f"missing fixture: {term}")
@@ -34,6 +53,8 @@ for manifest in sorted(manifests.rglob("code.toml")):
                     parser.error(f"missing slice references in {term}")
                 expected.add(term.name)
                 expected.update(f"{name}Code{i:02}.v" for i in range(1, max(map(int, indices)) + 1))
+            elif batch["layout"] in ("hi_atexit", "linked_image"):
+                check_typed_image(directory, name)
             else:
                 expected.add(name + "Code.v")
     if set(config.get("proof_styles", {})) - expected:

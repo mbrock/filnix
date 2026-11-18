@@ -10,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageCode70 HelloImageWConvObjs StartImageEarly OsWorld
+From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs StartImageEarly OsWorld
   FileInv LibioLogic LibioDefaultXsputnBuf Mbrtowc CBlocks Fix LibioWIdle LibioWConvAscii LibioWConvConsts
   LibioWConvTranslitCmp.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.

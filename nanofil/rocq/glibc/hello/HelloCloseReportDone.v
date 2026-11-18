@@ -3,6 +3,7 @@
     window pointers, not the bytes. This lets the caller keep the
     terminator even when the count overflows and sets errno. *)
 
+From Glibc Require Import HelloImageTypedPR.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +16,7 @@ From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct Printf
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_done := Eval vm_compute in code_function hello_image_module "__printf_buffer_snprintf_done".
+Definition report_done := hello_image_fn___printf_buffer_snprintf_done.
 
 Section done.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

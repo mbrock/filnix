@@ -4,6 +4,7 @@
     the array. The result is a string that error can pass to its next
     print, even if the formatter returned a negative count. *)
 
+From Glibc Require Import HelloImageTypedVS.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,7 +18,7 @@ From Glibc Require Import Fix FileInv OsWorld OsBlocks OsRegistry LibioLogic Wor
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_vsnprintf := Eval vm_compute in code_function hello_image_module "__vsnprintf_internal".
+Definition report_vsnprintf := hello_image_fn___vsnprintf_internal.
 
 Section snprintf.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w : os_world).

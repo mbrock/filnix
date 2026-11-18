@@ -11,6 +11,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedIN.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -31,7 +32,7 @@ Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: _init_first`. The function is
     private to its source file, so the linker gave it a longer name. *)
-Definition start_init_first_fn : func := Eval vm_compute in start_fn "glibc_init_first#_init_first".
+Definition start_init_first_fn : func := hi_fn_glibc_init_first'23_init_first.
 
 (** The image defines `c: _init_first` with that body. *)
 Lemma start_init_first_defined :

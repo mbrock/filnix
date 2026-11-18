@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01.
+From Glibc Require Import HelloImageModule HelloImageLoad.
 From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.

@@ -24,9 +24,8 @@ def source_tables(name, prefix, functions, layout, root, block_definitions):
     def filename(value):
         return file_names[value]
 
-    # Sliced fixtures assemble their module term in a Term file.
-    code = name + ('Term' if layout in ('hi_atexit', 'getopt') else 'Code')
-    term = 'hi_atexit_term' if layout == 'hi_atexit' else prefix + '_term'
+    code = name + 'Code'
+    term = prefix + '_term'
     decoded = prefix + '_module'
     if layout in ('hi_atexit', 'getopt'):
         code = name + 'Module'

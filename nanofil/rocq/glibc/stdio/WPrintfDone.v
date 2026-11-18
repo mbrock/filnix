@@ -3,21 +3,20 @@
     stream has failed, it returns minus one; if the count overflows, it
     also stores EOVERFLOW in errno. Neither path needs another buffer. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode238 HelloImageCode239 Fix OsBlocks OsWorld
+From Glibc Require Import CodePrelude Fix OsBlocks OsWorld
   FileInv LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle DcigettextExit PrintfOut WPrintfFileFlush WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_count_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_238])) "__wprintf_buffer_done".
-Definition wprintf_file_done_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_239])) "__wprintf_buffer_to_file_done".
+Definition wprintf_count_fn := hello_image_fn___wprintf_buffer_done.
+Definition wprintf_file_done_fn := hello_image_fn___wprintf_buffer_to_file_done.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

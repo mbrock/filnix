@@ -3,18 +3,18 @@
     per iteration but tests each character before loading the next one.
     It therefore needs only the string and its four-byte terminator. *)
 
+From Glibc Require Import HelloImageTypedWC.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode273 Fix OsWorld FileInv LibioLogic CBlocks WPrintfDispatch.
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic CBlocks WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition wprintf_length_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_273])) "__wcslen".
+Definition wprintf_length_fn := hello_image_fn___wcslen.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

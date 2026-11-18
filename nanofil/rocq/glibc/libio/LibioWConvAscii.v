@@ -13,6 +13,7 @@
     functions are `c: __gconv_transform_internal_ascii` and
     `c: __gconv_transliterate`. *)
 
+From Glibc Require Import HelloImageTypedGC.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageCode47 HelloImageCode70 HelloImageLoad HelloImageMbsObjs
+From Glibc Require Import CodePrelude HelloImageLoad HelloImageMbsObjs
   HelloImageWFwideObjs HelloImageWConvObjs OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle Mbrtowc CBlocks Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
@@ -32,12 +33,10 @@ Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
 
 (** This definition is the ASCII step as Hello's image holds it. *)
-Definition glibc_internal_ascii := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_47])) "__gconv_transform_internal_ascii".
+Definition glibc_internal_ascii := hello_image_fn___gconv_transform_internal_ascii.
 
 (** When a character has no byte of its own, the step calls this function to find a replacement. *)
-Definition glibc_translit := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_70])) "__GI___gconv_transliterate".
+Definition glibc_translit := hello_image_fn___GI___gconv_transliterate.
 
 (** The loop changes only its own temporaries, so a proof of it can
     keep every other value of the caller. The compiler copied the loop

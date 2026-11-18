@@ -3,13 +3,14 @@
     so the dispatcher need not set it again. It checks the jump table
     and calls its overflow slot with the original character. *)
 
+From Glibc Require Import HelloImageTypedIO HelloImageTypedWO.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode137 HelloImageCode143 Fix OsWorld FileInv
+From Glibc Require Import CodePrelude Fix OsWorld FileInv
   LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle LibioOverflowBase.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -17,10 +18,8 @@ Local Abbreviation obj b := (mkPtr b (Obj b)).
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 
-Definition woverflow_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_143])) "__GI___woverflow".
-Definition wfile_overflow_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_137])) "__GI__IO_wfile_overflow".
+Definition woverflow_fn := hello_image_fn___GI___woverflow.
+Definition wfile_overflow_fn := hello_image_fn___GI__IO_wfile_overflow.
 
 Section dispatch.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

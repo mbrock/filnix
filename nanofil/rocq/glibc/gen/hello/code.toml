@@ -42,8 +42,7 @@ fixtures = '''
 HelloStrchrImage|||__GI_strchr __GI___strchrnul
 '''
 
-# The same image, whole. slice.py cuts it at whole items and blocks, and the
-# generator decodes the slices in groups, so no file decodes the whole term.
+# The extracted decoder reads the whole image. Its typed definitions retain link order.
 [[batch]]
 layout = "linked_image"
 mode = "checked"

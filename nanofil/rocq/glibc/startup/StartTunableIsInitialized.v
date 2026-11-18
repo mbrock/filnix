@@ -10,6 +10,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedTU.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -28,7 +29,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __tunable_is_initialized`. *)
-Definition start_tunable_is_initialized_fn : func := Eval vm_compute in start_fn "__tunable_is_initialized".
+Definition start_tunable_is_initialized_fn : func := hi_fn___tunable_is_initialized.
 
 (** The linked image contains that body under this name. *)
 Lemma start_tunable_is_initialized_defined :

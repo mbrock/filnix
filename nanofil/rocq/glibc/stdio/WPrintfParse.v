@@ -4,19 +4,19 @@
     from the argument list. The formatter leaves its saved format pointer
     on the s for the scan that follows the conversion. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode230 Fix OsWorld FileInv LibioLogic
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioCloseSteps WPrintfScan WPrintfLength.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_buffer_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_230])) "__wprintf_buffer".
+Definition wprintf_buffer_fn := hello_image_fn___wprintf_buffer.
 
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).
 Local Abbreviation obj b := (mkPtr b (Obj b)).

@@ -27,8 +27,7 @@ nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
 ```
 
 The generator emits only the shared-prelude form used by the committed
-fixtures. It reads the canonical `rocq/glibc/CodePrelude.v` and imports its
-helpers rather than repeating them in each file. To inspect output without
+fixtures. It reads the canonical `rocq/glibc/CodePrelude.v` for fixtures that store raw terms. To inspect output without
 updating the checkout, write a separate tree:
 
 ```sh
@@ -332,9 +331,23 @@ Some linked units contain constructors that initialize the standard streams.
 The `ctors` setting keeps those constructors. The stdio manifest uses a second
 `[[batch]]` because its buffer fixtures come from a separate link.
 
-The one slicer preserves whole items and blocks, with the original 500-line
-getopt and 525-line hi_atexit budgets. Adding a function does not require a
-new driver or slicer.
+The getopt and formatter fixtures store raw terms in slices. For HiAtexit and
+the complete GNU Hello image, the generator runs the linked term through
+`nanofil-model --gallina`. It builds the extracted driver through Nix on Linux.
+Set `MODEL` to the path of a locally built driver on another platform.
+
+The driver prints the constructors returned by [Transport.v](../../theories/core/Transport.v),
+including the raw term carried by an outside function. The layout script groups
+function definitions by the first two letters of their C symbol after removing
+the unit qualifier, the glibc internal prefix and leading underscores. For
+example, `HelloImageTypedIO` exports `hello_image_fn___GI__IO_wfile_overflow`.
+A proof can import that family even if the function moves in the linked image.
+The generated item lists reference the definitions in the original link order.
+Hello checks the zero runs in each list and combines the proofs.
+
+Rocq typechecks the printed AST. The quick Rocq check also compares the
+printed module with in-kernel decoding of a fixture that exercises signed
+loads, pointer effects, byte strings and outside functions.
 
 Every function in a fixture row must be defined in its linked units. A missing
 function fails generation and names the manifest row, rather than silently
@@ -450,9 +463,10 @@ Review and commit its manifest changes before running the regeneration check.
 `rocq/glibc/code.sh CAPTURE --tree TREE` checks a separate tree.
 A Nix caller needs the compiler sources, these generator scripts, manifests,
 fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
-and `FILCC` set to the staging compiler. Supply the capture as a derivation
-input; the script needs neither Nix nor network access when it receives that
-path. The generator reads the canonical prelude from `rocq/glibc` and emits
+and `FILCC` set to the staging compiler. Pass the capture as a derivation
+input. For either typed image, set `MODEL` to the executable from
+`checks.x86_64-linux.nanofil-rocq.model.driver` to skip the driver's Nix
+build. The Hello manifest also builds its captured program objects through Nix. The generator reads the canonical prelude from `rocq/glibc` and emits
 shared-prelude fixtures by default. Use `--output TREE` to write a separate
 tree, or `--update` to update the comparison tree.
 

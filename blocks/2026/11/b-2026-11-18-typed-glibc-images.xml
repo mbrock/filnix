@@ -1,0 +1,14 @@
+<block id="b-2026-11-18-typed-glibc-images" kind="bench" actor="Codex" created="2026-11-18T22:40:40Z">
+  <title>Typed Rocq fixtures halve the linked images’ source size</title>
+  <about path="nanofil/rocq/extraction/gallina.ml"/>
+  <about path="nanofil/rocq/scripts/glibc-code/typed.py"/>
+  <tag name="formal"/>
+  <p>The extracted module decoder reads the linked GNU Hello and HiAtexit terms.
+  The printer writes their functions and data directly as Gallina constructors.
+  Together the two images occupy 8,111,541 bytes of source, down from 18,070,744 bytes.</p>
+  <p>For the captured <c>__GI__IO_wfile_overflow</c> function alone, Rocq 9.3.0
+  compiled the raw term, its decoded module and its decoding witness in 1.08 seconds.
+  It compiled the typed function and module in 0.47 seconds.
+  These are medians from three local runs of each form on macOS.
+  The compiled object shrank from 118,429 to 38,690 bytes.</p>
+</block>

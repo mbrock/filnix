@@ -3,6 +3,7 @@
     byte is NUL. A high byte stops conversion without moving either
     cursor, so gnulib can recover the byte from the input. *)
 
+From Glibc Require Import HelloImageTypedGC.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,15 +11,14 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic HelloLeaf.
-From Glibc Require Import CodePrelude HelloImageCode43 OsWorld FileInv LibioLogic Fix.
+From Glibc Require Import CodePrelude OsWorld FileInv LibioLogic Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 (** This is the function stored in the conversion table of Hello's
     linked image. The captured block list includes the paths for other
     callers as well as the final-step path used here. *)
-Definition glibc_ascii_internal := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_43])) "__gconv_transform_ascii_internal".
+Definition glibc_ascii_internal := hello_image_fn___gconv_transform_ascii_internal.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

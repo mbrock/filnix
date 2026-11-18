@@ -27,10 +27,10 @@ As the glibc proof tree grew past eight hundred hand-written files, four distinc
 | 3. Whole-function abstract checking | [AbsInfer.v](../rocq/theories/exec/AbsInfer.v), [AbsRun.v](../rocq/theories/exec/AbsRun.v), [AbsSound.v](../rocq/theories/exec/AbsSound.v) | 10 files in [CpuSound.v](../rocq/glibc/startup/CpuSound.v) covering 16 CPU-init functions | Infers loop invariants and checks whole functions by `vm_compute` | Requires [StoreStable] world invariants, exclusive whole-object ownership, static object sizes, and manual correspondence bridges in [CpuSpec.v](../rocq/glibc/startup/CpuSpec.v) |
 | 4. C frames, layouts, and block tables | [CFrame.v](../rocq/glibc/CFrame.v), [CStruct.v](../rocq/glibc/CStruct.v), [CBlocks.v](../rocq/glibc/CBlocks.v) | 18 to 43 files, centered in `stdio` such as [PrintfWrite.v](../rocq/glibc/stdio/PrintfWrite.v) | States cuts by C variable name, eliminates numeric field offsets, and closes loops once via [blocks_close] | Steps instructions manually inside each block, hardcodes `"L15"` labels and numeric row indices, and falls back to raw SSA names on arithmetic temporaries |
 
-The survey also surfaced two immediate repository hygiene issues:
+The survey also examined how proofs use generated files.
 
 1. Across `rocq/glibc/`, 127 generated `.v` files—mainly `*Src.v`, `*SrcNN.v`, and `*Module.v` sidecars—lack the phrase `"Do not edit"` in their first thousand bytes, so site rendering, cross-file indexing, and grammar checks do not skip them automatically.
-2. Twenty-three hand-written proof files, including [LibioWOverflowDispatch.v](../rocq/glibc/libio/LibioWOverflowDispatch.v), import numbered text-slicer chunks such as `HelloImageCode137`. Because the slicer packs items into five-hundred-line files, any code-size change earlier in the 321-unit GNU Hello image shifts functions into neighboring slice numbers and breaks downstream imports.
+2. Hello image proofs now import functions by symbol. For example, [LibioWOverflowDispatch.v](../rocq/glibc/libio/LibioWOverflowDispatch.v) imports the function family `HelloImageTypedIO`. Its import stays valid when an earlier function grows.
 
 ## 2. Architecture of the proposed proof stack
 
@@ -96,7 +96,7 @@ Two long-term ideas reinforce each other here. The first validates low-level IR 
 
 ### What `load_narrow` hides in wide-stream overflow
 
-In `c: _IO_wfile_overflow`, right after `c: _IO_doallocbuf` returns, glibc resets the three narrow read cursors `c: _IO_read_ptr`, `c: _IO_read_end`, and `c: _IO_read_base` to `c: _IO_buf_base`. In the `--checks=combined` capture of `HelloImageCode137.v`, that single C action compiles into sixteen checked IR instructions: three pointer loads, three pointer stores, four pointer-offset calculations, four [[half_check|half-checks]], and two [[renew|renewals]].
+In `c: _IO_wfile_overflow`, right after `c: _IO_doallocbuf` returns, glibc resets the three narrow read cursors `c: _IO_read_ptr`, `c: _IO_read_end`, and `c: _IO_read_base` to `c: _IO_buf_base`. In the `--checks=combined` capture of `__GI__IO_wfile_overflow`, that single C action compiles into sixteen checked IR instructions: three pointer loads, three pointer stores, four pointer-offset calculations, four [[half_check|half-checks]], and two [[renew|renewals]].
 
 In [LibioWOverflowAllocateSteps.v](../rocq/glibc/libio/LibioWOverflowAllocateSteps.v), the lemma [wp_wo_after_alloc] proves those sixteen instructions by hand:
 
@@ -179,7 +179,7 @@ Opening two fields of `c: struct _IO_FILE` in [LibioFputsIdle.v](../rocq/glibc/l
 
 Three small generator cleanups remove the remaining fixture fragility:
 
-- Emit a symbol-indexed function table in `rocq/scripts/glibc-code/generate.py` so none of the twenty-three proof files import numbered chunks like `HelloImageCode137`, and stamp `"Do not edit"` on all 127 unmarked `*Src.v` and `*Module.v` files.
+- Stamp `"Do not edit"` on all 127 unmarked `*Src.v` and `*Module.v` files.
 - Update `rocq/scripts/glibc-code/skeleton.py` so new scaffolds emit [CBlocks.v](../rocq/glibc/CBlocks.v) tables and [CStruct.v](../rocq/glibc/CStruct.v) footprints rather than Generation-1 [keeps] skeletons.
 - Replace numeric row indices in `goto_block "IH" "HK" 13%nat` in [PrintfLoopHead.v](../rocq/glibc/stdio/PrintfLoopHead.v) with `vm_compute` lookup by target cut, and extend `spec_inputs` in [GlibcSpec.v](../rocq/glibc/GlibcSpec.v) to instantiate single-constructor `Record` binders so specs stop nesting eighteen-element tuples.
 
@@ -244,6 +244,6 @@ Once proofs target `--checks=reference` and closed simulation covers `combined`,
 | --- | --- | --- |
 | **Shared assertions & spec tester (Sections 2 & 3)** | Extend [GlibcSym.atom] with user predicates; neutral witnesses across `interp:run/5` and [Transport.judge]; `c_pp` constants and spec mutation scoring | Prevents Prolog/Rocq spec drift and catches wrong constants, clobbered globals, and weak postconditions in <1 s |
 | **Reference-stage proofs & pass simulation (Section 6.2)** | Capture new units at `--checks=reference`; port `check_reuse:reuse_refines/2` to Gallina; transport closed [labelled_safe] to `combined` | Eliminates `Renew`/`HalfCheck` noise and open-triple step-index pain while coexisting with all 133k lines of `combined` proofs |
-| **Field focus, selectors & census (Section 5)** | [CStruct.v](../rocq/glibc/CStruct.v) focus lens, IR-checked cut selectors, gated abduction, symbol-keyed fixtures, and 321-unit stop-reason census | Removes 17-field `FILE` unpacks, `"L49"` / `HelloImageCode137` coupling, and ranks bit-solver work empirically |
+| **Field focus, selectors & census (Section 5)** | [CStruct.v](../rocq/glibc/CStruct.v) focus lens, IR-checked cut selectors, gated abduction, symbol-keyed fixtures, and 321-unit stop-reason census | Removes 17-field `FILE` unpacks, `"L49"` coupling, and ranks bit-solver work empirically |
 | **C-emitted `RegionSpec` & field entailments (Sections 4 & 7)** | `c_lower.pl` effect summaries + [sym_func_rule] + syntax-free field entailments, tested on cursor reset and [wp_wo_after_walloc](../rocq/glibc/libio/LibioWOverflowAllocateSteps.v#wp_wo_after_walloc) | Consolidates Generations 2 and 4 into readable C-level lemmas resilient to optimizer rewrites |
 | **Measured `exec/` windows (Section 6.1)** | Timing split on [CpuSound.v](../rocq/glibc/startup/CpuSound.v), shared-table `ptsq`, and borrowed slices on [wp_printf_buffer_write_window] | Scales push-button loop checking to read-only tables and interior byte windows |

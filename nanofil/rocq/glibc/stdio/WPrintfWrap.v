@@ -3,6 +3,7 @@
     zero. When wprintf returns, the greeting and the bytes after that
     zero are unchanged. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
-From Glibc Require Import CodePrelude HelloImageCode146 Fix OsBlocks OsWorld FileInv FileIdle FileTidy
+From Glibc Require Import CodePrelude Fix OsBlocks OsWorld FileInv FileIdle FileTidy
   LibioLogic LibioCloseSteps LibioWIdle LibioPutsInv PrintfSpec PrintfWrap WPrintfDispatch WPrintfParse
   WPrintfScan WPrintfFileFlush WPrintfOut WPrintfInternal HelloGlibcDebts HelloConvString
   HelloImageModule HelloImageLoad OsRegistry.
@@ -19,8 +20,7 @@ Open Scope Z_scope.
 Local Abbreviation obj b := (mkPtr b (Obj b)).
 Local Abbreviation ro b := (mkPtr b (Ro b)).
 
-Definition wprintf_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_146])) "__wprintf".
+Definition wprintf_fn := hello_image_fn___wprintf.
 
 Section wrap.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

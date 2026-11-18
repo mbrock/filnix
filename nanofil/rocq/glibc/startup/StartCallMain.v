@@ -9,6 +9,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedLI.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -30,7 +31,7 @@ Local Arguments Z.mul : simpl nomatch.
 (** This constant is the body of `c: __libc_start_call_main`. The
     function is private to its source file, so the linker gave it a
     longer name. *)
-Definition start_call_main_fn : func := Eval vm_compute in start_fn "glibc_libc_start#__libc_start_call_main".
+Definition start_call_main_fn : func := hi_fn_glibc_libc_start'23__libc_start_call_main.
 
 (** The image defines `c: __libc_start_call_main` with that body. *)
 Lemma start_call_main_defined :

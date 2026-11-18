@@ -3,19 +3,19 @@
     same byte copier as the narrow formatter. The copy may change shadow
     slots in the array, but it preserves the characters before the cursor. *)
 
+From Glibc Require Import HelloImageTypedWM.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode275 Fix OsWorld OsRegistry FileInv LibioLogic
+From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
   LibioCloseSteps MemFwdCode MemFwdLogic PrintfStagingCopy WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
-Definition wprintf_copy_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_275])) "__wmemcpy".
+Definition wprintf_copy_fn := hello_image_fn___wmemcpy.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

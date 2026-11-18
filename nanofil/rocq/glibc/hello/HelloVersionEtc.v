@@ -10,6 +10,7 @@
     the contracts of those two calls. The module
     [HelloVersionEtcVa](HelloVersionEtcVa.v) proves the other two. *)
 
+From Glibc Require Import HelloImageTypedVE.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,7 +21,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01.
+From Glibc Require Import HelloImageModule HelloImageLoad.
 From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,9 +36,9 @@ Local Arguments Z.mul : simpl nomatch.
 (** ## The three functions *)
 
 (** The proofs read the code of the three functions from the image. *)
-Definition version_etc_fn : func := Eval vm_compute in code_function hello_image_md_01 "version_etc".
-Definition version_etc_va_fn : func := Eval vm_compute in code_function hello_image_md_01 "version_etc_va".
-Definition version_etc_arn_fn : func := Eval vm_compute in code_function hello_image_md_01 "version_etc_arn".
+Definition version_etc_fn : func := hello_image_fn_version_etc.
+Definition version_etc_va_fn : func := hello_image_fn_version_etc_va.
+Definition version_etc_arn_fn : func := hello_image_fn_version_etc_arn.
 
 (** The function [ablk] finds the block of [version_etc_arn_fn] that has label l. *)
 Definition ablk (l : string) : block :=

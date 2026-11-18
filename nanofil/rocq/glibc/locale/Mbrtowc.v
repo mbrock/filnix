@@ -3,6 +3,7 @@
     glibc leaves the input and output in place and sets errno. A NUL
     yields zero, and every other ASCII byte consumes one input byte. *)
 
+From Glibc Require Import HelloImageTypedMB.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,15 +11,14 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloLeaf.
-From Glibc Require Import CodePrelude HelloImageCode272 HelloImageModule HelloImageLoad OsWorld OsBlocks FileInv LibioLogic
+From Glibc Require Import CodePrelude HelloImageModule HelloImageLoad OsWorld OsBlocks FileInv LibioLogic
   AsciiConvert StartInitMisc DcigettextExit Fix.
 Module MbVL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic MbVL.
 Open Scope Z_scope.
 
 (** The public name mbrtowc is an alias for this body in Hello. *)
-Definition glibc_mbrtowc := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_272])) "__GI___mbrtowc".
+Definition glibc_mbrtowc := hello_image_fn___GI___mbrtowc.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

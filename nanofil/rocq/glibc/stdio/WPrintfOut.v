@@ -2,20 +2,20 @@
     already staged. It lends both to the buffer operations. Each call gives
     back a valid buffer, even when the stream accepted only a prefix. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode236 Fix OsWorld OsRegistry FileInv LibioLogic
+From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
   LibioCloseSteps LibioPutsInv LibioWIdle MemFwdCode PrintfOut WPrintfFileFlush WPrintfDispatch
   WPrintfFill WPrintfPad WPrintfCopy WPrintfWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
-Definition wprintf_failed_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_236])) "glibc_vfwprintf_internal#__wprintf_buffer_has_failed".
+Definition wprintf_failed_fn := hello_image_fn_glibc_vfwprintf_internal'23__wprintf_buffer_has_failed.
 
 Section out.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

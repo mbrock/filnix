@@ -3,21 +3,20 @@
     which can represent a positive signed int. The padding loop fills only the free part of its array.
     If more padding remains, it flushes the full array and tries again. *)
 
+From Glibc Require Import HelloImageTypedWP.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import CodePrelude HelloImageCode237 HelloImageCode238 Fix OsWorld FileInv LibioLogic
+From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioCloseSteps LibioPutsInv LibioWIdle CBlocks PrintfOut WPrintfFileFlush WPrintfDispatch WPrintfFill.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_pad_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_238])) "__wprintf_buffer_pad_1".
-Definition wprintf_pad_inline_fn := Eval vm_compute in
-  code_function (code_module (TApp "module" [TList hello_image_items_237])) "glibc_vfwprintf_internal#__wprintf_buffer_pad".
+Definition wprintf_pad_fn := hello_image_fn___wprintf_buffer_pad_1.
+Definition wprintf_pad_inline_fn := hello_image_fn_glibc_vfwprintf_internal'23__wprintf_buffer_pad.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

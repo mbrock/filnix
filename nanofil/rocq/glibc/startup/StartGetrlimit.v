@@ -10,6 +10,7 @@
     startup assembly. *)
 
 From Glibc Require Import GlibcProgram.
+From Glibc Require Import HiAtexitTypedGE.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -28,7 +29,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __GI___getrlimit64`. *)
-Definition start_getrlimit_fn : func := Eval vm_compute in start_fn "__GI___getrlimit64".
+Definition start_getrlimit_fn : func := hi_fn___GI___getrlimit64.
 
 (** The image defines `c: __GI___getrlimit64` with that body. *)
 Lemma start_getrlimit_defined :

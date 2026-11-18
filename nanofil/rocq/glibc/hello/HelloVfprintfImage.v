@@ -25,7 +25,7 @@ From Glibc Require Import OsWorld OsRegistry SysCode LibioLogic LibioSetb LibioR
   LibioXsputnHeap
   LibioFputsSpec LibioPutsCode LibioFputsIdle.
 From Glibc Require LibioCleanupExit AllocLogic.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageDec01 HelloImageLayout.
+From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout.
 Import ListNotations.
 Open Scope Z_scope.
 
