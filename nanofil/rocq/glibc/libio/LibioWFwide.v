@@ -6,7 +6,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic HelloLeaf.
+  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloLeaf.
 From Glibc Require Import CodePrelude HelloImageCode125 HelloImageCode274 HelloImageModule HelloImageLoad
   OsWorld OsBlocks FileInv FileIdle LibioLogic LibioWIdle MemFwdLogic Mbrtowc StartImageCpu StartImageEarly HelloImageMbsObjs HelloImageWFwideObjs WPrintfInternal Fix.
 From Glibc Require MemchrLast StartInitMisc.
@@ -114,3 +114,54 @@ Proof using Hts Hlk.
   iSplitL ""; [iFrame "#"|]. iSplit; [done|]. iSplit; [iPureIntro; lia|]. iExact "Hlb".
 Qed.
 End clone.
+
+(** ## Cutting zero bytes into fields
+
+    Glibc gives every stream 224 zero bytes for its wide state.
+    Orientation stores pointers and flags into some of them and leaves
+    the rest zero. A store needs ownership of one field at a time, so
+    the proof first cuts the zero bytes into those fields. *)
+
+Module WfVL := VariadicLogicOn R LG0.
+Import WfVL.
+
+Section split.
+Context `{!gen_heapGS piece pval Σ}.
+
+(** A conversion descriptor before orientation holds only zeros. The
+    predicate [izero] b o owns its pointer and integer fields. *)
+Definition izero (b o : Z) : iProp Σ := pcell b o null ∗ pcell b (o + 8) null ∗ pcell b (o + 16) null ∗
+  bytes b (o + 24) (replicate 16 0) ∗ pcell b (o + 40) null ∗ bytes b (o + 48) (replicate 8 0).
+
+(** Eight zero bytes with empty capability slots form a null pointer. *)
+Lemma zp b o o2 n : o2 = o + 8 -> bytes b o (replicate (8 + n) 0) -∗ auxes b o (replicate (8 + n) CNone) -∗
+  pcell b o null ∗ bytes b o2 (replicate n 0) ∗ auxes b o2 (replicate n CNone).
+Proof using Type. intros ->. iIntros "Hb Ha". iApply (zero_cell_prefix with "Hb Ha"). Qed.
+
+(** The first k zero bytes split off from the rest. *)
+Lemma zb b o o2 k n : o2 = o + Z.of_nat k -> bytes b o (replicate (k + n) 0) -∗ auxes b o (replicate (k + n) CNone) -∗
+  bytes b o (replicate k 0) ∗ auxes b o (replicate k CNone) ∗ bytes b o2 (replicate n 0) ∗ auxes b o2 (replicate n CNone).
+Proof. intros ->. rewrite !replicate_add bytes_app auxes_app !length_replicate. iIntros "[$ $] [$ $]". Qed.
+Lemma wide_zero_split wb : bytes wb 0 (replicate 224 0) -∗ auxes wb 0 (replicate 224 CNone) -∗
+  ([∗ list] i ↦ p ∈ replicate 11 null, pcell wb (woff_ptr i) p) ∗ bytes wb 88 (replicate 16 0) ∗
+  auxes wb 88 (replicate 16 CNone) ∗ izero wb 104 ∗ izero wb 160 ∗ bytes wb 216 (replicate 8 0) ∗
+  auxes wb 216 (replicate 8 CNone).
+Proof using Type.
+  iIntros "Hb Ha".
+  Local Ltac zp1 o o2 n H := iDestruct (zp _ o o2 n with "Hb Ha") as H; [lia|].
+  Local Ltac zb1 o o2 k n H := iDestruct (zb _ o o2 k n with "Hb Ha") as H; [lia|].
+  zp1 0 8 216%nat "(P0 & Hb & Ha)". zp1 8 16 208%nat "(P1 & Hb & Ha)". zp1 16 24 200%nat "(P2 & Hb & Ha)".
+  zp1 24 32 192%nat "(P3 & Hb & Ha)". zp1 32 40 184%nat "(P4 & Hb & Ha)". zp1 40 48 176%nat "(P5 & Hb & Ha)".
+  zp1 48 56 168%nat "(P6 & Hb & Ha)". zp1 56 64 160%nat "(P7 & Hb & Ha)". zp1 64 72 152%nat "(P8 & Hb & Ha)".
+  zp1 72 80 144%nat "(P9 & Hb & Ha)". zp1 80 88 136%nat "(P10 & Hb & Ha)".
+  zb1 88 104 16%nat 120%nat "($ & $ & Hb & Ha)".
+  zp1 104 112 112%nat "(C0 & Hb & Ha)". zp1 112 120 104%nat "(C1 & Hb & Ha)". zp1 120 128 96%nat "(C2 & Hb & Ha)".
+  zb1 128 144 16%nat 80%nat "(C3 & _ & Hb & Ha)". zp1 144 152 72%nat "(C4 & Hb & Ha)".
+  zb1 152 160 8%nat 64%nat "(C5 & _ & Hb & Ha)".
+  zp1 160 168 56%nat "(D0 & Hb & Ha)". zp1 168 176 48%nat "(D1 & Hb & Ha)". zp1 176 184 40%nat "(D2 & Hb & Ha)".
+  zb1 184 200 16%nat 24%nat "(D3 & _ & Hb & Ha)". zp1 200 208 16%nat "(D4 & Hb & Ha)".
+  zb1 208 216 8%nat 8%nat "(D5 & _ & Hb & Ha)".
+  iFrame "Hb Ha". iSplitL "P0 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10"; [iFrame; done|]. rewrite /izero.
+  iSplitL "C0 C1 C2 C3 C4 C5"; iFrame.
+Qed.
+End split.
