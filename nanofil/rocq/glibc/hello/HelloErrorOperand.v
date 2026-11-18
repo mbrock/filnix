@@ -104,7 +104,8 @@ Definition op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes : iProp Σ
   fputs_ro vb ∗ printf_ro ∗ malloc_ro ∗
   liveq DfracDiscarded sb sreg ∗ pcellq DfracDiscarded sb 0 (mkPtr fe (Obj fe)) ∗
   word_string DfracDiscarded prefix [37; 115; 58; 32] ∗ word_string DfracDiscarded newline [10] ∗
-  word_string DfracDiscarded pname pbytes ∗ word_string DfracDiscarded fmt fbytes.
+  word_string DfracDiscarded pname pbytes ∗ word_string DfracDiscarded fmt fbytes ∗
+  pcellq DfracDiscarded vb (vt_file + 96) (sym_ptr ge "_IO_new_file_sync").
 
 Global Instance op_ro_persistent vb sb sreg fe prefix newline pname pbytes fmt fbytes :
   Persistent (op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes).
@@ -152,7 +153,7 @@ Proof using Type*.
   intros Hcancel Hfx Hvfx Ho Hob Hoa Hoe Hor Hs Hsb Hsa Hse Hsr Hp Hpb Hpa Hpe Hpr Hn Hnb Hna Hne Hnr
     Hprefix Hnewline Hwide Hwidefn Hwideframe Hc Hcb Hce Hcr Hfd1 Hfd2 Hparse Hfits.
   iIntros "#Hol #Hop Hout Herr #Hpl #Hpp Hnl Hnp #Hro Hys Hva Htcb He Hcl Hcnt HK".
-  iPoseProof "Hro" as "(#Hfro & #Hpro & #Hmro & #Hsl & #Hsp & #Hpre & #Hnew & #Hname & #Hfmt)".
+  iPoseProof "Hro" as "(#Hfro & #Hpro & #Hmro & #Hsl & #Hsp & #Hpre & #Hnew & #Hname & #Hfmt & #Hsync)".
   iDestruct (error_cleanup_exchange with "Htcb") as (tb treg jb Hth) "(Ht & Hflag & Hcf)".
   destruct Hth as (Hselftb & Htb & Hta & Hte & Htr).
   iDestruct (ws_life with "Hname") as (namer) "[#Hnamecap %Hpn]".
@@ -174,10 +175,10 @@ Proof using Type*.
   all: try assumption.
   all: try exact (fxprintf_normal_call_frame _ _ _).
   all: try (iApply file_idle_lend).
-  { iIntros "HO (He & Herr & #Hro2)". iPoseProof "Hro2" as "(#Hfro2 & _)".
+  { iIntros "HO (He & Herr & #Hro2)". iPoseProof "Hro2" as "(#Hfro2 & _ & _ & _ & _ & _ & _ & _ & _ & #Hsy2)".
     iApply (Hfto ffo with "[HO He]"); [exact Hffo | |].
     - cbn [fs_pre fflush_spec ff_vb ff_fp ff_fd ff_eb]. iSplit; [iPureIntro; split; [exact Herr | exact Hfd1]|].
-      iFrame "HO He Hfro2".
+      iFrame "HO He Hfro2 Hsy2".
     - iIntros (v) "(%r & [-> _] & HO & He)". iExists r. iSplit; [done|]. iFrame "HO He Herr Hro2". }
   { iIntros "Hcap (He & Herr & #Hro2)".
     iPoseProof "Hro2" as "(#Hfro2 & #Hpro2 & #Hmro2 & #Hsl2 & #Hsp2 & #Hpre2 & _ & #Hname2 & _)".
@@ -236,10 +237,10 @@ Proof using Type*.
          exact Hnlr | exact Hs | exact Hsb | exact Hsa | exact Hse | exact Hsr | done | ].
       iNext. iIntros (k) "Herr He _". iExists _. iSplit; [done|]. iSplitR; [iExact "Hsl2"|]. iSplitR; [iExact "Hsp2"|].
       iSplitL "Herr"; [iExact "Herr"|]. iSplitL "He"; [iExact "He" | iExact "Hro2"].
-    - iIntros "HO [He #Hro2]". iPoseProof "Hro2" as "(#Hfro2 & _)".
+    - iIntros "HO [He #Hro2]". iPoseProof "Hro2" as "(#Hfro2 & _ & _ & _ & _ & _ & _ & _ & _ & #Hsy2)".
       iApply (Hfte ffe with "[HO He]"); [exact Hffe | |].
       + cbn [fs_pre fflush_spec ff_vb ff_fp ff_fd ff_eb]. iSplit; [iPureIntro; split; [exact Herr | exact Hfd2]|].
-        iFrame "HO He Hfro2".
+        iFrame "HO He Hfro2 Hsy2".
       + iIntros (v) "(%r & [-> _] & HO & He)". iExists r. iSplit; [done|]. iFrame "HO He".
     - iSplit.
       + iIntros "Ht Hflag _ _ _ _ Herr He _".
