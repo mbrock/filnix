@@ -500,6 +500,7 @@ stdio/PrintfFlushPublish.v
 stdio/PrintfFlush.v
 stdio/PrintfFlushDirect.v
 stdio/PrintfFlushFileSpec.v
+stdio/PrintfDone.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
