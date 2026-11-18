@@ -235,6 +235,7 @@ locale/PostloadCtypeCode.v
 locale/PostloadCtypeSrc.v
 locale/PostloadCtypeLayout.v
 locale/SetlocaleQuery.v
+locale/SetlocaleCtypeQuery.v
 LenLogic.v
 SayLogic.v
 getopt/GetoptModule.v
