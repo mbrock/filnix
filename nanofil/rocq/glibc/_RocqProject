@@ -1039,6 +1039,7 @@ hello/HelloImageCode306.v
 hello/HelloImageLoad.v
 hello/HelloImageKept.v
 hello/HelloImageKeptRefused.v
+hello/HelloCloseReportImage.v
 hello/HelloImageGettextLink.v
 hello/HelloGetoptDiagImage.v
 hello/HelloGetoptFormats.v

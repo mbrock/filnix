@@ -26,7 +26,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString StartCtypeInitSpec StartEarlyInitSpec
   StartImageCpu HelloImageModule HelloImageLoad HelloImageEarly HelloImageCloseObjs HelloImageLocaleObjs
-  HelloImageMbsObjs HelloImageCLocaleObjs HelloStartGetopt HelloStartHdBuild.
+  HelloImageMbsObjs HelloImageCLocaleObjs HelloStartGetopt HelloStartHdBuild HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -77,11 +77,11 @@ Definition hello_close_rest_ps : list (piece * pval) :=
   obj_ps (img_ob "closeout#file_name") (repeat 0 8%nat) ++
   obj_ps (img_ob "__gconv_lock") (repeat 0 4%nat).
 
-(** When close_stdout reports a write error, it formats a message, so it
-    needs the formatter's tables as well as its own globals. This part
-    of the state holds both. *)
+(** When close_stdout reports a write error, it reads the formatter's
+    tables and its own globals. If errno is nonzero, it also reads
+    glibc's error messages. The latter remain readable after the call. *)
 Definition hello_priv_residual : iProp Σ :=
-  hello_getopt_ro ∗ pts hello_close_rest_ps ∗ pts hello_close_ro_ps.
+  hello_getopt_ro ∗ pts hello_close_rest_ps ∗ pts hello_close_ro_ps ∗ ptsq DfracDiscarded hello_errlist_ps.
 
 (** The part of the private state outside getopt's warnings is the
     three components. *)
@@ -109,11 +109,15 @@ Qed.
 (** What startup leaves is enough for the three components. *)
 Lemma hello_priv_build : hello_hd_rest w fr ==∗ hello_priv_rest.
 Proof using Type.
-  iIntros "(Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & #Hct)".
+  iIntros "(Pgl & #Ro & Hco & Hlo & Hcl & Hcc & Hmb & Hcx & Hel & #Hct)".
   rewrite hello_close_split. iDestruct "Hco" as "(Hcr & Hn & Hcro)".
   iEval (rewrite pts_ptsq) in "Hmb". iMod (ptsq_persist with "Hmb") as "#Hmb".
   iEval (rewrite pts_ptsq) in "Hcx". iMod (ptsq_persist with "Hcx") as "#Hcx".
-  iModIntro. iFrame "Pgl Hlo Hcl Hcc Hcx Hct Ro Hcr Hcro Hmb". iExists 0. iExact "Hn".
+  iEval (rewrite pts_ptsq) in "Hel". iMod (ptsq_persist with "Hel") as "#Hel".
+  iModIntro. iSplitL "Pgl Hlo Hcl Hcc Hn".
+  { iFrame "Pgl Hlo Hcl Hcc Hcx Hct". iExists 0. iExact "Hn". }
+  iSplitR; [iExact "Hmb"|]. iSplitR; [iExact "Ro"|].
+  iSplitL "Hcr"; [iExact "Hcr"|]. iSplitL "Hcro"; [iExact "Hcro"|iExact "Hel"].
 Qed.
 
 End state.

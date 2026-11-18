@@ -16,7 +16,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockL
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
   HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageCLocaleObjs StartEarlyInitSpec StartImageCpu
-  AllocRo LibioFputsSpec.
+  AllocRo LibioFputsSpec HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -82,24 +82,24 @@ Qed.
 Definition hello_hd_rest : iProp Σ :=
   pcell gl 0 (mkPtr cc (Ro cc)) ∗ hello_getopt_ro ∗ pts hello_close_objs_ps ∗ pts hello_locale_objs_ps ∗
   ct_lives hello_ct_objs ∗ ct_cells_set hello_ct_objs ∗ pts hello_mbs_objs_ps ∗ pts hello_clocale_objs_ps ∗
-  ct_ro hello_ct_objs.
+  pts hello_errlist_ps ∗ ct_ro hello_ct_objs.
 
 (** Startup leaves these objects, and they become the reports' part of
     the private state and the rest. *)
 Lemma hello_hd_build v t : 0 < t < 2 ^ 32 ->
   pts hello_getopt_priv_ps -∗ pts hello_close_objs_ps -∗ pts hello_locale_objs_ps -∗
   ct_lives hello_ct_objs -∗ ct_cells_set hello_ct_objs -∗ pts hello_mbs_objs_ps -∗
-  pts hello_clocale_objs_ps -∗ ct_ro hello_ct_objs -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
+  pts hello_clocale_objs_ps -∗ pts hello_errlist_ps -∗ ct_ro hello_ct_objs -∗ live hello_sec.1 hello_sec.2 -∗ bytes hello_sec.1 0 (le_bytes v 4) -∗
   bytes tb 720 (le_bytes t 4) -∗ hello_ro_rest hge ob -∗ ct_locale hello_ct_objs ==∗
   hello_hd_getopt w fr tb ∗ hello_hd_rest.
 Proof using Hself Hfd2.
-  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Hcx #Hctr Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
+  intros Ht. iIntros "Hp Hco Hlo Hcl Hcc Hmb Hcx Hel #Hctr Ls Bs Bt #Hro (Llt & Plt & Lgl & Pgl)".
   iMod (hello_getopt_own (glibc_program := hb_program) with "Hp") as "[#Ro (K1 & K2 & K3 & Rt & Ldb & Pdb)]";
     [reflexivity|].
-  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb Hcx".
+  iModIntro. iSplitR "Pgl Hco Hlo Hcl Hcc Hmb Hcx Hel".
   2: { iSplitL "Pgl"; [iExact "Pgl"|]. iSplitR; [iExact "Ro"|]. iSplitL "Hco"; [iExact "Hco"|].
        iSplitL "Hlo"; [iExact "Hlo"|]. iSplitL "Hcl"; [iExact "Hcl"|]. iSplitL "Hcc"; [iExact "Hcc"|]. iSplitL "Hmb"; [iExact "Hmb"|].
-       iSplitL "Hcx"; [iExact "Hcx" | iExact "Hctr"]. }
+       iSplitL "Hcx"; [iExact "Hcx" | iSplitL "Hel"; [iExact "Hel" | iExact "Hctr"]]. }
   iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & (%cbb & %creg & %cws & %Csh & Cl & _) & _)".
   destruct Csh as [[Hc|Hc] _ _ _ _ _ _ _ _]; [discriminate|]. injection Hc as <-.
   iEval (rewrite le_bytes_mod32) in "Bs". iDestruct (bytes_thirds with "Bt") as "(B1 & B2 & B3)".
