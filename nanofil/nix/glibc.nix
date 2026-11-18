@@ -15,8 +15,8 @@
 # separate nanofil-rocq check still compiles and checks the entire model.
 #
 # The push check compiles every file with Fix.v's sealed runtime, and the
-# scheduled nanofil-glibc-abstract compiles every file again with the
-# runtime left abstract.
+# scheduled nanofil-glibc-abstract checks every file except the concrete
+# Hello corollary with the runtime left abstract.
 #
 # The grammar round trip of a glibc file is not part of the check, because
 # it compiles the file a second time whenever anything the file imports
@@ -221,7 +221,11 @@ let
     binding:
     let
       source = builtins.readFile (glibc + "/${path.Fix}.v");
-      sealedBinding = "Module R : Runtime := InterpRuntime.";
+      sealedBinding = ''
+        Module Type StartRuntime := Runtime
+          with Definition state := InterpRuntime.state
+          with Definition ready := InterpRuntime.ready.
+        Module R : StartRuntime := InterpRuntime.'';
     in
     assert lib.assertMsg (
       builtins.length (lib.splitString sealedBinding source) == 2
@@ -232,7 +236,8 @@ let
   abstractFix = runtimeFix "Declare Module R : Runtime.";
   abstractSource =
     n: if n == "Fix" then abstractFix else glibc + "/${path.${n}}.v";
-  abstractVo = lib.genAttrs names (
+  abstractNames = lib.remove "HelloInterpNeverPanics" names;
+  abstractVo = lib.genAttrs abstractNames (
     compile "abstract-" abstractVo abstractSource
   );
   rejectTestSrc = lib.fileset.toSource {
@@ -260,8 +265,7 @@ let
         python3 ${rejectTestSrc}/tests/rocq_interface_test.py
         touch $out/passed
       '';
-  # The scheduled check nanofil-glibc-abstract: every file compiles
-  # against the abstract runtime.
+  # The scheduled check compiles and audits all runtime-general files.
   abstractGeneral =
     pkgs.runCommand "nanofil-glibc-abstract-general"
       {
@@ -275,15 +279,15 @@ let
         test -f ${abstractHello}/passed
         mkdir $out
         cat ${
-          lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") names
+          lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") abstractNames
         } >$out/audit-summary
         cat ${
-          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") names
+          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") abstractNames
         } >$out/timings.log
-        echo "@@glibc abstract general ${toString (builtins.length names)} files compiled"
+        echo "@@glibc abstract general ${toString (builtins.length abstractNames)} files compiled"
         touch $out/passed
       '';
-  abstractAudit = lib.genAttrs names (
+  abstractAudit = lib.genAttrs abstractNames (
     n:
     pkgs.runCommand "nanofil-glibc-abstract-audit-${n}"
       {

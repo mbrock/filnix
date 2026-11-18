@@ -13,10 +13,7 @@ failures=0
 # tree NAME: a sealed Fix.v and a file that uses only the signature.
 tree() {
   mkdir -p "$tmp/$1/sub"
-  cat >"$tmp/$1/Fix.v" <<'EOT'
-From Nanofil Require Import Runtime.
-Module R : Runtime := InterpRuntime.
-EOT
+  cp "$here/../../glibc/Fix.v" "$tmp/$1/Fix.v"
   cat >"$tmp/$1/sub/General.v" <<'EOT'
 From Glibc Require Import Fix.
 Lemma general (s : R.state) : s = s.
@@ -42,19 +39,20 @@ expect() {
   fi
 }
 
-tree passes
-expect passes 0 ''
-
 tree needs-interpreter
 cat >"$tmp/needs-interpreter/Concrete.v" <<'EOT'
 From Stdlib Require Import ZArith.
 From Glibc Require Import Fix.
 Definition cursor : R.state := 4294969872%Z.
 EOT
+tree passes
+mkdir -p "$tmp/passes/hello"
+cp "$tmp/needs-interpreter/Concrete.v" "$tmp/passes/hello/HelloInterpNeverPanics.v"
+expect passes 0 '@@abstract-general 2 files, 2 compiled'
 expect needs-interpreter 1 'abstract runtime: Concrete.v'
 
 tree unbound
-sed -i 's/^Module R : Runtime := InterpRuntime\.$/Declare Module R : Runtime./' "$tmp/unbound/Fix.v"
+sed -i '/^Module R : StartRuntime := InterpRuntime\.$/d' "$tmp/unbound/Fix.v"
 expect unbound 2 ''
 
 if [ "$failures" != 0 ]; then

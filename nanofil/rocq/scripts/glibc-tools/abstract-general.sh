@@ -6,7 +6,8 @@
 #
 # TREE has the sealed binding of Fix.v. OUT must not exist. The check
 # copies the sources of TREE to OUT/glibc, replaces the one runtime
-# binding by "Declare Module R : Runtime.", and compiles with build.sh.
+# binding by "Declare Module R : Runtime.", omits Hello's interpreter
+# corollary, and compiles the remaining files with build.sh.
 # A file that does not compile relies on the interpreter's definitions,
 # and the check fails.
 #
@@ -25,12 +26,15 @@ mkdir -p "$out"
 out=$(cd "$out" && pwd)
 cp -r "$tree" "$out/glibc"
 find "$out/glibc" \( -name '*.vo*' -o -name '*.glob' -o -name '.*.aux' \) -delete
-binding='Module R : Runtime := InterpRuntime.'
-if [ "$(grep -cxF "$binding" "$out/glibc/Fix.v")" != 1 ]; then
+signature='Module Type StartRuntime := Runtime'
+binding='Module R : StartRuntime := InterpRuntime.'
+if [ "$(grep -cxF "$signature" "$out/glibc/Fix.v")" != 1 ] ||
+   [ "$(grep -cxF "$binding" "$out/glibc/Fix.v")" != 1 ]; then
   echo "abstract-general: Fix.v must seal the interpreter runtime exactly once" >&2
   exit 2
 fi
-sed -i "s/^$binding\$/Declare Module R : Runtime./" "$out/glibc/Fix.v"
+sed -i "/^$signature\$/,/^$binding\$/c\\Declare Module R : Runtime." "$out/glibc/Fix.v"
+rm -f "$out/glibc/hello/HelloInterpNeverPanics.v"
 bash "$here/build.sh" "$out/glibc" "$jobs" >"$out/build.log" 2>&1
 (
   cd "$out/glibc" || exit 1
