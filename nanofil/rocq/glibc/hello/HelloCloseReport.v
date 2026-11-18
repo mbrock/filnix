@@ -14,7 +14,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogi
   WordString NarrowArgs PrintfSpec LibioFputsSpec LibioCleanupExit FflushCode FxprintfNormalCode FxprintfNormalCall
   ErrorCode ErrorEntry ErrorCall HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageEarly HelloStartFacts HelloGetoptDiagTcb HelloGetoptDiagImage
-  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloImageCloseObjs HelloGetoptTable
+  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloWClosedStdout WFileSyncCode HelloImageCloseObjs HelloGetoptTable
   HelloCloseReportImage HelloCloseReportText HelloCloseReportLocale HelloCloseReportBody HelloCloseReportPrint HelloCloseReportFinish Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
@@ -36,12 +36,15 @@ Context (Herr : ow_errno w = Some (mkPtr eb (Obj eb))) (Hfd : In 2 (ow_fds w)).
 Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_internal")
   (vfprintf_spec (glibc_program := report_program))}.
 
-(** The caller keeps the closed FILE rather than an open stream for
-    descriptor 1. The counter is indexed by its value so that the
-    return records exactly one report, including when it wraps. *)
-Definition report_state tb fb freg vb lb lr nb nr count : iProp Σ :=
-  closed_stdout fb freg vb lb lr ∗ St ∗ tcb_cleanup_inv (ow_self w) ∗ hello_hd_getopt w R.free tb ∗
+(** The report uses the FILE lifetime to load stdout, then lends that same
+    lifetime and the retained fields to fflush. The caller gets both back
+    along with the updated count, even when the counter wraps. *)
+Definition report_state_for tb fb freg (fields : iProp Σ) nb nr count : iProp Σ :=
+  (live fb freg ∗ fields) ∗ St ∗ tcb_cleanup_inv (ow_self w) ∗ hello_hd_getopt w R.free tb ∗
   names ob ∗ live nb nr ∗ int_cell nb 0 count.
+
+Definition report_state tb fb freg vb lb lr :=
+  report_state_for tb fb freg (closed_stdout_fields fb vb lb lr).
 
 Local Lemma close_literals : ptsq dq hello_close_ro_ps ⊢ word_string dq fmt [37;115] ∗ str_arg (WPtr text).
 Proof using Type*.
@@ -56,13 +59,21 @@ Context (Hout : ho_out ob = mkPtr fb (Obj fb)) (Hvb : vb = ho_vb ob)
   (Hfa : fb mod 8 = 0) (Hfe : fb+224 <= r_end freg) (Hfr : r_end freg <= 2^63)
   (Hn : lookup (TAtom "error_message_count") img_globals = Some (mkPtr nb (Obj nb)))
   (Hne : nb+4 <= r_end nr) (Hnr : r_end nr <= 2^63).
-Local Abbreviation M := (report_state tb fb freg vb lb lr nb nr).
 Local Abbreviation Ro := (hello_ro hge ob ∗ ptsq dq hello_close_ro_ps ∗ ptsq dq hello_errlist_ps)%I.
+
+Section with_flush.
+Context (fields : iProp Σ).
+Local Abbreviation M := (report_state_for tb fb freg fields nb nr).
+Context (Hflush : forall fr (D : iProp Σ),
+  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  0 < fb -> ptr_addr (ow_self w) <> 0 ->
+  ⊢ hello_ro hge ob -∗ live fb freg -∗ (fields ∗ D) -∗
+  WP (ERun fr : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live fb freg ∗ (fields ∗ D) }}).
 
 Local Lemma wp_report_internal k count ap : 0 <= k < 2^32 ->
   error_va ap [WInt 0; WInt k; WPtr fmt; WPtr text] -∗ errno_any eb -∗ Ro -∗ M count -∗
   WP (ERun (error_internal_frame 0 k fmt ap 0) : gexpr) {{ r, ⌜r = RetVoid⌝ ∗ errno_any eb ∗ M ((count+1) mod 2^32) }}.
-Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
+Proof using Herr Hfd Hvf Hout Hfa Hfe Hfr Hflush Hn Hne Hnr.
   intros Hk. pose proof (hello_error_link_image R.free) as El. pose proof (hello_link_all R.free R.free_succeeds) as L.
   assert (Hfb : 0 < fb) by (change (mkPtr (img_a "_IO_2_1_stdout_") (Obj (img_a "_IO_2_1_stdout_")) = mkPtr fb (Obj fb)) in Hout;
     injection Hout as <-; vm_compute; reflexivity).
@@ -78,13 +89,13 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
   iDestruct (ws_life (glibc_program := report_program) with "Hname") as (name_r) "[#Hcap %Haddr]".
   iEval (rewrite Hout) in "Hop". iDestruct (error_va_at (glibc_program := report_program) with "Hva") as "Hva"; [cbn; lia|].
   set (D := (St ∗ errno_any eb ∗ hello_ro hge ob ∗ word_string dq name bs)%I).
-  set (S := (closed_stdout_fields fb vb lb lr ∗ D)%I).
+  set (S := (fields ∗ D)%I).
   iApply (wp_error_internal_entry_lend (glibc_program := report_program) holds_os_glibc (hk_sys _ _ L)
     (dqs := dq) (dqp := dq) 0 k fmt ap 0 tb tr 0 (ho_so ob) (ho_soreg ob) (mkPtr fb (Obj fb)) (live fb freg)
     pb preg null dq preg (ho_nb ob) (ho_nreg ob) name dq name_r pre glibc__IO_fflush
     (mkFrame glibc__IO_fflush [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None (Enter (TAtom "start") None))
     glibc_fxprintf (fxprintf_normal_frame null pre [WPtr name]) (TAtom "error") glibc_error (error_frame 0 k fmt [WPtr text])
-    S S (closed_stdout_fields fb vb lb lr ∗ St ∗ errno_any eb)%I True%I
+    S S (fields ∗ St ∗ errno_any eb)%I True%I
     with "Ht Hflag Hol Hop Hout Hpl Hpp [] Hnl Hnp Hcap [$Hfields $Herr $He $Hro $Hname] [//]");
     [exact Hself|exact Htb|exact Hta|lia|exact Htrlim|left; reflexivity|exact (erl_cancel _ _ El)|
      vm_compute; reflexivity|vm_compute; reflexivity|vm_compute; reflexivity|vm_compute; discriminate|vm_compute; discriminate|
@@ -94,12 +105,7 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
      intros H; contradiction H; reflexivity..| |].
   - iIntros "Hl". iExists (DfracOwn 1),freg. iFrame "Hl". iIntros "$".
   - iIntros "Hl [Hfields HD]". iDestruct "HD" as "(Herr & He & #Hro' & #Hname')".
-    iPoseProof "Hro'" as "(#Hvt' & #Hsg' & _)".
-    iDestruct (vtables_slot hge (ho_vb ob) (ho_vreg ob) 96 "_IO_new_file_sync" with "Hvt'") as "#Hslot";
-      [cbn [file_jumps]; repeat first [left; reflexivity|right]|].
-    iApply (wp_closed_stdout_fflush (glibc_program := report_program) holds_os_glibc (hk_sys _ _ L) report_sync_link
-      _ fb freg vb lb lr (ho_sb ob) (ho_sreg ob) (ho_vreg ob) D with "[Hvt'] [Hslot] Hsg' Hl [$Hfields $Herr $He $Hro' $Hname']");
-      [reflexivity|exact Hfb|exact Hfa|exact Hfe|exact Hfr|change (ptr_addr (ow_self w) <> 0); lia|rewrite Hvb; iAssumption..].
+    iApply (Hflush _ D with "Hro' Hl [$Hfields $Herr $He $Hro' $Hname']"); [reflexivity|exact Hfb|lia].
   - iIntros "Hcap [Hfields (Herr & He & #Hro' & #Hname')]".
     iDestruct (version_lit hge ob ("glibc_error#str.255", [37;115;58;32]) with "Hro'") as "#Hpre";
       [cbn [version_lits]; repeat first [left; reflexivity|right]|].
@@ -124,7 +130,7 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
     iAssert (hello_dgx w R.free tb x.1.1 x.1.2 x.2) with "[HG Hflag Hj Hclean]" as "HG".
     { iApply report_locale_open. iExists tr,jb. iFrame. done. }
     iDestruct (hello_dgx_lend w R.free tb Hfd with "HG") as "(Htcb & He & Herr & W)".
-    iSplit; [done|]. iFrame "He". rewrite /report_state. iSplitL "Hout Hfields"; [iFrame|].
+    iSplit; [done|]. iFrame "He". rewrite /report_state_for. iSplitL "Hout Hfields"; [iFrame|].
     iFrame "Herr Htcb". iSplitL "W"; [iExists x; by iFrame|]. iSplitR "Hcl Hcnt"; last iFrame.
     iExists a,name,z. rewrite /ncells. iFrame. iExists bs. iExact "Hname".
 Qed.
@@ -132,10 +138,10 @@ Qed.
 (** The public error wrapper supplies the variadic cursor. The caller
     keeps errno separate from the remaining state so close_stdout can
     use this rule immediately after it reads errno. *)
-Lemma wp_close_write_error k count : 0 <= k < 2^32 ->
+Lemma wp_close_write_error_with k count : 0 <= k < 2^32 ->
   errno_any eb -∗ (Ro ∗ M count) -∗
   WP (ERun (error_frame 0 k fmt [WPtr text]) : gexpr) {{ r, ⌜r = RetVoid⌝ ∗ errno_any eb ∗ M ((count+1) mod 2^32) }}.
-Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
+Proof using Herr Hfd Hvf Hout Hfa Hfe Hfr Hflush Hn Hne Hnr.
   intros Hk. iIntros "He [Hro HM]".
   iApply (wp_error_wrapper (glibc_program := report_program) 0 k fmt [WPtr text] (fun ap => error_internal_frame 0 k fmt ap 0)
     (errno_any eb ∗ Ro ∗ M count)%I (errno_any eb ∗ M ((count+1) mod 2^32))%I True%I
@@ -143,6 +149,24 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
       intros; apply error_internal_call_frame| |].
   - intros ap. iIntros "Hva (He & Hro & HM)". iApply (wp_report_internal with "Hva He Hro HM"). exact Hk.
   - iNext. iIntros "$ _". done.
+Qed.
+End with_flush.
+
+Local Abbreviation M := (report_state tb fb freg vb lb lr nb nr).
+
+(** After a narrow close, fflush calls the narrow sync slot. *)
+Corollary wp_close_write_error k count : 0 <= k < 2^32 ->
+  errno_any eb -∗ (Ro ∗ M count) -∗
+  WP (ERun (error_frame 0 k fmt [WPtr text]) : gexpr) {{ r, ⌜r = RetVoid⌝ ∗ errno_any eb ∗ M ((count+1) mod 2^32) }}.
+Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
+  refine (wp_close_write_error_with (closed_stdout_fields fb vb lb lr) _ k count).
+  intros fr D Hcall Hfb Hself. subst vb.
+  iIntros "#Hro Hl HD". iPoseProof "Hro" as "(#Hvt & #Hsg & _)".
+  iDestruct (vtables_slot hge (ho_vb ob) (ho_vreg ob) 96 "_IO_new_file_sync" with "Hvt") as "#Hslot";
+    [cbn [file_jumps]; repeat first [left; reflexivity|right]|].
+  iApply (wp_closed_stdout_fflush (glibc_program := report_program) holds_os_glibc
+    (hk_sys _ _ (hello_link_all _ R.free_succeeds)) report_sync_link
+    fr fb freg (ho_vb ob) lb lr (ho_sb ob) (ho_sreg ob) (ho_vreg ob) D with "Hvt Hslot Hsg Hl HD"); assumption.
 Qed.
 
 (** The void call resumes at the next instruction with the updated
@@ -161,5 +185,25 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
     exact (erl_error _ _ (hello_error_link_image R.free))|apply error_call_frame|]. iNext.
   iApply (wp_wand with "[He HR]"); [iApply (wp_close_write_error with "He HR"); exact Hk|].
   iIntros (r) "(-> & He & HM)". resume. iApply ("HK" with "He HM").
+Qed.
+
+Local Lemma report_wsync_link : ge_fn hge "__GI__IO_wfile_sync" glibc__IO_wfile_sync.
+Proof. exists (img_addr "__GI__IO_wfile_sync"). split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]. Qed.
+
+Local Abbreviation WM tw tm wd := (report_state_for tb fb freg (closed_wide_fields fb vb lb lr tw tm wd) nb nr).
+
+(** A wide close leaves stdout with its wide jump table and no buffer.
+    The report flushes that stream through the wide sync slot. *)
+Corollary wp_close_write_error_wide tw tm wd k count : 0 <= k < 2^32 ->
+  errno_any eb -∗ (Ro ∗ WM tw tm wd count) -∗
+  WP (ERun (error_frame 0 k fmt [WPtr text]) : gexpr)
+    {{ r, ⌜r = RetVoid⌝ ∗ errno_any eb ∗ WM tw tm wd ((count+1) mod 2^32) }}.
+Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
+  refine (wp_close_write_error_with (closed_wide_fields fb vb lb lr tw tm wd) _ k count).
+  intros fr D Hcall Hfb Hself. subst vb.
+  iIntros "#Hro Hl HD". iPoseProof "Hro" as "(#Hvt & #Hsg & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & #Hwv)".
+  iApply (wp_closed_wide_fflush (glibc_program := report_program) holds_os_glibc
+    (hk_sys _ _ (hello_link_all _ R.free_succeeds)) report_wsync_link
+    fr fb freg (ho_vb ob) lb lr tw tm wd (ho_sb ob) (ho_sreg ob) (ho_vreg ob) D with "Hvt Hwv Hsg Hl HD"); assumption.
 Qed.
 End report.
