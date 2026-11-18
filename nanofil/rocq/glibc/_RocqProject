@@ -1214,6 +1214,7 @@ hello/HelloErrorOperandCall.v
 hello/HelloCloseRetain.v
 hello/HelloCloseShort.v
 hello/HelloCloseIdle.v
+hello/HelloCloseStreamIdle.v
 hello/HelloCloseDispatch.v
 hello/HelloCloseStdout.v
 hello/HelloCloseStdoutRetain.v
