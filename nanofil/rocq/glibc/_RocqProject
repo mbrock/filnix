@@ -210,6 +210,7 @@ libio/LibioWIdle.v
 libio/LibioWFwide.v
 libio/LibioWRelease.v
 libio/LibioWFcloseRelease.v
+libio/LibioWFcloseTail.v
 libio/LibioWCloseItEnd.v
 libio/LibioWCloseItMid.v
 libio/LibioWCloseIt.v
