@@ -69,10 +69,6 @@ Definition cmp_names : list name := Eval vm_compute in
     (filter (fun b => match b_label b with TAtom s => existsb (String.eqb s) ["L135"; "L140"; "L168"; "L169"]%string | _ => false end)
       (fn_blocks glibc_translit)).
 
-Section cmp.
-Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
-
 (** The tactic [wnorm] simplifies the index arithmetic of a word
     read: the code widens a count, shifts it by two and adds it to a
     pointer, and each step wraps modulo a power of two. *)
@@ -93,6 +89,10 @@ Ltac branch_w b :=
       repeat match goal with |- context [?x <? ?y] => destruct (Z.ltb_spec x y) end;
       cbn; first [reflexivity | exfalso; lia]);
     rewrite E; clear E end; cbn [edge_label].
+
+Section cmp.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** One probe compares a source string with the input and must not
     read past either of them. The source string starts at word idx of
