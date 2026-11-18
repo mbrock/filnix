@@ -59,9 +59,14 @@ Proof using Type.
   - iDestruct "Hb" as (br xs cs H) "(Hb & Hx & Ha)". iApply (wp_raw_load_pointer with "Hl Hc Hb"); [exact C|exact A|done|done|done|lia|].
     iNext. iIntros "Hl Hc Hb". iApply ("HK" with "Hl Hc [-]"). iExists br, xs, cs. by iFrame.
 Qed.
+End room.
 
 Ltac load_wpos Hl Hc Hb :=
   rule3 Hl Hc Hb ltac:(eapply wp_load_wpos; inst; [reflexivity|vx|reflexivity|a2|a2|assumption|lia|assumption|lia]).
+
+Section test.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The writer needs no storage bytes to test the two cursors. Its next
     block either skips the copy or receives the number of characters
@@ -101,4 +106,4 @@ Proof using Type.
     + unfold wsource_regs. split_and!; try (lookups; unwrap2; reflexivity); lia.
     + rewrite /write_window. by iFrame.
 Qed.
-End room.
+End test.
