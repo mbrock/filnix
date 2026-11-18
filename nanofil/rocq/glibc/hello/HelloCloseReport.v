@@ -201,7 +201,7 @@ Corollary wp_close_write_error_wide tw tm wd k count : 0 <= k < 2^32 ->
 Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
   refine (wp_close_write_error_with (closed_wide_fields fb vb lb lr tw tm wd) _ k count).
   intros fr D Hcall Hfb Hself. subst vb.
-  iIntros "#Hro Hl HD". iPoseProof "Hro" as "(#Hvt & #Hsg & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & #Hwv)".
+  iIntros "#Hro Hl HD". iPoseProof "Hro" as "(#Hvt & #Hsg & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & #Hwv & _)".
   iApply (wp_closed_wide_fflush (glibc_program := report_program) holds_os_glibc
     (hk_sys _ _ (hello_link_all _ R.free_succeeds)) report_wsync_link
     fr fb freg (ho_vb ob) lb lr tw tm wd (ho_sb ob) (ho_sreg ob) (ho_vreg ob) D with "Hvt Hwv Hsg Hl HD"); assumption.
