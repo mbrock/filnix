@@ -70,8 +70,11 @@ TAGS = [
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
 SAT = 'satisfiable'
+# hello_start_witness exhibits one start state that meets these premises together.
+WITNESSED = SAT + ' (checked: hello_start_witness in HelloStartWitness.v)'
 STATUS = [
-    (r'^In [12] |start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
+    (r'^In [12] |start_c_locale|ow_leaf4_ends', WITNESSED),
+    (r'^R\.ready', SAT + ' for the interpreter\'s runtime, InterpRuntime.ready (checked: hello_start_witness)'),
     (r'hd_setlocale_all', 'unknown: X holds every object on the locale worker\'s list for setlocale, and the lock '
                           'is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
@@ -210,7 +213,7 @@ if __name__ == '__main__':
         print(f'{n:3d}. {line if len(line) <= 110 else line[:107] + "..."}')
         print(f'       status: {status(p)}')
     print(f'open premises: {len(ps)}')
-    bad = [p for p in ps if status(p) != SAT]
+    bad = [p for p in ps if not status(p).startswith(SAT)]
     print(f'not known satisfiable: {len(bad)} (the theorem is vacuous while any is unsatisfiable)')
     counts = {}
     for p in ps:

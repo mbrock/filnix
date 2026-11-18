@@ -1142,6 +1142,7 @@ hello/HelloStartMain.v
 hello/HelloStartRun.v
 hello/HelloStartPost.v
 hello/HelloStartEntry.v
+hello/HelloStartWitness.v
 hello/HelloStartWp.v
 hello/HelloClosedStdout.v
 hello/HelloErrorClosed.v
