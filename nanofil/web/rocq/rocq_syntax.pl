@@ -404,7 +404,7 @@ def_kw('Canonical Structure') --> tk(id('Canonical')), tk(id('Structure')).
 
 directive(K) :- memberchk(K, ['From', 'Require', 'Import', 'Export', 'Include', 'Open', 'Close', 'Set', 'Unset',
                               'Arguments', 'Hint', 'Declare', 'Existing', 'Delimit', 'Bind', 'Implicit',
-                              'Generalizable', 'Create', 'Opaque', 'Transparent', 'Coercion']).
+                              'Generalizable', 'Create', 'Opaque', 'Transparent', 'Typeclasses', 'Coercion']).
 
 words([W|Ws]) --> [t(K, _, _)], !, { tok_text(K, W) }, words(Ws).
 words([]) --> [].
@@ -661,7 +661,7 @@ std_op('/\\', 80, right). std_op('∧', 80, right).
 std_op(Op, 70, none) :- memberchk(Op, [=, '<>', '≠', <, '<=', >, >=, '≤', '≥', '=?', '<=?', '<?', '>=?', '>?', '==', '=?=', '≡', '≡ₚ', '∈', '∉', '⊆', '⊂', '⊈', '##', '≼', '~~>']).
 std_op('::', 60, right). std_op('++', 60, right).
 std_op(+, 50, left). std_op(-, 50, left). std_op('||', 50, left).
-std_op(*, 40, left). std_op(/, 40, left). std_op(mod, 40, left). std_op('&&', 40, left). std_op('×', 40, left).
+std_op(*, 40, left). std_op(/, 40, left). std_op('÷', 40, left). std_op(mod, 40, left). std_op('&&', 40, left). std_op('×', 40, left).
 std_op(^, 30, right).
 
 op_word(mod).
@@ -863,6 +863,9 @@ tactic_unit(tgroup(T)) --> tk(p('(')), !, tactic(T), tk(p(')')).
 % infer their arithmetic decomposition.
 tactic_unit(call(call_spec, [clause(with, [term(X)])])) -->
     tk(id(call_spec)), tk(kw(with)), atom(X), !.
+% iEval takes a tactic, not a parenthesized Gallina application.
+tactic_unit(call(iEval, [tactic(T)|Ps])) --> tk(id(iEval)), tk(p('(')), tactic(T), tk(p(')')), !,
+    tactic_parts(Ps).
 %  The proof mode's introduction: Rocq patterns in parentheses, its own
 %  in strings: iIntros (x [a b]) "H [H1 H2]".
 tactic_unit(call(iIntros, [ipm_intros(Is)])) --> tk(id(iIntros)), ipm_intro_items(Is), { Is \== [] }, !.
