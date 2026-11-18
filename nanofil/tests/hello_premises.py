@@ -66,15 +66,16 @@ TAGS = [
     (r'hd_close_stdout', 'close_stdout'),
     (r'vfprintf_has_spec', 'printf'),
     (r'fputs_has_spec', 'libio'),
-    (r'build X', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads'),
+    (r'build X', 'locale'),
 ]
 # Kept by hand from the satisfiability audit and the fixes after it.
 # The first pattern that a premise's text matches gives its status.
 SAT = 'satisfiable'
 STATUS = [
     (r'^In [12] |frees_heap|start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
-    (r'hd_setlocale_all', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads; its lock '
-                          'is reachable by opening the getopt state with hello_stdio (hello_hd_lend)'),
+    (r'hd_setlocale_all', 'unsatisfiable: X lacks the category name texts other than LC_MESSAGES and the strings '
+                          'that setlocale passes to getenv; the C data is in X (880d34f2), and the lock is reachable '
+                          'by opening the getopt state with hello_stdio (hello_hd_lend)'),
     (r'hd_setlocale_query', SAT),
     (r'hd_print|hd_error_operand', SAT),
     (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
@@ -83,7 +84,7 @@ STATUS = [
     (r'hd_close_stdout', 'unsatisfiable: the failure branch reaches strerror and dcgettext, whose locale state '
                          'no start list owns'),
     (r'vfprintf_has_spec|fputs_has_spec', SAT),
-    (r'build X', 'unsatisfiable: X lacks the read-only C-locale data that setlocale reads'),
+    (r'build X', 'unsatisfiable: X lacks the category name texts and the strings that setlocale passes to getenv'),
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
