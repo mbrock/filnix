@@ -138,14 +138,15 @@ Qed.
     stream's life and its table pointer, and the linker set the rest. *)
 Lemma hello_start_file_own fb fl fd lk lkreg wd wreg vb self :
   flags_ok (hello_kept_state fl fd lk wd vb) -> (fd = 0 \/ fd = 1 \/ fd = 2) ->
-  (fd <> 0 -> has fl io_no_writes = false) -> has fl io_is_appending = false -> 0 <= fd < 2 ^ 32 ->
+  (fd <> 0 -> has fl io_no_writes = false) -> has fl io_is_appending = false ->
+  (has fl io_unbuffered = true -> has fl io_line_buf = false) -> 0 <= fd < 2 ^ 32 ->
   lk mod 8 = 0 -> lk + 16 <= r_end lkreg -> r_end lkreg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   stream_live (mkPtr fb (Obj fb)) -∗ pcell fb 216 (mkPtr (vb + 336) (Ro vb)) -∗
   pts (hello_stream_kept_ps fb fl fd lk lkreg wd) -∗ pts (hello_wide_kept_ps wd wreg vb) -∗
   file_idle vb self (mkPtr fb (Obj fb)) fd.
 Proof using Type.
-  intros Hok H012 Hnw Hap Hfd Hlk Hlke Hlkr Hw0 Hw8 Hwe Hwr. iIntros "Hlv Hvt H Hw".
+  intros Hok H012 Hnw Hap Hlb Hfd Hlk Hlke Hlkr Hw0 Hw8 Hwe Hwr. iIntros "Hlv Hvt H Hw".
   iDestruct (hello_start_wide_own with "Hw") as "Hw"; [done..|].
   iDestruct "Hlv" as (b freg (Heq & Hb & Hal & Hend & Htop)) "Hl". injection Heq as <-.
   rewrite /hello_stream_kept_ps pts_concat.
@@ -156,7 +157,7 @@ Proof using Type.
   iExists fb, freg, (hello_kept_state fl fd lk wd vb), NbNone.
   iSplit.
   { iPureIntro. split; [reflexivity|]. split; [exact Hal|]. split; [exact Hb|]. split; [exact Hend|].
-    split; [lia|]. split; [exact Hok|]. split; [|split_and!; first [reflexivity | exact I]].
+    split; [lia|]. split; [exact Hok|]. split; [|split_and!; first [reflexivity | exact (conj Hlb I)]].
     unfold idle_ok, hello_kept_state, fs_ptr; cbn [fs_fileno fs_mode fs_ptrs fs_flags fs_flags2 fs_column].
     cbn. split_and!; auto; lia. }
   iFrame "Hl". iSplitL "Hfl P0 P1 P2 P3 P4 P5 P6 P7 P8 P9 P10 P11 Hfd Hf2 Hold Hcol Hlp Hoff Hcv Hwd Hfrl Hfrb Hmd Htot Hvt".

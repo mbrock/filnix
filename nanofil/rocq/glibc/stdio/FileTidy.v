@@ -33,7 +33,7 @@ Proof. unfold idle_ok, fs_with_flags2. cbn. tauto. Qed.
 (** The fact [short_idle] does not mention the second flags word
     either, so a new value of that word keeps it. *)
 Lemma short_idle_flags2 nb st x : short_idle nb (fs_with_flags2 st x) <-> short_idle nb st.
-Proof. destruct nb; reflexivity. Qed.
+Proof. unfold short_idle, fs_with_flags2. destruct nb; reflexivity. Qed.
 
 Section tidy.
 Context `{!gen_heapGS piece pval Σ}.

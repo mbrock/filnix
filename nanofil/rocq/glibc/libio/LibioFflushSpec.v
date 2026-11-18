@@ -34,8 +34,8 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
     be open. A failed write sets errno, so the caller lends errno too.
     Flushing never allocates a buffer, so the contract does not ask for
     the allocator. The call reaches the stream's sync function through
-    the jump table's sync slot, which [fputs_ro] does not cover, so the
-    caller also lends that slot read-only. The call returns 0 when it wrote everything and
+    the jump table's sync slot, which [fputs_ro] covers. The call
+    returns 0 when it wrote everything and
     `c: EOF` otherwise; the callers in Hello ignore the result.
     Afterwards the stream is idle again on the same descriptor. *)
 Definition fflush_spec : fspec Σ :=
@@ -44,8 +44,7 @@ Definition fflush_spec : fspec Σ :=
     (fun x =>
        ⌜ow_errno w0 = Some (mkPtr (ff_eb x) (Obj (ff_eb x))) /\ In (ff_fd x) (ow_fds w0)⌝ ∗
        file_idle (ff_vb x) (ow_self w0) (ff_fp x) (ff_fd x) ∗
-       errno_any (ff_eb x) ∗ fputs_ro (ff_vb x) ∗
-       pcellq DfracDiscarded (ff_vb x) (vt_file + 96) (sym_ptr ge "_IO_new_file_sync"))%I
+       errno_any (ff_eb x) ∗ fputs_ro (ff_vb x))%I
     (fun x o =>
        ∃ r, ⌜o = Ret (WInt r) /\ (r = 0 \/ r = 2 ^ 32 - 1)⌝ ∗
        file_idle (ff_vb x) (ow_self w0) (ff_fp x) (ff_fd x) ∗

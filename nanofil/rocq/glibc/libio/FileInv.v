@@ -181,6 +181,8 @@ Definition slot_overflow : Z := ltac:(layout_constant (LibioReadLayout.field_off
 #[export] Hint Unfold slot_overflow : offs.
 Definition slot_xsputn : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_jump_t" "__xsputn")).
 #[export] Hint Unfold slot_xsputn : offs.
+Definition slot_sync : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_jump_t" "__sync")).
+#[export] Hint Unfold slot_sync : offs.
 Definition slot_doallocate : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_jump_t" "__doallocate")).
 #[export] Hint Unfold slot_doallocate : offs.
 Definition slot_write : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_jump_t" "__write")).
@@ -195,7 +197,8 @@ Definition slot_stat : Z := ltac:(layout_constant (LibioReadLayout.field_offset 
     resolved (LibioReadCode.v and the others hold them). *)
 Definition file_jumps : list (Z * string) :=
   [(slot_finish, "_IO_new_file_finish"); (slot_overflow, "_IO_new_file_overflow");
-   (slot_xsputn, "_IO_new_file_xsputn"); (slot_doallocate, "__GI__IO_file_doallocate");
+   (slot_xsputn, "_IO_new_file_xsputn"); (slot_sync, "_IO_new_file_sync");
+   (slot_doallocate, "__GI__IO_file_doallocate");
    (slot_write, "_IO_new_file_write"); (slot_close, "__GI__IO_file_close");
    (slot_stat, "__GI__IO_file_stat")].
 

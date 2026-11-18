@@ -326,18 +326,17 @@ Qed.
     waits in its heap buffer. It releases the lock it took, and it
     leaves the stream idle on the same descriptor. It returns 0, or
     `c: EOF` when the write fell short. A failed write sets errno, so
-    the caller lends errno. The caller also lends the sync slot of the
-    jump table, because [vtables_ro] does not hold that slot. *)
+    the caller lends errno. *)
 Lemma wp_fflush_idle fr fp vb vreg sb sreg fd eb Φ :
   call_frame glibc__IO_fflush [WPtr fp] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗
-  pcellq DfracDiscarded vb (vt_file + 96) (sym_ptr ge "_IO_new_file_sync") -∗
   file_idle vb (ow_self w0) fp fd -∗ errno_any eb -∗
   ▷ (∀ r, ⌜r = 0 \/ r = 2 ^ 32 - 1⌝ -∗ file_idle vb (ow_self w0) fp fd -∗ errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Hdwf Hext Hfw Hreg Hsync Hwrite.
-  intros Hfr Heb Hfd Hself. iIntros "#Hvt #Hs #Hslot Hf Herr HK".
+  intros Hfr Heb Hfd Hself. iIntros "#Hvt #Hs Hf Herr HK".
+  iPoseProof (vtables_slot ge vb vreg slot_sync "_IO_new_file_sync" with "Hvt") as "#Hslot"; [cbn; tauto|].
   iDestruct "Hf" as (fb freg st nb Hp) "(Hl & Hf & Hlk & Hb & Hw)".
   destruct Hp as (-> & Hal & Hfb & Hend & Hfreg & Hok & Hidle & Hvt & Hbok & Hshort).
   iDestruct "Hf" as "(%Hlen & Hfl & Hps & Hfd & Hf2 & Hold & %Hcl & Hcol & Hlp & Hoff & Hcv & Hwd & Hfrl & Hfrb &
@@ -385,7 +384,7 @@ Proof using Hdwf Hext Hfw Hreg Hsync Hwrite.
   - (* Output is pending, so the buffer is a heap buffer. *)
     destruct nb as [| |bb sz|bb]; cbn [buf_ptrs_ok short_idle take] in Hbok, Hshort.
     { injection Hbok as _ _ _ <- <- _. cbn in Hpend. lia. }
-    { unfold fs_ptr in Hshort; cbn in Hshort. destruct Hshort as (_ & -> & _). lia. }
+    { unfold fs_ptr in Hshort. unfold short_idle in Hshort. cbn in Hshort. destruct Hshort as (_ & _ & -> & _). lia. }
     2: { iDestruct "Hb" as "[]". }
     cbn [nth] in Hbok. destruct Hbok as (-> & -> & Hall).
     repeat rewrite Forall_cons_iff in Hall.
@@ -461,7 +460,9 @@ Proof using Hdwf Hext Hfw Hreg Hsync Hwrite.
       - unfold idle_ok, fs_ptr. cbn [nth fs_flags fs_ptrs fs_fileno fs_flags2 fs_column fs_mode ptr_addr].
         rewrite !Hhas; try reflexivity. split_and!; auto; try lia.
       - cbn. split_and!; try reflexivity.
-        unfold base, be; destruct Hwe2 as [-> | ->]; repeat constructor; cbn; lia. }
+        unfold base, be; destruct Hwe2 as [-> | ->]; repeat constructor; cbn; lia.
+      - unfold short_idle in Hshort |- *. cbn [fs_flags] in Hshort |- *.
+        rewrite !Hhas; try reflexivity. exact Hshort. }
     iSplitR "Hlk Hbl Hxs Hcs"; [|iSplitL "Hlk"; [iExists lb, lreg; iSplit; done|]].
     { rewrite /file_fields. cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset
         fs_codecvt fs_wide fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable big_opL].
@@ -497,8 +498,8 @@ Lemma fflush_has_spec (Hself : ptr_addr (ow_self w0) <> 0) :
 Proof using Hdwf Hext Hff Hfw Hreg Hsync Hwrite.
   intros [vb fp fd eb]. exists glibc__IO_fflush. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_pre fs_post fs_args fflush_spec ff_vb ff_fp ff_fd ff_eb].
-  iIntros "([%Heb %Hfd] & Hf & Herr & (%vreg & %sb & %sreg & #Hvt & #Hs) & #Hslot) HK".
-  iApply (wp_fflush_idle Hreg Hext Hsync Hfw with "Hvt Hs Hslot Hf Herr"); try eassumption.
+  iIntros "([%Heb %Hfd] & Hf & Herr & (%vreg & %sb & %sreg & #Hvt & #Hs)) HK".
+  iApply (wp_fflush_idle Hreg Hext Hsync Hfw with "Hvt Hs Hf Herr"); try eassumption.
   iNext. iIntros (r Hr) "Hf Herr". iApply "HK". iExists r. iFrame. iPureIntro. split; [reflexivity | exact Hr].
 Qed.
 

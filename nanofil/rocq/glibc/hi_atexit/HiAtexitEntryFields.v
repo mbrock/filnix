@@ -44,8 +44,8 @@ Proof using Type.
   iModIntro. rewrite /vtables_ro. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iEval (rewrite /hi_entry_vtables_ps /ptsq;
     cbn [file_jumps map concat big_opL]; rewrite !big_sepL_app) in "H".
-  iDestruct "H" as "(Hl & H1 & H2 & H3 & H4 & H5 & H6 & H7 & _)".
-  cbn [file_jumps big_opL]. iFrame "Hl H1 H2 H3 H4 H5 H6 H7".
+  iDestruct "H" as "(Hl & H1 & H2 & H3 & H4 & H5 & H6 & H7 & H8 & _)".
+  cbn [file_jumps big_opL]. iFrame "Hl H1 H2 H3 H4 H5 H6 H7 H8".
 Qed.
 
 (** The initialized byte supplies the persistent single-thread flag. *)

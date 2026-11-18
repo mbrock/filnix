@@ -98,19 +98,25 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
   Z.land (fs_flags2 st) 2 = 0 /\ Z.land (fs_flags2 st) 32 = 0 /\
   take 2 (fs_column st) = [0; 0].
 
-(** A stream that writes through its one-byte `c: _shortbuf` keeps
-    nothing in it between calls. Glibc installs that buffer only for an
-    unbuffered stream. The overflow function then sets the write end to
-    the write pointer, and `c: new_do_write` sets the write base, the
-    write pointer and the write end to the buffer's base, whether the
-    write succeeds or fails. So the stream has no pending output and no
-    room, and the next call never copies into the buffer or flushes it.
-    The predicate [short_idle] nb st states this for the buffer nb and
-    says nothing about a stream with no buffer or a heap buffer. *)
+(** An unbuffered stream writes through its one-byte `c: _shortbuf`
+    and keeps nothing in it between calls. Glibc gives that buffer only
+    to an unbuffered stream, and it never makes an unbuffered stream
+    line-buffered or gives it a heap buffer: `c: setvbuf` clears
+    `c: _IO_LINE_BUF` and frees the heap buffer when it makes a stream
+    unbuffered, and `c: _IO_file_doallocate`, which sets the line bit
+    for a terminal, runs only for a buffered stream. The overflow
+    function sets the write end of an unbuffered stream to its write
+    pointer, and `c: new_do_write` sets the write base, the write
+    pointer and the write end to the buffer's base, whether the write
+    succeeds or fails. So the stream has no pending output and no room,
+    and the next call never copies into the buffer. The predicate
+    [short_idle] nb st states these facts for the stream's buffer nb. *)
 Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
+  (has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
   match nb with
   | NbShort => has (fs_flags st) io_unbuffered = true /\
       fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4
+  | NbHeap _ _ => has (fs_flags st) io_unbuffered = false
   | _ => True
   end.
 
@@ -120,13 +126,13 @@ Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
     hand it back in a state the next call accepts. This section puts
     that state into one predicate. *)
 
-(** A caller that holds a stream between two calls owns its object,
-    its fields, its free lock, its buffer and its wide data. The
-    predicate [file_idle] vb self fp fd says that the stream fp writes
-    to descriptor fd, that its fields meet [idle_ok] and its short
-    buffer, if it has one, meets [short_idle], and that it uses the
-    narrow jump table. It has the shape of [file_inv] with the
-    lock free. *)
+(** A caller that holds a stream between two calls owns the whole
+    stream: its object, its fields, its free lock, its buffer and its
+    wide data. The stream writes to one descriptor and uses the narrow
+    jump table. Its fields meet the facts above, and so do its buffer
+    and its unbuffered bit. The predicate [file_idle] vb self fp fd
+    says all this for the stream fp and the descriptor fd. It has the
+    shape of [file_inv] with the lock free. *)
 Definition file_idle (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
   ∃ fb freg st nb, ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ flags_ok st /\ idle_ok fd st /\
