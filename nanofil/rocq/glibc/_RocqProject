@@ -512,6 +512,7 @@ stdio/PrintfFlushTidy.v
 stdio/PrintfDone.v
 stdio/PrintfFileEntry.v
 stdio/PrintfFileCalls.v
+stdio/PrintfInternal.v
 stdio/FxprintfJoin.v
 stdio/FxprintfTail.v
 stdio/FxprintfLock.v
