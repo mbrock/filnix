@@ -17,6 +17,7 @@ import tomllib
 HERE = Path(__file__).resolve().parent
 NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
+GEN = GLIBC / "gen"
 shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
@@ -337,7 +338,7 @@ class Generator:
     def reference(self, spec):
         """Link the fixture row named DIRECTORY/NAME exactly as its own manifest does."""
         directory, name = spec.split("/")
-        cfg = tomllib.loads((GLIBC / directory / "code.toml").read_text())
+        cfg = tomllib.loads((GEN / directory / "code.toml").read_text())
         row = next(r for r in rows(cfg["fixtures"]) if r.split("|")[0] == name)
         _, roots, paths, _, *program = row.split("|")
         linked, _ = self.link(cfg, name, roots or cfg.get("roots", ""),
@@ -425,7 +426,8 @@ class Generator:
             for batch in cfg.pop("batch", []):
                 self.generate(manifest, output, batch)
         layout = cfg["layout"]
-        checker = str(manifest.parent.relative_to(NF) / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
+        rel = manifest.parent.relative_to(GEN)
+        checker = str(Path("rocq/glibc") / rel / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
         if layout in ("stdio", "buffer", "formatter"):
             run(["sha256sum", "-c", manifest.parent / ("buffer-fixtures.sha256" if layout == "buffer" else "fixtures.sha256")], cwd=self.capture)
         linked_cache = {}
@@ -567,8 +569,8 @@ Open Scope Z_scope.
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
     parser.add_argument("capture", type=Path, nargs="?")
-    parser.add_argument("--directory", action="append", help="relative to rocq/glibc; repeatable")
-    parser.add_argument("--tree", type=Path, default=GLIBC, help="tree to compare or update")
+    parser.add_argument("--directory", action="append", help="relative to rocq/glibc/gen; repeatable")
+    parser.add_argument("--tree", type=Path, default=GEN, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
     parser.add_argument("--form", choices=("shared-prelude",), default="shared-prelude",
@@ -581,14 +583,15 @@ def main():
         if not args.capture.is_dir():
             args.capture = Path(run(["nix", "build", "--no-link", "--print-out-paths", "-f",
                                      NF / "survey/glibc/capture.nix"]).strip())
-    manifests = sorted(GLIBC.rglob("code.toml"))
+    manifests = sorted(GEN.rglob("code.toml"))
     if args.directory:
-        manifests = [m for m in manifests if str(m.parent.relative_to(GLIBC)) in args.directory]
+        manifests = [m for m in manifests if str(m.parent.relative_to(GEN)) in args.directory]
         if len(manifests) != len(set(args.directory)):
             parser.error("unknown directory")
     status = 0
-    prelude = (args.output or args.tree) / "CodePrelude.v"
-    if args.output or args.update:
+    prelude = (args.output / "CodePrelude.v" if args.output
+               else (PRELUDE if args.tree.resolve() == GEN.resolve() else args.tree / "CodePrelude.v"))
+    if args.output or (args.update and prelude.resolve() != PRELUDE.resolve()):
         prelude.parent.mkdir(parents=True, exist_ok=True)
         prelude.write_bytes(PRELUDE.read_bytes())
     elif not prelude.exists() or prelude.read_bytes() != PRELUDE.read_bytes():
@@ -599,7 +602,7 @@ def main():
         generator = Generator(args.capture.resolve(), work, sources=True)
         for manifest in manifests:
             styles = tomllib.loads(manifest.read_text()).get("proof_styles", {})
-            rel = manifest.parent.relative_to(GLIBC)
+            rel = manifest.parent.relative_to(GEN)
             out = work / "output" / rel
             out.mkdir(parents=True, exist_ok=True)
             generator.generate(manifest, out)

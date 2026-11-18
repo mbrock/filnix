@@ -86,9 +86,9 @@ fi
 grep -E 'hello: [0-9]+ files, 3 differ, 2 stale' "$work/rejected-hello"
 
 # Exercise the style-sync CLI in an isolated copy, never in the real manifests.
-mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/string"
+mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/gen/string"
 cp "$here/sync-proof-styles.py" "$work/nanofil/rocq/scripts/glibc-code/"
-cp "$here/../../glibc/string/code.toml" "$work/nanofil/rocq/glibc/string/"
+cp "$here/../../glibc/gen/string/code.toml" "$work/nanofil/rocq/glibc/gen/string/"
 mkdir -p "$work/styles/string"
 cp "$work/staged/string/"*Code.v "$work/styles/string/"
 python3 - "$work/styles/string" <<'PY'
@@ -106,8 +106,8 @@ Lemma sample : Some true = Some true.
 Proof. vm_cast_no_check (eq_refl (Some true)). Qed.
 COQ
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
-grep -F '"StrcmpCode.v" = "vm_cast_no_check"' "$work/nanofil/rocq/glibc/string/code.toml"
-cp "$work/nanofil/rocq/glibc/string/code.toml" "$work/styles-before.toml"
+grep -F '"StrcmpCode.v" = "vm_cast_no_check"' "$work/nanofil/rocq/glibc/gen/string/code.toml"
+cp "$work/nanofil/rocq/glibc/gen/string/code.toml" "$work/styles-before.toml"
 cp "$work/styles/string/StrcmpCode.v" "$work/Strcmp-valid.v"
 reject_sync() {
   if python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" \
@@ -115,7 +115,7 @@ reject_sync() {
     echo "style sync accepted $1" >&2; exit 1
   fi
   grep -F "$2" "$work/$1.log"
-  cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
+  cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
 }
 cat >>"$work/styles/string/StrcmpCode.v" <<'COQ'
 Lemma plain : Some false = Some false.
@@ -144,7 +144,7 @@ mv "$work/styles/string/StrncmpCode.v" "$work/Strncmp-valid.v"
 reject_sync missing-default 'missing fixture:'
 mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
 python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
-cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/string/code.toml"
+cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
 cp "$here/generate.py" "$here/prelude.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
    "$here/layout.py" "$here/layout.pl" "$here/block-facts.py" "$here/block-facts.pl" \
    "$work/nanofil/rocq/scripts/glibc-code/"
@@ -159,7 +159,7 @@ grep -F 'Proof. vm_compute. reflexivity. Qed.' "$work/cast/string/StrncmpCode.v"
 
 # A row may name a real root but request a function those units do not define.
 # The string layout used to silently emit an empty fallback for that mistake.
-python3 - "$work/nanofil/rocq/glibc/string/code.toml" <<'PY'
+python3 - "$work/nanofil/rocq/glibc/gen/string/code.toml" <<'PY'
 from pathlib import Path
 import sys
 p = Path(sys.argv[1])
@@ -176,8 +176,8 @@ grep -F 'fixture row Strcmp|strcmp|string/strcmp.os|__GI_strcmp absent_lane_func
 
 # The whole-image layout owns one fixture and selects nothing; a row that
 # names functions must stop before anything is linked.
-mkdir -p "$work/nanofil/rocq/glibc/hello"
-cat >"$work/nanofil/rocq/glibc/hello/code.toml" <<'TOML'
+mkdir -p "$work/nanofil/rocq/glibc/gen/hello"
+cat >"$work/nanofil/rocq/glibc/gen/hello/code.toml" <<'TOML'
 layout = "linked_image"
 mode = "checked"
 fixtures = '''

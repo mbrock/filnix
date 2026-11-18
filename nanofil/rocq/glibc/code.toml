@@ -1,6 +1,0 @@
-layout = "program"
-mode = "outcomes"
-fixtures = '''
-Len|main|string/strlen.os||rocq/glibc/len.c
-Say|main|string/strlen.os io/write.os||rocq/glibc/say.c
-'''

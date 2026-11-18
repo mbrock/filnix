@@ -401,10 +401,10 @@ index_page(Pages) -->
                               el(a, none, [href="rocq-glibc-stdlib-LeavesLogic.html"], "LeavesLogic.v"), " for ",
                               el(code, none, "malloc"), ", ", el(code, none, "free"), ", ", el(code, none, "atexit"),
                               ", and TLS/locale leaf triples. ",
-                              el(a, none, [href="rocq-glibc-LenLogic.html"], "LenLogic.v"), " (", el(code, none, "len.c"), ") and ",
-                              el(a, none, [href="rocq-glibc-SayLogic.html"], "SayLogic.v"), " (", el(code, none, "say.c"), ", ",
-                              el(code, none, "write(1, msg, strlen(msg))"),
-                              ") are small end-to-end worked proofs over compiled glibc IR." )),
+                              el(a, none, [href="rocq-glibc-hello-HelloStartNeverPanics.html"], "HelloStartNeverPanics.v"),
+                              " and ",
+                              el(a, none, [href="rocq-glibc-hello-HelloInterpNeverPanics.html"], "HelloInterpNeverPanics.v"),
+                              " assemble the end-to-end whole-program theorem for GNU Hello over compiled glibc IR." )),
                          el(li, none,
                             ( el(strong, none, "Core IR model and validator soundness ("),
                               el(code, none, "rocq/theories/core/"), el(strong, none, ", "),
@@ -856,17 +856,13 @@ file_blurb('nanofil/rocq/glibc/libio/SysCleanupPop.v',
 file_blurb('nanofil/rocq/glibc/libio/SysWrappers.v',
     "These proofs verify glibc's compiled syscall wrappers against the contracts for their calls into libpizlo.").
 
-%  Live campaign & worked examples: rocq/glibc/
+%  Live campaign & shared framework: rocq/glibc/
 file_blurb('nanofil/rocq/glibc/GlibcLogic.v',
     "This module supplies shared ownership rules and symbolic execution tactics for proofs of compiled glibc functions.").
-file_blurb('nanofil/rocq/glibc/LenLogic.v',
-    "This example proves that measuring a fixed greeting with glibc's compiled strlen never panics, without external contracts.").
-file_blurb('nanofil/rocq/glibc/SayLogic.v',
-    "This example proves safe greeting output through glibc's compiled strlen and write, using libpizlo's write contract.").
-file_blurb('nanofil/rocq/glibc/StrlenBits.v',
+file_blurb('nanofil/rocq/glibc/string/StrlenBits.v',
     "These arithmetic lemmas support glibc's word-at-a-time string scans by relating byte extraction, masks, and population counts.").
-file_blurb('nanofil/rocq/glibc/StrlenLogic.v',
-    "This proof verifies glibc's compiled strlen on whole-word objects for use by the greeting examples.").
+file_blurb('nanofil/rocq/glibc/string/StrlenLogic.v',
+    "This proof verifies glibc's compiled strlen on whole-word objects for use across userland glibc proofs.").
 
 %  Core framework: rocq/theories/core/
 file_blurb('nanofil/rocq/theories/core/Cfg.v',

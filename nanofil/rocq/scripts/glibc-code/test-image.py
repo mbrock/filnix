@@ -55,7 +55,7 @@ with tempfile.TemporaryDirectory() as tmp:
 # Hello's manifest reads the unit files that nix/hello-glibc.nix reads. A changed
 # sibling must stop generation before any unit compiles.
 generate = runpy.run_path(str(HERE / "generate.py"))
-manifest = tomllib.loads((HERE.parents[1] / "glibc/hello/code.toml").read_text())
+manifest = tomllib.loads((HERE.parents[1] / "glibc/gen/hello/code.toml").read_text())
 with tempfile.TemporaryDirectory() as tmp:
     root, capture = Path(tmp) / "nanofil", Path(tmp) / "capture"
     names = []

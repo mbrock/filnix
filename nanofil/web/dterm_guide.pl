@@ -1091,7 +1091,7 @@ index_rocq(Dir) :-
 
 rocq_files(Dir, Fs) :-
     directory_files(Dir, Es),
-    findall(F, ( member(E, Es), \+ sub_atom(E, 0, _, _, '.'), directory_file_path(Dir, E, P),
+    findall(F, ( member(E, Es), \+ sub_atom(E, 0, _, _, '.'), E \== gen, directory_file_path(Dir, E, P),
                  (   exists_directory(P) -> rocq_files(P, Sub), member(F, Sub)
                  ;   file_name_extension(_, v, E), F = P ) ), Fs).
 

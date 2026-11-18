@@ -154,7 +154,7 @@ let
         # *Src.v, *Term.v): every generator says "Do not edit" in the file's
         # header, and nobody reads them on the web. dterm_guide.pl's Rocq
         # index and links skip them by the same rule.
-        mapfile -t rocq < <(cd ${rocqSrc} && find nanofil -name '*.v' | sort |
+        mapfile -t rocq < <(cd ${rocqSrc} && find nanofil -path nanofil/rocq/glibc/gen -prune -o -name '*.v' -print | sort |
           while read -r f; do head -c 1000 "$f" | grep -qi 'do not edit' || echo "$f"; done)
         swipl ${rocqSrc}/nanofil/web/rocq/dterm_rocq.pl $out ${rocqSrc} \
           --prolog=${rocqSrc}/nanofil/src \

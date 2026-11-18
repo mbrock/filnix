@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     state [os_world] from [OsWorld](OsWorld.v), and derives its
     [[separation-logic|separation-logic]] call rules. Its runtime checks
     and corner cases are tested against native Fil-C in
-    [zsys-write.c](../zsys-write.c).
+    [zsys-write.c](zsys-write.c).
 
     ## What libpizlo runs
 

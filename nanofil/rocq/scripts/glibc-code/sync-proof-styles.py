@@ -6,7 +6,7 @@ import re
 import tomllib
 
 here = Path(__file__).resolve().parent
-manifests = here.parents[2] / "rocq/glibc"
+manifests = here.parents[2] / "rocq/glibc/gen"
 parser = argparse.ArgumentParser(description=__doc__)
 parser.add_argument("tree", type=Path, help="glibc tree whose proof styles should be recorded")
 args = parser.parse_args()

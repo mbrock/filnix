@@ -7,21 +7,21 @@ primitives. This spike tries that end to end on two small programs.
 Hello's proof keeps Campaign 4's per-function contracts; nothing here
 changes it.
 
-The result is a triple for glibc's own strlen and two Iris proofs
-whose module contains glibc's own code:
+The result was a triple for glibc's own strlen and two Iris spike proofs
+whose module contained glibc's own code (the two spike files `len.c`/`LenLogic.v` and `say.c`/`SayLogic.v` were retired once GNU Hello's end-to-end proof landed):
 
-- [StrlenLogic.v](../rocq/glibc/StrlenLogic.v) proves
+- [StrlenLogic.v](../rocq/glibc/string/StrlenLogic.v) proves
   `wp_glibc_strlen` over `__strlen`'s IR, for any string whose object
   is laid out in whole words.
 
-- [len.c](../rocq/glibc/len.c) returns `strlen` of a literal. Its
-  module holds glibc's strlen, and it calls no contract at all:
+- `len.c` returned `strlen` of a literal. Its
+  module held glibc's strlen, and it called no contract at all:
   `len_never_panics`.
-- [say.c](../rocq/glibc/say.c) writes a literal to descriptor 1 with
-  glibc's strlen and write. The one contract is libpizlo's
-  `zsys_write`: `say_logic_safe`. It is safety from any memory that
-  holds the literal and the thread's errno, not `never_panics` from
-  the module's initial memory, which has no errno.
+- `say.c` wrote a literal to descriptor 1 with
+  glibc's strlen and write. The one contract was libpizlo's
+  `zsys_write`: `say_logic_safe`. It was safety from any memory that
+  held the literal and the thread's errno, not `never_panics` from
+  the module's initial memory, which had no errno.
 
 ## The pipeline
 
@@ -73,7 +73,7 @@ claim that rests on these proofs about a real binary names G1.
 G1 already applies to the program's own code, which is also nanofil's
 IR. What is new is that glibc's code is under it too, where until now
 Campaign 4's contracts and their native probes stood. Each native
-probe, such as [zsys-write.c](../rocq/glibc/zsys-write.c), checks one
+probe, such as [zsys-write.c](../rocq/glibc/zsys/zsys-write.c), checks one
 libpizlo primitive under filcc. It does not check G1 for glibc's code.
 **Decided by mbrock (2026-11-10):** G1 stands as a named, written-down
 assumption for now. Whether to keep it is decided before Hello uses
@@ -93,7 +93,7 @@ share:
 
 ### glibc's strlen, for any string
 
-[StrlenLogic.v](../rocq/glibc/StrlenLogic.v) proves
+[StrlenLogic.v](../rocq/glibc/string/StrlenLogic.v) proves
 `wp_glibc_strlen`, a triple of `__strlen`'s IR over any registry and
 world, so a program uses it as a rule at its call. glibc's strlen
 loads the aligned word that holds the string's first byte, masks off
@@ -111,7 +111,7 @@ about whole words, not bytes:
 
 That is the whole-word rounding glibc's strlen depends on, stated as a
 premise: a string whose NUL ends an object mid-word does not meet it.
-[StrlenBits.v](../rocq/glibc/StrlenBits.v) holds the bit facts:
+[StrlenBits.v](../rocq/glibc/string/StrlenBits.v) holds the bit facts:
 bitwise ops and carry-free sums byte by byte, the two zero-byte masks
 of string-fza.h and string-fzb.h, and the population count of
 string-fzi.h, each byte claim checked on all 256 bytes by computation.
@@ -119,12 +119,11 @@ The loop is proved for any number of words by induction on them.
 
 ### The programs
 
-[LenLogic.v](../rocq/glibc/LenLogic.v) and
-[SayLogic.v](../rocq/glibc/SayLogic.v) take glibc's strlen by
+`LenLogic.v` and `SayLogic.v` took glibc's strlen by
 `wp_glibc_strlen`. The literal's object is 16 bytes and 8-aligned, and
 the program owns its life and both words, which is the triple's
-premise. SayLogic.v then enters `__libc_write`, whose body is one
-call of `zsys_write`, and walks it with `step`.
+premise. `SayLogic.v` then entered `__libc_write`, whose body is one
+call of `zsys_write`, and walked it with `step`.
 
 ## The zsys_write contract
 
@@ -152,7 +151,7 @@ glibc's `errno_handler` is registered, as `__libc_start_main` does
 unset, so a failure logs nothing.
 The observation reuses ExternalCalls.v's `StreamBytes`, read here as
 bytes the kernel accepted for the descriptor. Its probe,
-[zsys-write.c](../rocq/glibc/zsys-write.c), checks each clause natively
+[zsys-write.c](../rocq/glibc/zsys/zsys-write.c), checks each clause natively
 against libpizlo: full, read-only, empty and partial writes, EBADF,
 EAGAIN, and a buffer one byte too short, which panics before writing.
 The EBADF case also checks that a stack array, a heap object and a
@@ -191,7 +190,7 @@ directives kept. The leaf functions (`strcmp`, `memchr`, the ctype
 tables, malloc), libio and exit, and later `printf`, are milestones of
 the campaign to prove GNU Hello over user glibc ([hello-glibc.md](hello-glibc.md)),
 which builds on these files. The leaf fixtures are in
-[rocq/glibc/string](../rocq/glibc/string/code.sh).
+[rocq/glibc/gen/string](../rocq/glibc/gen/string/code.toml).
 
 ## Decisions this raises
 

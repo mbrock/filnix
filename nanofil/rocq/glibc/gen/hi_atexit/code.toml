@@ -1,0 +1,25 @@
+layout = "hi_atexit"
+ctors = true
+roots = "main,__libc_start_main"
+units = '''
+glibc_malloc malloc/malloc.os
+glibc_cxa_atexit stdlib/cxa_atexit.os
+atexit stdlib/atexit.oS
+errno csu/errno.os
+errno_loc csu/errno-loc.os
+- libio/__fpending.os libio/ferror.os libio/filedoalloc.os libio/fileops.os libio/genops.os
+- libio/iofclose.os libio/iofputs.os libio/ioputs.os libio/stdfiles.os libio/stdio.os libio/vtables.os
+- termios/isatty_nostatus.os io/write.os io/write_nocancel.os io/lseek64.os io/fstat64.os
+- io/close_nocancel.os io/close_nocancel_nostatus.os posix/_exit.os stdlib/exit.os
+- stdlib/cxa_thread_atexit_impl.os nptl/libc-cleanup.os misc/single_threaded.os misc/makedev.os
+- string/strlen.os string/mempcpy.os string/memcpy.os
+- csu/libc-start.os csu/libc-tls.os elf/libc_early_init.os elf/dl-tls_init_tp.os ctype/ctype-info.os
+- nptl/vars.os nptl/nptl_deallocate_tsd.os nptl/nptl_nthreads.os nptl/pthread_mutex_conf.os
+- posix/environ.os stdlib/getrandom.os dlfcn/libc_dlerror_result.os elf/enbl-secure.os
+- elf/dl-tunables.os elf/dl-support.os resource/getrlimit64.os csu/init-first.os misc/init-misc.os
+- string/strrchr.os time/clock_gettime.os string/memrchr.os
+- locale/global-locale.os locale/C-ctype.os
+'''
+fixtures = '''
+HiAtexit||||rocq/glibc/hi_atexit/hi_atexit.c
+'''

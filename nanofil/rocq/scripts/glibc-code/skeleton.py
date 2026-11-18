@@ -37,7 +37,7 @@ def main():
     parser.add_argument("--json", action="store_true", help="print block data and entry lines as JSON")
     args = parser.parse_args()
     unit = Path(args.unit)
-    manifest = generator["GLIBC"] / unit.parent / "code.toml"
+    manifest = generator["GEN"] / unit.parent / "code.toml"
     config = tomllib.loads(manifest.read_text())
     matches = []
     for cfg in [config, *config.get("batch", [])]:
