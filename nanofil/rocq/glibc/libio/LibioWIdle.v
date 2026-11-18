@@ -212,6 +212,27 @@ Definition with_mode0 (st : fstate) : fstate :=
     (fs_lock st) (fs_offset st) (fs_codecvt st) (fs_wide st) (fs_freeres_list st) (fs_freeres_buf st)
     0 (fs_total st) (fs_vtable st).
 
+(** Pending bytes in the narrow buffer mean that the stream is putting.
+    Spare room alone does not: after writing converted bytes in wide
+    mode, glibc sets the narrow write pointer to the base and its end
+    to the buffer end without setting the putting bit. *)
+Definition widle_ok (fd : Z) (st : fstate) : Prop :=
+  (fd = 0 \/ fd = 1 \/ fd = 2) /\ fs_fileno st = fd /\
+  (fs_mode st = 0 \/ fs_mode st = 2 ^ 32 - 1) /\
+  fs_ptr st 8 = null /\ fs_ptr st 9 = null /\ fs_ptr st 11 = null /\
+  fs_ptr st 0 = fs_ptr st 1 /\ fs_ptr st 1 = fs_ptr st 3 /\
+  ptr_addr (fs_ptr st 3) <= ptr_addr (fs_ptr st 4) /\
+  (ptr_addr (fs_ptr st 3) < ptr_addr (fs_ptr st 4) -> has (fs_flags st) io_currently_putting = true) /\
+  (fd <> 0 -> has (fs_flags st) io_no_writes = false) /\
+  has (fs_flags st) io_is_appending = false /\ has (fs_flags st) io_linked = true /\
+  Z.land (fs_flags2 st) 2 = 0 /\ Z.land (fs_flags2 st) 32 = 0 /\
+  take 2 (fs_column st) = [0; 0] /\ 0 < ptr_addr (fs_lock st).
+
+(** Orientation can carry all the narrow idle facts across this change
+    of mode: it only gives up a condition on unused space. *)
+Lemma idle_ok_widle_ok fd st : idle_ok fd st -> widle_ok fd st.
+Proof. unfold idle_ok, widle_ok. tauto. Qed.
+
 (** The narrow buffer of a wide stream follows the rules of wide mode,
     which are not those of an idle narrow stream. The first wide output
     rewinds the narrow cursors to the buffer's base but sets the narrow
@@ -284,7 +305,7 @@ Definition file_wide_at (ge : genv) (vb : Z) (self fp : ptr) (fd fb : Z) (freg :
     (st : fstate) (nb : nbuf) (wd : Z) (w : wbuf) (tw tm : ptr) (data : iProp Σ) : iProp Σ :=
     ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ wflags_ok st /\
-     idle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
+     widle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
      fs_vtable st = mkPtr (vb + vt_wfile) (Ro vb) /\ buf_ptrs_ok fb nb (fs_ptrs st) /\
      wshort_ok nb st /\ wbuf_user_ok w (fs_flags2 st) /\
      fs_wide st = mkPtr wd (Obj wd) /\ fs_codecvt st = mkPtr (wd + woff_cd_in) (Obj wd) /\
