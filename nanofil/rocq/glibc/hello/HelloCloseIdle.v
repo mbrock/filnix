@@ -15,7 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode SysWrappers LibioReadCode LibioDoWriteCode
   LibioCloseItCode LibioGenCode FileInv FileIdle LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
   LibioPutsInv LibioFflushIdle LibioGenLeaves LibioUnlinkCode LibioFcloseCode LibioFcloseTail LibioFcloseLock
-  LibioFclose LibioUnlink HelloClosedStdout.
+  LibioFclose LibioUnlink HelloClosedStdout LibioCloseItShort AllocLogic HiAtexitBase HiAtexitDoWrite
+  HiAtexitSetb HiAtexitCloseIt.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld
   FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
 Open Scope Z_scope.
@@ -211,3 +212,140 @@ Proof using Type*.
   unfold closed_stdout, closed_stdout_fields. iFrame.
 Qed.
 End fclose.
+
+(** ## Closing an idle stream
+
+    An idle stream has one of three buffers, and only a heap buffer can
+    hold output. This section picks the close rule for each buffer and
+    each value of the putting bit, so a caller holding [file_idle] needs
+    no case analysis of its own. *)
+
+Section idle.
+Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context (Hreg : holds_os registry) (Hext : sys_external ge).
+Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  `{Hfree_fn : !Defines ge "free" free_fn}
+  (Hfh : frees_heap (ge_free ge))
+  (Hzf : find_fn ge zgc_free_name = None)
+  (Hzg : lookup zgc_free_name (ge_globals ge) = None)
+  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
+
+(** The close function closes an idle stream that writes to a standard
+    output descriptor. It writes whatever the heap buffer holds, closes
+    the descriptor and drops the buffer. Its flags change only by the
+    write-error bit, and errno comes back. *)
+Lemma wp_close_it_idle fr fb freg st nb fd vb vreg eb Ψ :
+  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
+  flags_ok st -> idle_ok fd st -> fd <> 0 -> In fd (ow_fds w0) ->
+  fs_vtable st = mkPtr (vb + vt_file) (Ro vb) -> buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st ->
+  length (fs_ptrs st) = 12%nat -> length (fs_column st) = 8%nat -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
+  vtables_ro ge vb vreg -∗ live fb freg -∗ int_cell fb off_flags (fs_flags st) -∗
+  ([∗ list] i ↦ p ∈ fs_ptrs st, pcell fb (off_ptr i) p) -∗
+  int_cell fb off_fileno (fs_fileno st) -∗ int_cell fb off_flags2 (fs_flags2 st) -∗
+  bytes fb off_column (fs_column st) -∗ icell fb off_offset (fs_offset st) -∗
+  int_cell fb off_mode (fs_mode st) -∗ icell fb off_total_written (fs_total st) -∗
+  pcell fb off_vtable (fs_vtable st) -∗ buf_idle nb -∗ errno_any eb -∗
+  ▷ (∀ k fl' f2, ⌜(k = 0 \/ k = 2 ^ 32 - 1) /\ Z.land fl' 128 = Z.land (fs_flags st) 128⌝ -∗
+     live fb freg -∗ closed_it fb vb (fs_mode st) f2 fl' -∗ errno_any eb -∗ Ψ (Ret (WInt k))) -∗
+  WP (ERun fr : sexpr) {{ Ψ }}.
+Proof using Type*.
+  intros Hfr Hfb Hfal Hfend Hfreg Hok Hidle Hfd0 Hfd Hvt Hbok Hshort Hlen Hcl He.
+  iIntros "#Hvt Hl Hfl Hps Hfd Hf2 Hcol Hoff Hmd Htot Hvtp Hb Herr HK".
+  destruct st as [fl ps fdd f2 oldoff col lk off cv wd frl frb md tw vt].
+  cbn [fs_flags fs_ptrs fs_fileno fs_flags2 fs_old_offset fs_column fs_lock fs_offset fs_codecvt fs_wide
+    fs_freeres_list fs_freeres_buf fs_mode fs_total fs_vtable] in *. subst vt.
+  destruct ps as [|p0 [|p1 [|p2 [|p3 [|p4 [|p5 [|p6 [|p7 [|p8 [|p9 [|p10 [|p11 [|]]]]]]]]]]]]]; try discriminate Hlen.
+  iDestruct "Hps" as "(P0 & P1 & P2 & P3 & P4 & P5 & P6 & P7 & P8 & P9 & P10 & P11 & _)".
+  pose proof Hok as (Hflr & Hmagic & Hfilebuf & Hbk & Hul & Hnl & Hunb).
+  unfold idle_ok, fs_ptr in Hidle. cbn [nth fs_flags fs_ptrs fs_fileno fs_flags2 fs_column fs_mode] in Hidle.
+  destruct Hidle as (Hfd012 & -> & Hmd & E8 & E9 & E11 & E01 & E13 & Hle34 & Hput & Hnw & Happ & Hf2a & Hf2b & Hcol2).
+  subst p0 p1 p8 p9 p11.
+  specialize (Hnw Hfd0). unfold has in Hnw, Happ, Hbk.
+  apply negb_false_iff, Z.eqb_eq in Hnw, Happ, Hbk.
+  iDestruct "Hf2" as "[%Hf2r Hf2]". iAssert (int_cell fb off_flags2 f2) with "[Hf2]" as "Hf2"; [iSplit; done|].
+  iDestruct "Hfd" as "[%Hfdr Hfd]". iAssert (int_cell fb off_fileno fd) with "[Hfd]" as "Hfd"; [iSplit; done|].
+  assert (Hfdr' : 0 <= fd < 2 ^ 31) by lia.
+  simpl in Hflr, Hmagic, Hfilebuf, Hbk, Hul, Hnl, Hunb.
+  unfold short_idle, fs_ptr in Hshort. simpl in Hshort.
+  destruct Hshort as [[Hub1 Hnw1] Hshort].
+  destruct nb as [| |bb sz|bb]; cbn [buf_ptrs_ok take] in Hbok.
+  4: { iDestruct "Hb" as "[]". }
+  - (* No buffer: nothing was ever written. *)
+    cbn in Hbok. injection Hbok; intros; subst.
+    iApply (wp_close_it_quiet Hfc (fun _ => LibioCloseItEnd.old_base) (hi_close Hreg Hext) (hi_setb Hfh Hzf Hzg)
+      with "Hvt Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr P0 P1 P2 P3 P4 P5 P6 P7 P9 P11 Hb []");
+      try first [exact Hfr | close_side | exact Hmd | reflexivity].
+    all: try (unfold has in Hshort; apply negb_false_iff, Z.eqb_eq in Hshort; exact Hshort).
+    { iIntros "_". iLeft. done. }
+    iNext. iIntros (k Hk) "Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
+    iApply ("HK" $! k fl f2 with "[%] Hl [$Hfl $Hf2 $Hfd $Hoff $Hmd $Hvtp $H8 $H16 $H24 $H32 $H40 $H48 $Hbb $Hbe
+      $H80 $H96] Herr"). split; [exact Hk | reflexivity].
+  - (* The short buffer: it holds nothing between calls. *)
+    destruct Hbok as (E6 & E7 & Hall). cbn [nth] in E6, E7. subst p6 p7.
+    destruct Hshort as (Hu & E43 & E54 & E36). subst p4 p5 p3.
+    assert (Hub : Z.land fl io_user_buf <> 0).
+    { destruct (Hunb Hu) as [H | H]; [unfold has in H; apply negb_true_iff, Z.eqb_neq in H; exact H|].
+      cbn in H. discriminate H. }
+    change (fb + 131) with (fb + off_shortbuf).
+    destruct (Z.eq_dec (Z.land fl io_currently_putting) 0) as [Hcp | Hcp].
+    + iApply (wp_close_it_quiet Hfc short_base (short_close_spec Hreg Hext) short_setb_spec
+        with "Hvt Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr P0 P1 P2 P3 P4 P5 P6 P7 P9 P11 Hb []");
+        try first [exact Hfr | close_side | exact Hmd | reflexivity].
+      { cbn. split; [reflexivity | unfold off_shortbuf; lia]. }
+      { iIntros "_". iPureIntro. split; [reflexivity | exact Hub]. }
+      iNext. iIntros (k Hk) "Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
+      iApply ("HK" $! k fl f2 with "[%] Hl [$Hfl $Hf2 $Hfd $Hoff $Hmd $Hvtp $H8 $H16 $H24 $H32 $H40 $H48 $Hbb $Hbe
+        $H80 $H96] Herr"). split; [exact Hk | reflexivity].
+    + iApply (wp_glibc__IO_file_close_short_empty Hreg Hext Hfc
+        with "Hvt Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr P0 P1 P2 P3 P4 P5 P6 P7 P9 P11 Hb");
+        try first [exact Hfr | close_side | exact Hmd | reflexivity].
+      iNext. iIntros (k Hk) "Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96 _".
+      iApply ("HK" $! k fl f2 with "[%] Hl [$Hfl $Hf2 $Hfd $Hoff $Hmd $Hvtp $H8 $H16 $H24 $H32 $H40 $H48 $Hbb $Hbe
+        $H80 $H96] Herr"). split; [exact Hk | reflexivity].
+  - (* A heap buffer: output may be pending. *)
+    destruct Hbok as (E6 & E7 & Hall). cbn [nth] in E6, E7. subst p6 p7.
+    destruct Hshort as (Hu & E26 & E36 & Hub). subst p2 p3.
+    unfold has in Hub. apply negb_false_iff, Z.eqb_eq in Hub.
+    repeat rewrite Forall_cons_iff in Hall.
+    destruct Hall as (_ & _ & _ & _ & [Hc4 Ha4] & [Hc5 Ha5] & _).
+    iDestruct "Hb" as (breg xs cs Hbp) "(Hbl & Hxs & Hcs)".
+    pose proof Hbp as (Hk & Hbe & Hbreg & Hb0 & Hb8 & Hsz & Hlx & Hxr & Hlc).
+    destruct (Z.eq_dec (Z.land fl io_currently_putting) 0) as [Hcp | Hcp].
+    + iAssert (buf_idle (NbHeap bb sz)) with "[Hbl Hxs Hcs]" as "Hb"; [iExists breg, xs, cs; iFrame; done|].
+      iApply (wp_close_it_quiet Hfc (fun _ => LibioCloseItEnd.old_base) (hi_close Hreg Hext) (hi_setb Hfh Hzf Hzg)
+        with "Hvt Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr P0 P1 P2 P3 P4 P5 P6 P7 P9 P11 Hb [] [HK]");
+        try first [exact Hfr | close_side | exact Hmd | reflexivity].
+      { cbn. split; [reflexivity | lia]. }
+      { iIntros "(%breg' & %xs' & %cs' & %Hbp' & Hbl & _)". iRight. iExists bb, breg'. iFrame. iPureIntro.
+        destruct Hbp' as (? & ? & ? & ? & _). split_and!; try done; lia. }
+      iNext. iIntros (k Hk') "Hl Hfl Hf2 Hfd Hoff Hmd Hvtp Herr H8 H16 H24 H32 H40 H48 Hbb Hbe H80 H96".
+      iApply ("HK" $! k fl f2 with "[%] Hl [$Hfl $Hf2 $Hfd $Hoff $Hmd $Hvtp $H8 $H16 $H24 $H32 $H40 $H48 $Hbb $Hbe
+        $H80 $H96] Herr"). split; [exact Hk' | reflexivity].
+    + destruct p4 as [a4 c4]. cbn [ptr_addr ptr_cap] in *. subst c4.
+      set (ys := take (Z.to_nat (a4 - bb)) xs).
+      iDestruct (bytes_take_drop bb 0 xs (Z.to_nat (a4 - bb)) with "Hxs") as "[Hys _]"; [lia|].
+      assert (Hys : Z.of_nat (length ys) = a4 - bb) by (unfold ys; rewrite length_take; lia).
+      iDestruct (bytes_take_drop fb off_column col 2 with "Hcol") as "[Hcol _]"; [lia|]. rewrite Hcol2.
+      pose proof (hi_close_it Hreg Hext Hfw Hfh Hzf Hzg Hfc fr fb freg fl f2 fd tw off bb breg 0 ys
+        (mkPtr bb (Obj bb)) (mkPtr bb (Obj bb)) p5 (mkPtr (bb + sz) (Obj bb)) eb vb vreg md Ψ) as Hci.
+      cbv zeta in Hci. rewrite !Z.add_0_r in Hci. replace (bb + Z.of_nat (length ys)) with a4 in Hci by lia.
+      iApply (Hci with "Hvt Hl Hfl Hf2 Hfd Htot Hoff Hbl Hys Herr P0 P1 P2 P3 P4 P5 P6 P7 Hcol Hmd Hvtp P9 P11");
+        try first [exact Hfr | close_side | exact Hmd | reflexivity].
+      { unfold ys. apply Forall_take, Hxr. }
+      iNext. iIntros (r fl' k tw' [Hpost Hk']) "Hl Hfl Hf2 Hfd Htot Hoff Herr H8 H16 H24 H32 H40 H48 Hbb Hbe _ Hmd
+        Hvtp H80 H96".
+      assert (Hkr : (if k =? 0 then (if r =? Z.of_nat (length ys) then 0 else 2 ^ 32 - 1) else k) = 0 \/
+                    (if k =? 0 then (if r =? Z.of_nat (length ys) then 0 else 2 ^ 32 - 1) else k) = 2 ^ 32 - 1).
+      { destruct Hk' as [-> | ->]; cbn; [destruct (r =? _)|]; auto. }
+      iApply ("HK" $! _ fl' f2 with "[%] Hl [$Hfl $Hf2 $Hfd $Hoff $Hmd $Hvtp $H8 $H16 $H24 $H32 $H40 $H48 $Hbb $Hbe
+        $H80 $H96] Herr"). split; [exact Hkr|].
+      destruct Hpost as [[_ ->] | [_ ->]]; [reflexivity | apply LibioFclose.lor32_linked].
+Qed.
+End idle.
