@@ -46,7 +46,7 @@ Qed.
 
 (** When stdout is wide, its calls go through a second table of
     methods. Main can read every slot of that table. *)
-Local Lemma hello_ro_wvtables : hello_ro hge o ⊢ wvtables_ro hge (ho_vb o).
+Lemma hello_ro_wvtables : hello_ro hge o ⊢ wvtables_ro hge (ho_vb o).
 Proof using Type. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & H)". iExact "H". Qed.
 
 (** One read-only fact is not yet part of Hello's start state: all the
