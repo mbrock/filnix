@@ -154,6 +154,30 @@ Proof using Type.
   iIntros "HC". iExists s1, s2, s3. iSplit; [done|]. unfold dlk_G0. iApply ("Hb" with "HC").
 Qed.
 
+Local Abbreviation lock2 s tr := (rw_held a2 ar2 (dl_r s) (dl_cw s) (dl_sh s) (dl_fl s)
+  (DfracOwn (1 / 2 / 2)%Qp) tb tr i2 tid).
+
+(** Setlocale borrows the locale cells and their write lock together. It
+    uses the lock's share of the thread object to read the thread id.
+    Unlocking can change the lock words, so getopt takes back any ready
+    state for that lock and keeps the other two locks as they were. *)
+Lemma dlk_setlocale v :
+  dlk_G v ⊢ word_string DfracDiscarded cv [67] ∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg ∗
+    ∃ s tr, ⌜dlk_ready s /\ dtx_tcb_at tb tr⌝ ∗ lock2 s tr ∗
+      (∀ s', ⌜dlk_ready s'⌝ -∗ locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg -∗
+        lock2 s' tr -∗ dlk_G v).
+Proof using Type.
+  unfold dlk_G, dlk_G0, dtx_G, dtx_G0, dgx_G, dgx_before, dcg_before_v.
+  iIntros "(%s1 & %s2 & %s3 & %Hr & %tr & %jb & %Ht & Hcl & Hj & Hx & HB & HS & HL)".
+  destruct Hr as (R1 & R2 & R3). iDestruct "HB" as (bs) "(Hreads & H1 & H2 & H3 & Hroot & Hloc & Hcache & He)".
+  iDestruct "Hreads" as "(Hd & Hcat & #Hcv & Hreads)".
+  iSplitR; [iExact "Hcv"|]. iSplitL "Hloc"; [iExact "Hloc"|].
+  iExists s2, tr. iSplit; [done|]. iSplitL "H2"; [iExact "H2"|].
+  iIntros (s') "%R2' Hloc H2". iExists s1, s', s3. iSplit; [done|].
+  iExists tr, jb. iSplit; [done|]. iFrame "Hcl Hj Hx HS HL". iExists bs.
+  iFrame "H1 H2 H3 Hroot Hloc Hcache He". iFrame "Hd Hcat Hcv Hreads".
+Qed.
+
 (** ## The facts each report needs *)
 
 (** A report needs the same program and global cells as before. Only
