@@ -203,6 +203,7 @@ libio/FileInv.v
 libio/FileIdle.v
 libio/LibioWIdle.v
 libio/LibioWFwide.v
+libio/LibioWRelease.v
 libio/LibioXsputnZero.v
 stdio/NarrowArgs.v
 zsys/OsWorld.v
@@ -1062,6 +1063,7 @@ hello/HelloImageCloseObjs.v
 hello/HelloImageLocaleObjs.v
 hello/HelloImageMbsObjs.v
 hello/HelloImageWFwideObjs.v
+hello/HelloImageWReleaseObjs.v
 locale/AsciiConvert.v
 locale/Mbrtowc.v
 hello/HelloConvHardLocale.v
