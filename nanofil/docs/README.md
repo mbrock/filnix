@@ -62,6 +62,9 @@ about it.
 - [Proving GNU Hello over userland glibc](hello-glibc.md): sixteen
   concrete surprises in glibc, Fil-C and our specifications that
   turned up while proving the real C library code.
+- [How GNU Hello was proved never to panic](hello-chronicle.md): a
+  short history of the campaign from the first idea to the theorem,
+  with its phases, decisions, problems, models and tools.
 - [Proving glibc at scale](glibc-proofs.md): a diagnosis of the four
   proof styles in `rocq/glibc/` and a design for shared-assertion spec
   testing, field-keyed region lifting, and `--checks=reference` proof linking.
