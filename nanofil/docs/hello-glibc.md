@@ -2,7 +2,7 @@
 
 Proving that GNU Hello never panics sounds like a small exercise until you ask where the proof stops trusting the C library. If you treat glibc as a set of axioms and assume that printing, option parsing, memory allocation, locales, and process exit behave like simple textbook specifications, the main program is only a few dozen lines of glue.
 
-In this campaign, we instead compiled Fil-C's userland glibc 2.44 into checked intermediate representation and verified the C library code down to [the runtime system-call wrappers](../rocq/glibc/zsys/OsWorld.v). Verifying real glibc code rather than an idealized specification forces the proof to account for every low-level detail of how the library actually works. The sixteen items below are concrete surprises that turned up while proving userland glibc for GNU Hello.
+In this campaign, we instead compiled Fil-C's userland glibc 2.44 into checked intermediate representation and verified the C library code down to [the runtime system-call wrappers](../rocq/glibc/zsys/OsWorld.v). Verifying real glibc code rather than an idealized specification forces the proof to account for every low-level detail of how the library actually works. The seventeen items below are concrete surprises that turned up while proving userland glibc for GNU Hello.
 
 ## Fil-C's glibc memcmp casts pointers to long int and panics at -O0
 
@@ -99,3 +99,9 @@ Even after `__libc_single_threaded` is set to `1`, 37 functions in GNU Hello's g
 Linking `hi_atexit` against `libio/iofclose.os` initially left `fclose` unresolved even though `iofclose.os` was in the link: in shared `.os` builds, `iofclose.c` defines `_IO_new_fclose`, aliases `__new_fclose` to it, and exports `fclose` solely via an inline-assembly `.symver __new_fclose, fclose@@GLIBC_2.2.5` directive that the compiler frontend had ignored.
 
 Teaching [link.pl](../rocq/scripts/link.pl) about symbol versions and weak overrides in commit [14ea0ca5](https://github.com/mbrock/filnix/commit/14ea0ca5af8f645f40cc04d0e04877f43095585a) then uncovered an ABI difference between host ELF and Fil-C. Suppose object A defines a weak function `f` returning `11` and a strong alias `g` targeting `f`, while object B defines a strong `f` returning `23`. Calling `f` and `g` in standard `gcc` or `clang` prints `23 11`, whereas `filcc` prints `23 23` because Fil-C's alias getter for `g` jumps through the PLT to the winning strong getter for `f`.
+
+## The theorem assumes malloc never returns null
+
+Hello's theorem takes the selected malloc's contract, which has no null return: when the runtime cannot allocate, the run ends with the resource ending `out_of_memory` rather than continuing with a null pointer. The `address_space` row of [runtime-axioms.md](runtime-axioms.md#the-axioms) states this, and the native probe [axiom-address.c](../tests/c/prog/axiom-address.c) shows Fil-C's allocator trapping instead of returning null. The theorem therefore says nothing about a malloc that returns null, and glibc's code for that case is never reached in the proof.
+
+That code is not always safe. When `wprintf` first writes to a wide stream, `_IO_wfile_doallocate` asks `_IO_file_doallocate` for the narrow buffer and ignores its failure. The wide buffer's size is computed from the narrow buffer's pointers, so after a failed narrow allocation it is 0, and `malloc(0)` gives a zero-size wide buffer. The overflow path then stores a 4-byte wide character at that buffer's end, which in Fil-C is an out-of-bounds store and a panic. The stream proofs in [LibioWIdle.v](../rocq/glibc/libio/LibioWIdle.v) rely on every allocation succeeding, so this path is excluded by the malloc contract rather than proved safe.
