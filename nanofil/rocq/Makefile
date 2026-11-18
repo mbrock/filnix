@@ -13,7 +13,7 @@ Makefile.rocq: _RocqProject
 nanofil-model: Makefile.rocq
 	$(MAKE) -f Makefile.rocq
 	cd extraction && ocamlfind ocamlopt -w -a -package zarith -linkpkg \
-	  nanofil_model.mli nanofil_model.ml main.ml -o ../nanofil-model
+	  nanofil_model.mli nanofil_model.ml gallina.ml main.ml -o ../nanofil-model
 
 clean:
 	if [ -f Makefile.rocq ]; then $(MAKE) -f Makefile.rocq clean; fi

@@ -1,23 +1,14 @@
-# The Rocq model of the checked IR (rocq/, docs/formal.md Campaign 1):
-# default: model (every theory compiled, one derivation per file) + a
-# small outcome/base-verdict smoke corpus. The grammar round trip of
-# web/rocq/tests/parse.sh is its own check, passthru.parse
-# (checks.nanofil-rocq-parse), also one derivation per file.
-# full=true opts into the complete outcome and mutation campaign below:
-# compile it with the pinned nixpkgs' Rocq, refuse any Admitted or Axiom
-# (none is allowed outside the Campaign 2 runtime module type in
-# Runtime.v), extract and link the model, then check that it
-# agrees with interp:run/5 on every run line of rocq/tests, the Fil-C
-# IR fixtures, the C tests and Fil-C modules from tests/gen.pl, the
-# last three with and without -O and under every --checks mode
-# (rocq/scripts/agree.sh), and Lua's own functions (rocq/scripts/lua.sh); and that its
-# validator reaches ir:valid_module/1's verdict on mutants of every checked module
-# in the same matrix, and of the tests/c/prog programs with aliases and
-# weak, thread-local or constructor data (rocq/scripts/valid.sh). Both check that
-# the modules the program proofs are about are what nanofil makes today
-# (rocq/scripts/programs.sh). The program logic (Language.v, Logic.v) is built on
-# Iris, so the model and the parse check take stdpp and Iris from the
-# same nixpkgs; the extracted driver does not use them.
+# This check compiles the Rocq model and compares the extracted interpreter
+# and validator with nanofil on a small corpus. It also regenerates the
+# program fixtures and checks the typed image printer against the Rocq decoder.
+# Each theory has its own derivation. Only the runtime module type can declare
+# axioms. The program logic uses Iris and stdpp from the same nixpkgs as Rocq.
+#
+# With full = true the corpus includes generated Fil-C modules, Lua functions,
+# and the C and IR tests across optimization and check modes. The mutation
+# campaign compares the validator with ir:valid_module/1, including programs
+# with aliases and weak, thread-local or constructor data. The separate
+# nanofil-rocq-parse check compiles a grammar round trip of each theory.
 {
   pkgs,
   filcc,
@@ -260,9 +251,10 @@ let
     buildInputs = [ ocamlPackages.zarith ];
     buildPhase = ''
       cp ${vo.Extract}/extraction/nanofil_model.ml ${vo.Extract}/extraction/nanofil_model.mli .
+      cp ${../rocq/extraction/gallina.ml} gallina.ml
       cp ${../rocq/extraction/main.ml} main.ml
       ocamlfind ocamlopt -w -a -package zarith -linkpkg \
-        nanofil_model.mli nanofil_model.ml main.ml -o nanofil-model
+        nanofil_model.mli nanofil_model.ml gallina.ml main.ml -o nanofil-model
     '';
     installPhase = ''
       mkdir -p $out/bin
@@ -340,6 +332,7 @@ let
         cp ${driver}/bin/nanofil-model $out/bin/
         cp -r theories/. $out/share/rocq/theories/
         cp _RocqProject $out/share/rocq/
+        cp ${../rocq/extraction/gallina.ml} $out/share/rocq/extraction/gallina.ml
         cp ${../rocq/extraction/main.ml} $out/share/rocq/extraction/main.ml
       '';
   # The check reads compiler sources, harnesses and corpora, not the wiki,
@@ -357,6 +350,7 @@ let
       ../rocq/tests
       ../rocq/scripts/programs.sh
       ../rocq/scripts/gallina.pl
+      ../rocq/scripts/glibc-code/typed.py
     ];
   };
   # The corpus reads the extracted driver (Extract.v's imports, a few of
@@ -396,6 +390,11 @@ let
           # products (rocq/scripts/programs.sh, Panics.v).
           python3 tests/watch.py --label "Rocq program fixtures" -- bash rocq/scripts/programs.sh
           mark programs
+          (mkdir typed-test && cd typed-test
+           cp -r ../rocq/theories .
+           ${link "Extract"}
+           python3 ../tests/watch.py --label "Typed image printer" -- python3 ../rocq/tests/typed_image.py theories)
+          mark typed-image
         ''
         + (
           if !full then

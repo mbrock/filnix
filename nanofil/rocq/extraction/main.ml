@@ -4,7 +4,8 @@
    judge). With --valid it reads rocq/scripts/mutants.pl's output instead and
    judges each verdict (judge_valid). Prints one judgment per line and a summary, and exits 1 if
    any line disagrees. With --module it judges only the module, the
-   first term (judge_module below).
+   first term (judge_module below). With --gallina it requires one module
+   and emits its typed items and blocks for glibc-code/typed.py.
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -184,6 +185,12 @@ let () =
   let input = In_channel.input_all stdin in
   match parse input with
   | [] -> prerr_endline "nanofil-model: no input"; exit 2
+  | terms when Array.exists (( = ) "--gallina") Sys.argv ->
+      (match terms with
+       | [m] -> (match decode_module m with
+         | Some md -> List.iter Gallina.item md
+         | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2)
+       | _ -> prerr_endline "nanofil-model: --gallina expects one module"; exit 2)
   | m :: _ when Array.exists (( = ) "--module") Sys.argv ->
       (match decode_module m with
        | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2
