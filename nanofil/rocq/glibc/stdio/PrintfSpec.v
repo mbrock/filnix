@@ -316,6 +316,28 @@ Definition write_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
     (fun '(bb, dq, p, s, n) => ⌜0 <= n <= Z.of_nat (length s)⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I
     (fun '(bb, dq, p, s, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I.
 
+(** The formatter also appends bytes that are not a string. The
+    conversion `%d` writes the digits of a number into a work buffer,
+    and those digits have no NUL after them. The predicate [byte_run]
+    is a share of a run of bytes ys at the pointer p. The run lies in
+    the object sb, which is alive and starts at an 8-aligned address,
+    and every byte of the run has the value of a byte. *)
+Definition byte_run (dq : dfrac) (p : ptr) (sb : Z) (sreg : region) (ys : list Z) : iProp Σ :=
+  (⌜(ptr_cap p = Obj sb \/ ptr_cap p = Ro sb) /\ sb mod 8 = 0 /\ 0 < sb <= ptr_addr p /\
+    ptr_addr p + Z.of_nat (length ys) <= r_end sreg /\ r_end sreg <= 2 ^ 48 /\ Forall (fun y => 0 <= y < 256) ys⌝ ∗
+   liveq dq sb sreg ∗ bytesq dq sb (ptr_addr p - sb) ys)%I.
+
+(** `c: __printf_buffer_write (buf, s, count)` appends a run of count
+    bytes at s, and the caller keeps the run. This contract is the
+    general one, and [write_spec] above follows from it, because a
+    string lends any run of its bytes. *)
+Definition write_bytes_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+  FSpec (Z * dfrac * ptr * Z * region * list Z * Z)
+    (fun '(bb, _, p, _, _, _, n) => [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt n])
+    (fun '(bb, dq, p, sb, sreg, ys, n) =>
+       ⌜n = Z.of_nat (length ys)⌝ ∗ printf_out k R bb ∗ byte_run dq p sb sreg ys)%I
+    (fun '(bb, dq, p, sb, sreg, ys, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb ∗ byte_run dq p sb sreg ys)%I.
+
 (** `c: __printf_buffer_pad (buf, ch, width)` appends width copies of
     a character, and it appends nothing when the width is zero or
     negative. The width is a signed 64-bit number, which the contract

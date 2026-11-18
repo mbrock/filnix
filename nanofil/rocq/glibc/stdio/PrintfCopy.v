@@ -68,6 +68,40 @@ Proof using Type.
   iIntros "Hsl Hys". iApply ("Hback" with "Hsl"). iApply "Hrest". iExact "Hys".
 Qed.
 
+(** A run of bytes lends the m bytes that follow its first d bytes,
+    in the same way as a string does. *)
+Lemma byte_run_lend dq p sb sreg s d m :
+  0 <= d -> 0 <= m -> d + m <= Z.of_nat (length s) ->
+  byte_run dq p sb sreg s ⊢ ∃ ys,
+    ⌜Z.of_nat (length ys) = m /\ (ptr_cap p = Obj sb \/ ptr_cap p = Ro sb) /\ sb mod 8 = 0 /\ 0 < sb <= ptr_addr p /\
+     ptr_addr p + d + m <= r_end sreg /\ r_end sreg <= 2 ^ 48 /\ Forall (fun y => 0 <= y < 256) ys⌝ ∗
+    liveq dq sb sreg ∗ bytesq dq sb (ptr_addr p + d - sb) ys ∗
+    (liveq dq sb sreg -∗ bytesq dq sb (ptr_addr p + d - sb) ys -∗ byte_run dq p sb sreg s).
+Proof using Type.
+  intros Hd Hm Hfit. iIntros "((%Hc & %Hb8 & %Ha & %Hend & %Hsp & %Hch) & Hsl & Hbytes)".
+  iDestruct (bytesq_sub dq sb (ptr_addr p - sb) s (Z.to_nat d) (Z.to_nat m) with "Hbytes") as "[Hys Hrest]"; [lia|].
+  replace (ptr_addr p - sb + Z.of_nat (Z.to_nat d)) with (ptr_addr p + d - sb) by lia.
+  iExists (take (Z.to_nat m) (drop (Z.to_nat d) s)). iFrame "Hsl Hys". iSplit.
+  { iPureIntro. split; [rewrite length_take length_drop; lia|]. split_and!; [exact Hc | exact Hb8 | lia..| exact Hsp |].
+    apply Forall_take, Forall_drop. exact Hch. }
+  iIntros "Hsl Hys". iFrame "Hsl". iSplit; [done|]. iApply "Hrest". iExact "Hys".
+Qed.
+
+(** The first n bytes of a string are a run of bytes, and the string
+    comes back when the run is returned. *)
+Lemma word_string_run dq p s n :
+  0 <= n <= Z.of_nat (length s) ->
+  word_string dq p s ⊢ ∃ sb sreg ys,
+    ⌜Z.of_nat (length ys) = n⌝ ∗ byte_run dq p sb sreg ys ∗ (byte_run dq p sb sreg ys -∗ word_string dq p s).
+Proof using Type.
+  intros Hn. iIntros "Hs".
+  iDestruct (word_string_lend dq p s 0 n with "Hs")
+    as (sb sreg ys) "((%Hlen & %Hc & %Hb8 & %Ha & %Hend & %Hsp & %Hch) & Hsl & Hys & Hback)"; [lia..|].
+  replace (ptr_addr p + 0 - sb) with (ptr_addr p - sb) by lia.
+  iExists sb, sreg, ys. iSplit; [done|]. iFrame "Hsl Hys". iSplit; [iPureIntro; split_and!; first [assumption | lia]|].
+  iIntros "(_ & Hsl & Hys)". iApply ("Hback" with "Hsl Hys").
+Qed.
+
 (** A string lends the byte at index i to a reader, and the reader
     learns its value. The index may be the length of the string, and
     the byte there is the terminating NUL. The formatter reads one byte

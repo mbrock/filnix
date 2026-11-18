@@ -2,15 +2,17 @@
     `c: __printf_buffer_write`. The function copies as many bytes as
     the buffer's window has room for, and it calls
     `c: __printf_buffer_flush` to make room whenever the window is
-    full. This module proves that the compiled function meets
-    [write_spec] of [PrintfSpec](PrintfSpec.v).
+    full. This module proves that the compiled function meets two
+    contracts of [PrintfSpec](PrintfSpec.v). The contract
+    [write_bytes_spec] is for a run of bytes, and the contract
+    [write_spec] is for the first bytes of a string.
 
     The function is a loop, and each round of the loop copies some
     bytes. A proof about a loop states what is true whenever a round
     starts. Three things are true here. The buffer is usable. The
     pointer `c: s` points to the first byte that is not yet copied.
     The number `c: count` of bytes that are not yet copied is no more
-    than the number of bytes from `c: s` to the end of the string.
+    than the number of bytes from `c: s` to the end of the run.
 
     The compiler turns the function into blocks of instructions that
     jump to one another. The proof has one part for each block where it
@@ -88,8 +90,11 @@ Definition copy_from_count : cut_sig :=
 Definition copy_from_room : cut_sig :=
   Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
 
-(** After the phi node of that block, one temporary holds the number
-    of bytes to copy on both ways in. *)
+(** The block that copies starts with a phi node as well. The node
+    copies the number of bytes to copy into one fixed temporary, so
+    the rest of the block reads that temporary on both ways in. The
+    definition [copy_body] lists the temporaries that the rest of the
+    block reads. *)
 Definition copy_body : cut_sig :=
   Eval vm_compute in cut_body S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
 
@@ -102,10 +107,10 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** ## The block table *)
 
 (** The record [wr_in] is the logical input of a round of the loop.
-    It names the buffer and the string, the number of bytes already
-    copied and the number still to copy. *)
+    It names the buffer and the run of bytes with its object, the
+    number of bytes already copied and the number still to copy. *)
 Record wr_in : Type := WrIn {
-  wr_buf : Z; wr_dq : dfrac; wr_p : ptr; wr_str : list Z;
+  wr_buf : Z; wr_dq : dfrac; wr_p : ptr; wr_sb : Z; wr_sreg : region; wr_str : list Z;
   wr_done : Z; wr_count : Z
 }.
 
@@ -115,19 +120,20 @@ Definition wr_vals (x : wr_in) : list (string * word) :=
    ("s", WPtr (mkPtr (ptr_addr (wr_p x) + wr_done x) (ptr_cap (wr_p x))));
    ("count", WInt (wr_count x))].
 
-(** The bytes still to copy lie in the string, and their number is a
-    C integer. *)
+(** The bytes still to copy lie in the run, and their number is a C
+    integer. *)
 Definition wr_ok (x : wr_in) : Prop :=
   0 <= wr_done x /\ 0 <= wr_count x < 2 ^ 64 /\ wr_done x + wr_count x <= Z.of_nat (length (wr_str x)).
 
 (** The function returns nothing and gives back the usable buffer and
-    the string. *)
+    the run of bytes. *)
 Definition wr_post (x : wr_in) (o : outcome) : iProp Σ :=
-  (⌜o = RetVoid⌝ ∗ printf_out k R (wr_buf x) ∗ word_string (wr_dq x) (wr_p x) (wr_str x))%I.
+  (⌜o = RetVoid⌝ ∗ printf_out k R (wr_buf x) ∗ byte_run (wr_dq x) (wr_p x) (wr_sb x) (wr_sreg x) (wr_str x))%I.
 
-(** A round starts with a usable buffer and the caller's string. *)
+(** A round starts with a usable buffer and the caller's run of
+    bytes. *)
 Definition wr_pre (x : wr_in) : iProp Σ :=
-  (⌜wr_ok x⌝ ∗ printf_out k R (wr_buf x) ∗ word_string (wr_dq x) (wr_p x) (wr_str x))%I.
+  (⌜wr_ok x⌝ ∗ printf_out k R (wr_buf x) ∗ byte_run (wr_dq x) (wr_p x) (wr_sb x) (wr_sreg x) (wr_str x))%I.
 
 (** The record [wr_room] adds the buffer's parts to the input of a
     round, for the blocks that run when the window has a free byte.
@@ -142,7 +148,7 @@ Definition room_pre (y : wr_room) : iProp Σ :=
   (⌜wr_ok (wm_in y) /\ 0 < wr_count (wm_in y) /\ pw_ptr (wm_win y) < pw_end (wm_win y) /\
     (wm_mode y = mode_failed \/ wm_mode y = k)⌝ ∗
    printf_buf (wr_buf (wm_in y)) (wm_breg y) (wm_win y) (wm_written y) (wm_mode y) ∗ R (pw_place (wm_win y)) ∗
-   word_string (wr_dq (wm_in y)) (wr_p (wm_in y)) (wr_str (wm_in y)))%I.
+   byte_run (wr_dq (wm_in y)) (wr_p (wm_in y)) (wr_sb (wm_in y)) (wr_sreg (wm_in y)) (wr_str (wm_in y)))%I.
 
 (** The round copies at least one byte, no more than the count and no
     more than the window has room for. *)
@@ -175,7 +181,7 @@ Definition write_blocks : list bspec :=
 Local Ltac row_simpl :=
   cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *;
   unfold wr_pre, wr_post, room_pre, wr_ok, copy_ok, wr_vals, copy_vals in *;
-  cbn [app wr_buf wr_dq wr_p wr_str wr_done wr_count wm_in wm_breg wm_win wm_written wm_mode wm_copy
+  cbn [app wr_buf wr_dq wr_p wr_sb wr_sreg wr_str wr_done wr_count wm_in wm_breg wm_win wm_written wm_mode wm_copy
        ptr_addr ptr_cap] in *.
 
 (** Every block of the function meets its row. *)
@@ -187,14 +193,14 @@ Proof using Type*.
      share this proof of the block's body. *)
   iAssert (body_triple glibc___printf_buffer_write "L15" loop_body wr_in wr_vals wr_pre wr_post) as "#Hloop".
   { iModIntro;
-  iIntros ([bb dq [pa pc] str d cnt] e Φ) "%He H HK"; row_simpl; c_env_open He;
+  iIntros ([bb dq [pa pc] sb sreg str d cnt] e Φ) "%He H HK"; row_simpl; c_env_open He;
   iDestruct "H" as "[%Hok [Hout Hstr]]"; body_start glibc___printf_buffer_write "L15"; step; branch_eqn E;
   [step; iApply wp_ret_void; iNext; iApply "HK"; iFrame "Hstr Hout"; done|];
   step; iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)"; buf_open "Hbuf";
   step; check "Hl"; load_window "Hl" "Hptr" "Hwl"; step; check "Hl"; load_window "Hl" "Hend" "Hwl";
   step; step; step; branch_eqn E2;
   [step; branch;
-   goto_block "IH" "HK" 3%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) str d cnt) breg w written mode 0);
+   goto_block "IH" "HK" 3%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt) breg w written mode 0);
    row_simpl; iFrame "Hstr HR"; iSplit; [iPureIntro|buf_close; exact Hw];
    unfold pwin_ok in Hw; branch_fact E; branch_fact E2; lia|];
   step; call_callee with bb giving "Hl Hbase Hptr Hend Hwr Hmode Hwl Hwin HR"; [out_close "HR" with w; exact Hw|];
@@ -203,19 +209,19 @@ Proof using Type*.
   block_resume; destruct Hb as [-> | ->]; step; step; step; step; branch;
   [step; iApply wp_ret_void; iNext; iApply "HK"; iFrame "Hstr"; iSplit; [done|];
    iExists breg2, w2, written2, mode2; iFrame "Hbuf HR"; done|];
-  goto_block "IH" "HK" 3%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) str d cnt) breg2 w2 written2 mode2 0);
+  goto_block "IH" "HK" 3%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt) breg2 w2 written2 mode2 0);
   row_simpl; iFrame "Hstr HR Hbuf"; iPureIntro; branch_fact E; lia. }
   (* L68: the round copies the bytes, advances the buffer's write pointer and the pointer into the
-     string, and goes back to the start of the loop. The string lends the bytes to memcpy, and the
+     run, and goes back to the start of the loop. The run lends the bytes to memcpy, and the
      buffer lends its window. The two rows for this block share this proof of the block's body. *)
   iAssert (body_triple glibc___printf_buffer_write "L68" copy_body wr_room copy_vals
     (fun y => ⌜copy_ok y⌝ ∗ room_pre y)%I (fun y => wr_post (wm_in y))) as "#Hcopy".
   { iModIntro;
-  iIntros ([[bb dq [pa pc] str d cnt] breg w written mode m] e Φ) "%He H HK"; row_simpl; c_env_open He;
+  iIntros ([[bb dq [pa pc] sb sreg str d cnt] breg w written mode m] e Φ) "%He H HK"; row_simpl; c_env_open He;
   iDestruct "H" as "(%Hcp & (%Hok & %Hcnt & %Hroom & %Hmd) & Hbuf & HR & Hstr)"; destruct Hcp as [Hcp Hm0]; destruct Hm0;
   buf_open "Hbuf"; unfold pwin_ok in Hw; body_start glibc___printf_buffer_write "L68"; step; load_window "Hl" "Hptr" "Hwl";
-  iDestruct (word_string_lend dq (mkPtr pa pc) str d m with "Hstr")
-    as (sb sreg ys) "((%Hlen & %Hc & %Hsb8 & %Hsa & %Hsend & %Hsp & %Hy) & Hsl & Hys & Hback)"; [lia..|];
+  iDestruct (byte_run_lend dq (mkPtr pa pc) sb sreg str d m with "Hstr")
+    as (ys) "((%Hlen & %Hc & %Hsb8 & %Hsa & %Hsend & %Hsp & %Hy) & Hsl & Hys & Hback)"; [lia..|];
   cbn [ptr_addr ptr_cap] in *; destruct Hlen;
   iDestruct (win_live_acc with "Hl Hwl") as "[Hwo Hwback]";
   call_callee with (pw_obj w, pw_reg w, pw_lo w, pw_end w, pw_ptr w, dq, sb, sreg, mkPtr (pa + d) pc, ys)
@@ -226,15 +232,15 @@ Proof using Type*.
   iDestruct ("Hwback" with "Hwo") as "[Hl Hwl]"; block_resume;
   check "Hl"; load_window "Hl" "Hptr" "Hwl"; step; check "Hl"; store "Hl" "Hptr"; step; step; step;
   cbn [ptr_addr ptr_cap edge_label]; unwrap2;
-  goto_block "IH" "HK" 2%nat with (WrIn bb dq (mkPtr pa pc) str (d + Z.of_nat (length ys)) _);
+  goto_block "IH" "HK" 2%nat with (WrIn bb dq (mkPtr pa pc) sb sreg str (d + Z.of_nat (length ys)) _);
   row_simpl; iFrame "Hstr"; iSplit; [iPureIntro; lia|];
   out_close "HR" with (PWin (pw_obj w) (pw_reg w) (pw_base w) (pw_ptr w + Z.of_nat (length ys)) (pw_end w));
   unfold pwin_ok; cbn [pw_obj pw_reg pw_base pw_ptr pw_end]; lia. }
   repeat iSplit; [| | | | | | done]; iModIntro.
   (* The two rows for L15 take the step into the block and use its body. *)
-  2,3: (iIntros ([bb dq [pa pc] str d cnt] e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
+  2,3: (iIntros ([bb dq [pa pc] sb sreg str d cnt] e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
         iDestruct "H" as "[%Hok H]"; block_enter_from Hfrom; rewrite (Z.mod_small cnt (2 ^ 64)); [|lia];
-        iApply ("Hloop" $! (WrIn bb dq (mkPtr pa pc) str d cnt) with "[] [H] HK");
+        iApply ("Hloop" $! (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt) with "[] [H] HK");
         [iPureIntro; c_env_close | row_simpl; iFrame "H"; done]).
   (* The two rows for L68 do the same. The first row copies every byte that is left. *)
   3: (iIntros (y e from Φ) "%Hfrom %He [[%Hcp %Hm] H] HK"; row_simpl; c_env_open He;
@@ -250,16 +256,16 @@ Proof using Type*.
       [iPureIntro; row_simpl; c_env_close
       | cbn beta; row_simpl; iFrame "H"; iPureIntro; split; assumption]).
   - (* start: a buffer that has failed takes no bytes. *)
-    iIntros ([bb dq [pa pc] str d cnt] e from Φ) "_ %He H HK".
+    iIntros ([bb dq [pa pc] sb sreg str d cnt] e from Φ) "_ %He H HK".
     row_simpl. c_env_open He. iDestruct "H" as "[%Hok [Hout Hstr]]".
     iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)". buf_open "Hbuf".
     block_enter. step. check "Hl". load_mode "Hl" "Hmode". step. branch_eqn E.
-    + goto_block "IH" "HK" 1%nat with (WrIn bb dq (mkPtr pa pc) str d cnt).
+    + goto_block "IH" "HK" 1%nat with (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt).
       row_simpl. iFrame "Hstr". iSplit; [done|]. out_close "HR" with w. exact Hw.
     + step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hstr". iSplit; [done|].
       out_close "HR" with w. exact Hw.
   - (* L22: the window has room, so the round copies what fits. *)
-    iIntros ([[bb dq [pa pc] str d cnt] breg w written mode m] e from Φ) "_ %He H HK". row_simpl. c_env_open He.
+    iIntros ([[bb dq [pa pc] sb sreg str d cnt] breg w written mode m] e from Φ) "_ %He H HK". row_simpl. c_env_open He.
     iDestruct "H" as "((%Hok & %Hcnt & %Hroom & %Hmd) & Hbuf & HR & Hstr)". buf_open "Hbuf". unfold pwin_ok in Hw.
     block_enter. step. check "Hl". load_window "Hl" "Hptr" "Hwl". step. check "Hl". load_window "Hl" "Hend" "Hwl".
     step. step. step. branch_as false. step.
@@ -267,30 +273,66 @@ Proof using Type*.
     step. step. step. step. unwrap2. branch_eqn E.
     + step. step.
       goto_block "IH" "HK" 5%nat
-        with (WrRoom (WrIn bb dq (mkPtr pa pc) str d cnt) breg w written mode (pw_end w - pw_ptr w)).
+        with (WrRoom (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt) breg w written mode (pw_end w - pw_ptr w)).
       row_simpl. iFrame "Hstr HR". iSplit; [iPureIntro|iSplit; [iPureIntro|buf_close; exact Hw]].
       * branch_fact E. lia.
       * lia.
-    + goto_block "IH" "HK" 4%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) str d cnt) breg w written mode cnt).
+    + goto_block "IH" "HK" 4%nat with (WrRoom (WrIn bb dq (mkPtr pa pc) sb sreg str d cnt) breg w written mode cnt).
       row_simpl. iFrame "Hstr HR". iSplit; [iPureIntro|iSplit; [iPureIntro|buf_close; exact Hw]].
       * branch_fact E. lia.
       * lia.
 Qed.
 
-(** ## The contract *)
+(** ## The contracts *)
 
-(** A caller of `c: __printf_buffer_write` uses this lemma. It says
-    that the compiled function meets [write_spec] in every program
+(** A caller that appends a run of bytes uses this lemma. It says that
+    the compiled function meets [write_bytes_spec] in every program
     that defines the function. *)
+Lemma write_bytes_has_spec `{!Defines ge "__printf_buffer_write" glibc___printf_buffer_write} :
+  HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_write") (write_bytes_spec k R).
+Proof using Type*.
+  eapply (blocks_has_spec _ _ _ write_blocks); [exact defines | reflexivity | reflexivity | | exact write_table].
+  intros [[[[[[bb dq] p] sb] sreg] ys] n]. eexists _, (WrIn bb dq p sb sreg ys 0 n). split; [reflexivity|]. split.
+  { destruct p. c_env_close. }
+  cbn [fs_pre fs_post bs_pre bs_post write_bytes_spec]. unfold wr_pre, wr_post, wr_ok.
+  cbn [wr_buf wr_dq wr_p wr_sb wr_sreg wr_str wr_done wr_count].
+  iIntros "(-> & Hout & Hrun)". iDestruct "Hrun" as "(%Hrun & Hrun)".
+  iFrame "Hout Hrun". iSplit; [iPureIntro; split; [lia | exact Hrun]|]. iIntros (r) "$".
+Qed.
+
+(** A contract follows from another contract of the same function
+    when its precondition gives the other one's for some logical
+    input, and takes the other one's postcondition back. The input may
+    be one that the precondition's own resources name, such as the
+    object of a string. The first premise finds an input with the same
+    arguments without any resource, so that the call itself is well
+    formed. *)
+Lemma has_spec_open n s s' :
+  HasSpec registry (os_wi w0) ge n s ->
+  (forall y, (exists x, fs_args s' y = fs_args s x) /\
+     (fs_pre s' y ⊢ ∃ x, ⌜fs_args s' y = fs_args s x⌝ ∗ fs_pre s x ∗ ∀ v, fs_post s x v -∗ fs_post s' y v)) ->
+  HasSpec registry (os_wi w0) ge n s'.
+Proof using Type.
+  intros Hs Hweak y. destruct (Hweak y) as [[x0 Hargs0] Hpre].
+  destruct (Hs x0) as (gf & Hg & Hfr & _).
+  exists gf. rewrite Hargs0. split; [exact Hg|]. split; [exact Hfr|].
+  intros fr Φ Hcall. iIntros "HP HK". iDestruct (Hpre with "HP") as (x) "(%Hargs & HP & HW)".
+  destruct (Hs x) as (gf' & Hg' & _ & Ht). rewrite Hg in Hg'. injection Hg' as <-.
+  rewrite -Hargs0 Hargs in Hcall. iApply (Ht fr Φ Hcall with "HP"). iIntros (v) "HQ". iApply "HK". iApply ("HW" with "HQ").
+Qed.
+
+(** A caller that appends the first bytes of a string uses this lemma.
+    It says that the compiled function meets [write_spec], because a
+    string lends those bytes as a run. *)
 Lemma write_has_spec `{!Defines ge "__printf_buffer_write" glibc___printf_buffer_write} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_write") (write_spec k R).
 Proof using Type*.
-  eapply (blocks_has_spec _ _ _ write_blocks); [exact defines | reflexivity | reflexivity | | exact write_table].
-  intros [[[[bb dq] p] str] n]. eexists _, (WrIn bb dq p str 0 n). split; [reflexivity|]. split.
-  { destruct p. c_env_close. }
-  cbn [fs_pre fs_post bs_pre bs_post write_spec]. unfold wr_pre, wr_post, wr_ok. cbn [wr_buf wr_dq wr_p wr_str wr_done wr_count].
-  iIntros "(%Hn & Hout & Hstr)". iDestruct (word_string_short with "Hstr") as %Hshort.
-  iFrame "Hout Hstr". iSplit; [iPureIntro; lia|]. iIntros (r) "$".
+  eapply (has_spec_open _ (write_bytes_spec k R)); [exact write_bytes_has_spec|].
+  intros [[[[bb dq] p] str] n]. split; [exists (bb, dq, p, 0, mkRegion 0 0 Heap Live, [], n); reflexivity|].
+  cbn [fs_pre fs_post fs_args write_spec write_bytes_spec]. iIntros "(%Hn & Hout & Hstr)".
+  iDestruct (word_string_run dq p str n Hn with "Hstr") as (sb sreg ys) "(%Hlen & Hrun & Hback)".
+  iExists (bb, dq, p, sb, sreg, ys, n). iFrame "Hout Hrun". iSplit; [done|]. iSplit; [iPureIntro; lia|].
+  iIntros (v) "($ & $ & Hrun)". iApply ("Hback" with "Hrun").
 Qed.
 
 End write.
