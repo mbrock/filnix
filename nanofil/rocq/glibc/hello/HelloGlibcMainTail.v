@@ -2,9 +2,9 @@
     successful conversion, Hello prints the wide greeting, releases its
     buffer and exits with status zero.
 
-    Conversion and printing remain explicit obligations.
-    The allocator, errno lookup, deallocation and exit calls use their
-    concrete library proofs. *)
+    The library proofs return the output buffer to main and leave
+    stdout either narrow or wide. The exit callback handles both
+    cases. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -86,7 +86,7 @@ Proof using Type*.
   intros H23 Hbd Hbd16 Hbde Hw. iIntros "#Hro [Hio Hpv] Hn HX Hwb".
   step. step_global (hy_lits _ _ Hy "hello#str.83" ltac:(cbn; tauto)).
   iApply (wp_call_int with "[Hio Hpv Hwb]");
-    [exact (hd_wprintf _ _ _ D bd n ws Hbd Hbd16 Hbde Hw) | vx |
+    [exact (hl_wprintf _ _ _ _ _ _ Lb bd n ws Hbd Hbd16 Hbde Hw) | vx |
      iSplitR; [iExact "Hro"|]; iSplitL "Hio"; [iExact "Hio"|]; iSplitL "Hpv"; [iExact "Hpv" | iExact "Hwb"] |].
   iNext. iIntros (k _) "(Hio & Hpv & Hwb)".
   iDestruct "Hwb" as (cs) "(_ & Hl & _ & _)".
@@ -99,7 +99,7 @@ Proof using Type*.
       with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout _ _ _ _ _ _ Lb) | vx | iFrame].
   - iApply (wp_exit_call_with w0 ge o D X0 X Lb
       (hello_stdio_wide w0 ge o (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1))
-      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hd_close_stdout_wide _ _ _ D) | vx | iFrame].
+      with "Hro [Hout Hrest] Hpv Hn HX"); [exact (hl_close_stdout_wide _ _ _ _ _ _ Lb) | vx | iFrame].
 Qed.
 
 End tail.
