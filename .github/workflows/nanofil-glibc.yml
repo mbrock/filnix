@@ -135,7 +135,7 @@ jobs:
           retention-days: 3
 
   # The push check seals the runtime. This job removes the implementation and audits assumptions for
-  # every top-level proof, including Hello's exact twelve-field list.
+  # every top-level proof, including Hello's exact fourteen-field list.
   abstract:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04

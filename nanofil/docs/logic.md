@@ -1016,8 +1016,10 @@ with the runtime left abstract. For that compilation it replaces the
 binding in `Fix.v` by `Declare Module R : Runtime.`, so that a proof
 can use only what every runtime guarantees. On every push the check
 compiles the files that Hello's theorem imports in this way. It then
-requires `Print Assumptions` to list exactly the twelve fields of `R`
-for `hello_never_panics`.
+requires `Print Assumptions` to list exactly fourteen fields of `R`
+for `hello_never_panics`. Two of them are the runtime's `free` and its
+promise `free_succeeds` that `free` releases heap objects, because Hello
+frees memory with `R.free`.
 
 Twice daily the check `nanofil-glibc-abstract` compiles every other
 glibc file in the same way, so no glibc proof depends on the

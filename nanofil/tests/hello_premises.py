@@ -56,7 +56,7 @@ NOT_PREMISES = {'hd_priv', 'hd_wide'}
 SECTION_LABELS = {}
 # The first pattern that a premise's text matches gives its tag.
 TAGS = [
-    (r'^In [12] |frees_heap', 'runtime/OS'),
+    (r'^In [12] ', 'runtime/OS'),
     (r'start_c_locale', 'environment'),
     (r'ow_leaf4_ends', 'CPU'),
     (r'^R\.ready', 'adequacy'),
@@ -71,7 +71,7 @@ TAGS = [
 # The first pattern that a premise's text matches gives its status.
 SAT = 'satisfiable'
 STATUS = [
-    (r'^In [12] |frees_heap|start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
+    (r'^In [12] |start_c_locale|ow_leaf4_ends|^R\.ready', SAT),
     (r'hd_setlocale_all', 'unknown: X holds every object on the locale worker\'s list for setlocale, and the lock '
                           'is reachable by opening the getopt state with hello_stdio (hello_hd_lend); not yet proved'),
     (r'hd_mbsrtowcs', 'unknown: X owns the conversion constants (84ff6e13), and __libc_tsd_LOCALE is reachable '
@@ -84,7 +84,6 @@ STATUS = [
 ]
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
-    'frees_heap': "runtime contract: the environment's free frees heap objects",
     'start_c_locale': 'environment: the process environment selects the C locale',
 }
 

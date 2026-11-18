@@ -322,6 +322,8 @@ let
         Fix.R.at_safepoint
         Fix.R.aux_round_trip
         Fix.R.collector_live
+        Fix.R.free
+        Fix.R.free_succeeds
         Fix.R.fresh_allocation
         Fix.R.non_moving
         Fix.R.ready
