@@ -72,6 +72,8 @@ libio/LibioReadCode.v
 libio/LibioStdfilesCode.v
 libio/LibioWAllocCode.v
 libio/LibioWAllocSetb.v
+libio/LibioWAllocFile.v
+libio/LibioWAllocBuf.v
 libio/LibioUnlinkCode.v
 libio/LibioXsputnCode.v
 libio/SysCode.v
