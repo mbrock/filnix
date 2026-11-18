@@ -60,5 +60,7 @@ cat > "$HOME/.config/amp/AGENTS.md" <<'EOF'
 - The Fil-C compiler for quick experiments: `nix build .#filcc` then
   `./result/bin/clang`.
 - There is no KVM here, so NixOS VM tests are slow or unavailable.
+- `.agents/resume` starts a systemd user manager, so each rq proof session
+  is a transient service in rq.slice (`systemctl --user status rq.slice`).
 EOF
 step "done"

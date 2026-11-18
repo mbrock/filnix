@@ -89,6 +89,9 @@ def alive(pid):
 # ## Backends
 
 def systemd_ok():
+    # .agents/resume starts the user manager in an orb; a shell without
+    # XDG_RUNTIME_DIR would not find it.
+    os.environ.setdefault("XDG_RUNTIME_DIR", "/run/user/%d" % os.getuid())
     if os.environ.get("RQ_BACKEND") == "process":
         return False
     try:

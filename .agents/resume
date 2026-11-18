@@ -1,0 +1,27 @@
+#!/usr/bin/env bash
+# Orb resume: run the user's systemd manager. With it, rq
+# (nanofil/rocq/scripts/glibc-tools/rq/rq) starts each proof session as a
+# transient service in rq.slice, so rq ls reports the memory of every
+# worker tree and a memory limit can be enforced. Without it, rq falls
+# back to detached process groups, so a failure here only warns.
+set -euo pipefail
+uid=$(id -u)
+export XDG_RUNTIME_DIR=${XDG_RUNTIME_DIR:-/run/user/$uid}
+up() { systemctl --user show-environment >/dev/null 2>&1; }
+up && exit 0
+
+# The manager mounts a fresh tmpfs on its runtime directory unless that is
+# already a mount point. Binding the directory onto itself first keeps the
+# files already in it visible.
+run=/run/user/$uid
+if [ -d "$run" ] && ! mountpoint -q "$run"; then
+  sudo mount --bind "$run" "$run" || true
+fi
+# Lingering starts the manager now and keeps it running without a login.
+sudo loginctl enable-linger "$(id -un)" || true
+for _ in $(seq 20); do
+  up && exit 0
+  sleep 0.25
+done
+sudo systemctl start "user@$uid.service" || true
+up || echo "resume: no systemd user manager; rq sessions run as detached process groups" >&2
