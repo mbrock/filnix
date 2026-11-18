@@ -330,10 +330,9 @@ Definition close_stdout_narrow (priv : iProp Σ) : Prop :=
     (hello_ro ∗ hello_stdio ∗ priv ∗ names)%I
     (fun r => ⌜r = RetVoid⌝ ∗ exit_io)%I.
 
-(** When the greeting has made stdout wide, the callback closes a
-    wide stdout, which [file_wide] describes, and stderr, which is
-    still narrow. It reads and consumes the same cells of priv as the
-    narrow case. *)
+(** After Hello prints wide characters, the exit callback flushes the
+    pending characters before it closes stdout. Stderr is still narrow.
+    The callback consumes the same private cells as in the narrow case. *)
 Definition close_stdout_wide (priv : iProp Σ) : Prop :=
   fn_triple (TAtom "close_stdout") []
     (hello_ro ∗ hello_stdio_wide (file_wide ge (ho_vb o) (ow_self w0) (ho_out o) 1) ∗ priv ∗ names)%I

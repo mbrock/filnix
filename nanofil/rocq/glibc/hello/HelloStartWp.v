@@ -324,7 +324,7 @@ Proof using Hi Hlast.
   iDestruct (pts_app with "Hco") as "[Hco Hlo]". iDestruct (pts_app with "Hlo") as "[Hlo Hmb]". iDestruct (pts_app with "Hmb") as "[Hmb Hcx]".
   iDestruct (pts_app with "Hcx") as "[Hcx Her]". iDestruct (pts_app with "Her") as "[Hel Her]".
   (* The globals of error go to the read-only promise and to the streams. *)
-  iMod (hello_error_objs_own hge eq_refl with "Her") as "[#Hepn Hec]".
+  iMod (hello_error_objs_own hge eq_refl with "Her") as "[Hepn Hec]".
   iMod (hello_start_post_main img_globals m0 fr Hi (final_world w0 tb) avb (reg_of m avb) p0 ps p0 (short_name p0 q0s)
     with "[Hkept Io Sl Ci Co Ce Lv Lst St Leb Eb Lmp Lpn Hpn Lpf Hpf Hav] Tci Hepn Hec") as "Hres".
   { rewrite /hello_start_post.

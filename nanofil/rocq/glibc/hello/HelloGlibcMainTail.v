@@ -2,9 +2,9 @@
     successful conversion, Hello prints the wide greeting, releases its
     buffer and exits with status zero.
 
-    Conversion and printing remain explicit obligations.
-    The allocator, errno lookup, deallocation and exit calls use their
-    concrete library proofs. *)
+    The library proofs return the output buffer to main and leave
+    stdout either narrow or wide. The exit callback handles both
+    cases. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
