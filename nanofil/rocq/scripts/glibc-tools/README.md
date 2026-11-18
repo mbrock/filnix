@@ -45,6 +45,28 @@ nanofil/rocq/scripts/glibc-tools/warm.sh
 nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/theories exec/AbsSound.v
 ```
 
+## Work in a proof session
+
+Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. The first `rq open` builds the worker with `nanofil/nix/rq-worker.nix` from the same Rocq as `one.sh`.
+
+```sh
+. nanofil/rocq/scripts/glibc-tools/env.sh
+rq=nanofil/rocq/scripts/glibc-tools/rq/rq
+$rq open hello/HelloSetlocaleAll.v --theorem sl_find_one   # prints R1
+$rq step R1 -f scratch.v          # keeps every sentence before the first failure
+$rq goals R1 --conclusion         # the conclusion without the Iris context
+$rq try R1 -e 'iFrame.' -e 'iFrame "H".'   # each from the same state; the session stays put
+$rq check R1                      # Qed in a throwaway state
+$rq reload R1                     # replay the edited file from its first changed byte
+$rq ls; $rq stop R1
+```
+
+A step stops at the first syntax error, tactic failure or interrupt, and reports what it committed, where it stopped and the goal that remains. Its exit status is 1 when it stopped early. `rq reload` keeps the states before the first edited byte of the file. When an object that the session loaded has changed, for example after `warm.sh` or `one.sh`, it restarts the session instead. Reload drops the sentences that `step` added and saves them in the session's `dropped.v`.
+
+Sentences have no time limit. Ctrl-C on a waiting `rq` stops only the waiting, and `rq wait R1` returns the result later. `rq cancel R1` interrupts the running sentence, and the session keeps what it committed before it. With a systemd user manager, each session is a transient service in `rq.slice`. `rq ls` then shows the memory of the whole worker tree, and `--memory-high` and `--memory-max` set the service's limits. Without a user manager, the worker runs as a detached process group, and `rq` refuses a memory limit because it could not enforce it.
+
+A passing `rq check` does not mean that the file passes `one.sh`. The session loads the objects beside the sources, which may be interfaces with blanked proofs, and the file on disk may differ from what the session ran. `rq --help` lists every command. The older `rq/start.sh` and `rq/rq.py` still work.
+
 ## Write a proof
 
 Proofs share one runtime and logic instead of creating a new instance for each importer. Import `Fix.v` to obtain the sealed runtime `R` and logic `LG0`, and name dependencies by their files. Use the runtime's public laws rather than its interpreter's integer allocator state.

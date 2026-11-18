@@ -1,0 +1,670 @@
+#!/usr/bin/env python3
+"""rq: persistent, named Rocq proof sessions.
+
+Each session is one rq-worker process (worker/rq_worker.ml) that keeps a
+Rocq state warm between shell commands. Every rq call is short: it sends
+one request to the session's socket and prints a short reply. Source
+nanofil/rocq/scripts/glibc-tools/env.sh first, so that the worker sees
+the same Rocq and load path as one.sh.
+
+    rq open FILE (--theorem NAME | --line N)   start a session, print its ID (R1, R2, ...)
+    rq step R1 -f scratch.v | -e 'tac.' | -    run sentences; commit up to the first failure
+    rq goals R1 [--conclusion | --names]       the goals of the current state
+    rq try R1 -e 'tac1.' -e 'tac2.' [--commit] try each candidate from the same state
+    rq check R1                                try Qed in a throwaway state
+    rq back R1 [N]                             drop the last N committed sentences
+    rq reload R1 [--theorem NAME | --line N]   replay the edited file from the first change
+    rq ls | status R1 | log R1 | wait R1 [JOB] | cancel R1 | stop R1
+
+step stops at the first syntax error, tactic failure or interrupt, and
+keeps every sentence before it. try leaves the session where it was
+unless --commit is given. A query such as Show never commits. reload
+keeps the snapshots before the first edited byte; when an imported .vo
+changed (warm.sh, one.sh), it restarts the session from scratch. Scratch
+sentences committed with step are dropped by reload and saved in the
+session's dropped.v, so `rq step R1 -f DIR/dropped.v` replays them.
+
+"Qed passed in session R1" is not "the file passed one.sh": the session
+sees the objects beside the sources, whose imported proofs may be blanked
+interfaces, and the file on disk may differ from what the session ran.
+
+There is no time limit on any sentence. Interrupting a waiting rq call
+(Ctrl-C) only stops waiting; the job goes on, and `rq wait R1` returns its
+result. `rq cancel R1` interrupts the running sentence itself: the session
+keeps every sentence committed before it.
+
+Exit status: 0 when the request ran to its end, 1 when it stopped at an
+error or an interrupt, 2 for a usage or session error. --json prints the
+worker's reply, with source ranges, timings and focused, unfocused,
+shelved and given-up goal counts.
+
+Sessions live in $RQ_DIR (default ${TMPDIR:-/tmp}/rq-$UID).
+With a systemd user manager each session is a transient service rq-RN in
+rq.slice, so rq ls reports the memory of the whole worker tree and
+--memory-high and --memory-max become MemoryHigh and MemoryMax. Without
+one, the worker is a detached process group and rq reports its RSS; a
+requested cap is then refused, since it could not be enforced.
+"""
+import argparse, json, os, re, select, signal, socket, subprocess, sys, time
+
+HERE = os.path.dirname(os.path.realpath(__file__))
+REPO = subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
+                      capture_output=True, text=True).stdout.strip()
+# Not $XDG_RUNTIME_DIR: the user manager mounts it afresh when it starts and
+# logind removes it at logout, which hides the files of running sessions.
+RQ_DIR = os.environ.get("RQ_DIR") or os.path.join(os.environ.get("TMPDIR", "/tmp"), "rq-%d" % os.getuid())
+
+
+def die(msg, code=2):
+    print("rq: " + msg, file=sys.stderr)
+    sys.exit(code)
+
+
+def sdir(sid):
+    d = os.path.join(RQ_DIR, sid)
+    if not os.path.isdir(d):
+        die("no session %s (rq ls lists them)" % sid)
+    return d
+
+
+def read_json(path, default=None):
+    try:
+        with open(path) as f:
+            return json.load(f)
+    except (OSError, ValueError):
+        return default
+
+
+def alive(pid):
+    try:
+        os.kill(pid, 0)
+        return True
+    except (OSError, TypeError):
+        return False
+
+
+# ## Backends
+
+def systemd_ok():
+    if os.environ.get("RQ_BACKEND") == "process":
+        return False
+    try:
+        return subprocess.run(["systemctl", "--user", "show-environment"], capture_output=True, timeout=5).returncode == 0
+    except (OSError, subprocess.TimeoutExpired):
+        return False
+
+
+def cgroup_dir(meta):
+    if meta.get("backend") != "systemd":
+        return None
+    cg = subprocess.run(["systemctl", "--user", "show", "-p", "ControlGroup", "--value", meta["unit"]],
+                        capture_output=True, text=True).stdout.strip()
+    return "/sys/fs/cgroup" + cg if cg else None
+
+
+def gib(b):
+    return "%.1f GiB" % (b / 2**30) if b >= 2**28 else "%d MiB" % (b // 2**20)
+
+
+def memory(meta, pid):
+    """(current, peak, note) in bytes for the session's worker tree."""
+    cg = cgroup_dir(meta)
+    if cg and os.path.isdir(cg):
+        def num(name):
+            try:
+                return int(open(os.path.join(cg, name)).read().split()[0])
+            except (OSError, ValueError, IndexError):
+                return None
+        cur, peak = num("memory.current"), num("memory.peak")
+        note = ""
+        try:
+            ev = dict(l.split() for l in open(os.path.join(cg, "memory.events")))
+            if int(ev.get("oom_kill", 0)):
+                note = "oom-killed"
+            elif int(ev.get("high", 0)):
+                note = "throttled"
+            some = open(os.path.join(cg, "memory.pressure")).readline()
+            m = re.search(r"avg10=([\d.]+)", some)
+            if m and float(m.group(1)) > 5:
+                note = (note + " reclaiming").strip()
+        except OSError:
+            pass
+        return cur, peak, note
+    try:
+        st = dict(l.split(":", 1) for l in open("/proc/%d/status" % pid))
+        kb = lambda k: int(st[k].split()[0]) * 1024
+        return kb("VmRSS"), kb("VmHWM"), ""
+    except (OSError, KeyError, TypeError):
+        return None, None, ""
+
+
+# ## Talking to a worker
+
+def request(sid, req, wait=True):
+    d = sdir(sid)
+    c = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+    try:
+        c.connect(os.path.join(d, "sock"))
+    except OSError:
+        st = read_json(os.path.join(d, "status.json"), {})
+        die("session %s is not listening (%s); rq status %s" % (sid, st.get("state", "dead"), sid))
+    c.sendall((json.dumps(req) + "\n").encode())
+    f = c.makefile("r", encoding="utf-8", errors="replace")
+    if not select.select([c], [], [], 1.0)[0]:
+        st = read_json(os.path.join(d, "status.json"), {})
+        print("rq: %s is busy with job %s; waiting in line" % (sid, st.get("job")), file=sys.stderr)
+    try:
+        first = f.readline()
+    except KeyboardInterrupt:
+        print("\nrq: stopped waiting in line; the request may still run when %s is free" % sid, file=sys.stderr)
+        sys.exit(130)
+    if not first:
+        die("session %s closed the connection; rq status %s" % (sid, sid))
+    job = json.loads(first)["job"]
+    if not wait:
+        return {"job": job, "detached": True}
+    try:
+        line = f.readline()
+    except KeyboardInterrupt:
+        print("\nrq: stopped waiting; job %d still runs in %s. `rq wait %s %d` for its result, "
+              "`rq cancel %s` to interrupt it" % (job, sid, sid, job, sid), file=sys.stderr)
+        sys.exit(130)
+    if not line:
+        return wait_job(sid, job)
+    return json.loads(line)
+
+
+def wait_job(sid, job):
+    d = sdir(sid)
+    path = os.path.join(d, "job-%d.json" % job)
+    meta = read_json(os.path.join(d, "meta.json"), {})
+    try:
+        while not os.path.exists(path):
+            if not alive(meta.get("pid")):
+                die("session %s died during job %d; its sentences are in %s/transcript.v" % (sid, job, d))
+            time.sleep(0.2)
+    except KeyboardInterrupt:
+        sys.exit(130)
+    return read_json(path)
+
+
+# ## Printing replies
+
+def first_lines(s, n=12):
+    lines = s.strip().split("\n")
+    return "\n".join(lines[:n]) + ("\n  ... (%d more lines; rq log)" % (len(lines) - n) if len(lines) > n else "")
+
+
+def conclusion(goal):
+    """The conclusion of a goal, without an Iris context in front of it."""
+    c = goal["concl"]
+    parts = re.split(r"\n\s*-{10,}[∗□]\s*\n", c)
+    return parts[-1].strip()
+
+
+def goals_line(g):
+    if g is None:
+        return "no proof open"
+    bits = ["%d focused" % g["focused"]]
+    for k in ("unfocused", "shelved", "given_up"):
+        if g.get(k):
+            bits.append("%d %s" % (g[k], k.replace("_", " ")))
+    return "%s: %s" % (g["proof"], ", ".join(bits))
+
+
+def show_goal_summary(g):
+    print(goals_line(g))
+    if g and g.get("goals"):
+        print("  " + first_lines(conclusion(g["goals"][0]), 8).replace("\n", "\n  "))
+
+
+def where(r):
+    return "line %d" % r["line"] if r["line"] == r["end_line"] else "lines %d-%d" % (r["line"], r["end_line"])
+
+
+def show_run(rep, origin_file=None):
+    """Print what committed, where the run stopped and the goal that remains;
+    return the exit status."""
+    com = rep.get("committed", [])
+    if com:
+        secs = sum(n["ms"] for n in com) / 1000
+        print("committed %d sentence%s (%s to %s, %.2fs)" % (
+            len(com), "" if len(com) == 1 else "s", where(com[0]["range"]).split("-")[0],
+            "line %d" % com[-1]["range"]["end_line"], secs))
+        slow = [n for n in com if n["ms"] > 5000]
+        for n in slow:
+            print("  slow: %.1fs at line %d: %s" % (n["ms"] / 1000, n["range"]["line"], n["text"][:70]))
+    else:
+        print("committed nothing")
+    for m in rep.get("messages", []):
+        if m["level"] in ("notice",) and not m["text"].startswith("["):
+            print(first_lines(m["text"], 40))
+    stop = rep.get("stop", {})
+    code = 0
+    if stop.get("kind") in ("error", "syntax", "interrupted"):
+        code = 1
+        loc = where(stop["range"]) + (" of %s" % origin_file if origin_file else "")
+        print("stopped: %s at %s: %s" % (stop["kind"], loc, stop.get("text", "")[:80].replace("\n", " ")))
+        print("  " + first_lines(stop.get("message", ""), 12).replace("\n", "\n  "))
+    elif stop.get("kind") == "reached":
+        print("reached %s" % stop["target"])
+    if rep.get("interrupted"):
+        print("interrupted")
+        code = 1
+    if rep.get("error"):
+        print("worker error: " + rep["error"])
+        code = 2
+    if "goals" in rep and rep["goals"] is not False:
+        show_goal_summary(rep["goals"])
+    return code
+
+
+# ## Commands
+
+def tree_and_flags(file, tree):
+    if tree is None:
+        tree = os.path.join(REPO, "nanofil/rocq/glibc")
+    tree = os.path.realpath(tree)
+    model = os.environ.get("PE_MODEL")
+    if not model:
+        die("source nanofil/rocq/scripts/glibc-tools/env.sh first")
+    path = file if os.path.isabs(file) else (file if os.path.exists(file) else os.path.join(tree, file))
+    path = os.path.realpath(path)
+    if not os.path.exists(path):
+        die("no file %s" % file)
+    if tree == os.path.realpath(model):
+        flags = ["-R", ".", "Nanofil"]
+    else:
+        flags = ["-R", model, "Nanofil", "-R", ".", "Glibc"]
+    return tree, path, ["-q"] + flags
+
+
+def worker_binary():
+    link = os.path.join(os.environ.get("PE_CACHE", "/tmp"), "rq-worker")
+    src = os.path.join(HERE, "worker")
+    newest = max(os.path.getmtime(os.path.join(src, f)) for f in os.listdir(src))
+    if not os.path.exists(link) or os.lstat(link).st_mtime < newest:
+        expr = ('import %s/nanofil/nix/rq-worker.nix { pkgs = import (builtins.getFlake "%s").inputs.nixpkgs '
+                '{ system = "x86_64-linux"; }; }' % (REPO, REPO))
+        r = subprocess.run(["nix", "build", "--impure", "-o", link, "--expr", expr])
+        if r.returncode:
+            die("could not build the rq worker")
+    return os.path.join(link, "bin", "rq-worker")
+
+
+def new_id():
+    os.makedirs(RQ_DIR, exist_ok=True)
+    n = 1
+    while True:
+        sid = "R%d" % n
+        try:
+            os.mkdir(os.path.join(RQ_DIR, sid))
+            return sid
+        except FileExistsError:
+            n += 1
+
+
+def start_worker(sid, file, tree, flags, args):
+    d = os.path.join(RQ_DIR, sid)
+    for f in os.listdir(d):
+        if f not in ("transcript.v", "dropped.v"):
+            os.unlink(os.path.join(d, f))
+    binary = worker_binary()
+    env = {k: os.environ[k] for k in ("PATH", "ROCQPATH", "OCAMLRUNPARAM", "ROCQLIB", "HOME") if k in os.environ}
+    env["RQ_FILE"] = file
+    cmd = [binary, d] + flags
+    meta = {"id": sid, "file": file, "tree": tree, "flags": flags, "started": time.time(),
+            "target": {"theorem": args.theorem, "line": args.line}}
+    caps = [("MemoryHigh", args.memory_high), ("MemoryMax", args.memory_max)]
+    if systemd_ok():
+        unit = "rq-%s-%d" % (sid, os.getpid())
+        sd = ["systemd-run", "--user", "--quiet", "--collect", "--unit", unit, "--slice", "rq.slice",
+              "--working-directory", tree, "-p", "KillMode=control-group"]
+        sd += [a for k, v in caps if v for a in ("-p", "%s=%s" % (k, v))]
+        sd += ["--setenv=%s=%s" % kv for kv in env.items()]
+        subprocess.run(sd + ["--"] + cmd, check=True)
+        pid = int(subprocess.run(["systemctl", "--user", "show", "-p", "MainPID", "--value", unit + ".service"],
+                                 capture_output=True, text=True).stdout.strip() or 0)
+        meta.update(backend="systemd", unit=unit + ".service", pid=pid)
+    else:
+        for k, v in caps:
+            if v:
+                die("%s=%s needs a systemd user manager, which is not running; this backend cannot enforce it" % (k, v))
+        out = open(os.path.join(d, "worker.out"), "w")
+        p = subprocess.Popen(cmd, cwd=tree, env=env, stdin=subprocess.DEVNULL, stdout=out, stderr=out,
+                             start_new_session=True)
+        meta.update(backend="process", pid=p.pid)
+    with open(os.path.join(d, "meta.json"), "w") as f:
+        json.dump(meta, f)
+    t0 = time.time()
+    while not os.path.exists(os.path.join(d, "sock")):
+        if not alive(meta["pid"]) or time.time() - t0 > 120:
+            out = open(os.path.join(d, "worker.out")).read() if os.path.exists(os.path.join(d, "worker.out")) else ""
+            die("the worker for %s did not start\n%s" % (sid, out[-2000:]))
+        time.sleep(0.05)
+    return meta
+
+
+def load_req(args):
+    req = {"cmd": "load"}
+    if args.theorem:
+        req["theorem"] = args.theorem
+    if args.line:
+        req["line"] = args.line
+    return req
+
+
+def cmd_open(args):
+    tree, file, flags = tree_and_flags(args.file, args.tree)
+    sid = new_id()
+    t0 = time.time()
+    start_worker(sid, file, tree, flags, args)
+    rep = request(sid, load_req(args))
+    rep["session"] = sid
+    rep["seconds_total"] = time.time() - t0
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    print("%s  %s, %d sentences in %.1fs" % (sid, os.path.relpath(file, tree), rep.get("nodes", 0), time.time() - t0))
+    return show_run(rep, os.path.basename(file))
+
+
+def read_text(args):
+    parts = []
+    for f in args.f or []:
+        parts.append(sys.stdin.read() if f == "-" else open(f).read())
+    parts += args.e or []
+    if not parts:
+        die("give the sentences with -f FILE, -f - or -e TEXT")
+    return parts
+
+
+def cmd_step(args):
+    text = "\n".join(read_text(args))
+    rep = request(args.session, {"cmd": "step", "text": text, "label": "step"}, wait=not args.no_wait)
+    if args.json or rep.get("detached"):
+        print(json.dumps(rep))
+        return 0
+    return show_run(rep)
+
+
+def cmd_try(args):
+    cands = read_text(args)
+    rep = request(args.session, {"cmd": "try", "candidates": cands, "commit": args.commit})
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    code = 1
+    for i, r in enumerate(rep.get("results", []), 1):
+        head = r["candidate"].strip().replace("\n", " ")[:60]
+        secs = sum(n["ms"] for n in r["committed"]) / 1000
+        if r["ok"]:
+            code = 0
+            print("[%d] ok (%.2fs)  %s  ->  %s" % (i, secs, head, goals_line(r["goals"])))
+        else:
+            st = r["stop"]
+            print("[%d] %s after %d sentence(s)  %s\n    %s" % (
+                i, st["kind"], len(r["committed"]), head, first_lines(st.get("message", ""), 4).replace("\n", "\n    ")))
+    if rep.get("interrupted"):
+        print("interrupted")
+    print("committed candidate" if rep.get("committed_candidate") else "session unchanged")
+    return code
+
+
+def cmd_goals(args):
+    rep = request(args.session, {"cmd": "goals"})
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    g = rep["goals"]
+    print(goals_line(g))
+    if not g:
+        return 0
+    for i, goal in enumerate(g["goals"][: 1 if args.first else None], 1):
+        if not args.conclusion:
+            hyps = goal["hyps"]
+            if args.names:
+                print("  " + " ".join(h["name"] for h in hyps))
+            else:
+                for h in hyps:
+                    print("  %s : %s" % (h["name"], h["type"].replace("\n", "\n    ")))
+        print("goal %d/%d%s" % (i, g["focused"], "" if args.conclusion else " " + "=" * 30))
+        body = conclusion(goal) if args.conclusion else goal["concl"]
+        print("  " + body.replace("\n", "\n  "))
+    return 0
+
+
+def cmd_check(args):
+    rep = request(args.session, {"cmd": "check"})
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    if rep.get("ok"):
+        print("Qed passed in session %s (the file on disk is checked by one.sh, not by this)" % args.session)
+        return 0
+    print("Qed fails in session %s" % args.session)
+    g = rep.get("goals_before")
+    if g:
+        print("  " + goals_line(g))
+    st = rep.get("stop", {})
+    if st.get("message"):
+        print("  " + first_lines(st["message"], 8).replace("\n", "\n  "))
+    return 1
+
+
+def cmd_back(args):
+    rep = request(args.session, {"cmd": "back", "count": args.count})
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    print("dropped %d sentence(s)" % rep["dropped"])
+    show_goal_summary(rep["goals"])
+    return 0
+
+
+def cmd_reload(args):
+    d = sdir(args.session)
+    meta = read_json(os.path.join(d, "meta.json"))
+    if not args.theorem and not args.line:
+        args.theorem, args.line = meta["target"]["theorem"], meta["target"]["line"]
+    t0 = time.time()
+    rep = request(args.session, load_req(args))
+    if "restart" in rep:
+        changed = rep["restart"]
+        stop_worker(args.session, meta, remove=False)
+        start_worker(args.session, meta["file"], meta["tree"], meta["flags"], argparse.Namespace(
+            theorem=args.theorem, line=args.line, memory_high=None, memory_max=None))
+        rep = request(args.session, load_req(args))
+        rep["restarted_for"] = changed
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    if rep.get("restarted_for"):
+        print("restarted: %d imported object(s) changed, e.g. %s" % (
+            len(rep["restarted_for"]), os.path.basename(rep["restarted_for"][0])))
+    print("reused %d sentences, ran %d, %.1fs" % (rep.get("reused", 0), len(rep.get("committed", [])), time.time() - t0))
+    if rep.get("dropped_scratch"):
+        print("dropped %d scratch sentence(s); replay them with rq step %s -f %s/dropped.v" % (
+            rep["dropped_scratch"], args.session, d))
+    return show_run(rep, os.path.basename(meta["file"]))
+
+
+def describe(sid):
+    d = os.path.join(RQ_DIR, sid)
+    meta = read_json(os.path.join(d, "meta.json"), {})
+    st = read_json(os.path.join(d, "status.json"), {})
+    pid = meta.get("pid")
+    state = st.get("state", "?") if alive(pid) else "dead"
+    cur, peak, note = memory(meta, pid) if state != "dead" else (None, None, "")
+    if state == "busy":
+        age = time.time() - st.get("job_started", time.time())
+    else:
+        age = time.time() - st.get("updated", time.time())
+    return d, meta, st, state, age, cur, peak, note
+
+
+def cmd_ls(args):
+    if not os.path.isdir(RQ_DIR):
+        return 0
+    rows = []
+    for sid in sorted(os.listdir(RQ_DIR), key=lambda s: int(s[1:]) if s[1:].isdigit() else 0):
+        d, meta, st, state, age, cur, peak, note = describe(sid)
+        rows.append({"id": sid, "state": state, "seconds": round(age), "current": cur, "peak": peak, "note": note,
+                     "file": meta.get("file"), "backend": meta.get("backend")})
+        if not args.json:
+            mem = "%s current  %s peak" % (gib(cur), gib(peak)) if cur else "-"
+            print("%-4s %-5s %5ds  %-30s %-12s %s" % (sid, state, age, mem, note,
+                                                    os.path.basename(meta.get("file", "?"))))
+    if args.json:
+        print(json.dumps(rows))
+    return 0
+
+
+def cmd_status(args):
+    sdir(args.session)
+    d, meta, st, state, age, cur, peak, note = describe(args.session)
+    if args.json:
+        print(json.dumps({"meta": meta, "status": st, "state": state, "current": cur, "peak": peak, "note": note}))
+        return 0
+    print("%s %s for %ds, job %s, %d sentences, backend %s%s" % (
+        args.session, state, age, st.get("job"), st.get("nodes", 0), meta.get("backend"),
+        " (%s)" % meta["unit"] if meta.get("unit") else ""))
+    print("file %s" % meta.get("file"))
+    if cur:
+        print("memory %s current, %s peak %s" % (gib(cur), gib(peak), note))
+    s = st.get("sentence")
+    if state == "busy" and s:
+        print("running for %.0fs: %s line %d: %s" % (time.time() - s["started"], s["origin"], s["line"],
+                                                    s["text"][:200].replace("\n", " ")))
+    if state == "dead":
+        print("the worker is gone; its committed sentences are in %s/transcript.v" % d)
+        return 1
+    return 0
+
+
+def cmd_log(args):
+    d = sdir(args.session)
+    if args.job:
+        print(json.dumps(read_json(os.path.join(d, "job-%d.json" % args.job)), indent=1))
+        return 0
+    name = {"transcript": "transcript.v", "dropped": "dropped.v"}.get(args.what, "log")
+    try:
+        lines = open(os.path.join(d, name)).read().split("\n")
+    except OSError:
+        return 0
+    print("\n".join(lines[-args.tail:] if args.tail else lines))
+    return 0
+
+
+def cmd_wait(args):
+    d = sdir(args.session)
+    job = args.job or int(read_json(os.path.join(d, "status.json"), {}).get("job", 0))
+    rep = wait_job(args.session, job)
+    if args.json:
+        print(json.dumps(rep))
+        return 0
+    return show_run(rep)
+
+
+def cmd_cancel(args):
+    d, meta, st, state, *_ = describe(args.session)
+    if state != "busy":
+        print("%s is %s; nothing to cancel" % (args.session, state))
+        return 0
+    os.kill(meta["pid"], signal.SIGINT)
+    print("sent SIGINT to job %s of %s" % (st.get("job"), args.session))
+    return 0
+
+
+def stop_worker(sid, meta, remove=True):
+    d = os.path.join(RQ_DIR, sid)
+    pid = meta.get("pid")
+    if meta.get("backend") == "systemd":
+        subprocess.run(["systemctl", "--user", "stop", meta["unit"]], capture_output=True)
+    elif alive(pid):
+        try:
+            os.killpg(pid, signal.SIGTERM)
+        except OSError:
+            pass
+        for _ in range(50):
+            if not alive(pid):
+                break
+            time.sleep(0.1)
+        if alive(pid):
+            os.killpg(pid, signal.SIGKILL)
+    if alive(pid):
+        try:
+            os.waitpid(pid, 0)
+        except ChildProcessError:
+            pass
+    if remove:
+        subprocess.run(["rm", "-rf", d])
+
+
+def cmd_stop(args):
+    for sid in (os.listdir(RQ_DIR) if args.session == "all" and os.path.isdir(RQ_DIR) else [args.session]):
+        meta = read_json(os.path.join(sdir(sid), "meta.json"), {})
+        stop_worker(sid, meta, remove=not args.keep)
+        print("stopped %s" % sid)
+    return 0
+
+
+def main():
+    p = argparse.ArgumentParser(prog="rq", description=__doc__, formatter_class=argparse.RawDescriptionHelpFormatter)
+    p.add_argument("--json", action="store_true", help="print the worker's reply as JSON")
+    sub = p.add_subparsers(dest="cmd", required=True)
+
+    def add(name, fn, session=True):
+        q = sub.add_parser(name)
+        q.set_defaults(fn=fn)
+        q.add_argument("--json", action="store_true", default=argparse.SUPPRESS)
+        if session:
+            q.add_argument("session")
+        return q
+
+    def target(q):
+        q.add_argument("--theorem", help="stop after the statement and Proof of this lemma")
+        q.add_argument("--line", type=int, help="stop at the last sentence ending on or before this line")
+
+    q = add("open", cmd_open, session=False)
+    q.add_argument("file")
+    q.add_argument("--tree", help="the proof tree (default nanofil/rocq/glibc; $PE_MODEL for theories)")
+    q.add_argument("--memory-high")
+    q.add_argument("--memory-max")
+    target(q)
+    for name, fn in (("step", cmd_step), ("try", cmd_try)):
+        q = add(name, fn)
+        q.add_argument("-f", action="append", help="read sentences from a file, - for stdin")
+        q.add_argument("-e", action="append", help="sentences given inline")
+        if name == "try":
+            q.add_argument("--commit", action="store_true", help="keep the first candidate that succeeds")
+        else:
+            q.add_argument("--no-wait", action="store_true", help="queue the job and return its number")
+    q = add("goals", cmd_goals)
+    q.add_argument("--conclusion", action="store_true", help="only the conclusion, without hypotheses or Iris context")
+    q.add_argument("--names", action="store_true", help="hypothesis names instead of their types")
+    q.add_argument("--first", action="store_true", help="only the first goal")
+    add("check", cmd_check)
+    q = add("back", cmd_back)
+    q.add_argument("count", type=int, nargs="?", default=1)
+    q = add("reload", cmd_reload)
+    target(q)
+    add("ls", cmd_ls, session=False)
+    add("status", cmd_status)
+    q = add("log", cmd_log)
+    q.add_argument("what", nargs="?", choices=["log", "transcript", "dropped"], default="log")
+    q.add_argument("--tail", type=int, default=0)
+    q.add_argument("--job", type=int)
+    q = add("wait", cmd_wait)
+    q.add_argument("job", type=int, nargs="?")
+    add("cancel", cmd_cancel)
+    q = add("stop", cmd_stop)
+    q.add_argument("--keep", action="store_true", help="keep the session's files")
+    args = p.parse_args()
+    if args.cmd == "goals" and args.conclusion:
+        args.first = True
+    sys.exit(args.fn(args))
+
+
+if __name__ == "__main__":
+    main()
