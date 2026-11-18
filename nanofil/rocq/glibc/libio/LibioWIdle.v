@@ -169,8 +169,8 @@ Definition wbuf_idle (w : wbuf) : iProp Σ :=
 
 (** Each wide call reads and writes some of these fields, and the
     close path frees the wide buffer, so the stream's owner must hold
-    them all. The predicate [wide_data] vb tw tm wd w owns the wide
-    data object wd of a stream whose wide buffer is w. Its eleven
+    them all. The predicate [wide_data_at] owns the wide data with a
+    given region and pointer list. Its eleven
     pointers point into that buffer as described above. Both conversion states stay zero, because the C
     locale's ASCII steps keep no state. The input descriptor runs the
     step tw and the output descriptor runs the step tm. The short
@@ -179,8 +179,8 @@ Definition wbuf_idle (w : wbuf) : iProp Σ :=
     also holds the capability slots of the states and of the short
     buffer, because `c: memset` and a copy into the short buffer
     rewrite them. *)
-Definition wide_data (vb : Z) (tw tm : ptr) (wd : Z) (w : wbuf) : iProp Σ :=
-  ∃ wreg ps ib ie ob oe ifl icnt ofl ocnt sb scs,
+Definition wide_data_at (vb : Z) (tw tm : ptr) (wd : Z) (w : wbuf) (wreg : region) (ps : list ptr) : iProp Σ :=
+  ∃ ib ie ob oe ifl icnt ofl ocnt sb scs,
     ⌜0 < wd /\ wd mod 8 = 0 /\ wd + 232 <= r_end wreg /\ r_end wreg <= 2 ^ 63 /\
      wbuf_ptrs_ok wd w ps /\ ifl = gconv_is_last /\
      (ofl = Z.lor gconv_is_last gconv_translit \/
@@ -191,6 +191,12 @@ Definition wide_data (vb : Z) (tw tm : ptr) (wd : Z) (w : wbuf) : iProp Σ :=
     iconv_cell wd woff_cd_in tw ib ie ifl icnt ∗ iconv_cell wd woff_cd_out tm ob oe ofl ocnt ∗
     bytes wd woff_shortbuf sb ∗ bytes wd (woff_shortbuf + 4) [0; 0; 0; 0] ∗ auxes wd woff_shortbuf scs ∗
     pcell wd woff_vtable (mkPtr (vb + vt_wfile) (Ro vb)) ∗ wbuf_idle w.
+
+(** Between calls, the stream keeps its wide data without exposing the
+    pointer list. A writer opens it to read the base and cursor that
+    determine how many characters it passes to conversion. *)
+Definition wide_data (vb : Z) (tw tm : ptr) (wd : Z) (w : wbuf) : iProp Σ :=
+  ∃ wreg ps, wide_data_at vb tw tm wd w wreg ps.
 
 (** ## A wide stream between calls
 
@@ -260,8 +266,8 @@ Proof using Type.
 Qed.
 
 (** A caller that holds a wide stream between two calls owns all of it,
-    as it would own a narrow one. The predicate [file_wide] ge vb self
-    fp fd owns the wide stream fp on the descriptor fd: its object, its
+    as it would own a narrow one. The predicate [file_wide_at] owns the
+    wide stream on the given descriptor: its object, its
     fields, its free lock, its narrow buffer and its wide data. The
     narrow buffer obeys the wide-mode rules of [wshort_ok]. It may still
     hold bytes written before the stream became wide, because
@@ -274,8 +280,8 @@ Qed.
     `c: to_mb`. A stream without a narrow buffer has no wide buffer
     either, because orientation leaves the wide buffer empty and the
     wide allocation gives the stream a narrow buffer first. *)
-Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
-  ∃ fb freg st nb wd w tw tm,
+Definition file_wide_at (ge : genv) (vb : Z) (self fp : ptr) (fd fb : Z) (freg : region)
+    (st : fstate) (nb : nbuf) (wd : Z) (w : wbuf) (tw tm : ptr) (data : iProp Σ) : iProp Σ :=
     ⌜fp = mkPtr fb (Obj fb) /\ fb mod 8 = 0 /\ 0 < fb /\
      fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\ wflags_ok st /\
      idle_ok fd (with_mode0 st) /\ fs_mode st = 1 /\
@@ -285,8 +291,14 @@ Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
      lookup (TAtom "glibc_wcsmbsload#to_wc") (ge_globals ge) = Some tw /\
      lookup (TAtom "glibc_wcsmbsload#to_mb") (ge_globals ge) = Some tm /\
      (nb = NbNone -> w = WbNone)⌝ ∗
-    live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗
-    wide_data vb tw tm wd w.
+    live fb freg ∗ file_fields fb st ∗ lock_inv self (fs_lock st) None ∗ buf_idle nb ∗ data.
+
+(** An idle wide stream hides the values of its fields. A caller that
+    has just read the wide cursors can use [file_wide_at] with
+    [wide_data_at] to keep their values until the call. *)
+Definition file_wide (ge : genv) (vb : Z) (self fp : ptr) (fd : Z) : iProp Σ :=
+  ∃ fb freg st nb wd w tw tm,
+    file_wide_at ge vb self fp fd fb freg st nb wd w tw tm (wide_data vb tw tm wd w).
 
 (** ## The wide jump table
 
