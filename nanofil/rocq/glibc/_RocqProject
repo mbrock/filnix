@@ -419,6 +419,7 @@ libio/LibioOverflowShortPut.v
 libio/LibioOverflowShortSend.v
 libio/LibioOverflowShortStart.v
 libio/LibioOverflowShortWrite.v
+libio/LibioXsputnShort.v
 libio/LibioXsputnShortReset.v
 libio/LibioXsputnShortWrite.v
 libio/LibioPutsInv.v
