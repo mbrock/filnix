@@ -33,7 +33,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale
   HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage
   HelloCloseStdoutCall.
-From Glibc Require HelloGlibcJoin.
+From Glibc Require HelloGlibcJoin HelloCloseStdoutWideCall HelloWDoWriteImage HelloWPrintfCall HelloWPrintfWrite.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -94,21 +94,18 @@ Local Abbreviation o := hello_image_objs.
 Local Abbreviation P tb := (program_of (final_world w0 tb) glibc_os_registry hge).
 Local Abbreviation P0 := (program_of (start_world w0 null false false) glibc_os_registry hge).
 
-(** The open contracts hold in every world that startup can end in. *)
+(** Main carries a private state for the thread that startup creates. *)
 Context (debt : forall tb, HelloCore (final_world w0 tb) hge o).
 
 Local Instance run_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry hge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi_start w0 k) hge.
 Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 
-(** Hello's main calls glibc functions, and some of those calls have
-    no proof yet. To prove main anyway, this definition lists what those
-    calls must provide for one thread and one environment. Glibc's
-    `c: fputs` and the formatter keep their contracts by
-    [hello_fputs_image] and [hello_vfprintf_image]. The private
-    state is both halves of getenv's objects, getopt's warning state and
-    the three components of [hello_priv_rest], which the objects that
-    startup leaves build. *)
+(** The library calls borrow the environment, getopt's warning state
+    and the private cells that startup supplies. The two halves of the
+    environment let a call read it while the rest of main keeps its
+    share. This definition specifies those resources, not the behavior
+    of any call. *)
 Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let envp := mkPtr env.1 (Obj env.1) in
   let half := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
@@ -147,6 +144,8 @@ Proof using Hi.
        HelloGlibcJoin.Libs.exit_lock o)%I).
   { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
     pose proof (Hc tb H0 H1) as Hpv.
+    assert (F1 : In 1 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd1).
+    assert (F2 : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
     assert (Hfputs := hello_fputs_image (final_world w0 tb) fr (hello_link_all fr Hfree)
       ltac:(destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (_ & -> & _); cbn; lia)
       ltac:(rewrite Herr; vm_compute; reflexivity)).
@@ -161,7 +160,12 @@ Proof using Hi.
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
       ltac:(unfold hello_tb_contracts in Hpv; clear Hc; subst fr; exact (hello_close_stdout_narrow (final_world w0 tb) tb Herr ltac:(rewrite Hfds; exact Hfd1)
          ltac:(rewrite Hfds; exact Hfd2) (Hvf := Hvf) _ _ _ Hpv))
+      ltac:(unfold hello_tb_contracts in Hpv; clear Hc; subst fr; exact (HelloCloseStdoutWideCall.hello_close_stdout_wide
+        (final_world w0 tb) tb Herr F1 F2 (Hvf := Hvf) (HelloWDoWriteImage.hello_close_write _ F1 Herr) _ _ _ Hpv))
       (hello_mbsrtowcs (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) Herr _ _ Hpv)
+      ltac:(unfold hello_tb_contracts in Hpv; clear Hc; subst fr; exact (HelloWPrintfCall.hello_wprintf_greet
+        (final_world w0 tb) R.free tb (hello_link_all R.free R.free_succeeds) Herr F1 F2 _ _ Hpv
+        (HelloWPrintfWrite.hello_wprintf_pending _ tb _ _ Hpv F1 F2 Herr)))
       (hello_prints_image (final_world w0 tb) fr _ Hy (hello_link_all fr Hfree) Herr
          ltac:(rewrite Hfds; exact Hfd1) ltac:(rewrite Hfds; exact Hfd2) (hello_os_layout_final w0 tb He ltac:(lia))
          Hvf Hfputs)). }
