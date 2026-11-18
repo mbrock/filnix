@@ -487,6 +487,7 @@ stdio/PrintfLoopNext.v
 stdio/PrintfLoopInt.v
 stdio/PrintfLoop.v
 stdio/PrintfFileInit.v
+stdio/PrintfFileOut.v
 stdio/PrintfFlushSwitch.v
 stdio/PrintfFlushStage.v
 stdio/PrintfFlushPublish.v
