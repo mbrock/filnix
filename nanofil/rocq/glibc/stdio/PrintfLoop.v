@@ -6,8 +6,7 @@
     the memory that its caller lent. The contract
     [printf_buffer_spec] of [PrintfSpec](PrintfSpec.v) states this.
     The module proves the contract for a format of plain text and the
-    conversions `%s`, `%c` and `%%`. The proof does not cover the
-    conversion `%d` yet.
+    conversions `%s`, `%c`, `%d` and `%%`.
 
     The function is a loop with one round for each conversion, and
     the proof stops at a few places of it. The module
@@ -28,7 +27,7 @@ From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXs
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
   FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState PrintfLoopStart PrintfLoopHead
-  PrintfLoopStr PrintfLoopChar PrintfLoopNext.
+  PrintfLoopStr PrintfLoopChar PrintfLoopNext PrintfLoopInt.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -54,16 +53,16 @@ Proof using Type*.
   apply blocks_close. iIntros "#IH". iEval (rewrite /loop_blocks /blocks_hold !big_sepL_app).
   iSplit; [iApply (start_rows_hold with "IH")|]. iSplit; [iApply (head_rows_hold with "IH")|].
   iSplit; [iApply (str_rows_hold with "IH")|]. iSplit; [iApply (char_rows_hold with "IH")|].
-  iApply (next_rows_hold with "IH").
+  iSplit; [iApply (next_rows_hold with "IH")|]. iApply (int_rows_hold with "IH").
 Qed.
 
 (** ## The contract *)
 
 (** A caller of `c: __printf_buffer` uses this lemma. It says that the
-    compiled function meets [printf_buffer_spec] for the formats
-    without `%d`, in every program that defines the function. *)
+    compiled function meets [printf_buffer_spec] in every program that
+    defines the function. *)
 Lemma printf_buffer_has_spec `{!Defines ge "__printf_buffer" glibc_printf_buffer} :
-  HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer") (printf_buffer_spec not_int k R).
+  HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer") (printf_buffer_spec k R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ blocks); [exact defines | reflexivity | reflexivity | | exact loop_table].
   intros x. eexists _, x. split; [reflexivity|]. split.

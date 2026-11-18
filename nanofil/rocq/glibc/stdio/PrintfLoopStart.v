@@ -54,13 +54,18 @@ Lemma start_rows_hold :
 Proof using Type*.
   iIntros "#IH". iSplit; [|done]. iModIntro.
   iIntros ([bb [fa fc] dq bytes ds ap skip xs rest eb] e from Φ) "_ %He H HK". row_simpl. c_env_open He.
-  iDestruct "H" as "((%Hp & %Hcov & %Hfit & %Hs0 & %Hs8 & %Herr & %Hge) & Hout & Hs & Hva & #Hargs & Herrno & #Hro)".
+  iDestruct "H" as "((%Hp & %Hfit & %Hs0 & %Hs8 & %Herr & %Hge) & Hout & Hs & Hva & #Hargs & Herrno & #Hro)".
   block_enter.
   alloc_keep fb Hfb. change (0 < fb /\ fb mod 16 = 0 /\ fb + 16 <= 2 ^ 48) in Hfb. destruct Hfb as (Hfb & Hf16 & Hfe).
   iDestruct (obj_zero_block with "Hobj") as "(Hfl & Hfx & Hfc)"; [compute; discriminate|].
   iAssert (live fb (mkRegion fb (fb + 16) Heap Live)) with "Hfl" as "Hfl".
   iDestruct (zero_cell_prefix fb 0 8 with "Hfx Hfc") as "(Hfc & _ & _)".
-  alloc_keep wb Hwb. iClear "Hobj".
+  alloc_keep wb Hwb. change (0 < wb /\ wb mod 16 = 0 /\ wb + 1008 <= 2 ^ 48) in Hwb. destruct Hwb as (Hwb & Hw16 & Hwe).
+  iDestruct (obj_zero_block with "Hobj") as "(Hwl & Hwx & _)"; [compute; discriminate|].
+  iAssert (work_own wb) with "[Hwl Hwx]" as "Hwork".
+  { change (Z.to_nat (req_extent (heap_req 4 1000))) with (980 + (20 + 8))%nat. rewrite !replicate_add !bytes_app.
+    iDestruct "Hwx" as "(_ & Hwx & _)". iExists (replicate 20 0). iFrame "Hwl". rewrite length_replicate. iFrame "Hwx".
+    iPureIntro. split_and!; [lia | Z.div_mod_to_equations; lia | lia | reflexivity]. }
   alloc_keep vb Hvb. change (0 < vb /\ vb mod 16 = 0 /\ vb + 32 <= 2 ^ 48) in Hvb. destruct Hvb as (Hvb & Hv16 & Hve).
   iDestruct (obj_zero_block with "Hobj") as "(Hvl & Hvx & Hvc)"; [compute; discriminate|].
   iAssert (live vb (mkRegion vb (vb + 32) Heap Live)) with "Hvl" as "Hvl".
@@ -84,7 +89,7 @@ Proof using Type*.
   step. branch_eqn E.
   2: { step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs Herrno". done. }
   clear E. step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs".
-  destruct (lit_run not_int bytes ds Hp Hcov) as (lit & tl & ds' & Hbytes & Hlit & Htl & Hptl & Hcov' & Hfit').
+  destruct (lit_run bytes ds Hp) as (lit & tl & ds' & Hbytes & Hlit & Htl & Hptl & Hfit').
   destruct Htl as [-> | [tl' ->]].
   { (* The format has no conversion, and the function returns. *)
     assert (Hx : (bytes ++ [0]) !! chr_idx 37 bytes = Some 0) by (rewrite -Hlit Hbytes; apply byte_after; reflexivity).
@@ -111,8 +116,8 @@ Proof using Type*.
   goto_block "IH" "HK" 1%nat
     with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds (mkPtr cb (Obj cb)) skip xs rest eb) fb wb lit (37 :: tl') ds'
             (Z.to_nat (skip / 8)) 0).
-  row_simpl. rewrite Hlit. iFrame "Hout Hs Hfl Hfc Hva Hargs Herrno Hro". iPureIntro.
-  split_and!; [reflexivity | exact Hbytes | exact Hcov' | exact (Hfit' _ _ Hfit) | lia | Z.div_mod_to_equations; lia |
+  row_simpl. rewrite Hlit. iFrame "Hout Hs Hfl Hfc Hva Hargs Hwork Herrno Hro". iPureIntro.
+  split_and!; [reflexivity | exact Hbytes | exact (Hfit' _ _ Hfit) | lia | Z.div_mod_to_equations; lia |
                lia | lia | lia | reflexivity | exact Hptl].
   (* The block loads three cells that hold null pointers, and a null pointer names no object. *)
   Unshelve. all: first [exact DfracDiscarded | exact (mkRegion 0 0 Heap Live)].

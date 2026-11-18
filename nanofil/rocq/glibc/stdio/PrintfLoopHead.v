@@ -76,7 +76,7 @@ Local Tactic Notation "letter_dispatch" constr(j) constr(t) integer(n) :=
     to the letter of the conversion. *)
 Local Ltac conv_enter :=
   row_simpl; rewrite length_app Nat2Z.inj_add; cbn [length Z.of_nat Pos.of_succ_nat];
-  iFrame "Hout Hs Hfl Hva Hargs Herrno Hro"; iSplit;
+  iFrame "Hout Hs Hfl Hva Hargs Hwork Herrno Hro"; iSplit;
   [iPureIntro; split_and!;
      first [assumption | lia | discriminate | (rewrite -app_assoc; assumption) | (eexists; split; [reflexivity | assumption])]
   | unfold ptr_add; cbn [ptr_addr ptr_cap];
@@ -99,10 +99,11 @@ Lemma head_body_holds :
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hcov & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hhd & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Herrno & #Hro)".
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hhd & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
   destruct tl as [|c tl]; [discriminate|]. injection Hhd as ->.
   destruct (conv_start tl ds Hp) as (x & tail & d & ds1 & -> & Hd & -> & Hptail).
   iDestruct (word_string_range with "Hs") as %Hfr. cbn [ptr_addr] in Hfr.
+  iDestruct (work_own_range with "Hwork") as %Hwr.
   assert (Hlen : length bytes = (length pre + S (S (length tail)))%nat) by (rewrite Hbytes length_app; reflexivity).
   assert (Hx : (bytes ++ [0]) !! S (length pre) = Some x).
   { rewrite Hbytes -app_assoc lookup_app_r; [|lia]. replace (S (length pre) - length pre)%nat with 1%nat by lia. reflexivity. }
@@ -119,7 +120,11 @@ Proof using Type*.
       with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb (pre ++ [37]) (99 :: tail)
               (FmtChar :: ds1) i n).
     conv_enter.
-  - apply List.Forall_cons_iff in Hcov as [[] _].
+  - read_byte "Hs" (S (length pre)) 100 Hx. letter_dispatch 68%nat 60%nat 6.
+    goto_block "IH" "HK" 13%nat
+      with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb (pre ++ [37]) (100 :: tail)
+              (FmtInt :: ds1) i n).
+    conv_enter.
   - read_byte "Hs" (S (length pre)) 37 Hx. letter_dispatch 5%nat 56%nat 5.
     goto_block "IH" "HK" 7%nat
       with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb (pre ++ [37]) (37 :: tail)

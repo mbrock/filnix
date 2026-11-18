@@ -391,19 +391,16 @@ Record pb_in : Type := PbIn {
     text to the buffer. The contract asks of the format and the
     arguments what [vfprintf_spec] asks, and it has a usable buffer in
     the place of the stream.
-    Its parameter cover says which directives a proof handles, so that
-    a proof of some conversions states exactly what it covers. The
-    function returns nothing. A failure shows only in the buffer's
+    The function returns nothing. A failure shows only in the buffer's
     mode, which the invariant hides.
     The function saves errno when it starts, and it reads errno
     through the global `c: __libc_errno`. So the contract also asks
     that this global is the errno cell of the thread. *)
-Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z * region * Z * Z -> iProp Σ) :
-    fspec Σ :=
+Definition printf_buffer_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec pb_in
     (fun x => [WPtr (mkPtr (pb_buf x) (Obj (pb_buf x))); WPtr (pb_fmt x); WPtr (pb_ap x); WInt 0])
     (fun x =>
-       ⌜parse_narrow (pb_bytes x) = Some (pb_ds x) /\ Forall cover (pb_ds x) /\
+       ⌜parse_narrow (pb_bytes x) = Some (pb_ds x) /\
         narrow_fits (pb_ds x) (skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x)) (pb_rest x) /\
         0 <= pb_skip x /\ pb_skip x mod 8 = 0 /\
         ow_errno w0 = Some (mkPtr (pb_eb x) (Obj (pb_eb x))) /\
@@ -413,13 +410,6 @@ Definition printf_buffer_spec (cover : narrow_directive -> Prop) (k : Z) (R : Z 
        ([∗ list] a ∈ skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x), str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I
     (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ errno_any (pb_eb x))%I.
-
-(** The formatter prints a decimal number for the conversion `%d`,
-    and the proof of its loop does not follow that code yet. The
-    predicate [not_int] holds for every other directive, and the proof
-    of the loop covers a format whose directives all satisfy it. *)
-Definition not_int (d : narrow_directive) : Prop :=
-  match d with FmtInt => False | _ => True end.
 
 (** ## The file-backed buffer *)
 

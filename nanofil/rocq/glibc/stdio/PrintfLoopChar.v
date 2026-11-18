@@ -47,8 +47,7 @@ Proof using Type*.
   iIntros "#IH". iModIntro.
   iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e from Φ) "_ %He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hcov & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Herrno & #Hro)".
-  apply List.Forall_cons_iff in Hcov as [_ Hcov1].
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
   destruct (char_fits _ _ _ Hfit) as (x & args & Hargs_eq & Hx & Hfit1).
   destruct (skipn_cons _ _ _ _ Hargs_eq) as (Hxi & Hskip1 & Hilt).
   iEval (rewrite Hargs_eq big_sepL_cons) in "Hargs". iDestruct "Hargs" as "[_ Hargs1]". subst args.
@@ -65,7 +64,7 @@ Proof using Type*.
   iDestruct "Hpost" as "(-> & Hout)". block_resume. branch.
   goto_block "IH" "HK" 10%nat
     with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 (mkPtr cb (Obj cb)) skip xs rest eb) fb wb pre tl ds1 (S i) n).
-  row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Herrno Hro". iPureIntro.
+  row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Hwork Herrno Hro". iPureIntro.
   split_and!; first [reflexivity | assumption | lia].
 Qed.
 
@@ -79,8 +78,8 @@ Proof using Type*.
   iIntros "#IH". iModIntro.
   iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e from Φ) "_ %He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hcov & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hown)".
-  apply List.Forall_cons_iff in Hcov as [_ Hcov1]. apply percent_fits in Hfit.
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hown)".
+  apply percent_fits in Hfit.
   block_enter.
   call_callee with (bb, 37) giving "Hout"; [iFrame "Hout"; iPureIntro; lia|].
   iDestruct "Hpost" as "(-> & Hout)". block_resume. step.

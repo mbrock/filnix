@@ -478,6 +478,7 @@ stdio/PrintfLoopHead.v
 stdio/PrintfLoopStr.v
 stdio/PrintfLoopChar.v
 stdio/PrintfLoopNext.v
+stdio/PrintfLoopInt.v
 stdio/PrintfLoop.v
 stdio/PrintfFileInit.v
 stdio/FxprintfJoin.v

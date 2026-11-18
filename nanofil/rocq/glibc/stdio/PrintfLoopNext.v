@@ -4,7 +4,7 @@
     another round, or it returns when the format has ended. This
     module proves the rows of that block in the table of
     [PrintfLoopState](PrintfLoopState.v). The function reaches the
-    block in four ways, and the code after the way in is the same for
+    block in five ways, and the code after the way in is the same for
     all of them. So the module proves that code once and uses the proof
     for each row. *)
 
@@ -45,7 +45,7 @@ Lemma next_body_holds :
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hcov & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Herrno & #Hro)".
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
   destruct tl as [|c tl]; [done|]. cbn [tail] in Hp. clear Hne.
   iDestruct (word_string_range with "Hs") as %Hfr. cbn [ptr_addr] in Hfr.
   assert (Hlen : length bytes = (length pre + S (length tl))%nat) by (rewrite Hbytes length_app; reflexivity).
@@ -65,7 +65,7 @@ Proof using Type*.
     [iFrame "Hout Hsuf"; iPureIntro; unwrap2; lia|].
   iDestruct "Hpost" as "(-> & Hout & Hsuf)". block_resume.
   check "Hfl". load_fmt "Hfl" "Hfc" "Hsuf".
-  destruct (lit_run not_int tl ds Hp Hcov) as (lit & tl2 & ds' & Htl & Hlit & Htl2 & Hptl & Hcov' & Hfit').
+  destruct (lit_run tl ds Hp) as (lit & tl2 & ds' & Htl & Hlit & Htl2 & Hptl & Hfit').
   destruct Htl2 as [-> | [tl' ->]].
   { (* The format ends here, and the function returns. *)
     assert (Hx : (tl ++ [0]) !! chr_idx 37 tl = Some 0) by (rewrite -Hlit Htl; apply byte_after; reflexivity).
@@ -81,9 +81,9 @@ Proof using Type*.
   goto_block "IH" "HK" 2%nat
     with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb (pre ++ c :: lit) (37 :: tl') ds' i
             ((n + 1) mod 2 ^ 32)).
-  row_simpl. iFrame "Hout Hs Hfl Hva Hargs Herrno Hro". iSplit; [iPureIntro|].
+  row_simpl. iFrame "Hout Hs Hfl Hva Hargs Hwork Herrno Hro". iSplit; [iPureIntro|].
   { pose proof (Z.mod_pos_bound (n + 1) (2 ^ 32) ltac:(lia)).
-    split_and!; [rewrite Hbytes Htl -app_assoc; reflexivity | exact Hcov' | exact (Hfit' _ _ Hfit) | lia..|
+    split_and!; [rewrite Hbytes Htl -app_assoc; reflexivity | exact (Hfit' _ _ Hfit) | lia..|
                  reflexivity | exact Hptl]. }
   rewrite length_app. cbn [length]. unfold ptr_add; cbn [ptr_addr ptr_cap].
   replace (fa + Z.of_nat (length pre + S (length lit))) with (fa + Z.of_nat (length pre) + 1 + Z.of_nat (chr_idx 37 tl))      by lia.
@@ -97,7 +97,7 @@ Lemma next_rows_hold :
   ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (next_rows k R).
 Proof using Type*.
   iIntros "#IH". iPoseProof (next_body_holds with "IH") as "#Hnext".
-  repeat iSplit; [| | | | done]; iModIntro; iIntros (y e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
+  repeat iSplit; [| | | | | done]; iModIntro; iIntros (y e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;
     block_enter_from Hfrom;
     (iApply ("Hnext" $! y with "[] [H] HK"); [iPureIntro; row_simpl; c_env_close | row_simpl; iExact "H"]).
 Qed.

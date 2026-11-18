@@ -27,20 +27,23 @@
     proof of the code that follows it, into a proof about the whole
     function.
 
-    The proof of each place is in a module of its own, so that a
+    Each place has a module of its own for its proof, so that a
     change to one conversion checks quickly. The module
     [PrintfLoopHead](PrintfLoopHead.v) reads the letter of a conversion
-    and jumps to the conversion's code. The modules
-    [PrintfLoopStr](PrintfLoopStr.v) and
-    [PrintfLoopChar](PrintfLoopChar.v) follow the conversions, and
+    and jumps to the conversion's code. The module
     [PrintfLoopNext](PrintfLoopNext.v) follows the code after a
     conversion.
 
-    The loop calls six other functions. Three of them append to the
-    buffer. One tests whether the buffer has failed, one finds the
-    next percent sign, and one is `c: strlen`. The proof assumes a
-    contract for each of the six, which says what the function needs
-    and what it gives back. *)
+    Three modules follow the conversions. The first one,
+    [PrintfLoopStr](PrintfLoopStr.v), follows a `%s`. The second one,
+    [PrintfLoopChar](PrintfLoopChar.v), follows a `%c` and a `%%`. The
+    third one, [PrintfLoopInt](PrintfLoopInt.v), follows a `%d`.
+
+    The loop calls seven other functions. Three of them append to the
+    buffer. One tests whether the buffer has failed, and one finds the
+    next percent sign. One measures a string, and one turns a number
+    into digits. The proof assumes a contract for each of the seven,
+    which says what the function needs and what it gives back. *)
 
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -53,7 +56,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
   FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
-  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound.
+  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec ItoaWordSpec PrintfCopy FormatterNames VaArgRound.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -78,6 +81,9 @@ Definition loop_keys : list string :=
   ["&f"; "buf"; "&work_buffer"; "ap"; "v55"; "grouping"; "thousands_sep"; "readonly_format"; "nspecs_done";
    "left"; "width"; "len"; "string"; "&null"].
 Definition conv_keys : list string := loop_keys ++ ["is_long"; "prec"; "spec"].
+Definition int_keys : list string :=
+  conv_keys ++ ["alt"; "space"; "showsign"; "group"; "is_short"; "is_char"; "use_outdigits"; "pad"; "workend"; "base";
+                "is_negative"; "pr.21"; "signed_number"; "number_length"; "v1332"; "v1418"; "v1429"; "prec_inc"; "v1456"].
 Definition keep_keys (keys : list string) (sig : cut_sig) : cut_sig :=
   filter (fun '(_, (key, _)) => existsb (String.eqb key) keys) sig.
 Notation keep := (keep_keys loop_keys).
@@ -106,6 +112,19 @@ Definition str_sig : cut_sig := Eval vm_compute in keep_keys conv_keys (cut_at S
 Definition char_sig : cut_sig := Eval vm_compute in keep_keys conv_keys (cut_at S.temp_keys S.live_in "L1796").
 Definition percent_sig : cut_sig := Eval vm_compute in keep (cut_at S.temp_keys S.live_in "L1151").
 
+(** A `%d` runs more code than the other conversions, so the proof
+    stops at five blocks of it. The first block reads the number, and
+    the second block turns the number into digits. The third block
+    works out the padding. The fourth block pads and prints the sign,
+    and the fifth block writes the digits. The labels of the five
+    blocks are `L1155`, `L1290`, `L1442`, `L1498` and `L1508`, and the
+    function reaches each of them in one way. *)
+Definition int_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S.temp_keys S.live_in "L1155").
+Definition number_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S.temp_keys S.live_in "L1290").
+Definition digits_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S.temp_keys S.live_in "L1442").
+Definition pad_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S.temp_keys S.live_in "L1498").
+Definition sign_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S.temp_keys S.live_in "L1508").
+
 (** The block `L1831` prints the string of a `%s`. The function comes
     from the block `L1871` with the argument's string and its length,
     and from the block `L1836` with the constant `(null)`. *)
@@ -118,10 +137,11 @@ Definition print_body : cut_sig :=
 
 (** Every conversion ends at the block `L1150`, which counts the
     conversion and copies the plain text after it. The function
-    reaches this block in four ways. Two of them come from a `%s`: the
+    reaches this block in five ways. Two of them come from a `%s`: the
     block `L1887` when the string needed no padding, and the block
-    `L1901` when it did. The block `L1807` comes from a `%c`, and the
-    block `L1151` comes from a `%%`. *)
+    `L1901` when it did. The block `L1807` comes from a `%c`, the
+    block `L1151` comes from a `%%`, and the block `L1558` comes from
+    a `%d`. *)
 Definition next_from_write : cut_sig :=
   Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1887").
 Definition next_from_pad : cut_sig :=
@@ -130,6 +150,8 @@ Definition next_from_char : cut_sig :=
   Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1807").
 Definition next_from_percent : cut_sig :=
   Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1151").
+Definition next_from_digits : cut_sig :=
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1558").
 Definition next_body : cut_sig :=
   Eval vm_compute in keep (cut_body S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1887").
 
@@ -145,22 +167,21 @@ Definition next_body : cut_sig :=
     copies the bytes before that sign as plain text. Those bytes are
     the first directives of the format, and none of them takes an
     argument. So the format splits into that plain text a and a rest b.
-    The rest is empty or starts with a percent sign. It parses to
-    directives that the proof still covers, and the arguments that fit
-    the whole format fit the rest. *)
-Lemma lit_run (cover : narrow_directive -> Prop) tl ds :
-  parse_narrow tl = Some ds -> Forall cover ds ->
+    The rest is empty or starts with a percent sign. It parses, and
+    the arguments that fit the whole format fit the rest. *)
+Lemma lit_run tl ds :
+  parse_narrow tl = Some ds ->
   exists a b ds', tl = a ++ b /\ length a = chr_idx 37 tl /\ (b = [] \/ exists b', b = 37 :: b') /\
-    parse_narrow b = Some ds' /\ Forall cover ds' /\
+    parse_narrow b = Some ds' /\
     (forall xs rest, narrow_fits ds xs rest -> narrow_fits ds' xs rest).
 Proof.
-  revert ds. induction tl as [|c r IH]; intros ds Hp Hc.
+  revert ds. induction tl as [|c r IH]; intros ds Hp.
   { exists [], [], ds. cbn in *. split_and!; auto. }
   cbn [parse_narrow chr_idx] in *. destruct (c =? 37) eqn:E.
   { apply Z.eqb_eq in E as ->. exists [], (37 :: r), ds. split_and!; eauto. }
   destruct (literal_byte c) eqn:Hl; [|discriminate]. destruct (parse_narrow r) as [ds0|] eqn:Hr; [|discriminate].
-  cbn in Hp. injection Hp as <-. apply List.Forall_cons_iff in Hc as [_ Hc].
-  destruct (IH ds0 eq_refl Hc) as (a & b & ds' & -> & Hlen & Hb & Hpb & Hcb & Hfit).
+  cbn in Hp. injection Hp as <-.
+  destruct (IH ds0 eq_refl) as (a & b & ds' & -> & Hlen & Hb & Hpb & Hfit).
   exists (c :: a), b, ds'. split_and!; auto; [cbn [length]; congruence|].
   intros xs rest (used & -> & Hargs). apply Hfit. exists used. split; [reflexivity|].
   inversion Hargs as [|? ? ? ? Hrest | |? ? ? ? Hd]; subst; [exact Hrest | inversion Hd].
@@ -209,6 +230,16 @@ Lemma char_fits ds xs rest :
 Proof.
   intros (used & -> & Hargs). inversion Hargs as [| | |? ? ? used' Hd Hrest]; subst.
   inversion Hd as [|? Hn|]; subst. eexists _, _. split; [reflexivity|]. split; [exact Hn|]. exists used'. auto.
+Qed.
+
+(** The arguments that fit a format which starts with `%d` start with
+    an integer of 32 bits as well. *)
+Lemma int_fits ds xs rest :
+  narrow_fits (FmtInt :: ds) xs rest ->
+  exists n xs', xs = WInt n :: xs' /\ 0 <= n < 2 ^ 32 /\ narrow_fits ds xs' rest.
+Proof.
+  intros (used & -> & Hargs). inversion Hargs as [| | |? ? ? used' Hd Hrest]; subst.
+  inversion Hd as [| |? Hn]; subst. eexists _, _. split; [reflexivity|]. split; [exact Hn|]. exists used'. auto.
 Qed.
 
 (** The conversion `%%` takes no argument, so the arguments that fit a
@@ -339,10 +370,10 @@ Proof using Type.
     repeat destruct H as [H|H]; try discriminate H; try (injection H; lia); exact H|]). apply base.NoDup_nil_2.
 Qed.
 
-(** The predicate [va_cur] gives the parts that the rule for reading a
-    pointer argument asks for. The next argument has the index i and
-    is the pointer q. The parts come back with the cursor at the
-    argument after it. *)
+(** The rule for reading a pointer argument asks for a few parts of
+    memory. The predicate [va_cur] gives those parts when the next
+    argument has the index i and is the pointer q. The parts come back
+    with the cursor at the argument after it. *)
 Lemma va_cur_ptr ap (i : nat) xs q :
   xs !! i = Some (WPtr q) ->
   va_cur ap i xs ⊢ ∃ cb sb cur,
@@ -484,15 +515,35 @@ Ltac read_byte Hs i x H :=
 
 (** The loop appends through three functions of the buffer. It asks
     the buffer whether it has failed, it searches the format for the
-    next percent sign, and it measures a string argument. Every part
-    of the proof assumes the same contracts for these six functions. *)
+    next percent sign, and it measures a string argument. It turns the
+    number of a `%d` into digits with `c: _itoa_word`. Every part of
+    the proof assumes the same contracts for these seven functions. *)
 Notation loop_callees k R :=
   [(TAtom "__printf_buffer_write", write_spec k R);
    (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed", has_failed_spec k R);
    (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline", find_spec_spec);
    (TAtom "__GI_strlen", strlen_spec);
    (TAtom "glibc_vfprintf_internal#__printf_buffer_pad", pad_spec k R);
-   (TAtom "glibc_vfprintf_internal#__printf_buffer_putc", putc_spec k R)].
+   (TAtom "glibc_vfprintf_internal#__printf_buffer_putc", putc_spec k R);
+   (TAtom "__printf_buffer_write", write_bytes_spec k R);
+   (TAtom "_itoa_word", itoa_word_spec)].
+
+(** The loop calls `c: __printf_buffer_write` under two contracts.
+    One contract is for the bytes of a string, and the other is for a
+    run of bytes. The tactic [call_callee] uses the first contract
+    that the list has for a function. The tactic [call_spec] makes the
+    same call with a contract s that the proof names. *)
+Tactic Notation "call_spec" constr(s) "with" uconstr(x) "giving" constr(Hs) :=
+  lazymatch goal with
+  | P : @GlibcProgram ?hlc ?Σ |- context [mkFrame _ _ _ None (Exec _ (Call _ (Global ?n) _ :: _) _)] =>
+      let H := constr:(ltac:(eapply callee_spec; [typeclasses eauto | callee_member]) :
+        HasSpec (@program_registry hlc Σ P) (os_wi (@program_world hlc Σ P)) (@program_ge hlc Σ P) n s) in
+      iApply (wp_call_callee n s (HasSpec0 := H) x);
+        [vxu
+        | iSplitL Hs;
+            [cbn [fs_pre]
+            | cbn [fs_post]; let v := fresh "v" in iIntros (v) "Hpost"]]
+  end.
 
 Section table.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -530,31 +581,48 @@ Definition pl_vals (y : pl_in) : list (string * word) :=
    ("readonly_format", WInt 0);
    ("nspecs_done", WInt (pl_n y))].
 
-(** The predicate [pl_ok] collects the facts that hold at every place
-    inside the loop. The bytes before `c: f` and the bytes from it on
-    make up the format. No directive left to run is a `%d`, and the
-    arguments that are left fit those directives. The cell of `c: f`
-    is an 8-aligned heap object, and the count of conversions fits in
-    32 bits. *)
+(** Some facts hold at every place inside the loop. The bytes before
+    `c: f` and the bytes from it on make up the format. The arguments
+    that are left fit the directives that are left to run. The cell of
+    `c: f` is an 8-aligned heap object, and the count of conversions
+    fits in 32 bits. The predicate [pl_ok] collects these facts. *)
 Definition pl_ok (y : pl_in) : Prop :=
-  pb_bytes (pl_x y) = pl_pre y ++ pl_tl y /\ Forall not_int (pl_ds y) /\
+  pb_bytes (pl_x y) = pl_pre y ++ pl_tl y /\
   narrow_fits (pl_ds y) (skipn (pl_i y) (pb_xs (pl_x y))) (pb_rest (pl_x y)) /\
   0 < pl_fb y /\ pl_fb y mod 8 = 0 /\ pl_fb y + 16 <= 2 ^ 48 /\ 0 <= pl_n y < 2 ^ 32.
+
+(** The function keeps a work buffer of 1000 bytes among its local
+    variables, and the conversion `%d` writes the digits of its number
+    at the end of that buffer. A number has at most 20 digits. So the
+    predicate [work_own] owns the last 20 bytes of the buffer at wb
+    and the lifetime of its object, which is 1008 bytes long. *)
+Definition work_own (wb : Z) : iProp Σ :=
+  ∃ old, ⌜0 < wb /\ wb mod 8 = 0 /\ wb + 1008 <= 2 ^ 48 /\ length old = 20%nat⌝ ∗
+    live wb (mkRegion wb (wb + 1008) Heap Live) ∗ bytes wb 980 old.
+
+(** The work buffer lies in the address space of a Fil-C program. *)
+Lemma work_own_range wb : work_own wb ⊢ ⌜0 < wb /\ wb + 1008 <= 2 ^ 48⌝.
+Proof using Type. iIntros "(%old & (%H0 & _ & %He & _) & _)". done. Qed.
 
 (** Inside the loop the function owns everything that its caller
     lent: the buffer, the format, the copy of the arguments and errno.
     It also owns the cell of the variable `c: f`, and that cell holds
     a pointer to the second part of the format. The argument cursor
     stands at the next argument that a conversion will read, or a few
-    bytes before it. *)
-Definition pl_own (y : pl_in) : iProp Σ :=
+    bytes before it. The parameter W is what the function owns of its
+    work buffer, which changes while a `%d` runs. *)
+Definition pl_own_with (W : iProp Σ) (y : pl_in) : iProp Σ :=
   printf_out k R (pb_buf (pl_x y)) ∗
   word_string (pb_dq (pl_x y)) (pb_fmt (pl_x y)) (pb_bytes (pl_x y)) ∗
   live (pl_fb y) (mkRegion (pl_fb y) (pl_fb y + 16) Heap Live) ∗
   pcell (pl_fb y) 0 (ptr_add (pb_fmt (pl_x y)) (Z.of_nat (length (pl_pre y)))) ∗
   va_cur (pb_ap (pl_x y)) (pl_i y) (pb_xs (pl_x y)) ∗
   ([∗ list] a ∈ skipn (pl_i y) (pb_xs (pl_x y)), str_arg a) ∗
-  errno_any (pb_eb (pl_x y)) ∗ printf_ro.
+  W ∗ errno_any (pb_eb (pl_x y)) ∗ printf_ro.
+
+(** Outside a `%d` the function owns the last 20 bytes of the work
+    buffer with any contents. *)
+Definition pl_own (y : pl_in) : iProp Σ := pl_own_with (work_own (pl_wb y)) y.
 
 (** A round starts with `c: f` at a percent sign, and the format from
     there on parses to the directives left to run. *)
@@ -575,13 +643,18 @@ Definition head_entry_pre (y : pl_in) : iProp Σ := (⌜pl_n y = 0⌝ ∗ head_p
 Definition conv_pre (d : narrow_directive) (y : pl_in) : iProp Σ :=
   (⌜pl_ok y /\ pl_tl y <> [] /\ exists ds, pl_ds y = d :: ds /\ parse_narrow (tail (pl_tl y)) = Some ds⌝ ∗ pl_own y)%I.
 
-(** That block has the letter x of the conversion in a temporary. The
-    conversion has no flag, no width and no precision, and the
-    compiled code holds the constant −1 for a precision that the
-    format does not give. *)
+(** A conversion without a flag, a width or a precision starts with
+    fixed values in its variables. The letter x of the conversion is
+    in a temporary. The compiled code holds the constant −1 for the
+    precision, because the format gives none. The padding character is
+    a space. The variable `c: workend` points to the end of the work
+    buffer. *)
 Definition conv_vals (x : Z) (y : pl_in) : list (string * word) :=
   pl_vals y ++
-  [("left", WInt 0); ("width", WInt 0); ("is_long", WInt 0); ("prec", WInt 4294967295); ("spec", WInt x)].
+  [("left", WInt 0); ("width", WInt 0); ("is_long", WInt 0); ("prec", WInt 4294967295); ("spec", WInt x);
+   ("alt", WInt 0); ("space", WInt 0); ("showsign", WInt 0); ("group", WInt 0); ("is_short", WInt 0);
+   ("is_char", WInt 0); ("use_outdigits", WInt 0); ("pad", WInt 32);
+   ("workend", WPtr (mkPtr (pl_wb y + 1000) (Obj (pl_wb y))))].
 
 (** A conversion ends with `c: f` at its last byte, and the format
     after that byte parses to the directives left to run. *)
@@ -608,9 +681,53 @@ Definition print_pre (z : pp_in) : iProp Σ :=
     the row for that way in asks that the text is this constant. *)
 Definition print_null_pre (z : pp_in) : iProp Σ := (⌜pp_text z = null_text_bytes⌝ ∗ print_pre z)%I.
 
+(** The record [pi_in] is the logical input of a place inside the
+    code of a `%d`. It adds to the input of the loop the number u that
+    the conversion prints, without its sign. The other fields are the
+    values of variables that the proof follows without knowing them:
+    whether the number is negative, whether it is not zero and the
+    width that is left to pad. The last field is the count of digits
+    that the code writes. *)
+Record pi_in : Type := PiIn {
+  pi_y : pl_in; pi_u : Z; pi_neg : Z; pi_nz : Z; pi_w : Z; pi_cnt : Z
+}.
+
+(** After the digits are written, the variable `c: string` points to
+    the first digit in the work buffer. *)
+Definition pi_vals (z : pi_in) : list (string * word) :=
+  pl_vals (pi_y z) ++
+  [("workend", WPtr (mkPtr (pl_wb (pi_y z) + 1000) (Obj (pl_wb (pi_y z))))); ("spec", WInt 100); ("base", WInt 10);
+   ("alt", WInt 0); ("space", WInt 0); ("showsign", WInt 0); ("group", WInt 0); ("use_outdigits", WInt 0);
+   ("pad", WInt 32); ("prec", WInt 1); ("left", WInt 0); ("pr.21", WInt (pi_u z)); ("signed_number", WInt (pi_u z));
+   ("is_negative", WInt (pi_neg z));
+   ("string", WPtr (mkPtr (pl_wb (pi_y z) + 1000 - pi_cnt z) (Obj (pl_wb (pi_y z)))));
+   ("number_length", WInt (pi_cnt z)); ("v1429", WInt (pi_cnt z)); ("v1332", WInt 0); ("v1418", WInt 0);
+   ("prec_inc", WInt 0); ("v1456", WInt (pi_nz z)); ("width", WInt (pi_w z))].
+
+(** The block `L1290` runs after the conversion has read its argument,
+    so the loop is in the state that the end of a conversion needs.
+    The number is a 64-bit integer. *)
+Definition number_pre (z : pi_in) : iProp Σ := (⌜0 <= pi_u z < 2 ^ 64⌝ ∗ next_pre (pi_y z))%I.
+
+(** After the block `L1290` the last bytes of the work buffer hold the
+    digits of the number u, and the bytes before them are as they
+    were. *)
+Definition work_digits (wb u : Z) : iProp Σ :=
+  ∃ old, ⌜0 < wb /\ wb mod 8 = 0 /\ wb + 1008 <= 2 ^ 48 /\ length old = 20%nat⌝ ∗
+    live wb (mkRegion wb (wb + 1008) Heap Live) ∗
+    bytes wb 980 (take (20 - length (dec_digits u)) old ++ dec_digits u).
+
+(** The later blocks of a `%d` run in the same state of the loop, with
+    the digits in the work buffer. The count of bytes that the code
+    will write is the number of the digits. *)
+Definition digits_pre (z : pi_in) : iProp Σ :=
+  (⌜pl_ok (pi_y z) /\ pl_tl (pi_y z) <> [] /\ parse_narrow (tail (pl_tl (pi_y z))) = Some (pl_ds (pi_y z)) /\
+    pi_cnt z = Z.of_nat (length (dec_digits (pi_u z)))⌝ ∗
+   pl_own_with (work_digits (pl_wb (pi_y z)) (pi_u z)) (pi_y z))%I.
+
 (** The function returns nothing and gives back what its caller
     lent. *)
-Definition pl_post (y : pl_in) : outcome -> iProp Σ := fs_post (printf_buffer_spec not_int k R) (pl_x y).
+Definition pl_post (y : pl_in) : outcome -> iProp Σ := fs_post (printf_buffer_spec k R) (pl_x y).
 
 (** At the entry the temporaries hold the parameters. *)
 Definition entry_vals (x : pb_in) : list (string * word) :=
@@ -621,11 +738,11 @@ Definition entry_vals (x : pb_in) : list (string * word) :=
     proof stops. A place that the function reaches in one way has one
     row. A place that the function reaches in several ways has one row
     for each way, because the compiled code copies different values on
-    each way in. The rows are in five groups, and a module of its own
+    each way in. The rows are in six groups, and a module of its own
     proves each group. *)
 Definition start_rows : list bspec :=
-  [BSpec "start" None entry_sig pb_in entry_vals (fs_pre (printf_buffer_spec not_int k R))
-     (fs_post (printf_buffer_spec not_int k R))].
+  [BSpec "start" None entry_sig pb_in entry_vals (fs_pre (printf_buffer_spec k R))
+     (fs_post (printf_buffer_spec k R))].
 Definition head_rows : list bspec :=
   [BSpec "L79" (Some "L67") head_from_entry pl_in pl_vals head_entry_pre pl_post;
    BSpec "L79" (Some "L2128") head_from_round pl_in pl_vals head_pre pl_post].
@@ -640,8 +757,16 @@ Definition next_rows : list bspec :=
   [BSpec "L1150" (Some "L1887") next_from_write pl_in pl_vals next_pre pl_post;
    BSpec "L1150" (Some "L1901") next_from_pad pl_in pl_vals next_pre pl_post;
    BSpec "L1150" (Some "L1807") next_from_char pl_in pl_vals next_pre pl_post;
-   BSpec "L1150" (Some "L1151") next_from_percent pl_in pl_vals next_pre pl_post].
-Definition loop_blocks : list bspec := start_rows ++ head_rows ++ str_rows ++ char_rows ++ next_rows.
+   BSpec "L1150" (Some "L1151") next_from_percent pl_in pl_vals next_pre pl_post;
+   BSpec "L1150" (Some "L1558") next_from_digits pl_in pl_vals next_pre pl_post].
+Definition int_rows : list bspec :=
+  [BSpec "L1155" None int_sig pl_in (conv_vals 100) (conv_pre FmtInt) pl_post;
+   BSpec "L1290" None number_sig pi_in pi_vals number_pre (fun z => pl_post (pi_y z));
+   BSpec "L1442" None digits_sig pi_in pi_vals digits_pre (fun z => pl_post (pi_y z));
+   BSpec "L1498" None pad_sig pi_in pi_vals digits_pre (fun z => pl_post (pi_y z));
+   BSpec "L1508" None sign_sig pi_in pi_vals digits_pre (fun z => pl_post (pi_y z))].
+Definition loop_blocks : list bspec :=
+  start_rows ++ head_rows ++ str_rows ++ char_rows ++ next_rows ++ int_rows.
 
 End table.
 
@@ -649,7 +774,7 @@ End table.
     and the ownership that it stands for. *)
 Ltac row_simpl :=
   cbn [bs_sig bs_vals bs_pre bs_post bs_label] in *;
-  unfold head_entry_pre, print_null_pre, print_pre, head_pre, next_pre, conv_pre, pl_post, pl_own, pl_ok, pl_vals,
-    pp_vals, conv_vals, entry_vals in *;
-  cbn [app fs_pre fs_post printf_buffer_spec pp_in_ pp_str pp_text pl_x pl_fb pl_wb pl_pre pl_tl pl_ds pl_i pl_n
+  unfold number_pre, digits_pre, pi_vals, head_entry_pre, print_null_pre, print_pre, head_pre, next_pre, conv_pre, pl_post,
+    pl_own, pl_own_with, pl_ok, pl_vals, pp_vals, conv_vals, entry_vals in *;
+  cbn [app fs_pre fs_post printf_buffer_spec pp_in_ pp_str pp_text pi_y pi_u pi_neg pi_nz pi_w pi_cnt pl_x pl_fb pl_wb pl_pre pl_tl pl_ds pl_i pl_n
        pb_buf pb_fmt pb_dq pb_bytes pb_ds pb_ap pb_skip pb_xs pb_rest pb_eb ptr_addr ptr_cap] in *.
