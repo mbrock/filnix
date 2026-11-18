@@ -80,15 +80,18 @@ Definition hello_c_names_ps : list (piece * pval) :=
     LC_ALL, then under the category's own name, and last under LANG. It
     also reads LOCPATH. The category names lie end to end in one table.
     Getopt's list holds the two words at offsets 48 to 63, which contain
-    the name of the messages. This list holds the rest of the table and
-    the three other names. *)
+    the name of the messages. This list holds the rest of the table,
+    with the seven zero bytes that pad its last word, and the three
+    other names. Getenv reads the last name a whole word at a time, so
+    it reads that padding too. *)
 Definition hello_names_head : list Z :=
   [76; 67; 95; 67; 79; 76; 76; 65; 84; 69; 0; 76; 67; 95; 67; 84; 89; 80; 69; 0; 76; 67; 95; 77; 79; 78; 69;
    84; 65; 82; 89; 0; 76; 67; 95; 78; 85; 77; 69; 82; 73; 67; 0; 76; 67; 95; 84; 73].
 Definition hello_names_tail : list Z :=
   [67; 95; 80; 65; 80; 69; 82; 0; 76; 67; 95; 78; 65; 77; 69; 0; 76; 67; 95; 65; 68; 68; 82; 69; 83; 83; 0;
    76; 67; 95; 84; 69; 76; 69; 80; 72; 79; 78; 69; 0; 76; 67; 95; 77; 69; 65; 83; 85; 82; 69; 77; 69; 78; 84;
-   0; 76; 67; 95; 73; 68; 69; 78; 84; 73; 70; 73; 67; 65; 84; 73; 79; 78; 0].
+   0; 76; 67; 95; 73; 68; 69; 78; 84; 73; 70; 73; 67; 65; 84; 73; 79; 78; 0;
+   0; 0; 0; 0; 0; 0; 0].
 
 Definition hello_lc_all_text : list Z := [76; 67; 95; 65; 76; 76].
 Definition hello_lang_text : list Z := [76; 65; 78; 71].
