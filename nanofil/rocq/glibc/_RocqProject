@@ -203,6 +203,7 @@ CStruct.v
 CBlocks.v
 libio/LibioSpecs.v
 StrlenLogic.v
+LiveApart.v
 getopt/GetoptTerm.v
 hi_atexit/HiAtexitTerm.v
 libio/LibioFlushInv.v
