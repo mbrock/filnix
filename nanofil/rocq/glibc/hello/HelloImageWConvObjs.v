@@ -289,3 +289,95 @@ Proof.
     hello_wc_words_kept_incl E hello_image_names hello_image_zero) as (m' & E' & _ & P).
   pose proof hello_wc_words_check as C. rewrite <- hello_wc_words_skel_eq, E' in C. exact (P C).
 Qed.
+
+(** ## The zero word after each string table
+
+    Transliteration reads a string table up to a zero word, and the last
+    string of each table ends in the zero word that follows the table's
+    listed words. Those four bytes are zeros of the initializer, which
+    the loader leaves as they are, so a check of a smaller image that
+    holds only the two string tables finds them. *)
+Definition hello_wc_tails_ps : list (piece * pval) :=
+  byte_ps (img_addr "glibc_C_ctype#translit_from_tbl") (4 * Z.of_nat (length wc_from_tbl)) [0; 0; 0; 0] ++
+  byte_ps (img_addr "glibc_C_ctype#translit_to_tbl") (4 * Z.of_nat (length wc_to_tbl)) [0; 0; 0; 0].
+
+Definition hello_wc_tails_names : list string :=
+  ["glibc_C_ctype#translit_from_tbl"; "glibc_C_ctype#translit_to_tbl"]%string.
+
+Definition hello_wc_tails_keep (n : name) : bool := existsb (name_eqb n) (map TAtom hello_wc_tails_names).
+
+Definition hello_wc_tails_skel : module := Eval vm_compute in erase hello_wc_tails_keep hello_image_module.
+Lemma hello_wc_tails_skel_eq : erase hello_wc_tails_keep hello_image_module = hello_wc_tails_skel.
+Proof. vm_compute. reflexivity. Qed.
+
+Definition hello_wc_tails_kept : module := Eval vm_compute in kept_objects hello_wc_tails_keep hello_image_module.
+Lemma hello_wc_tails_kept_incl : incl hello_wc_tails_kept hello_image_module.
+Proof.
+  assert (E : kept_objects hello_wc_tails_keep hello_image_module = hello_wc_tails_kept) by (vm_compute; reflexivity).
+  rewrite <- E. apply kept_objects_incl.
+Qed.
+
+Lemma hello_wc_tails_check :
+  match initial_memory hello_wc_tails_skel with
+  | Some (g, m') => pieces_ok hello_wc_tails_keep hello_wc_tails_kept g m' hello_wc_tails_ps
+  | None => false
+  end = true.
+Proof. vm_cast_no_check (eq_refl true). Qed.
+
+Lemma hello_wc_tails_agree g m : initial_memory hello_image_module = Some (g, m) -> all_agree m hello_wc_tails_ps.
+Proof.
+  intros E.
+  destruct (image_pieces hello_wc_tails_keep hello_wc_tails_kept hello_image_module g m hello_wc_tails_ps
+    hello_wc_tails_kept_incl E hello_image_names hello_image_zero) as (m' & E' & _ & P).
+  pose proof hello_wc_tails_check as C. rewrite <- hello_wc_tails_skel_eq, E' in C. exact (P C).
+Qed.
+
+(** ## What the tables hold
+
+    Transliteration searches the tables without checking their shape,
+    so its proof needs the facts below about their words. Each table of
+    strings is read here with its trailing zero word. *)
+
+(** The function [nul_at] gives the distance from position p to the
+    next zero word of a table, looking at most fuel words ahead. *)
+Fixpoint nul_at (tbl : list Z) (p : nat) (fuel : nat) : option nat :=
+  match fuel with
+  | Datatypes.O => None
+  | Datatypes.S f => match tbl !! p with Some Z0 => Some Datatypes.O | Some _ => option_map Datatypes.S (nul_at tbl (Datatypes.S p) f) | None => None end
+  end.
+
+(** An entry of the source index starts a nonempty string. *)
+Definition from_okb (tbl : list Z) (fi : Z) : bool :=
+  (0 <=? fi) && match nul_at tbl (Z.to_nat fi) 64 with Some (Datatypes.S _) => true | _ => false end.
+
+(** An entry of the replacement index starts a list of strings that
+    ends with an empty string. *)
+Fixpoint list_okb (tbl : list Z) (p : nat) (fuel : nat) : bool :=
+  match fuel with
+  | Datatypes.O => false
+  | Datatypes.S f => match nul_at tbl p 64 with
+           | Some k => match tbl !! (p + k + 1)%nat with
+                       | Some Z0 => true | Some _ => list_okb tbl (p + k + 1) f | None => false end
+           | None => false
+           end
+  end.
+
+Definition to_okb (tbl : list Z) (ti : Z) : bool := (0 <=? ti) && list_okb tbl (Z.to_nat ti) 64.
+
+Definition word_okb (c : Z) : bool := (0 <=? c) && (c <? 2 ^ 32).
+
+(** Both indexes have one entry for each of the 1659 sources. *)
+Lemma wc_sizes : length wc_from_idx = 1659%nat /\ length wc_to_idx = 1659%nat.
+Proof. split; vm_compute; reflexivity. Qed.
+
+(** Every word of the tables is a 32-bit word. *)
+Lemma wc_words_okb : forallb word_okb (wc_from_idx ++ wc_to_idx ++ wc_from_tbl ++ wc_to_tbl) = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Every source string is nonempty and ends in the source table. *)
+Lemma wc_from_okb : forallb (from_okb (wc_from_tbl ++ [0])) wc_from_idx = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** Every list of replacements ends in the replacement table. *)
+Lemma wc_to_okb : forallb (to_okb (wc_to_tbl ++ [0])) wc_to_idx = true.
+Proof. vm_compute. reflexivity. Qed.
