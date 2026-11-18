@@ -412,6 +412,8 @@ libio/LibioOverflowPut.v
 libio/LibioOverflowSend.v
 libio/LibioOverflowSetpEnd.v
 libio/LibioOverflowSetpRest.v
+libio/LibioOverflowShort.v
+libio/LibioOverflowShortIdle.v
 libio/LibioOverflowShortPut.v
 libio/LibioOverflowShortSend.v
 libio/LibioOverflowShortStart.v
