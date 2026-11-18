@@ -547,7 +547,7 @@ Tactic Notation "call_spec" constr(s) "with" uconstr(x) "giving" constr(Hs) :=
 
 Section table.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 
 (** ## The block table *)
 
@@ -581,11 +581,12 @@ Definition pl_vals (y : pl_in) : list (string * word) :=
    ("readonly_format", WInt 0);
    ("nspecs_done", WInt (pl_n y))].
 
-(** Some facts hold at every place inside the loop. The bytes before
-    `c: f` and the bytes from it on make up the format. The arguments
-    that are left fit the directives that are left to run. The cell of
-    `c: f` is an 8-aligned heap object, and the count of conversions
-    fits in 32 bits. The predicate [pl_ok] collects these facts. *)
+(** A proof about one round of the loop needs to know where the
+    function stands in the format and in the arguments. The format is
+    the bytes that the function has passed followed by the bytes that
+    are left. The arguments that are left fit the conversions that are
+    left to run. The variable that points into the format lives in an
+    8-aligned heap object. The count of conversions fits in 32 bits. *)
 Definition pl_ok (y : pl_in) : Prop :=
   pb_bytes (pl_x y) = pl_pre y ++ pl_tl y /\
   narrow_fits (pl_ds y) (skipn (pl_i y) (pb_xs (pl_x y))) (pb_rest (pl_x y)) /\
@@ -604,13 +605,14 @@ Definition work_own (wb : Z) : iProp Σ :=
 Lemma work_own_range wb : work_own wb ⊢ ⌜0 < wb /\ wb + 1008 <= 2 ^ 48⌝.
 Proof using Type. iIntros "(%old & (%H0 & _ & %He & _) & _)". done. Qed.
 
-(** Inside the loop the function owns everything that its caller
-    lent: the buffer, the format, the copy of the arguments and errno.
-    It also owns the cell of the variable `c: f`, and that cell holds
-    a pointer to the second part of the format. The argument cursor
-    stands at the next argument that a conversion will read, or a few
-    bytes before it. The parameter W is what the function owns of its
-    work buffer, which changes while a `%d` runs. *)
+(** The function works on memory that its caller lent, and it must
+    give that memory back. Inside the loop it owns the buffer, the
+    format and the copy of the arguments. It also owns the cell of its
+    variable `c: f`, which holds a pointer to the part of the format
+    that is left. The argument cursor stands at the next argument that
+    a conversion will read, or a few bytes before it. The parameter W
+    is what the function owns of its work buffer, which changes while
+    a `%d` runs. *)
 Definition pl_own_with (W : iProp Σ) (y : pl_in) : iProp Σ :=
   printf_out k R (pb_buf (pl_x y)) ∗
   word_string (pb_dq (pl_x y)) (pb_fmt (pl_x y)) (pb_bytes (pl_x y)) ∗
@@ -618,7 +620,7 @@ Definition pl_own_with (W : iProp Σ) (y : pl_in) : iProp Σ :=
   pcell (pl_fb y) 0 (ptr_add (pb_fmt (pl_x y)) (Z.of_nat (length (pl_pre y)))) ∗
   va_cur (pb_ap (pl_x y)) (pl_i y) (pb_xs (pl_x y)) ∗
   ([∗ list] a ∈ skipn (pl_i y) (pb_xs (pl_x y)), str_arg a) ∗
-  W ∗ errno_any (pb_eb (pl_x y)) ∗ printf_ro.
+  W ∗ printf_ro.
 
 (** Outside a `%d` the function owns the last 20 bytes of the work
     buffer with any contents. *)

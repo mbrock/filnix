@@ -99,7 +99,7 @@ Proof. intros Ha. symmetry. apply (Z.mod_unique _ _ (-1)); lia. Qed.
 
 Section int.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees (loop_callees k R)}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Notation blocks := (loop_blocks k R).
@@ -144,7 +144,7 @@ Proof using Type*.
   iIntros "#IH". iModIntro.
   iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e from Φ) "_ %He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %ds1 & -> & %Hptail) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & #Hro)".
   destruct (int_fits _ _ _ Hfit) as (x & args & Hargs_eq & Hx & Hfit1).
   destruct (skipn_cons _ _ _ _ Hargs_eq) as (Hxi & Hskip1 & Hilt).
   iEval (rewrite Hargs_eq big_sepL_cons) in "Hargs". iDestruct "Hargs" as "[_ Hargs1]". subst args.
@@ -162,7 +162,7 @@ Proof using Type*.
     goto_block "IH" "HK" 14%nat
       with (PiIn (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 (mkPtr cb (Obj cb)) skip xs rest eb) fb wb pre tl ds1 (S i) n)
               x 0 0 0 0).
-    row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Hwork Herrno Hro". iPureIntro.
+    row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Hwork Hro". iPureIntro.
     split_and!; first [reflexivity | assumption | lia].
   - (* The number is negative, and the code negates it. *)
     assert (Hq : 2 ^ 31 <= x < 2 ^ 32) by lia. rewrite !(int_arg_neg x Hq). rewrite (neg_test (2 ^ 64 - 2 ^ 32 + x)); [|lia].
@@ -171,7 +171,7 @@ Proof using Type*.
     goto_block "IH" "HK" 14%nat
       with (PiIn (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 (mkPtr cb (Obj cb)) skip xs rest eb) fb wb pre tl ds1 (S i) n)
               (2 ^ 64 - (2 ^ 64 - 2 ^ 32 + x)) 1 0 0 0).
-    row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Hwork Herrno Hro". iPureIntro.
+    row_simpl. iFrame "Hout Hs Hfl Hfc Hva Hargs1 Hwork Hro". iPureIntro.
     split_and!; first [reflexivity | assumption | lia].
 Qed.
 
@@ -194,7 +194,7 @@ Proof using Type*.
   iIntros ([[[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] u neg nz w cnt] e from Φ)
     "_ %He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(%Hu & (%Hok & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
+  iDestruct "H" as "(%Hu & (%Hok & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & #Hro)".
   iDestruct "Hwork" as (old) "((%Hwb & %Hw8 & %Hwe & %Hold) & Hwl & Hwx)".
   iPoseProof "Hro" as "(_ & _ & Hdig & _)". pose proof (dec_digits_length u) as Hlen.
   block_enter. step. step. closed_ints.
@@ -221,7 +221,7 @@ Proof using Type*.
          with (PiIn (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb pre tl ds i n)
                  u neg 0 w (Z.of_nat (length dg))).
   all: row_simpl.
-  all: subst dg; iFrame "Hout Hs Hfl Hfc Hva Hargs Herrno Hro"; iSplit;
+  all: subst dg; iFrame "Hout Hs Hfl Hfc Hva Hargs Hro"; iSplit;
     [iPureIntro; split; [exact Hok | split_and!; first [reflexivity | assumption]]|].
   all: unfold work_digits; iExists old; iFrame "Hwl Hwx"; iPureIntro; split_and!; assumption.
 Qed.
@@ -283,7 +283,7 @@ Proof using Type*.
   iIntros ([[[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] u neg nz w cnt] e from Φ)
     "_ %He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "((%Hok & %Hne & %Hp & %Hcnt) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
+  iDestruct "H" as "((%Hok & %Hne & %Hp & %Hcnt) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & #Hro)".
   iDestruct (work_digits_run with "Hwork") as "[Hrun Hback]". rewrite -Hcnt.
   pose proof (dec_digits_length u) as Hlen. remember (dec_digits u) as dg eqn:Hdg.
   block_enter. explore_to "L1523".
@@ -297,7 +297,7 @@ Proof using Type*.
   all: iDestruct ("Hback" with "Hrun") as "Hwork".
   all: goto_block "IH" "HK" 12%nat
          with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb pre tl ds i n).
-  all: row_simpl; iFrame "Hout Hs Hfl Hfc Hva Hargs Hwork Herrno Hro"; done.
+  all: row_simpl; iFrame "Hout Hs Hfl Hfc Hva Hargs Hwork Hro"; done.
 Qed.
 
 (** ## The group of rows *)

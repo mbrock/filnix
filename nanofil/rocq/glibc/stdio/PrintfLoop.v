@@ -40,7 +40,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 Section table.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees (loop_callees k R)}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Notation blocks := (loop_blocks k R).

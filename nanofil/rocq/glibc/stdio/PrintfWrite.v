@@ -100,7 +100,7 @@ Definition copy_body : cut_sig :=
 
 Section write.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees [(TAtom "__printf_buffer_flush", flush_spec k R); (TAtom "__GI_memcpy", win_copy_spec)] }.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -147,7 +147,7 @@ Record wr_room : Type := WrRoom {
 Definition room_pre (y : wr_room) : iProp Σ :=
   (⌜wr_ok (wm_in y) /\ 0 < wr_count (wm_in y) /\ pw_ptr (wm_win y) < pw_end (wm_win y) /\
     (wm_mode y = mode_failed \/ wm_mode y = k)⌝ ∗
-   printf_buf (wr_buf (wm_in y)) (wm_breg y) (wm_win y) (wm_written y) (wm_mode y) ∗ R (pw_place (wm_win y)) ∗
+   printf_buf (wr_buf (wm_in y)) (wm_breg y) (wm_win y) (wm_written y) (wm_mode y) ∗ R (wr_buf (wm_in y)) (wm_breg y) (pw_place (wm_win y)) ∗
    byte_run (wr_dq (wm_in y)) (wr_p (wm_in y)) (wr_sb (wm_in y)) (wr_sreg (wm_in y)) (wr_str (wm_in y)))%I.
 
 (** The round copies at least one byte, no more than the count and no

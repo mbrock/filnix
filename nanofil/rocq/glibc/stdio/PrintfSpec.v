@@ -281,7 +281,7 @@ Definition printf_spec : fspec Σ :=
 (** `c: __printf_buffer_putc (buf, ch)` appends one character. It
     keeps the buffer usable with the same backend. The out-of-line
     `c: __printf_buffer_putc_1` has the same contract. *)
-Definition putc_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition putc_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec (Z * Z) (fun '(bb, c) => [WPtr (mkPtr bb (Obj bb)); WInt c])
     (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out k R bb)%I
     (fun '(bb, c) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb)%I.
@@ -290,7 +290,7 @@ Definition putc_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
     answers 1 when an earlier append has failed. The invariant does
     not say which mode the buffer is in, so a caller must handle both
     answers. *)
-Definition has_failed_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition has_failed_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec Z (fun bb => [WPtr (mkPtr bb (Obj bb))])
     (fun bb => printf_out k R bb)
     (fun bb o => ∃ b, ⌜o = Ret (WInt b) /\ (b = 0 \/ b = 1)⌝ ∗ printf_out k R bb)%I.
@@ -300,17 +300,17 @@ Definition has_failed_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec 
     buffer has then not failed. It answers 0 when the buffer has
     failed. The postcondition shows the window, so that a caller can
     use the free byte. *)
-Definition flush_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition flush_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec Z (fun bb => [WPtr (mkPtr bb (Obj bb))])
     (fun bb => printf_out k R bb)
     (fun bb o => ∃ b breg w written mode,
        ⌜o = Ret (WInt b) /\ (b = 0 \/ b = 1) /\ (mode = mode_failed \/ mode = k) /\
         (b = 1 -> pw_ptr w < pw_end w)⌝ ∗
-       printf_buf bb breg w written mode ∗ R (pw_place w))%I.
+       printf_buf bb breg w written mode ∗ R bb breg (pw_place w))%I.
 
 (** `c: __printf_buffer_write (buf, s, count)` appends the first count
     bytes of the string at s. The caller keeps the string. *)
-Definition write_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition write_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec (Z * dfrac * ptr * list Z * Z)
     (fun '(bb, _, p, _, n) => [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt n])
     (fun '(bb, dq, p, s, n) => ⌜0 <= n <= Z.of_nat (length s)⌝ ∗ printf_out k R bb ∗ word_string dq p s)%I
@@ -331,7 +331,7 @@ Definition byte_run (dq : dfrac) (p : ptr) (sb : Z) (sreg : region) (ys : list Z
     bytes at s, and the caller keeps the run. This contract is the
     general one, and [write_spec] above follows from it, because a
     string lends any run of its bytes. *)
-Definition write_bytes_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition write_bytes_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec (Z * dfrac * ptr * Z * region * list Z * Z)
     (fun '(bb, _, p, _, _, _, n) => [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt n])
     (fun '(bb, dq, p, sb, sreg, ys, n) =>
@@ -343,7 +343,7 @@ Definition write_bytes_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec
     negative. The width is a signed 64-bit number, which the contract
     takes as the word that holds it. The function keeps the buffer
     usable with the same backend. *)
-Definition pad_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+Definition pad_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec (Z * Z * Z) (fun '(bb, c, w) => [WPtr (mkPtr bb (Obj bb)); WInt c; WInt w])
     (fun '(bb, c, w) => ⌜0 <= c < 2 ^ 32 /\ 0 <= w < 2 ^ 64⌝ ∗ printf_out k R bb)%I
     (fun '(bb, _, _) o => ⌜o = RetVoid⌝ ∗ printf_out k R bb)%I.
@@ -387,6 +387,15 @@ Record pb_in : Type := PbIn {
   pb_eb : Z
 }.
 
+(** The formatter reads errno once, when it starts. The function that
+    flushes the buffer may set errno, so errno belongs to what that
+    function needs, which is the part R of the buffer's invariant. The
+    predicate [lends_errno] says that this part lends errno for a
+    while: it gives errno up and takes it back unchanged in every
+    other respect. *)
+Definition lends_errno (R : Z -> region -> Z * region * Z * Z -> iProp Σ) (bb eb : Z) : iProp Σ :=
+  □ ∀ breg pl, R bb breg pl -∗ errno_any eb ∗ (errno_any eb -∗ R bb breg pl).
+
 (** `c: __printf_buffer (buf, format, ap, 0)` appends the formatted
     text to the buffer. The contract asks of the format and the
     arguments what [vfprintf_spec] asks, and it has a usable buffer in
@@ -394,9 +403,10 @@ Record pb_in : Type := PbIn {
     The function returns nothing. A failure shows only in the buffer's
     mode, which the invariant hides.
     The function saves errno when it starts, and it reads errno
-    through the global `c: __libc_errno`. So the contract also asks
-    that this global is the errno cell of the thread. *)
-Definition printf_buffer_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fspec Σ :=
+    through the global `c: __libc_errno`. So the contract asks that
+    this global is the errno cell of the thread, and that the buffer's
+    invariant lends errno. *)
+Definition printf_buffer_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) : fspec Σ :=
   FSpec pb_in
     (fun x => [WPtr (mkPtr (pb_buf x) (Obj (pb_buf x))); WPtr (pb_fmt x); WPtr (pb_ap x); WInt 0])
     (fun x =>
@@ -407,9 +417,9 @@ Definition printf_buffer_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ) : fsp
         lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (pb_eb x) (Obj (pb_eb x)))⌝ ∗
        printf_out k R (pb_buf x) ∗
        word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ va_at (pb_ap x) (pb_skip x) (pb_xs x) ∗
-       ([∗ list] a ∈ skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x), str_arg a) ∗ errno_any (pb_eb x) ∗ printf_ro)%I
-    (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗
-       word_string (pb_dq x) (pb_fmt x) (pb_bytes x) ∗ errno_any (pb_eb x))%I.
+       ([∗ list] a ∈ skipn (Z.to_nat (pb_skip x / 8)) (pb_xs x), str_arg a) ∗
+       lends_errno R (pb_buf x) (pb_eb x) ∗ printf_ro)%I
+    (fun x o => ⌜o = RetVoid⌝ ∗ printf_out k R (pb_buf x) ∗ word_string (pb_dq x) (pb_fmt x) (pb_bytes x))%I.
 
 (** ## The file-backed buffer *)
 

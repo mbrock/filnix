@@ -76,7 +76,7 @@ Local Tactic Notation "letter_dispatch" constr(j) constr(t) integer(n) :=
     to the letter of the conversion. *)
 Local Ltac conv_enter :=
   row_simpl; rewrite length_app Nat2Z.inj_add; cbn [length Z.of_nat Pos.of_succ_nat];
-  iFrame "Hout Hs Hfl Hva Hargs Hwork Herrno Hro"; iSplit;
+  iFrame "Hout Hs Hfl Hva Hargs Hwork Hro"; iSplit;
   [iPureIntro; split_and!;
      first [assumption | lia | discriminate | (rewrite -app_assoc; assumption) | (eexists; split; [reflexivity | assumption])]
   | unfold ptr_add; cbn [ptr_addr ptr_cap];
@@ -85,7 +85,7 @@ Local Ltac conv_enter :=
 
 Section head.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees (loop_callees k R)}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Notation blocks := (loop_blocks k R).
@@ -99,7 +99,7 @@ Lemma head_body_holds :
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hhd & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hhd & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & #Hro)".
   destruct tl as [|c tl]; [discriminate|]. injection Hhd as ->.
   destruct (conv_start tl ds Hp) as (x & tail & d & ds1 & -> & Hd & -> & Hptail).
   iDestruct (word_string_range with "Hs") as %Hfr. cbn [ptr_addr] in Hfr.

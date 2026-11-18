@@ -61,7 +61,7 @@ Proof. reflexivity. Qed.
 
 Section putc.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees [(TAtom "__printf_buffer_putc_1", putc_spec k R)] }.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -84,7 +84,7 @@ Definition putc_blocks : list bspec :=
      (fun '(bb, c, _, _, _, _) => putc_vals bb c)
      (fun '(bb, c, breg, w, written, mode) =>
         ⌜0 <= c < 2 ^ 32 /\ pw_ptr w < pw_end w /\ (mode = mode_failed \/ mode = k)⌝ ∗
-        printf_buf bb breg w written mode ∗ R (pw_place w))%I
+        printf_buf bb breg w written mode ∗ R bb breg (pw_place w))%I
      (fun '(bb, _, _, _, _, _) => putc_post bb);
    BSpec "L5" None (cut_in putc_cuts "L5") (Z * Z) (fun '(bb, c) => putc_vals bb c)
      (fun '(bb, c) => ⌜0 <= c < 2 ^ 32⌝ ∗ printf_out k R bb)%I (fun '(bb, _) => putc_post bb);

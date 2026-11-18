@@ -32,7 +32,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 Section next.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees (loop_callees k R)}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Notation blocks := (loop_blocks k R).
@@ -45,7 +45,7 @@ Lemma next_body_holds :
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
-  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & Herrno & #Hro)".
+  iDestruct "H" as "(((%Hbytes & %Hfit & %Hfb & %Hf8 & %Hfe & %Hn) & %Hne & %Hp) & Hout & Hs & Hfl & Hfc & Hva & #Hargs & Hwork & #Hro)".
   destruct tl as [|c tl]; [done|]. cbn [tail] in Hp. clear Hne.
   iDestruct (word_string_range with "Hs") as %Hfr. cbn [ptr_addr] in Hfr.
   assert (Hlen : length bytes = (length pre + S (length tl))%nat) by (rewrite Hbytes length_app; reflexivity).
@@ -70,18 +70,18 @@ Proof using Type*.
   { (* The format ends here, and the function returns. *)
     assert (Hx : (tl ++ [0]) !! chr_idx 37 tl = Some 0) by (rewrite -Hlit Htl; apply byte_after; reflexivity).
     read_byte "Hsuf" (chr_idx 37 tl) 0 Hx. iDestruct ("Hsback" with "Hsuf") as "Hs". rewrite -Hsplit.
-    step. branch. step. branch. step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs Herrno". done. }
+    step. branch. step. branch. step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs". done. }
   assert (Hx : (tl ++ [0]) !! chr_idx 37 tl = Some 37) by (rewrite -Hlit Htl; apply byte_after; reflexivity).
   read_byte "Hsuf" (chr_idx 37 tl) 37 Hx. iDestruct ("Hsback" with "Hsuf") as "Hs". rewrite -Hsplit.
   step. branch. step.
   call_callee with bb giving "Hout"; [iExact "Hout"|]. iDestruct "Hpost" as (b) "((-> & %Hb) & Hout)". block_resume.
   step. step. step. step. branch_eqn E.
-  { clear E. step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs Herrno". done. }
+  { clear E. step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs". done. }
   clear E.
   goto_block "IH" "HK" 2%nat
     with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds0 ap skip xs rest eb) fb wb (pre ++ c :: lit) (37 :: tl') ds' i
             ((n + 1) mod 2 ^ 32)).
-  row_simpl. iFrame "Hout Hs Hfl Hva Hargs Hwork Herrno Hro". iSplit; [iPureIntro|].
+  row_simpl. iFrame "Hout Hs Hfl Hva Hargs Hwork Hro". iSplit; [iPureIntro|].
   { pose proof (Z.mod_pos_bound (n + 1) (2 ^ 32) ltac:(lia)).
     split_and!; [rewrite Hbytes Htl -app_assoc; reflexivity | exact (Hfit' _ _ Hfit) | lia..|
                  reflexivity | exact Hptl]. }

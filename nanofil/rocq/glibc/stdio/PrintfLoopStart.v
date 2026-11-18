@@ -43,7 +43,7 @@ Local Ltac alloc_drop :=
 
 Section start.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (k : Z) (R : Z * region * Z * Z -> iProp Σ).
+Context (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ).
 Context `{!Callees (loop_callees k R)}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Notation blocks := (loop_blocks k R).
@@ -54,7 +54,7 @@ Lemma start_rows_hold :
 Proof using Type*.
   iIntros "#IH". iSplit; [|done]. iModIntro.
   iIntros ([bb [fa fc] dq bytes ds ap skip xs rest eb] e from Φ) "_ %He H HK". row_simpl. c_env_open He.
-  iDestruct "H" as "((%Hp & %Hfit & %Hs0 & %Hs8 & %Herr & %Hge) & Hout & Hs & Hva & #Hargs & Herrno & #Hro)".
+  iDestruct "H" as "((%Hp & %Hfit & %Hs0 & %Hs8 & %Herr & %Hge) & Hout & Hs & Hva & #Hargs & #Hlend & #Hro)".
   block_enter.
   alloc_keep fb Hfb. change (0 < fb /\ fb mod 16 = 0 /\ fb + 16 <= 2 ^ 48) in Hfb. destruct Hfb as (Hfb & Hf16 & Hfe).
   iDestruct (obj_zero_block with "Hobj") as "(Hfl & Hfx & Hfc)"; [compute; discriminate|].
@@ -71,9 +71,14 @@ Proof using Type*.
   iAssert (live vb (mkRegion vb (vb + 32) Heap Live)) with "Hvl" as "Hvl".
   iDestruct (zero_cell_prefix vb 0 24 with "Hvx Hvc") as "(Hvc & _ & _)". do 8 alloc_drop.
   step_global Hge. iApply (wp_dci_errno_check eb Herr); [vx|]. iNext.
+  (* The buffer's invariant lends errno for the one load. *)
+  iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)". iDestruct ("Hlend" with "HR") as "[Herrno Hback]".
   iDestruct "Herrno" as (bs cs [Hbs Hcs]) "Hp". iEval (rewrite pts_app) in "Hp". iDestruct "Hp" as "[Heb Hea]".
   iApply (wp_dci_errno_load eb Herr with "Heb"); [vx | exact Hbs|]. iNext. iIntros "Heb".
   iAssert (errno_any eb) with "[Heb Hea]" as "Herrno". { iExists bs, cs. iSplit; [done|]. rewrite pts_app. iFrame. }
+  iDestruct ("Hback" with "Herrno") as "HR".
+  iAssert (printf_out k R bb) with "[Hbuf HR]" as "Hout". { iExists breg, w, written, mode. iFrame "Hbuf HR". done. }
+  clear breg w written mode Hmd.
   step.
   iDestruct (va_at_cursor with "Hva") as (cb sb) "((-> & %Hcb & %Hc8 & %Hce & %Hsb & %Hsk & _) & Hcl & Hcc & Hsl & Hvback)".
   check "Hcl". iApply (wp_raw_load_pointer_dq with "Hcl Hcc Hsl"); [reflexivity | vx | left; reflexivity | a2 | a2 | cbn; lia |].
@@ -87,14 +92,14 @@ Proof using Type*.
   iDestruct "Hpost" as "(-> & Hout & Hs)". block_resume.
   call_callee with bb giving "Hout"; [iExact "Hout"|]. iDestruct "Hpost" as (b) "((-> & %Hb) & Hout)". block_resume.
   step. branch_eqn E.
-  2: { step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs Herrno". done. }
+  2: { step. iApply wp_ret_void. iNext. iApply "HK". iFrame "Hout Hs". done. }
   clear E. step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs".
   destruct (lit_run bytes ds Hp) as (lit & tl & ds' & Hbytes & Hlit & Htl & Hptl & Hfit').
   destruct Htl as [-> | [tl' ->]].
   { (* The format has no conversion, and the function returns. *)
     assert (Hx : (bytes ++ [0]) !! chr_idx 37 bytes = Some 0) by (rewrite -Hlit Hbytes; apply byte_after; reflexivity).
     read_byte "Hs" (chr_idx 37 bytes) 0 Hx. step. branch. step. iApply wp_ret_void. iNext. iApply "HK".
-    iFrame "Hout Hs Herrno". done. }
+    iFrame "Hout Hs". done. }
   assert (Hx : (bytes ++ [0]) !! chr_idx 37 bytes = Some 37) by (rewrite -Hlit Hbytes; apply byte_after; reflexivity).
   read_byte "Hs" (chr_idx 37 bytes) 37 Hx. step. branch.
   (* No conversion is registered, so the function takes the loop without positional arguments. *)
@@ -116,7 +121,7 @@ Proof using Type*.
   goto_block "IH" "HK" 1%nat
     with (PlIn (PbIn bb (mkPtr fa fc) dq bytes ds (mkPtr cb (Obj cb)) skip xs rest eb) fb wb lit (37 :: tl') ds'
             (Z.to_nat (skip / 8)) 0).
-  row_simpl. rewrite Hlit. iFrame "Hout Hs Hfl Hfc Hva Hargs Hwork Herrno Hro". iPureIntro.
+  row_simpl. rewrite Hlit. iFrame "Hout Hs Hfl Hfc Hva Hargs Hwork Hro". iPureIntro.
   split_and!; [reflexivity | exact Hbytes | exact (Hfit' _ _ Hfit) | lia | Z.div_mod_to_equations; lia |
                lia | lia | lia | reflexivity | exact Hptl].
   (* The block loads three cells that hold null pointers, and a null pointer names no object. *)

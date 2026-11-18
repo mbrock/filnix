@@ -38,7 +38,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     lemma says that the compiled function is safe on a usable buffer
     and gives the buffer back. The function answers 1 when the buffer
     has failed and 0 otherwise. *)
-Lemma has_failed_has_spec (k : Z) (R : Z * region * Z * Z -> iProp Σ)
+Lemma has_failed_has_spec (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ)
     `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_has_failed" glibc_format_failed} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") (has_failed_spec k R).
 Proof using Type.

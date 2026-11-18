@@ -124,9 +124,13 @@ Definition printf_buf (bb : Z) (breg : region) (w : pwin) (written mode : Z) : i
     mode k. The mode decides which function flushes the buffer, so k
     names that function. The invariant also owns what that function
     needs, such as the stream. The parameter R states this part of the
-    invariant, and R may depend on where the buffer's window lies. *)
-Definition printf_out (k : Z) (R : Z * region * Z * Z -> iProp Σ) (bb : Z) : iProp Σ :=
-  ∃ breg w written mode, ⌜mode = mode_failed \/ mode = k⌝ ∗ printf_buf bb breg w written mode ∗ R (pw_place w).
+    invariant. R takes the buffer, the region of the buffer's object
+    and the place of the buffer's window, because what the function
+    needs may depend on all three. A file-backed buffer, for example,
+    is a larger object than a plain buffer, and its part R says how
+    far the object reaches. *)
+Definition printf_out (k : Z) (R : Z -> region -> Z * region * Z * Z -> iProp Σ) (bb : Z) : iProp Σ :=
+  ∃ breg w written mode, ⌜mode = mode_failed \/ mode = k⌝ ∗ printf_buf bb breg w written mode ∗ R bb breg (pw_place w).
 
 (** A window with a free byte gives that byte up for a store and takes
     it back with the value of any byte. *)
