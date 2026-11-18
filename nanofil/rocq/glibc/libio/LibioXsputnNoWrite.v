@@ -68,7 +68,6 @@ Lemma wp_xsputn_nowrite fr vb self fb freg st nb flags2 held dq b reg o c ys eb 
   fb mod 8 = 0 -> 0 < fb -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> flags_ok st ->
   idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 -> fs_vtable st = mkPtr (vb+vt_file) (Ro vb) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st -> has (fs_flags st) io_no_writes = true ->
-  has (fs_flags st) io_currently_putting = false ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   (c = Obj b \/ c = Ro b) -> 0 < b -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
@@ -77,7 +76,8 @@ Lemma wp_xsputn_nowrite fr vb self fb freg st nb flags2 held dq b reg o c ys eb 
   ▷ (∀ r, ⌜r = 2^64-1 \/ 0 <= r <= n⌝ -∗ file_tidy vb self fp fd flags2 held -∗ errno_any eb -∗
      liveq dq b reg -∗ bytesq dq b o ys -∗ Φ (Ret (WInt r))) -∗ WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type*.
-  intros fp n fd Hfr Hal Hfb Hend Hrend Hok Hi Hf2 Hvt Hb Hshort Hnw Hnp He Hin Hg Hc Hb0 Ho Hen Hr Hy. subst fp fd.
+  intros fp n fd Hfr Hal Hfb Hend Hrend Hok Hi Hf2 Hvt Hb Hshort Hnw He Hin Hg Hc Hb0 Ho Hen Hr Hy. subst fp fd.
+  pose proof (proj2 (proj1 Hshort) Hnw) as Hnp.
   iIntros "#Hro Hl Hf Hlk Hb Hw Herr Hbl Hys HK". iDestruct "Hro" as (vr sb sr) "[#Hvt _]".
   destruct (Z.eq_dec n 0) as [H0 | Hn].
   { injection Hfr as <-. step. step. branch_as false. step. iApply wp_ret; [reflexivity|vx|]. iNext.

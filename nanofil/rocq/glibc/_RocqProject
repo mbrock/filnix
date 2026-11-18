@@ -427,6 +427,7 @@ libio/LibioXsputnNoWrite.v
 libio/LibioXsputnShort.v
 libio/LibioXsputnShortReset.v
 libio/LibioXsputnShortWrite.v
+libio/LibioStreamTidy.v
 libio/LibioPutsInv.v
 libio/LibioStdfiles.v
 libio/LibioUnlinkTail.v
