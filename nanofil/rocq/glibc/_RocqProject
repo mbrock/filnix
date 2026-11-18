@@ -234,6 +234,7 @@ locale/FindlocaleCode.v
 locale/FindlocaleSrc.v
 locale/FindlocaleLayout.v
 locale/FindlocaleEnv.v
+locale/FindlocaleCResult.v
 locale/PostloadCtypeCode.v
 locale/PostloadCtypeSrc.v
 locale/PostloadCtypeLayout.v
