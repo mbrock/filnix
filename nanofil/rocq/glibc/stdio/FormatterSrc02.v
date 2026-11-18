@@ -58,6 +58,48 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 
 End fn___vfprintf_internal.
 
+Module fn_glibc_vfprintf_internal___printf_buffer_pad.
+
+(** This location identifies the C function definition when its context records contain one. *)
+Definition source : option (string * N) := Some (file_0, 160%N).
+
+(** Each entry records the first located site in a block, in execution order. *)
+Definition block_src : list (name * (string * N)) :=
+  [((TAtom "start"), (file_0, 163%N)); ((TAtom "L6"), (file_0, 164%N)); ((TAtom "L8"), (file_0, 160%N))].
+
+(** These recorded temporaries have a primary value hint naming their C declaration. *)
+Definition temp_names : list (name * string) :=
+  [((TAtom "v0"), "buf"); ((TAtom "v11"), "buf"); ((TAtom "v12"), "ch"); ((TAtom "v13"), "count"); ((TAtom "v2"), "ch"); ((TAtom "v4"), "count"); ((TAtom "v9"), "count")].
+
+(** Each row gives a temporary of the body its root temporary, a key and an offset.
+    The temporary holds the value of its root, moved by the offset.
+    The key is the C variable that the root holds, or "&" and the variable whose address it holds.
+    The key of a root without a C variable is the root's own name.
+    A temporary without a row is its own root and has no C variable. *)
+Definition temp_keys : list (name * (name * string * Z)) :=
+  [((TAtom "v0"), ((TAtom "v0"), "buf", 0)); ((TAtom "v12"), ((TAtom "v12"), "ch", 0)); ((TAtom "v2"), ((TAtom "v2"), "ch", 0)); ((TAtom "v4"), ((TAtom "v4"), "count", 0))].
+
+(** The compiler finds these reachable natural-loop headers using dominators. *)
+Definition loop_heads : list name := [].
+
+
+Definition live_in : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "L6"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "L8"), [])].
+
+Definition live_out : list (name * list name) :=
+  [((TAtom "start"), [(TAtom "v0"); (TAtom "v2"); (TAtom "v4")]); ((TAtom "L6"), []); ((TAtom "L8"), [])].
+
+(** Stop messages can name a C field instead of reporting only an address.
+    Source origins and completed layouts supply the field path; unresolved paths use "opaque".
+    These paths guide messages and annotations, not memory-safety arguments.
+    Local addresses name storage owned by this invocation.
+    Accesses with runtime byte counts have no fixed width. *)
+Definition footprint : list (name * list (N * term * Z * option Z * bool * bool * option name * option Z * string)) :=
+  [((TAtom "start"), []); ((TAtom "L6"), []); ((TAtom "L8"), [])].
+
+
+End fn_glibc_vfprintf_internal___printf_buffer_pad.
+
 Module fn_glibc_vfprintf_internal___printf_buffer_putc.
 
 (** This location identifies the C function definition when its context records contain one. *)

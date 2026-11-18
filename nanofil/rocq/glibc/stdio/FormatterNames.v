@@ -838,6 +838,14 @@ Notation "'‹s->_lock->cnt@L330›'" := (TAtom "v377").
 Notation "'‹chk(s->_lock+4)@L330.2›'" := (TAtom "chk49").
 End fn___vfprintf_internal.
 
+Module fn_glibc_vfprintf_internal___printf_buffer_pad.
+Notation "'‹buf›'" := (TAtom "v0").
+Notation "'‹ch›'" := (TAtom "v2").
+Notation "'‹count›'" := (TAtom "v4").
+Notation "'‹count>0›'" := (TAtom "v10").
+Notation "'‹ch@L6›'" := (TAtom "v12").
+End fn_glibc_vfprintf_internal___printf_buffer_pad.
+
 Module fn_glibc_vfprintf_internal___printf_buffer_putc.
 Notation "'‹buf›'" := (TAtom "v0").
 Notation "'‹ch›'" := (TAtom "v2").

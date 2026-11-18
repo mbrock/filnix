@@ -46,6 +46,8 @@ names = true
 fixtures = '''
 Fprintf|__fprintf|stdio-common/fprintf.os|__fprintf
 Printf|__printf|stdio-common/printf.os|__printf
+PrintfPadOne|__printf_buffer_pad_1|stdio-common/printf_buffer_pad_1.os|__printf_buffer_pad_1
+PrintfPutcOne|__printf_buffer_putc_1|stdio-common/printf_buffer_putc_1.os|__printf_buffer_putc_1
 '''
 
 [[batch]]
@@ -78,5 +80,5 @@ layout = "formatter"
 mode = "checked"
 names = true
 fixtures = '''
-Formatter|__vfprintf_internal|stdio-common/vfprintf-internal.os|__vfprintf_internal __printf_buffer glibc_vfprintf_internal#__printf_buffer_putc
+Formatter|__vfprintf_internal|stdio-common/vfprintf-internal.os|__vfprintf_internal __printf_buffer glibc_vfprintf_internal#__printf_buffer_putc glibc_vfprintf_internal#__printf_buffer_pad
 '''

@@ -113,6 +113,12 @@ stdio/FprintfNames.v
 stdio/PrintfCode.v
 stdio/PrintfSrc.v
 stdio/PrintfNames.v
+stdio/PrintfPadOneCode.v
+stdio/PrintfPadOneSrc.v
+stdio/PrintfPadOneNames.v
+stdio/PrintfPutcOneCode.v
+stdio/PrintfPutcOneSrc.v
+stdio/PrintfPutcOneNames.v
 stdio/ItoaWordCode.v
 stdio/ItoaWordSrc.v
 stdio/ItoaWordNames.v
@@ -486,6 +492,7 @@ stdio/PrintfSpec.v
 stdio/ItoaWordSpec.v
 stdio/ItoaWord.v
 stdio/PrintfPutc.v
+stdio/PrintfPutcSlow.v
 stdio/PrintfCopy.v
 stdio/PrintfWrite.v
 stdio/PrintfSmall.v
