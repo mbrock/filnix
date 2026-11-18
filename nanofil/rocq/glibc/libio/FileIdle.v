@@ -108,7 +108,8 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
     function sets the write end of an unbuffered stream to its write
     pointer, and `c: new_do_write` sets the write base, the write
     pointer and the write end to the buffer's base, whether the write
-    succeeds or fails. So the stream has no pending output and no room,
+    succeeds or fails. The write base therefore stays at the start of
+    `c: _shortbuf`, so the next byte goes into that buffer. So the stream has no pending output and no room,
     and the next call never copies into the buffer.
 
     A stream that only writes keeps its read base and its write base at
@@ -121,7 +122,7 @@ Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
   (has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
   match nb with
   | NbShort => has (fs_flags st) io_unbuffered = true /\
-      fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4
+      fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4 /\ fs_ptr st 3 = fs_ptr st 6
   | NbHeap _ _ => has (fs_flags st) io_unbuffered = false /\
       fs_ptr st 2 = fs_ptr st 6 /\ fs_ptr st 3 = fs_ptr st 6
   | NbNone => has (fs_flags st) io_currently_putting = false
