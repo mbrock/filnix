@@ -47,11 +47,19 @@ Qed.
 (** When stdout is wide, its calls go through a second table of
     methods. Main can read every slot of that table. *)
 Lemma hello_ro_wvtables : hello_ro hge o ⊢ wvtables_ro hge (ho_vb o).
-Proof using Type. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & H)". iExact "H". Qed.
+Proof using Type. iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & H & _)". iExact "H". Qed.
 
-(** One read-only fact is not yet part of Hello's start state: all the
-    bytes of the greeting's format. *)
-Context (Hfmt : hello_conv_ro ⊢ wprintf_fmt_ro fmt (img_gd "hello#str.83")).
+(** The formatter reads all twenty bytes of the greeting's format.
+    Main's read-only promise holds them, at the address that the image
+    gives the format. *)
+Lemma hello_ro_greet_fmt : hello_ro hge o ⊢ ∃ rr, wprintf_fmt_ro fmt rr.
+Proof using Type.
+  iIntros "(_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & H)".
+  iDestruct "H" as (b br [Hl Hb]) "[Hlv Hby]".
+  assert (Ef : lookup (TAtom "hello#str.83") (ge_globals hge) = Some (mkPtr fmt (Ro fmt))) by (vm_compute; reflexivity).
+  rewrite Ef in Hl. injection Hl as <-. iExists br. rewrite /wprintf_fmt_ro.
+  iSplit; [iPureIntro; split; [exact Ef|exact Hb]|]. iSplit; [iExact "Hlv"|iExact "Hby"].
+Qed.
 
 (** The call borrows main's streams without stdout, its private state
     and its read-only promise. *)
@@ -92,15 +100,17 @@ Proof using Type*.
   assert (Hidle : wprintf_fwide_idle_spec (ho_vb o) (ow_self w) W).
   { refine (@wprintf_fwide_idle _ _ call_program _ _ _ _ Hset Hzf Hzs Dcl Dms _ _ _); vm_compute; reflexivity. }
   pose proof (@wprintf_fwide_wide _ _ call_program (ho_vb o) (ow_self w) (DfracOwn (1/2))) as Hwide.
-  pose proof (hello_wprintf_has_spec w fr E W bd n ws (ho_out o) DfracDiscarded (img_gd "hello#str.83") (ho_vreg o)
+  pose proof (fun rr => hello_wprintf_has_spec w fr E W bd n ws (ho_out o) DfracDiscarded rr (ho_vreg o)
     Hidle Hwide Hxs Hw Hb Ha He Herr Herr2 Hlend) as T.
-  destruct T as (gf & Hfind & Hcall & T). exists gf. split; [exact Hfind|]. split; [exact Hcall|].
+  destruct (T (img_gd "hello#str.83")) as (gf & Hfind & Hcall & _). exists gf. split; [exact Hfind|]. split; [exact Hcall|].
   intros f Φ Hf. iIntros "(#Hro & (Hout & Hrest) & Hp & Hwb) HK".
   iDestruct (HP with "Hp") as "(HN & HG & HN2 & Hloc & Hcv & Hres)".
   (* Proof search for this persistence runs away, so the instance is given. *)
   assert (Hcvp : Persistent (hello_conv_ro (Σ := Σ))) by exact (bi.sep_persistent _ _ (ptsq_persistent _) (ptsq_persistent _)).
   iDestruct (@bi.persistent_persistently_2 _ _ _ Hcvp with "Hcv") as "#Hc".
-  iPoseProof (Hfmt with "Hc") as "Hfm".
+  (* The format's region is not fixed in advance, so the call's contract is taken at the region that the promise names. *)
+  iDestruct (hello_ro_greet_fmt with "Hro") as (rr) "#Hfm".
+  destruct (T rr) as (gf' & Hfind' & _ & T'). rewrite Hfind in Hfind'. injection Hfind' as <-.
   iAssert wprintf_tables_ro as "Htb".
   { iDestruct "Hc" as "[_ Hw]". iEval (rewrite /hello_wide_objs_ps (ptsq_app _ hello_wfwide_ps)
       (ptsq_app _ hello_wrelease_ps) (ptsq_app _ hello_wc_tables_ps) (ptsq_app _ hello_wc_words_ps)
@@ -111,7 +121,7 @@ Proof using Type*.
     iSplitL "Hloc"; [iExact "Hloc"|]. iSplitL "Hcv"; [iExact "Hcv"|iExact "Hres"]. }
   iPoseProof (hello_ro_wvtables with "Hro") as "#Hwv".
   iPoseProof "Hro" as "(Hvt & _ & Hsl & Hsp & _ & _ & _ & _ & _ & _ & _ & _ & Hpr & _)".
-  iApply (T f Φ Hf with "[Hout Hrest Hp Hwb] [HK]").
+  iApply (T' f Φ Hf with "[Hout Hrest Hp Hwb] [HK]").
   - iSplitR; [iExact "Hfm"|]. iSplitR; [iExact "Htb"|]. iSplitR; [iExact "Hpr"|]. iSplitR; [iExact "Hvt"|].
     iSplitR; [iExact "Hwv"|].
     iSplitR. { iExists (ho_so o), (ho_soreg o). iSplit; [iPureIntro; vm_compute; repeat split; (reflexivity || discriminate)|].

@@ -211,10 +211,28 @@ Definition hello_printf_ro : iProp Σ := printf_ro (glibc_program := program_of 
 Global Instance hello_printf_ro_persistent : Persistent hello_printf_ro.
 Proof using Type. apply printf_ro_persistent. Qed.
 
-(** Calls share read-only ownership of the linked constants, stream
-    pointers, errno lifetime, allocator prelude, program literals and
-    the null callback of the error reporter. They also share the slots
-    of the wide jump table, which a stream reads once it is wide. *)
+(** Hello prints its greeting with the wide format `%ls` and a
+    newline. Each of its five wide characters takes four bytes, and the
+    formatter reads all twenty of them. A narrow string routine would
+    stop at the zero byte after the percent sign, so the narrow share of
+    the same literal holds only its first word. This predicate holds a
+    read-only share of the whole literal, with every byte fixed. *)
+Definition greet_fmt_ro : iProp Σ :=
+  ∃ b br, ⌜lookup (TAtom "hello#str.83") (ge_globals ge) = Some (mkPtr b (Ro b)) /\
+    0 < b /\ b mod 8 = 0 /\ b + 20 <= r_end br /\ r_end br <= 2 ^ 63⌝ ∗
+  liveq DfracDiscarded b br ∗
+  bytesq DfracDiscarded b 0 [37; 0; 0; 0; 108; 0; 0; 0; 115; 0; 0; 0; 10; 0; 0; 0; 0; 0; 0; 0].
+
+(** The greeting's format is persistent. *)
+Global Instance greet_fmt_ro_persistent : Persistent greet_fmt_ro.
+Proof using Type. rewrite /greet_fmt_ro /liveq /bytesq. apply _. Qed.
+
+(** Main and every library call it makes read the same constants and
+    never write them. Each call reads the stream methods, the globals
+    stdout and stderr, errno's object, the allocator's idle state and
+    Hello's strings. A wide stream also reads the wide methods, and the
+    greeting's call reads its wide format. This promise holds a
+    read-only share of all of them. *)
 Definition hello_ro : iProp Σ :=
   vtables_ro ge (ho_vb o) (ho_vreg o) ∗ single_ro ge (ho_sb o) (ho_sreg o) ∗
   liveq DfracDiscarded (ho_so o) (ho_soreg o) ∗ pcellq DfracDiscarded (ho_so o) 0 (ho_out o) ∗
@@ -223,7 +241,7 @@ Definition hello_ro : iProp Σ :=
   AL.tcache_idle DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
   word_string DfracDiscarded (ho_lp o) libs_bytes ∗ word_string DfracDiscarded (ho_tp o) lt_bytes ∗
   ([∗ list] s ∈ hello_lits, str_ro (sym_ptr ge s)) ∗ version_ro ∗ hello_printf_ro ∗ error_progname_ro ∗
-  print_fmt_ro ∗ wvtables_ro ge (ho_vb o).
+  print_fmt_ro ∗ wvtables_ro ge (ho_vb o) ∗ greet_fmt_ro.
 
 (** [hello_ro] is persistent. *)
 Global Instance hello_ro_persistent : Persistent hello_ro.

@@ -86,18 +86,44 @@ Proof using Hi.
   vm_compute. reflexivity.
 Qed.
 
-(** The strings of the frame become read-only strings. *)
-Lemma hello_lits_own : pts hello_lit_kept_ps ==∗
+(** A read-only share of a literal's object is a read-only string. *)
+Local Lemma word_string_literal_ro b reg ws s :
+  str_shape (mkPtr b (Ro b)) b reg ws s -> ptsq DfracDiscarded (lit_ps b reg ws) ⊢ word_string DfracDiscarded (mkPtr b (Ro b)) s.
+Proof using Type.
+  iIntros (Hs) "Hps". iExists b, reg, ws. iSplit; [done|].
+  replace (wstart (mkPtr b (Ro b)) - b) with 0 by (unfold wstart; cbn; rewrite (ss_align _ _ _ _ _ Hs); lia).
+  rewrite /lit_ps (ptsq_app _ [_]). iExact "Hps".
+Qed.
+
+(** Startup freezes the strings of the frame, and each one becomes a
+    read-only string. *)
+Lemma hello_lits_own : ptsq DfracDiscarded hello_lit_kept_ps ⊢
   [∗ list] ns ∈ hello_lit_strs, word_string DfracDiscarded (sym_ptr ge ns.1.1) ns.1.2.
 Proof using Hi.
-  rewrite hello_lit_kept_eq pts_concat big_sepL_fmap. iIntros "H".
-  iApply big_sepL_bupd. iApply (big_sepL_impl with "H"). iIntros "!>" (k ns Hk) "H".
+  rewrite hello_lit_kept_eq ptsq_concat big_sepL_fmap. iIntros "H".
+  iApply (big_sepL_impl with "H"). iIntros "!>" (k ns Hk) "H".
   pose proof (f_equal (fun l => l !! k) hello_lit_syms) as E. cbn beta in E.
   rewrite !list_lookup_fmap Hk in E. injection E as ->.
   pose proof hello_lit_shapes as S. rewrite forallb_forall in S.
   specialize (S ns (proj1 (list_elem_of_In _ _) (list_elem_of_lookup_2 _ _ _ Hk))).
-  iDestruct (word_string_literal with "H") as "H"; [exact (str_shape_b_sound _ _ _ _ _ S)|].
-  iMod (word_string_persist with "H") as "#H". done.
+  iApply (word_string_literal_ro with "H"). exact (str_shape_b_sound _ _ _ _ _ S).
+Qed.
+
+(** The formatter reads all twenty bytes of the greeting's wide format,
+    but a narrow string ends at its first zero byte. So the frame keeps
+    the format's first word among the strings and its other twelve
+    bytes in a list of their own. Together they give the whole format. *)
+Lemma hello_greet_fmt_own : ptsq DfracDiscarded hello_lit_kept_ps -∗
+  ptsq DfracDiscarded (byte_ps (img_a "hello#str.83") 8 [115; 0; 0; 0; 10; 0; 0; 0; 0; 0; 0; 0]) -∗ greet_fmt_ro ge.
+Proof using Hi.
+  rewrite hello_lit_kept_eq ptsq_concat big_sepL_fmap. iIntros "#H #T".
+  iDestruct (big_sepL_lookup _ _ 26 with "H") as "H1"; [vm_compute; reflexivity|].
+  iExists (img_a "hello#str.83"), (img_gd "hello#str.83"). iSplit.
+  { iPureIntro. destruct (hello_loaded_tables g m Hi) as [Eg _]. cbn [ge_globals]. rewrite Eg.
+    vm_compute. repeat split; (reflexivity || discriminate). }
+  iCombine "H1 T" as "H2". iEval (rewrite -ptsq_app) in "H2". rewrite /liveq /bytesq -ptsq_app.
+  assert (Eq : forall l r, l = r -> ptsq DfracDiscarded l ⊢ ptsq DfracDiscarded r) by (intros ? ? ->; done).
+  iApply (Eq with "H2"). vm_compute. reflexivity.
 Qed.
 
 (** ## The streams *)
@@ -291,14 +317,15 @@ Proof using Hi.
   iDestruct (pts_app with "Hk") as "[Hal Hk]". iDestruct (pts_app with "Hk") as "[Hex Hk]".
   iDestruct (pts_app with "Hk") as "[Hst Hk]". iDestruct (pts_app with "Hk") as "[Hio Hlit]".
   iDestruct (hello_alloc_kept_own with "Lmp Hal") as "HM". iMod (tcache_idle_discard with "HM") as "#HM".
-  iDestruct (hello_exit_kept_own with "Hex") as "[Hxi Hxl]". iMod (hello_lits_own with "Hlit") as "Hlit".
+  iDestruct (hello_exit_kept_own with "Hex") as "[Hxi Hxl]". iMod (ptsq_persist with "Hlit") as "#Hlk".
+  iDestruct (hello_lits_own with "Hlk") as "Hlit".
   iEval (rewrite -(take_drop 3 hello_lit_strs) big_sepL_app) in "Hlit". iDestruct "Hlit" as "[Hl3 #Hlr]".
   iEval (rewrite -(take_drop 24 (drop 3 hello_lit_strs)) big_sepL_app) in "Hlr". iDestruct "Hlr" as "[#Hlr #Hlv]".
   iEval (cbv [take hello_lit_strs]; cbn [big_opL fst snd]) in "Hl3".
   iDestruct "Hl3" as "(#Hlp & #Htp & #Hkey & _)". iEval (rewrite E3) in "Hlp". iEval (rewrite E4) in "Htp".
   iEval (rewrite /hello_io_kept_ps pts_concat; cbn [big_opL]) in "Hio".
   iDestruct "Hio" as "(Ser & Sout & Sin & Lso & Hso & Lse & Hse & Hjmp & Lpn & Hpn & Loa & Hoa & Loi & Hoi &
-    Wer & Wout & Hwj & _)".
+    Wer & Wout & Hwj & Hwf & _)".
   iDestruct (hello_start_file_own _ _ _ _ _ _ _ _ (ow_self w) with "Lo Vo Sout Wout") as "Fo";
     [vm_compute; intuition congruence..|].
   iDestruct (hello_start_stdin_own with "Li Sin") as "Fi";
@@ -310,6 +337,7 @@ Proof using Hi.
   iMod (ptsq_persist with "Lvt") as "#Lvt". iMod (ptsq_persist with "Hjmp") as "#Hjmp".
   iMod (ptsq_persist with "Lsb") as "#Lsb". iMod (ptsq_persist with "Hsb") as "#Hsb".
   iMod (ptsq_persist with "Leb") as "#Leb". iMod (ptsq_persist with "Hwj") as "#Hwj".
+  iMod (ptsq_persist with "Hwf") as "#Hwf". iDestruct (hello_greet_fmt_own with "Hlk Hwf") as "#Hgf".
   iEval (rewrite Ej ptsq_concat big_sepL_fmap) in "Hjmp".
   iEval (rewrite hello_wjumps_syms ptsq_concat big_sepL_fmap) in "Hwj".
   iModIntro. rewrite /hello_start_main_res.
@@ -329,7 +357,7 @@ Proof using Hi.
     iSplitR; [rewrite /version_ro -hello_lit_version big_sepL_fmap; iExact "Hlv"|]. iSplitR; [iExact "Hepn"|].
     iAssert ([∗ list] ns ∈ (fun ns : string * list Z * list Z => (ns.1.1, ns.1.2)) <$> take 24 (drop 3 hello_lit_strs),
       word_string DfracDiscarded (sym_ptr ge ns.1) ns.2)%I as "#Hlf"; [rewrite big_sepL_fmap; iExact "Hlr"|].
-    iSplitR; [|iExact "Hwj"].
+    iSplitR; [|iSplitR; [iExact "Hwj"|iExact "Hgf"]].
     rewrite /print_fmt_ro /print_fmts. cbn [big_opL].
     iSplitR; [iApply (big_sepL_lookup (fun _ ns => word_string DfracDiscarded (sym_ptr ge ns.1) ns.2) _ 17
       ("hello#str.77"%string, [37; 115; 58; 32; 37; 115]) with "Hlf"); vm_compute; reflexivity|].
