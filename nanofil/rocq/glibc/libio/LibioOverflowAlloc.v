@@ -30,6 +30,7 @@ Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld Fil
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context {write_ready : Z -> Prop}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The allocator's state, which `c: malloc` takes and gives back. *)
@@ -38,7 +39,7 @@ Context (Mres : iProp Σ).
 Context (HL33 : forall fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   Z.land fl io_is_appending = 0 -> Z.land fl 8 = 0 -> Z.land fl 2048 = 0 -> Z.land fl 256 = 0 ->
   Z.land fl io_unbuffered = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
@@ -64,7 +65,7 @@ Lemma wp_glibc__IO_new_file_overflow_alloc fr fb freg ch f2 fd eb mode vb vreg f
   call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   Z.land fl io_is_appending = 0 -> Z.land fl 8 = 0 -> Z.land fl 2048 = 0 -> Z.land fl 256 = 0 ->
   Z.land fl io_unbuffered = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗

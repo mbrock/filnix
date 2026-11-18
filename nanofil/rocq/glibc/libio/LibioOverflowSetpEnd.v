@@ -32,13 +32,14 @@ Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld Fil
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context {write_ready : Z -> Prop}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Block `c: L18`, as LibioOverflowSend.v proves it ([wp_ovf_L18]). *)
 Context (HL18 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -52,7 +53,7 @@ Context (HL18 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw
 Context (HL113 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp0 we0 from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   Z.land fl 256 = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   0 < bb -> bb + sz <= r_end breg -> r_end breg <= 2 ^ 63 -> 0 < sz -> length xs = Z.to_nat sz ->
   Forall (fun x => 0 <= x < 256) xs ->
@@ -77,7 +78,7 @@ Context (HL113 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off
 Lemma wp_ovf_L162 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -121,7 +122,7 @@ Qed.
 Lemma wp_ovf_L35 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp0 we0 from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   Z.land fl 256 = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   0 < bb -> bb + sz <= r_end breg -> r_end breg <= 2 ^ 63 -> 0 < sz -> length xs = Z.to_nat sz ->
   Forall (fun x => 0 <= x < 256) xs ->

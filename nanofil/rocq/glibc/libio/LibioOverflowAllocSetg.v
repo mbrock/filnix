@@ -44,6 +44,7 @@ Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld Fil
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Context {write_ready : Z -> Prop}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The genv defines `c: _IO_doallocbuf`. *)
@@ -74,7 +75,7 @@ Context (Hdab : forall fr fb freg fl fd eb oe vb vreg Φ,
 Context (HL35 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp0 we0 from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   Z.land fl 256 = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   0 < bb -> bb + sz <= r_end breg -> r_end breg <= 2 ^ 63 -> 0 < sz -> length xs = Z.to_nat sz ->
   Forall (fun x => 0 <= x < 256) xs ->
@@ -97,7 +98,7 @@ Context (HL35 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off 
 Lemma wp_ovf_L33 fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe from e Φ :
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
-  Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
+  write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   Z.land fl io_is_appending = 0 -> Z.land fl 8 = 0 -> Z.land fl 2048 = 0 -> Z.land fl 256 = 0 ->
   Z.land fl io_unbuffered = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
