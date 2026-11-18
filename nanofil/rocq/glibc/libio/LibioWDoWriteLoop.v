@@ -26,7 +26,7 @@
     the pass together with the new bytes. Before the first pass, the
     flush writes the narrow buffer out if it is full and holds pending
     bytes. This file proves the whole flush. The proof of the loop is a
-    [[lob-induction|Löb induction]] over the loop's head, so it needs no
+    [[later-modality|Löb induction]] over the loop's head, so it needs no
     bound on the number of passes. *)
 
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
