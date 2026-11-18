@@ -412,6 +412,9 @@ libio/LibioOverflowPut.v
 libio/LibioOverflowSend.v
 libio/LibioOverflowSetpEnd.v
 libio/LibioOverflowSetpRest.v
+libio/LibioOverflowShortPut.v
+libio/LibioOverflowShortSend.v
+libio/LibioOverflowShortStart.v
 libio/LibioOverflowShortWrite.v
 libio/LibioPutsInv.v
 libio/LibioStdfiles.v
