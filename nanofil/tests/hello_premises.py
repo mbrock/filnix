@@ -32,6 +32,15 @@ Each premise also carries a tag from TAGS, naming the work that
 discharges it, and the script prints how many premises each tag has
 under the total. A premise that no tag matches is tagged untagged.
 
+The tags fall into two kinds, listed in ASSUMPTION_TAGS. An assumption
+describes the machine, the operating system, the runtime or the launch
+environment that the theorem is about, so it stays in the final theorem.
+A proof debt is a contract of glibc code that the proof still has to
+discharge from the code itself, so it should reach zero. The script
+prints the two kinds separately. The runtime's axioms and the system-call
+contracts are not premises of the statement and are not counted here;
+runtime-axioms.md lists them.
+
 Each premise also has a status from STATUS, kept by hand: satisfiable,
 or unsatisfiable with the reason. An unsatisfiable premise makes the
 theorem vacuous, so the script prints how many there are. A premise that
@@ -81,6 +90,9 @@ STATUS = [
                          'no start list owns'),
     (r'vfprintf_has_spec|fputs_has_spec', SAT),
 ]
+# These tags describe the world the theorem is about and stay; every
+# other tag is a proof debt that should reach zero.
+ASSUMPTION_TAGS = {'runtime/OS', 'environment', 'CPU', 'adequacy'}
 PREMISE_LABELS = {
     'ow_leaf4_ends': 'CPU hypothesis: the processor reports its caches in the way glibc reads them',
     'start_c_locale': 'environment: the process environment selects the C locale',
@@ -207,10 +219,14 @@ if __name__ == '__main__':
         print(f'{n:3d}. {line if len(line) <= 110 else line[:107] + "..."}')
         print(f'       status: {status(p)}')
     print(f'open premises: {len(ps)}')
-    bad = [p for p in ps if not status(p).startswith(SAT)]
-    print(f'not known satisfiable: {len(bad)} (the theorem is vacuous while any is unsatisfiable)')
     counts = {}
     for p in ps:
         counts[tag(p)] = counts.get(tag(p), 0) + 1
-    for t, c in sorted(counts.items(), key=lambda tc: (-tc[1], tc[0])):
-        print(f'  {t}: {c}')
+    for title, stays in (('assumptions about the machine, OS, runtime and environment (these stay)', True),
+                         ('proof debts: glibc contracts still to prove (these should reach 0)', False)):
+        group = {t: c for t, c in counts.items() if (t in ASSUMPTION_TAGS) == stays}
+        print(f'  {title}: {sum(group.values())}')
+        for t, c in sorted(group.items(), key=lambda tc: (-tc[1], tc[0])):
+            print(f'    {t}: {c}')
+    bad = [p for p in ps if not status(p).startswith(SAT)]
+    print(f'not known satisfiable: {len(bad)} (the theorem is vacuous while any is unsatisfiable)')
