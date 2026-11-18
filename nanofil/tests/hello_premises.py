@@ -15,10 +15,10 @@ arrow's left side is one premise, except:
   record it chooses. The field hd_priv is the callees' private state,
   which the caller picks rather than proves, so it is not counted, and
   neither is hd_wide, the state of stdout once it is wide.
-  Its body, hello_tb_contracts in HelloStartWp.v, counts two
-  obligations, each with its own label: the contract of glibc's
-  formatter (vfprintf_has_spec) and the contract of fputs
-  (fputs_has_spec).
+  Its body, hello_tb_contracts in HelloStartWp.v, counts one
+  obligation with its own label: the contract of fputs
+  (fputs_has_spec). The formatter's contract is proved for the image
+  by hello_vfprintf_image in HelloVfprintfImage.v.
   The conjunct that fixes hd_priv's shape only says which state the
   caller picks, so it is not counted. Its components are concrete and
   hello_priv_build proves that startup's objects build them.
@@ -160,8 +160,8 @@ def tb_contracts():
             out.append(f"contract: glibc's formatter, vfprintf_has_spec ({c})")
         elif c.startswith('HasSpec') and '"fputs"' in c:
             out.append(f"contract: glibc's fputs, fputs_has_spec ({c})")
-    if len(out) != 2:
-        sys.exit(f'hello_premises: expected 2 counted conjuncts in hello_tb_contracts, found {len(out)}')
+    if len(out) != 1:
+        sys.exit(f'hello_premises: expected 1 counted conjunct in hello_tb_contracts, found {len(out)}')
     return out
 
 

@@ -55,8 +55,9 @@ Lemma hi_output_close pre post fb freg bb sz wp we eb vb vreg
 Proof using Type.
   intros fp Hgso Hsoal Hsoend Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Heb Hlb.
   iIntros "Hvt Hs Htcb Hso Hsoc Hl Hvtp Hwb Hxf H72 H80 H96 Hlp Hlk Hio Hlives HK".
-  iDestruct "Hxf" as (fl f2 fd tw off md (Happ & Hf22 & Hfd & Hmd & Hflags & Hfd31 & Hf2160))
+  iDestruct "Hxf" as (fl f2 fd tw off md (Happ & Hf22x & Hfd & Hmd & Hflags & Hfd31))
     "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+  pose proof Hf22x as [Hf22 Hf2160].
   iDestruct (hi_wbuf_to_ovf with "Hwb Hfl Htw Hoff") as (breg xs cs k [Hb8 [Hheap Hlc]]) "[Hst Hcs]".
   iDestruct "Hst" as "(%Hp & Hbl & Hxs & Hfl & Htw & Hoff & Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend)".
   destruct Hp as (Hb & Hend & Hregend & Hsz & Hk & Hlx & Hxs & Hwecap & Hweaddr).

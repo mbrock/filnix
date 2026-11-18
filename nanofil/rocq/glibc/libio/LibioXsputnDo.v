@@ -64,7 +64,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
 Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hfwq : fwq_spec w0 registry ge).
+  (Hfwq : xs_fwq_spec w0 registry ge).
 
 
 (** Expressions of the language. *)
@@ -153,7 +153,7 @@ Proof using Type*.
   iDestruct "Hwbf" as "((Hrp & Hre & Hrb & Hwb & Hbb & Hbe) & Hwp & Hwe & Hroom)".
   iDestruct (wroom_cap with "Hroom") as (reg (Hb1 & Hb2 & Hcap)) "[Hbl Hroom]".
   iDestruct "Hos" as "(Hxf & HX)".
-  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31)) "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
   iDestruct "Hfl" as "[%Hfl32 Hfl]". iDestruct "Hfl2" as "[%Hf2r Hfl2]".
   (* iw_2.start: not appending. *)
   check "Hl"; tidy. load_s32 "Hl" "Hfl"; tidy. step; tidy. unfold io_is_appending in Happ. branch_as true; tidy.

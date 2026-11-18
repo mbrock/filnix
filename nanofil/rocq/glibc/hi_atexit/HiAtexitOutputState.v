@@ -41,9 +41,15 @@ Proof.
   rewrite !Z.lor_0_r. split; assumption.
 Qed.
 
+(** Output to stdout must write with the ordinary system call, may not
+    keep the stream open on close, and needs no lock. So its second
+    flags word has the bits for those three choices clear. The proofs
+    of its output need no fact about its descriptor. *)
+Definition hi_xs_fixed (f2 _fd : Z) : Prop := Z.land f2 2 = 0 /\ Z.land f2 160 = 0.
+
 (** The output proofs of the `c: atexit` program keep stdout's fact. *)
 #[export] Instance hi_xs_flags_inst : XsFlags :=
-  {| xs_flags := hi_xs_flags; xs_flags_error := hi_xs_flags_error |}.
+  {| xs_flags := hi_xs_flags; xs_flags_error := hi_xs_flags_error; xs_fixed := hi_xs_fixed |}.
 
 (** A fixed flag mask can be read from stdout's fact. The premise
     excludes the three bits that output may change. *)

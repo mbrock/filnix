@@ -311,7 +311,7 @@ Proof using Type*.
         $H80 $H96] Herr"). split; [exact Hk | reflexivity].
   - (* A heap buffer: output may be pending. *)
     destruct Hbok as (E6 & E7 & Hall). cbn [nth] in E6, E7. subst p6 p7.
-    destruct Hshort as (Hu & E26 & E36 & Hub). subst p2 p3.
+    destruct Hshort as (Hu & E26 & E36 & Hub & _). subst p2 p3.
     unfold has in Hub. apply negb_false_iff, Z.eqb_eq in Hub.
     repeat rewrite Forall_cons_iff in Hall.
     destruct Hall as (_ & _ & _ & _ & [Hc4 Ha4] & [Hc5 Ha5] & _).

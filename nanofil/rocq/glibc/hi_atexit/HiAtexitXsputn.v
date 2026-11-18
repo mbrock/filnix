@@ -97,7 +97,7 @@ Proof using Hcpy Hda Hdab Hdwf Hdxf Hext Hfh Hfo Hfree_fn Hfstat Hfw Hisatty Hma
   intros n Hfr Heb Hfb Hal Hend Hregend Hc Hb Hb8 Ho Hbend Hbreg Hys.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hbl Hys HK".
   iApply (LibioXsputn.wp_glibc__IO_new_file_xsputn Hmove Hmove_fn Hmove_sym Hfw
-    hi_file_write_dq fr eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
+    ltac:(split; [exact hi_file_write_dq | intros f2 fd H; left; exact (proj1 H)]) fr eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
     fb freg vb vreg nb wp we dq' b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hbl Hys HK"); try assumption.
   exact (hi_xsputn_overflow Hreg Hext Hstat Hfh Hzf Hzg
     dq mp tc dummy mpr tcr dr Hmp Htc Hda Hfw eb Heb).

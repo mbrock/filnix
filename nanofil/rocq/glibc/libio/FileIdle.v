@@ -123,7 +123,10 @@ Definition idle_ok (fd : Z) (st : fstate) : Prop :=
     comes from `c: _IO_file_doallocate`, whose call of `c: _IO_setb`
     clears `c: _IO_USER_BUF`, so closing the stream frees the buffer. Nor is a stream
     that may not be written, because the overflow function returns
-    before it sets the putting bit of such a stream. The predicate
+    before it sets the putting bit of such a stream. A writable stream
+    gets its heap buffer from that overflow, which sets the putting
+    bit, and no output call clears the bit again. So a writable stream
+    with a heap buffer is putting. The predicate
     [short_idle] nb st states these facts for the stream's buffer nb. *)
 Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
   ((has (fs_flags st) io_unbuffered = true -> has (fs_flags st) io_line_buf = false) /\
@@ -132,7 +135,8 @@ Definition short_idle (nb : nbuf) (st : fstate) : Prop :=
   | NbShort => has (fs_flags st) io_unbuffered = true /\
       fs_ptr st 4 = fs_ptr st 3 /\ fs_ptr st 5 = fs_ptr st 4 /\ fs_ptr st 3 = fs_ptr st 6
   | NbHeap _ _ => has (fs_flags st) io_unbuffered = false /\
-      fs_ptr st 2 = fs_ptr st 6 /\ fs_ptr st 3 = fs_ptr st 6 /\ has (fs_flags st) io_user_buf = false
+      fs_ptr st 2 = fs_ptr st 6 /\ fs_ptr st 3 = fs_ptr st 6 /\ has (fs_flags st) io_user_buf = false /\
+      (has (fs_flags st) io_no_writes = false -> has (fs_flags st) io_currently_putting = true)
   | NbNone => has (fs_flags st) io_currently_putting = false
   | NbFreeres _ => True
   end.

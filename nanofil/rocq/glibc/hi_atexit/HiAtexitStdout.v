@@ -62,7 +62,8 @@ Proof using Type.
     Hl & Hvtp & Hwb & Hxf & Htail)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hlb).
   iDestruct "Hxf" as "(%Hfields & Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmd & Herr)".
-  destruct Hfields as (Happ & Hf22 & Hfd & Hm & Hflags & Hfd31 & Hf2160).
+  destruct Hfields as (Happ & Hf22x & Hfd & Hm & Hflags & Hfd31).
+  pose proof Hf22x as [Hf22 Hf2160].
   iDestruct "Hfl" as "[%Hflr Hfl]".
   iDestruct "Htail" as "(H72 & H80 & H96 & Hlp & Hlk)".
   assert (Hul : has fl io_user_lock = false).
@@ -99,7 +100,8 @@ Proof using Type.
   iIntros "(%fb & %freg & %nb & %wp & %we & %lb & %Hp & Hl & Hvtp & Hwb & Hxf & Htail)".
   destruct Hp as (Hfp & Hfb & Hal & Hend & Hreg & Hlb & Hprogress).
   iDestruct "Hxf" as (fl f2 fd tw off m Hfields) "(Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmd & Herr)".
-  destruct Hfields as (Happ & Hf22 & Hfd & Hm & Hflags & Hfd31 & Hf2160).
+  destruct Hfields as (Happ & Hf22x & Hfd & Hm & Hflags & Hfd31).
+  pose proof Hf22x as [Hf22 Hf2160].
   iDestruct "Hfl" as "[%Hflr Hfl]".
   iDestruct "Htail" as "(H72 & H80 & H96 & Hlp & Hlk)".
   assert (Hul : has fl io_user_lock = false).

@@ -58,7 +58,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
 Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hfwq : fwq_spec w0 registry ge).
+  (Hfwq : xs_fwq_spec w0 registry ge).
 
 
 (** Expressions of the language. *)
@@ -126,8 +126,8 @@ Lemma wp_xs_L9 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d fl f2 fd tw
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 < d <= T -> T <= n ->
-  Z.land fl io_is_appending = 0 -> Z.land f2 2 = 0 -> In fd (ow_fds w0) -> m = 0 \/ m = 2 ^ 32 - 1 ->
-  xs_flags nb fl -> 0 <= fd < 2 ^ 31 -> Z.land f2 160 = 0 ->
+  Z.land fl io_is_appending = 0 -> xs_fixed f2 fd -> In fd (ow_fds w0) -> m = 0 \/ m = 2 ^ 32 - 1 ->
+  xs_flags nb fl -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> 0 <= f2 < 2 ^ 32 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -145,7 +145,7 @@ Lemma wp_xs_L9 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d fl f2 fd tw
   WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L9") (Some (TAtom "iw_2.L8"))))
         : sexpr) {{ Φ }}.
 Proof using Type*.
-  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hnb Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT Happ Hf2 Hfd Hm Hflags Hfd31 Hf2160 Hfl32 Hf2r
+  intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hnb Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hd HT Happ Hf2 Hfd Hm Hflags Hfd31 Hfl32 Hf2r
     Hv0 Hc0 Hc11 Hc14 Hc15 Hv4 Hp5 Hv175 Hp1.
   unfold file_size in Hfend.
   iIntros "#Hvt Hl Hvtp Hwbf Hfl Hfl2 Hfdc Htw Hoff Hcol Hmode Herr HX Hl' Hys HK".
@@ -174,7 +174,8 @@ Proof using Type*.
   iDestruct (bytesq_sub _ _ _ _ j (Z.to_nat d) with "Hys") as "[Hsub Hysb]"; [lia|].
   set (zs := take (Z.to_nat d) (drop j ys)).
   assert (Hlz : Z.of_nat (length zs) = d) by (unfold zs; rewrite length_take_le; [lia | rewrite length_drop; lia]).
-  iApply (Hfwq _ fb freg fl f2 fd tw off dq b' reg' (so + Z.of_nat j) c' zs eb
+  pose proof (proj2 Hfwq f2 fd Hf2) as Hready.
+  iApply (proj1 Hfwq _ fb freg fl f2 fd tw off dq b' reg' (so + Z.of_nat j) c' zs eb
             with "Hl Hfl Hfl2 Hfdc Htw Hoff Hl' Hsub Herr").
   1: { unfold Callee. rewrite Hlz. rewrite (Z.mod_small d (2 ^ 64)); [|lia].
         replace (b' + so + (n - T)) with (b' + (so + Z.of_nat j)) by (unfold j; lia). reflexivity. }

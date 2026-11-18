@@ -30,7 +30,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
   HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery
-  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall.
+  HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage.
 From Glibc Require HelloGlibcJoin.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -102,7 +102,8 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
 (** Hello's main calls glibc functions, and some of those calls have
     no proof yet. To prove main anyway, this definition lists what those
     calls must provide for one thread and one environment. Glibc's
-    formatter and `c: fputs` must keep their contracts. The private
+    `c: fputs` must keep its contract; the formatter's contract is
+    proved for the image by [hello_vfprintf_image]. The private
     state is both halves of getenv's objects, getopt's warning state and
     the three components of [hello_priv_rest], which the objects that
     startup leaves build. *)
@@ -111,8 +112,6 @@ Definition hello_tb_contracts (env : Z * list (Z * list Z)) (tb : Z) : Prop :=
   let half := (getenv_globals (glibc_program := P tb) (DfracOwn (1/2)) (img_a "__environ_counter")
       (img_gd "__environ_counter") (img_a "__environ") (img_gd "__environ") 0 envp ∗
     getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env))%I in
-  HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "__vfprintf_internal")
-    (vfprintf_spec (glibc_program := P tb)) /\
   HasSpec glibc_os_registry (os_wi (final_world w0 tb)) hge (TAtom "fputs")
     (fputs_spec (glibc_program := P tb)) /\
   (hd_priv (final_world w0 tb) hge o (debt tb) ⊣⊢
@@ -146,7 +145,8 @@ Proof using Hi.
       (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
        HelloGlibcJoin.Libs.exit_lock o)%I).
   { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
-    destruct (Hc tb H0 H1) as (Hvf & Hfputs & Hpv).
+    destruct (Hc tb H0 H1) as (Hfputs & Hpv).
+    pose proof (hello_vfprintf_image (final_world w0 tb) fr (hello_link_all fr Hfree)) as Hvf.
     exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (debt tb) 0
       (hello_setlocale_query (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ Hpv)
@@ -325,7 +325,7 @@ Proof using Hi.
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".
   rewrite /StartTlsInitTpSpec.tp_fields. iDestruct "Htp" as "(Htid & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hsz)".
-  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & _ & Hpv).
+  destruct (Hc tb ltac:(lia) ltac:(lia)) as (_ & Hpv).
   assert (Hfd2' : In 2 (ow_fds (final_world w0 tb))) by (rewrite Hfds; exact Hfd2).
   iDestruct (getenv_half with "[$Gg $Gs]") as "[Gh1 Gh2]".
   iEval (rewrite /hello_start_main_res) in "Hres". iDestruct "Hres" as "[#Hrr Hres]".
@@ -343,7 +343,7 @@ Proof using Hi.
   pose (gs := getenv_storage (DfracOwn (1/2)) DfracDiscarded envp (env_entries m env)).
   iAssert (hd_priv (final_world w0 tb) hge o (debt tb)) with "[Gh1 Gh2 Hgo HX]" as "Hpv".
   { iApply Hpv. iFrame "Gh1 Gh2 Hgo HX". }
-  destruct (hello_hd_rules (final_world w0 tb) fr Hfree Herr (Hvf := proj1 (Hc tb ltac:(lia) ltac:(lia))) tb gs)
+  destruct (hello_hd_rules (final_world w0 tb) fr Hfree Herr (Hvf := hello_vfprintf_image (final_world w0 tb) fr (hello_link_all fr Hfree)) tb gs)
     as (Rd & Rl & Rn).
   apply (getopt_diag_rule_sep_l _ _ _ gg) in Rd. apply (getopt_ldiag_rule_sep_l _ _ _ gg) in Rl.
   assert (Hln : gg ∗ (gs ∗ hello_getopt_E (final_world w0 tb) fr tb) ⊢

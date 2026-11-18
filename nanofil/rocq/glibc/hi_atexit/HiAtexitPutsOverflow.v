@@ -66,7 +66,8 @@ Proof.
     "(Hl & Hvtp & Hwb & Hxf & Htail)".
   iDestruct "Hxf" as (fl f2 fd tw off m Hp)
     "(Hfl & Hfl2 & Hfd & Htw & Hoff & Hcol & Hmode & Herr)".
-  destruct Hp as (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160).
+  destruct Hp as (Happ & Hf2x & Hfd & Hm & Hflags & Hfd31).
+  pose proof Hf2x as [Hf2 Hf2160].
   iApply (LibioOverflowGen.wp_glibc___overflow (glibc_program := program_of w0 glibc_os_registry hge) (hi_ge_overflow _)
     fr fb freg 10 m vb vreg with "Hvt Hl Hmode Hvtp"); try assumption; try lia.
   iNext. iIntros (fr' Hfr') "Hl Hmode Hvtp".

@@ -59,7 +59,7 @@ Lemma heap_after_idle st nb fd fb bb sz k we fl tw off mode :
   flags_ok st' /\ idle_ok fd (fs_with_flags2 st' 0) /\ short_idle (NbHeap bb sz) st' /\ buf_ptrs_ok fb (NbHeap bb sz) (fs_ptrs st').
 Proof.
   cbn zeta. intros Hok Hi Hshort Hu Hnw Hflags Hrange Hmd Hk [Hwec Hwea].
-  pose proof (heap_flags_owned _ _ _ Hflags ltac:(destruct nb as [[b s]|]; [destruct Hshort as (_ & _ & _ & _ & Huser); auto|tauto])) as [Huser Hput].
+  pose proof (heap_flags_owned _ _ _ Hflags ltac:(destruct nb as [[b s]|]; [destruct Hshort as (_ & _ & _ & _ & Huser & _); auto|tauto])) as [Huser Hput].
   assert (E : forall m, Z.land 4294967294 m = m -> Z.land io_line_buf m = 0 -> Z.land 2048 m = 0 ->
     Z.land io_err_seen m = 0 -> has fl m = has (fs_flags st) m) by (intros; unfold has; rewrite (heap_flags_mask _ _ _ _ Hflags) //).
   assert (Hu' : has fl io_unbuffered = false) by (rewrite E; auto; reflexivity).

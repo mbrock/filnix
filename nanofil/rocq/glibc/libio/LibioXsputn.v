@@ -61,7 +61,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
 Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hfwq : fwq_spec w0 registry ge).
+  (Hfwq : xs_fwq_spec w0 registry ge).
 
 
 (** Expressions of the language. *)

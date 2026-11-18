@@ -65,8 +65,9 @@ Proof using Hda Hdab Hdwf Heb Hext Hfh Hfree_fn Hfstat Hfw Hisatty Hmaj Hmalloc2
       try assumption.
     iNext. iIntros (r wp' we' Hr) "Hl Hvtp Hwb Hxf".
     iApply ("HK" with "[%] Hl Hvtp Hwb [$Hxf $HM]"). split; [exact Hr | discriminate].
-  - iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160))
+  - iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2x & Hfd & Hm & Hflags & Hfd31))
       "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+    pose proof Hf2x as [Hf2 Hf2160].
     iDestruct "Hwb" as "((Hrp & Hre & Hrb & Hwb & Hbase & Hbend) & Hwp & Hwe & [%Hwp %Hwe])".
     subst wp we. iDestruct "Hfl" as "[%Hflr Hfl]". iDestruct "Hfl2" as "[%Hf2r Hfl2]".
     pose proof (xs_flags_mask _ _ 8 eq_refl Hflags) as Hnw.

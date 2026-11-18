@@ -75,10 +75,16 @@ Definition xs_scan_names : list name :=
     sets the error bit. Different callers keep different facts: the
     proof of the `c: atexit` program fixes every flag of stdout but
     three, and an idle stream keeps only what its next call needs. The
-    class [XsFlags] lets each caller choose its fact. *)
+    class [XsFlags] lets each caller choose its fact. Its field
+    [xs_fixed] f2 fd is the caller's fact about the second flags word
+    and the descriptor, which string output never changes. A caller
+    can use it to get both back unchanged. A caller whose stream may set
+    `c: _IO_FLAGS2_NOTCANCEL` proves that its program has the
+    noncanceling write, as [xs_fwq_spec] asks. *)
 Class XsFlags : Type := {
   xs_flags : option (Z * Z) -> Z -> Prop;
-  xs_flags_error : forall nb fl, xs_flags nb fl -> xs_flags nb (Z.lor fl io_err_seen)
+  xs_flags_error : forall nb fl, xs_flags nb fl -> xs_flags nb (Z.lor fl io_err_seen);
+  xs_fixed : Z -> Z -> Prop
 }.
 
 Import LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
@@ -92,9 +98,9 @@ Context `{XF : !XsFlags}.
     facts alongside the output count, offset and thread error cell.
     The column stays zero, and the mode allows only byte output. *)
 Definition xfields_body (w0 : os_world) (eb fb : Z) (nb : option (Z * Z)) (fl f2 fd tw off m : Z) : iProp Σ :=
-  ⌜Z.land fl io_is_appending = 0 /\ Z.land f2 2 = 0 /\ In fd (ow_fds w0) /\
+  ⌜Z.land fl io_is_appending = 0 /\ xs_fixed f2 fd /\ In fd (ow_fds w0) /\
                         (m = 0 \/ m = 2 ^ 32 - 1) /\ xs_flags nb fl /\
-                        0 <= fd < 2 ^ 31 /\ Z.land f2 160 = 0⌝ ∗
+                        0 <= fd < 2 ^ 31⌝ ∗
     int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗
     icell fb off_total_written tw ∗ icell fb off_offset off ∗ bytes fb off_column [0; 0] ∗
     int_cell fb off_mode m ∗ errno_any eb.
@@ -170,6 +176,13 @@ Definition fwq_spec : Prop :=
        icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ liveq dq b reg -∗ bytesq dq b o xs -∗
        errno_any eb -∗ Φ (Ret (WInt r))) -∗
     WP (ERun fr : sexpr) {{ Φ }}.
+(** String output writes through [fwq_spec]. The caller's fact about
+    the second flags word must allow that write: either
+    `c: _IO_FLAGS2_NOTCANCEL` is clear, or the program has the
+    noncanceling write. *)
+Definition xs_fwq_spec : Prop :=
+  fwq_spec /\ forall f2 fd, xs_fixed f2 fd -> Z.land f2 2 = 0 \/
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel).
 Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (ys : list Z)
     (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=

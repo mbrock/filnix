@@ -48,8 +48,9 @@ Lemma hi_buffered_overflow fr eb fb freg vb vreg bb sz wp we ch Φ :
 Proof using Type*.
   intros Hfr Hch Heb Hfb Hal Hend Hregend.
   iIntros "#Hvt Hl Hvtp Hwb Hxf HK".
-  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2 & Hfd & Hm & Hflags & Hfd31 & Hf2160))
+  iDestruct "Hxf" as (fl f2 fd tw off m (Happ & Hf2x & Hfd & Hm & Hflags & Hfd31))
     "(Hfl & Hfl2 & Hfdc & Htw & Hoff & Hcol & Hmode & Herr)".
+    pose proof Hf2x as [Hf2 Hf2160].
   pose proof (xs_flags_mask _ _ 8 eq_refl Hflags) as Hnw.
   pose proof (proj2 Hflags) as Hput.
   iDestruct (hi_wbuf_to_ovf with "Hwb Hfl Htw Hoff") as (breg xs cs k [Hb8 [Hheap Hlc]]) "[Hst Hcs]".
