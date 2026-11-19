@@ -3,7 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import Setlocale_roots Unit_locale_setlocale_os.
+From Glibc Require Import Unit_locale_setlocale_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -12,7 +12,7 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition setlocale_module : module :=
-  [Setlocale_roots.item_setlocale_roots;
+  [(IData (a "setlocale_roots") (LRo (a "export")) 8 [(Sym (a "__GI_setlocale") 0)]);
   IFunc Unit_locale_setlocale_os.fn_glibc_setlocale'23new_composite_name;
   IFunc Unit_locale_setlocale_os.fn___GI_setlocale;
   Unit_locale_setlocale_os.item___libc_setlocale_lock;

@@ -3,8 +3,8 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import GettextLink_roots Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os.
-From Glibc Require Import Unit_string_mempcpy_os Unit_string_stpcpy_os.
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os Unit_string_mempcpy_os.
+From Glibc Require Import Unit_string_stpcpy_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -13,7 +13,7 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition gettextlink_module : module :=
-  [GettextLink_roots.item_gettextlink_roots;
+  [(IData (a "gettextlink_roots") (LRo (a "export")) 8 [(Sym (a "__GI___dcgettext") 0)]);
   IFunc Unit_intl_dcgettext_os.fn___GI___dcgettext;
   IFunc Unit_intl_dcigettext_os.fn_glibc_dcigettext'23transcmp;
   IFunc Unit_intl_dcigettext_os.fn_glibc_dcigettext'23plural_eval_recurse;

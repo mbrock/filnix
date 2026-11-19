@@ -3,12 +3,153 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import ErrlistDataCodeItems01 ErrlistDataCodeItems02 ErrlistDataCodeItems03.
+From Glibc Require Import Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 Open Scope list_scope.
 Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
+
+Local Definition errlistdata_module_items_01 : module :=
+  [(IData (a "errlistdata_roots") (LRo (a "export")) 8 [(Sym (a "_sys_errlist_internal") 0); (Sym (a "_sys_errlist_internal_len") 0)]);
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item__sys_errlist_internal;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item__sys_errlist_internal_len;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e247;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e248;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e249;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e250;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e251;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e252;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e253;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e254;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e255;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e256;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e257;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e258;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e259;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e260;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e261;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e262;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e263;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e264;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e265;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e266;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e267;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e268;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e269;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e270;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e271;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e272;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e273;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e274;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e275;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e276;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e277;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e278;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e279;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e280;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e281;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e282;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e283;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e284;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e285;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e286;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e287;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e288;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e289;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e290;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e291;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e292;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e293;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e294;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e295;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e296;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e297;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e298;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e299;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e300;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e301;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e302;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e303;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e304;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e305;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e306;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e307].
+
+Local Definition errlistdata_module_items_02 : module :=
+  [Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e308;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e309;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e310;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e311;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e312;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e313;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e314;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e315;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e316;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e317;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e318;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e319;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e320;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e321;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e322;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e323;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e324;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e325;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e326;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e327;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e328;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e329;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e330;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e331;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e332;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e333;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e334;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e335;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e336;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e337;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e338;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e339;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e340;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e341;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e342;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e343;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e344;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e345;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e346;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e347;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e348;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e349;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e350;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e351;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e352;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e353;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e354;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e355;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e356;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e357;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e358;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e359;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e360;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e361;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e362;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e363;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e364;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e365;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e366;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e367;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e368;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e369;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e370;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e371].
+
+Local Definition errlistdata_module_items_03 : module :=
+  [Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e372;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e373;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e374;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e375;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e376;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e377;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e378].
 
 Definition errlistdata_module : module := errlistdata_module_items_01 ++ errlistdata_module_items_02 ++ errlistdata_module_items_03.

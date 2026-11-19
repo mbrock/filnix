@@ -46,6 +46,7 @@ items = [
     "func(outside,export,vector,[],[block(entry,[],[opaque([3,4])],ret)])",
     "alias(alias,weak,'unit#f.test')",
     "alias(another,export,outside)",
+    "data(fixture_roots,ro(export),8,[item(p,sym(d,0))])",
 ] + [f'alias(n{i},weak,d)' for i in range(65)]
 source = 'module([' + ','.join(items) + ']).\n'
 
@@ -63,9 +64,10 @@ with tempfile.TemporaryDirectory() as tmp:
     code = typed['TypedCode'](budget=1200)
     unit = Path('SharedUnit')
     records = list(typed['records'](records))
-    refs = [code.add(unit, 'Shared test object.', record) for record in records]
+    refs = [(None, record) if record.symbol == b'fixture_roots'
+            else code.add(unit, 'Shared test object.', record) for record in records]
     code.add(unit, 'Shared test object.', records[0])
-    assert len(code.units[unit]) == len(records)
+    assert len(code.units[unit]) == len(records) - 1
     try:
         code.add(unit, 'Shared test object.', replace(records[0], body='changed'))
     except ValueError as error:
@@ -75,7 +77,8 @@ with tempfile.TemporaryDirectory() as tmp:
     code.write_unit(root, unit)
     code.write_view(root, Path('FirstCode'), 'first_image', refs)
     code.write_view(root, Path('SecondCode'), 'second_image', [refs[2], refs[0]])
-    assert list(root.glob('*Blocks*.v')) and (root / 'FirstCodeItems02.v').is_file()
+    assert list(root.glob('*Blocks*.v')) and not list(root.glob('*CodeItems*.v'))
+    assert 'Local Definition first_image_items_02' in (root / 'FirstCode.v').read_text()
     swipl = os.environ.get('SWIPL', 'swipl')
     raw = run(swipl, ROCQ / 'scripts/gallina.pl', '--chunk',
               'sample', 'typed image test', input=source, capture_output=True).stdout

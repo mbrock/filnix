@@ -156,7 +156,7 @@ class TypedCode:
         return f' blocks {expression} }}' if structured else ' ' + expression
 
     def write_view(self, root, file, prefix, items, provenance='', check_zero=False):
-        refs, deps, proofs = [], [], []
+        definitions, refs, deps, proofs = [], [], [], []
         description = 'This module assembles the selected IR items in link order.'
         chunks = [items[start:start + 64] for start in range(0, len(items), 64)]
         if len(chunks) <= 1 and not check_zero:
@@ -165,19 +165,18 @@ class TypedCode:
                   f'  {listing(expressions)}.\n', imports)
             return
         for index, chunk in enumerate(chunks, 1):
-            part = file.with_name(f'{file.name}Items{index:02}')
             ref = f'{prefix}_items_{index:02}'
             expressions, imports = item_refs(chunk)
-            body = f'Definition {ref} : module :=\n  {listing(expressions)}.\n'
+            deps.extend(imports)
+            definitions.append(f'Local Definition {ref} : module :=\n  {listing(expressions)}.\n')
             if check_zero:
-                imports.append('HelloImageEraseMem')
                 proof = ref + '_zero'
-                body += f'\nLemma {proof} : zero_nonneg {ref} = true.\nProof. reflexivity. Qed.\n'
+                definitions.append(f'Local Lemma {proof} : zero_nonneg {ref} = true.\n'
+                                   'Proof. reflexivity. Qed.\n')
                 proofs.append(proof)
-            write(root, part, description, body, imports)
-            deps.append(part.name)
             refs.append(ref)
-        body = f'{provenance}Definition {prefix} : module := ' + (' ++ '.join(refs) or '[]') + '.\n'
+        definitions.append(f'Definition {prefix} : module := ' + (' ++ '.join(refs) or '[]') + '.\n')
+        body = provenance + '\n'.join(definitions)
         if check_zero:
             deps.extend(['HelloImageChunks', 'HelloImageEraseMem'])
             body += f'\nLemma {prefix}_zero : zero_nonneg {prefix} = true.\nProof.\n'
@@ -191,6 +190,9 @@ class TypedCode:
 def item_refs(items):
     expressions, imports = [], []
     for file, record in items:
+        if file is None:
+            expressions.append(record.body)
+            continue
         ref = f'{file.name}.{record.identifier}'
         expressions.append('IFunc ' + ref if record.is_function else ref)
         imports.append(file.name)

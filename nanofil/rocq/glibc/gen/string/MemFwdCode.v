@@ -3,8 +3,8 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import MemFwd_roots Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_memset_os.
-From Glibc Require Import Unit_string_strdup_os Unit_wcsmbs_mbsinit_os Unit_wctype_wcfuncs_os.
+From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_memset_os Unit_string_strdup_os.
+From Glibc Require Import Unit_wcsmbs_mbsinit_os Unit_wctype_wcfuncs_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -13,7 +13,7 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition memfwd_module : module :=
-  [MemFwd_roots.item_memfwd_roots;
+  [(IData (a "memfwd_roots") (LRo (a "export")) 8 [(Sym (a "memcpy") 0); (Sym (a "mempcpy") 0); (Sym (a "memset") 0); (Sym (a "strdup") 0); (Sym (a "__errno_location") 0); (Sym (a "mbsinit") 0); (Sym (a "towlower") 0); (Sym (a "towupper") 0); (Sym (a "__ctype_b_loc") 0); (Sym (a "__ctype_tolower_loc") 0); (Sym (a "__ctype_toupper_loc") 0); (Sym (a "__ctype_init") 0); (Sym (a "__ctype_get_mb_cur_max") 0)]);
   IFunc Unit_string_memcpy_os.fn___GI_memcpy;
   Unit_string_memcpy_os.item_memcpy;
   IFunc Unit_string_mempcpy_os.fn___GI___mempcpy;

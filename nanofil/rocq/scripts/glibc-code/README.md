@@ -337,9 +337,11 @@ The linker reports the object supplying each item after reachability and
 weak-symbol resolution. The extracted model reads the linked term and
 prints the typed Gallina. The generator groups glibc definitions under
 `gen/glibc` by the full capture path and rejects different bodies for the
-same object and symbol. Program directories hold their own objects and
-join lists for their images. The list references preserve aliases,
-initializers and link order.
+same object and symbol. Program directories hold their own objects.
+Each fixture's code view assembles a list that preserves aliases,
+initializers and link order. When a fixture has a synthetic root, the code
+view writes it directly in the list. The code view keeps any list chunks
+in the same file.
 
 Import the generated object to use its function or data in a proof. For
 example, `Unit_string_strlen_os.fn___strlen` names the body in
@@ -361,7 +363,8 @@ The selection keeps each requested name and each retained alias's target
 in link order. The `compare` setting names a standalone fixture whose
 matching items must have identical terms. Both views use the canonical
 definitions. The provenance records the input digests and that comparison.
-The complete Hello image also checks its initializer zero runs in Rocq.
+The complete Hello image checks its initializer zero runs in Rocq. It checks
+each list chunk separately and combines those proofs for the whole image.
 
 ## Start a block lemma
 

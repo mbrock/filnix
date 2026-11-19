@@ -247,7 +247,7 @@ class Generator:
             root = self.work / "roots.term"
             root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
             obj = 'root' if layout == 'stdlib' else 'roots'
-            add(obj, root, (None, 'roots'))
+            add(obj, root, (None, None))
             specs.insert(0, specs.pop())
         flags = (["--context"] if self.sources and layout not in ("image", "linked_image") else []) + (
             ["--ctors"] if cfg.get("ctors") else [])
@@ -341,6 +341,10 @@ class Generator:
             items = []
             for record in records:
                 unit, obj = owners[record.symbol]
+                # The synthetic root is a data item owned by this view.
+                if obj is None:
+                    items.append((None, record))
+                    continue
                 if unit:
                     file = typed['unit_file'](unit)
                     description = f'This file defines checked IR from glibc’s `{unit}` object.'

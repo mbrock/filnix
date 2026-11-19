@@ -3,7 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import Formatter_roots Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -12,7 +12,7 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition formatter_module : module :=
-  [Formatter_roots.item_formatter_roots;
+  [(IData (a "formatter_roots") (LRo (a "export")) 8 [(Sym (a "__vfprintf_internal") 0)]);
   IFunc Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23read_int;
   IFunc Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23outstring_converted_wide_string;
   IFunc Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer;

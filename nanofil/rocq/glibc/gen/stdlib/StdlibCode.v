@@ -3,8 +3,8 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import Stdlib_roots Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_malloc_malloc_os Unit_stdlib_atexit_oS Unit_stdlib_cxa_atexit_os.
-From Glibc Require Import Unit_wcsmbs_mbsinit_os Unit_wctype_wcfuncs_os.
+From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_malloc_malloc_os Unit_stdlib_atexit_oS Unit_stdlib_cxa_atexit_os Unit_wcsmbs_mbsinit_os.
+From Glibc Require Import Unit_wctype_wcfuncs_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -13,7 +13,7 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition stdlib_module : module :=
-  [Stdlib_roots.item_stdlib_root;
+  [(IData (a "stdlib_root") (LRo (a "export")) 8 [(Sym (a "malloc") 0); (Sym (a "free") 0); (Sym (a "calloc") 0); (Sym (a "atexit") 0); (Sym (a "__cxa_atexit") 0); (Sym (a "__errno_location") 0); (Sym (a "__ctype_b_loc") 0); (Sym (a "__ctype_get_mb_cur_max") 0); (Sym (a "mbsinit") 0); (Sym (a "iswprint") 0)]);
   IFunc Unit_malloc_malloc_os.fn_glibc_malloc'23__libc_malloc2;
   IFunc Unit_malloc_malloc_os.fn___GI___libc_malloc;
   IFunc Unit_malloc_malloc_os.fn___GI___libc_free;

@@ -3,7 +3,7 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import Errlist_roots Unit_stdioZ2dcommon_errlist_os.
+From Glibc Require Import Unit_stdioZ2dcommon_errlist_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -12,5 +12,5 @@ Local Abbreviation a := TAtom.
 Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
 
 Definition errlist_module : module :=
-  [Errlist_roots.item_errlist_roots;
+  [(IData (a "errlist_roots") (LRo (a "export")) 8 [(Sym (a "__get_errlist") 0)]);
   IFunc Unit_stdioZ2dcommon_errlist_os.fn___get_errlist].
