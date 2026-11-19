@@ -1,0 +1,218 @@
+{
+  "_comment": [
+    "Pragmatic, revisable architecture map for nanofil/rocq/glibc/.",
+    "This manifest is a tripwire against silent drift, not rigid bureaucracy.",
+    "When proof_arch_check.py flags a violation, either fix the accidental tangle",
+    "or intentionally revise this manifest with a one-line rationale in the commit."
+  ],
+  "layers": {
+    "L0": {
+      "description": "Pure IR, generated captures, layouts, and raw piece/literal data (no Iris, Fix, or zsys).",
+      "dirs": [
+        "gen"
+      ],
+      "files": [
+        "CodePrelude",
+        "IRBytes",
+        "IRFrames",
+        "IRNotation",
+        "LayoutTables"
+      ],
+      "forbid_external_prefixes": [
+        "iris."
+      ],
+      "forbid_modules": [
+        "Fix",
+        "OsWorld",
+        "OsBlocks",
+        "OsRegistry"
+      ]
+    },
+    "L1": {
+      "description": "Shared userland logic, OS syscall world, and generic program/memory/image base (not glibc-specific).",
+      "dirs": [
+        ".",
+        "base",
+        "zsys"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1"
+      ]
+    },
+    "L2": {
+      "description": "Shared userland proof infrastructure and tactics (OsTactics, CFrame/CStruct/CBlocks, opt-in GlibcSym*).",
+      "dirs": [
+        "tactics"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2"
+      ]
+    },
+    "L3a": {
+      "description": "Leaf C library subsystems: strings, locking primitives, allocator/stdlib.",
+      "dirs": [
+        "string",
+        "nptl",
+        "stdlib"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a"
+      ]
+    },
+    "L3b": {
+      "description": "Locale and message catalogs.",
+      "dirs": [
+        "locale",
+        "intl"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a",
+        "L3b"
+      ]
+    },
+    "L3c": {
+      "description": "Stream implementation (FileInv and FILE-specific proofs).",
+      "dirs": [
+        "libio"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a",
+        "L3b",
+        "L3c"
+      ]
+    },
+    "L3d": {
+      "description": "Higher-level formatted I/O and option parsing.",
+      "dirs": [
+        "stdio",
+        "getopt"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a",
+        "L3b",
+        "L3c",
+        "L3d"
+      ]
+    },
+    "L4": {
+      "description": "Generic program startup and runtime initialization, parameterized over an image.",
+      "dirs": [
+        "startup"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a",
+        "L3b",
+        "L3c",
+        "L3d",
+        "L4"
+      ]
+    },
+    "L5": {
+      "description": "Whole-program proofs (concrete linked binaries). Sibling programs stay isolated from each other.",
+      "dirs": [
+        "hello",
+        "hi_atexit"
+      ],
+      "may_import_layers": [
+        "L0",
+        "L1",
+        "L2",
+        "L3a",
+        "L3b",
+        "L3c",
+        "L3d",
+        "L4"
+      ],
+      "isolate_siblings": true
+    }
+  },
+  "functor_instantiation_modules": [
+    "Fix",
+    "FixVariadic",
+    "FixExec"
+  ],
+  "tactic_export_dirs": [
+    "tactics"
+  ],
+  "tactic_export_module_suffixes": [
+    "Tactics"
+  ],
+  "tactic_export_modules": [
+    "CFrame",
+    "CStruct",
+    "CBlocks",
+    "GlibcSym",
+    "GlibcSymFunc",
+    "GlibcSymCall"
+  ],
+  "require_export_modules": [
+    "CodePrelude",
+    "GlibcProgram",
+    "StringSpecs",
+    "HelloGetoptTable",
+    "HelloImageWConvObjs",
+    "HiAtexitModule",
+    "HiAtexitOutputState",
+    "HiAtexitStdout",
+    "GetoptInitialize",
+    "LibioWConvTranslitRepl",
+    "Mbrtowc",
+    "StartImageCpu",
+    "StartImageEarly"
+  ],
+  "critical_path_targets": [
+    "HelloStartNeverPanics"
+  ],
+  "baseline": {
+    "layer_edges": {
+      ". -> libio": 1,
+      "gen -> hello": 2,
+      "getopt -> hi_atexit": 1,
+      "hello -> hi_atexit": 23,
+      "hi_atexit -> hello": 3,
+      "intl -> getopt": 37,
+      "intl -> hi_atexit": 2,
+      "intl -> libio": 89,
+      "libio -> hello": 12,
+      "libio -> hi_atexit": 14,
+      "libio -> startup": 5,
+      "libio -> stdio": 45,
+      "locale -> getopt": 4,
+      "locale -> hello": 2,
+      "locale -> libio": 22,
+      "locale -> startup": 2,
+      "nptl -> libio": 26,
+      "startup -> hello": 12,
+      "startup -> hi_atexit": 70,
+      "stdio -> hello": 9,
+      "stdio -> hi_atexit": 3,
+      "stdlib -> getopt": 4,
+      "stdlib -> libio": 6,
+      "string -> getopt": 4,
+      "string -> libio": 21,
+      "zsys -> hi_atexit": 1
+    },
+    "functor_apps": 29,
+    "exported_tactics": 327,
+    "duplicate_require_files": 385,
+    "unused_edges": 4366
+  }
+}

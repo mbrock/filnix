@@ -31,6 +31,8 @@ on:
       - nanofil/tests/rocq_totals_test.py
       - nanofil/tests/rocq_interface_test.py
       - nanofil/tests/rocq_interface.py
+      - nanofil/tests/proof_arch_check.py
+      - nanofil/tests/proof_arch_check_test.py
       - nanofil/tests/hello_premises.py
       - nanofil/web/rocq/rocq_syntax.pl
       - nanofil/web/rocq/tests/parse.sh
@@ -82,6 +84,10 @@ jobs:
       # it prints is the Hello proof's progress measure.
       - name: Count the open premises of hello_never_panics
         run: python3 nanofil/tests/hello_premises.py
+      - name: Check proof tree architecture
+        run: |
+          python3 nanofil/tests/proof_arch_check_test.py
+          python3 nanofil/tests/proof_arch_check.py
       # Eight proof compilers leave room for the heavy modules on the 32 GB runner.
       - name: Compile glibc contracts
         run: |

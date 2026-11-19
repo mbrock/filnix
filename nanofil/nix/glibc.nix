@@ -58,6 +58,9 @@ let
           rm glibc/hello/HelloInterpNeverPanics.v
         ''}
         python3 ${../tests/assumption_scan.py} ${lib.optionalString abstract "--abstract-fix glibc/Fix.v"} glibc
+        ${lib.optionalString (!abstract) ''
+          python3 ${../tests/proof_arch_check.py} --tree glibc --manifest ${../rocq/glibc/arch.json}
+        ''}
         mkdir -p $out/sentence-timings times
         rocq dep -R theories Nanofil -R glibc Glibc $(find glibc -name '*.v' | sort) >rocq.dep
         duplicates=$(find glibc -name '*.v' -printf '%f\n' | sort | uniq -d)
@@ -80,6 +83,8 @@ let
       ../tests/test_scan.py
       ../tests/rocq_interface.py
       ../tests/rocq_interface_test.py
+      ../tests/proof_arch_check.py
+      ../tests/proof_arch_check_test.py
     ];
   };
   rejectTests =
@@ -90,6 +95,7 @@ let
         mkdir $out
         python3 ${rejectTestSrc}/tests/test_scan.py 2>&1 | tee $out/log
         python3 ${rejectTestSrc}/tests/rocq_interface_test.py
+        python3 ${rejectTestSrc}/tests/proof_arch_check_test.py
         touch $out/passed
       '';
   # The grammar round trip remains available for individual source files.
