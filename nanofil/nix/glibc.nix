@@ -123,38 +123,44 @@ let
         # trading higher peak memory for time without skipping any checking.
         OCAMLRUNPARAM = "o=200";
       }
-      ''
-        set -o pipefail
-        mkdir -p theories glibc/${dirOf path.${n}}
-        ${link objects n}
-        cp ${source n} glibc/${path.${n}}.v
-        ${lib.optionalString (prefix != "interface-") ''
-          # No Admitted, and no axiom outside a module type.
-          python3 ${../tests/assumption_scan.py} \
-            ${
-              lib.optionalString (
-                toString (source n) == toString abstractFix
-              ) "--abstract-fix glibc/${path.${n}}.v"
-            } \
-            glibc/${path.${n}}.v
-        ''}
-        start=$(date +%s%N)
-        # Keep the watchdog's status through capture, including failed compiles.
-        if python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-          rocq c -q -time -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee sentence-timings.log; then
-          status=0
-        else
-          status=$?
-        fi
-        ms=$((($(date +%s%N) - start) / 1000000))
-        python3 ${../tests/rocq_time.py} glibc/${path.${n}}.v sentence-timings.log || \
-          echo "warning: Rocq sentence timing reporter failed" >&2
-        if [ "$status" -ne 0 ]; then exit "$status"; fi
-        mkdir $out
-        cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob sentence-timings.log $out/
-        printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
-          "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
-      '';
+      (
+        ''
+          set -o pipefail
+          mkdir -p theories glibc/${dirOf path.${n}}
+          ${link objects n}
+          cp ${source n} glibc/${path.${n}}.v
+          ${lib.optionalString (prefix != "interface-") ''
+            # No Admitted, and no axiom outside a module type.
+            python3 ${../tests/assumption_scan.py} \
+              ${
+                lib.optionalString (
+                  toString (source n) == toString abstractFix
+                ) "--abstract-fix glibc/${path.${n}}.v"
+              } \
+              glibc/${path.${n}}.v
+          ''}
+          start=$(date +%s%N)
+          # Keep the watchdog's status through capture, including failed compiles.
+          if python3 ${watch} --label "glibc compile ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
+            rocq c -q -time -R theories Nanofil -R glibc Glibc glibc/${path.${n}}.v | tee sentence-timings.log; then
+            status=0
+          else
+            status=$?
+          fi
+          ms=$((($(date +%s%N) - start) / 1000000))
+          python3 ${../tests/rocq_time.py} glibc/${path.${n}}.v sentence-timings.log || \
+            echo "warning: Rocq sentence timing reporter failed" >&2
+          if [ "$status" -ne 0 ]; then exit "$status"; fi
+          mkdir $out
+          cp glibc/${path.${n}}.vo glibc/${path.${n}}.glob sentence-timings.log $out/
+          printf '@@glibc %4d.%01ds %5d lines %s.v\n' $((ms / 1000)) $((ms % 1000 / 100)) \
+            "$(wc -l <glibc/${path.${n}}.v)" ${path.${n}} >$out/time
+        ''
+        + lib.optionalString (prefix == "abstract-") ''
+          python3 ${watch} --label "glibc abstract audit ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
+            python3 ${auditScripts}/rocq_runtime_audit.py glibc/${path.${n}}.v glibc/${path.${n}}.glob $out
+        ''
+      );
   source = n: glibc + "/${path.${n}}.v";
   # The push check compiles each general file twice at most. checkVo
   # compiles the file itself, which checks all of its proofs. An imported
@@ -240,6 +246,14 @@ let
   abstractVo = lib.genAttrs abstractNames (
     compile "abstract-" abstractVo abstractSource
   );
+  auditScripts = lib.fileset.toSource {
+    root = ../tests;
+    fileset = lib.fileset.unions [
+      ../tests/assumption_scan.py
+      ../tests/proof_inventory.py
+      ../tests/rocq_runtime_audit.py
+    ];
+  };
   rejectTestSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
@@ -271,7 +285,9 @@ let
       {
         passthru = {
           vo = abstractVo;
-          inherit rejectTests abstractHello abstractAudit;
+          inherit rejectTests abstractHello;
+          # Existing per-file audit callers can read the same four reports.
+          abstractAudit = abstractVo;
         };
       }
       ''
@@ -279,7 +295,7 @@ let
         test -f ${abstractHello}/passed
         mkdir $out
         cat ${
-          lib.concatMapStringsSep " " (n: "${abstractAudit.${n}}/summary") abstractNames
+          lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/summary") abstractNames
         } >$out/audit-summary
         cat ${
           lib.concatMapStringsSep " " (n: "${abstractVo.${n}}/time") abstractNames
@@ -287,21 +303,6 @@ let
         echo "@@glibc abstract general ${toString (builtins.length abstractNames)} files compiled"
         touch $out/passed
       '';
-  abstractAudit = lib.genAttrs abstractNames (
-    n:
-    pkgs.runCommand "nanofil-glibc-abstract-audit-${n}"
-      {
-        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
-        OCAMLRUNPARAM = "o=200";
-      }
-      ''
-        mkdir -p theories glibc/${dirOf path.${n}} $out
-        ${link abstractVo n}
-        ln -s ${abstractVo.${n}}/${n}.vo glibc/${path.${n}}.vo
-        python3 ${watch} --label "glibc abstract audit ${path.${n}}.v" --warn-after 120 --timeout 900 -- \
-          python3 ${rejectTestSrc}/tests/rocq_runtime_audit.py ${abstractSource n} ${abstractVo.${n}}/${n}.glob $out
-      ''
-  );
   abstractHello =
     pkgs.runCommand "nanofil-glibc-hello-abstract"
       {
