@@ -1,0 +1,29 @@
+<block id="b-2026-11-19-rocq-cold-proof" kind="bench" actor="T-01a1f1c6-7ae1-7151-8606-6b86fa38368d" created="2026-11-19T03:21:06Z">
+  <title>Opening a glibc proof from a cold checkout</title>
+  <about path="nanofil/rocq/scripts/glibc-tools/rq/rq"/>
+  <about path="nanofil/rocq/glibc/libio/LibioWConvTranslit.v"/>
+  <about path="nanofil/rocq/glibc/startup/CpuIntelWord.v"/>
+  <tag name="rocq"/>
+  <p>The transliteration proof used to load Intel cache discovery and getopt’s
+  option table to describe memory in Hello’s image. Giving the object layouts
+  and the packing of literal bytes their own modules reduced its transitive
+  glibc imports from 737 to 436.</p>
+  <p>On swa, <sh>rq open libio/LibioWConvTranslit.v --theorem flags_step</sh>
+  reached the first goal in 382 seconds with the old imports and 124 seconds
+  with the new ones. Both runs started with an empty interface directory,
+  the same compiled Nanofil model and eight make jobs. Other builds shared
+  the host. The worker’s peak memory fell from 3.0 GiB to 0.6 GiB. Reloading
+  the new session took 0.43 seconds and reused eighteen sentences.</p>
+  <p>The Intel descriptor checker exports twelve specifications. Each preserves
+  the abstract bounds on the caller’s objects and returns a machine word.
+  Rocq checks that invariant discovery produces precisely those specifications
+  and that each plan passes the verifier. Compiling the interface with
+  <sh>rocq c -vos</sh> against the same full dependency objects took
+  163.4 seconds before the change and 1.65 seconds after it.</p>
+  <p>For comparison, a clean full proof build on swa at revision
+  <code>4dfe8757cdcb</code> compiled all 1,440 glibc sources against the pinned
+  Nanofil model. With twelve jobs, <sh>build.sh</sh> took 17 minutes 26 seconds.
+  The sampled sum of resident memory across its processes peaked at 30.7 GiB.
+  This measures ordinary full Rocq compilation with a prebuilt model. The
+  push and scheduled checks also run probes and assumption audits.</p>
+</block>
