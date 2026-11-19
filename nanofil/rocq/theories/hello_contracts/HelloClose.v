@@ -87,7 +87,7 @@ Lemma wp_close_errno f e ls lab d rest j Φ :
   ▷ WP (ERun (mkFrame f (put d (WPtr ep) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call (CResult d P) (Global (TAtom "__errno_location")) [] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Herrno Hlinked Hrep SafepointStable0.
   iIntros "HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (errno_location_contract world cell rep) [] True%I
     with "[] [HK]").
@@ -122,7 +122,7 @@ Lemma wp_close_load_w f e ls lab d v rest j b reg o xs Φ :
     WP (ERun (mkFrame f (put d (WInt (close_w xs)) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Let d W (RawLoad (LdNarrow Sw) 0) [v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hlen. iIntros "Hl Hx HK".
   iApply (wp_read _ _ _ ((PLive b, VLive reg) :: byte_ps b o xs) _ _ [] with "[Hl Hx] [HK]").
   - intros m fuel (Hag & _). destruct Hag as [Hl Hx].
@@ -179,7 +179,7 @@ Lemma wp_close_contract f e ls lab d k g args rest j spec xs ps
     WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call (CResult d k) (Global g) args :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfn Hg Hfree Hreg Hret Hk Hargs Habi Hpre Hpost. iIntros "Hps HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs (pts ps) with "Hps [HK]");
     [exact Hfn|exact Hg|exact Hfree|exact Hreg|exact Hargs|exact Habi| |].
@@ -258,7 +258,7 @@ Lemma Hquery g k : (g = TAtom "__fpending" /\ k = L) \/ (g = TAtom "ferror" /\ k
       WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec lab
       (Call (CResult d k) (Global g) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hquery_abi Hquery_post Hquery_pre Hquery_reg Hquery_ret SafepointStable0.
   intros Hwhich f e ls lab d v rest j p xs Φ Hv Hlen. iIntros "Hs Hx HK".
   iApply (wp_close_contract _ _ _ _ _ k g _ _ _ (query_spec g) [WPtr p]
     (stream_ps p ++ byte_ps eb eo xs) (fun _ => stream_ps p ++ byte_ps eb eo xs)
@@ -289,7 +289,7 @@ Lemma Hfclose : forall f e ls lab d v rest j p xs Φ,
       WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None (Exec lab
       (Call (CResult d W) (Global (TAtom "fclose")) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hfclose_abi Hfclose_post Hfclose_pre Hfclose_reg Hfclose_ret Hlinked SafepointStable0.
   intros f e ls lab d v rest j p xs Φ Hv Hlen. iIntros "Hs Hx HK".
   iApply (wp_close_contract _ _ _ _ _ W (TAtom "fclose") _ _ _ fclose_spec [WPtr p]
     (stream_ps p ++ byte_ps eb eo xs) (fun ys => closed_ps p ++ byte_ps eb eo ys)
@@ -344,7 +344,7 @@ Lemma close_stream_L22 e n t xs Φ :
     live eb er -∗ bytes eb eo ys -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (mkFrame close_stream_fn e [] None
     (Exec (TAtom "L22") [] (b_jump (cs_block "L22")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Heend Heo Herange Herrno Hlinked Hrep Kerrno SafepointStable0.
   intros Hn Ht Hrange Ht01 Hlen. iIntros "Hl Hx HΦ".
   destruct Ht01 as [-> | ->].
   - iApply (wp_branch _ _ _ _ _ _ _ _ _ _ 0); [word_premise|]. iNext. cbn [Z.eqb edge_label].
@@ -382,7 +382,9 @@ Lemma close_stream_spec p xs Φ :
   ▷ (∀ r ys, ⌜(r = 0 \/ r = 4294967295) /\ length ys = 4%nat⌝ -∗
     live eb er -∗ bytes eb eo ys -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (invocation close_stream_fn [WPtr p]) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Heend Heo Herange Herrno Hfclose_abi Hfclose_post Hfclose_pre Hfclose_reg
+  Hfclose_ret Hlinked Hquery_abi Hquery_post Hquery_pre Hquery_reg Hquery_ret Hrep Kerrno
+  SafepointStable0.
   intros Hlen. iIntros "Hs Hl Hx HΦ". rewrite close_stream_entry.
   cs_enter "start".
   iApply (Hquery (TAtom "__fpending") L with "Hs Hx");
@@ -454,7 +456,7 @@ Lemma wp_close_error f e ls lab v fmtv txtv rest j n xs Φ :
     WP (ERun (mkFrame f e ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call CVoid (Global (TAtom "error")) [Arg W (Const 0); Arg W v; Arg P fmtv; Arg P txtv] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Herror_abi Herror_post Herror_pre Herror_reg Herror_ret Hlinked SafepointStable0.
   intros Hv Hfmt Htext Hn Hlen. iIntros "Hd Hx HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ error_spec [WInt 0; WInt n; WPtr fmt; WPtr text]
     (pts (diag_ps ++ byte_ps eb eo xs)) with "[Hd Hx] [HK]").
@@ -496,7 +498,7 @@ Lemma wp_close_exit f e ls lab v rest j n Φ :
   arg_x ge e (Arg W v) = Some (WInt n) -> 0 <= n < 2 ^ 32 ->
   ⊢ WP (ERun (mkFrame f e ls None (Exec lab
     (Call CVoid (Global (TAtom "_exit")) [Arg W v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hexit_abi Hexit_post Hexit_pre Hexit_reg Hlinked SafepointStable0.
   intros Hv Hn.
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ exit_spec [WInt n] True%I with "[] []").
   - apply linked_outside; [exact Hlinked|reflexivity].
@@ -522,7 +524,7 @@ Lemma wp_close_stream_pointer f e ls lab d v rest j b reg p Φ :
     WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) [v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros (pb & pr & ps & Hcap & Hps) Hv Hb Hb8 Hp. iIntros "Hl Hc Hs HK".
   iAssert (live pb pr ∗ pts ps)%I with "[Hs]" as "[Hpl Hrest]".
   { rewrite /stream Hps /live /pts big_sepL_cons big_sepL_singleton. iExact "Hs". }
@@ -544,7 +546,7 @@ Qed.
     slot. This is a module invariant, not a fact about libc's world. *)
 Lemma close_file_name :
   bytes 65584 0 (replicate 8 0) ∗ auxes 65584 0 [CNone] ⊣⊢ pcell 65584 0 (mkPtr 0 CNone).
-Proof.
+Proof using Type.
   change (pts (Heap.cell 65584 0 0) ∗ pts [(PAux 65584 0, VAux CNone)] ⊣⊢
     pts ([(PAux 65584 0, VAux CNone)] ++ Heap.cell 65584 0 0)).
   rewrite pts_app. apply bi.sep_comm.
@@ -579,7 +581,7 @@ Lemma close_lookups :
   lookup (TAtom "closeout#str.55") (ge_globals ge) = Some fmt /\
   lookup (TAtom "closeout#str.53") (ge_globals ge) = Some text /\
   exists p, lookup (TAtom "closeout#str.52") (ge_globals ge) = Some p.
-Proof.
+Proof using Hlinked.
   destruct Hlinked as (_ & Hg & _). repeat split; try (apply Hg; vm_compute; reflexivity).
   exists (mkPtr 65648 (Ro 65648)). apply Hg. vm_compute. reflexivity.
 Qed.
@@ -592,7 +594,7 @@ Ltac co_enter s :=
 
 (** The linked module dispatches close_stream to its proved body. *)
 Lemma close_stream_linked : find_fn ge (TAtom "close_stream") = Some (Defined close_stream_fn).
-Proof. unfold find_fn. rewrite (proj1 Hlinked). vm_compute. reflexivity. Qed.
+Proof using Hlinked. unfold find_fn. rewrite (proj1 Hlinked). vm_compute. reflexivity. Qed.
 
 (** A null file name takes the unnamed-file diagnostic, then _exit.
     quotearg_colon is not called and needs no premise triple. *)
@@ -601,7 +603,8 @@ Lemma close_stdout_error e xs fs Φ :
   live 65584 freg -∗ bytes 65584 0 (replicate 8 0) -∗ auxes 65584 0 [CNone] -∗
   live 65776 xreg -∗ bytes 65776 0 fs -∗ live eb er -∗ bytes eb eo xs -∗ pts diag_ps -∗
   WP (ERun (mkFrame close_stdout_fn e [] None (Enter (TAtom "L0") (Some (TAtom "L8")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Heend Heo Herange Herrno Herror_abi Herror_post Herror_pre Herror_reg Herror_ret
+  Hexit_abi Hexit_post Hexit_pre Hexit_reg Hfend Hlinked Hrep Hxend SafepointStable0.
   intros Hxs Hfs. iIntros "Hfl Hfb Hfa Hxl Hxb Hl Hx Hd".
   destruct close_lookups as (Hfile & Hignore & Hfailure & Hfmt & Htext & p & Hdomain).
   iAssert (pcell 65584 0 (mkPtr 0 CNone)) with "[Hfb Hfa]" as "Hfc".
@@ -640,7 +643,9 @@ Lemma close_stdout_L91 e xs fs Φ :
   ▷ (∀ ys, ⌜length ys = 4%nat⌝ -∗ close_cells fs -∗ live eb er -∗ bytes eb eo ys -∗
     pts diag_ps -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame close_stdout_fn e [] None (Enter (TAtom "L91") (Some (TAtom "L8")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Heend Heo Herange Herr_live Herrno Herrp Hexit_abi Hexit_post Hexit_pre Hexit_reg
+  Hfclose_abi Hfclose_post Hfclose_pre Hfclose_reg Hfclose_ret Hlinked Hquery_abi Hquery_post
+  Hquery_pre Hquery_reg Hquery_ret Hrep Hsb Hsb8 Hsend Hstderr Hxend Kerrno SafepointStable0.
   intros Hxs Hfs. iIntros "Hs Hcells Hl Hx Hd HΦ".
   iEval (unfold close_cells) in "Hcells".
   iDestruct "Hcells" as "(Hol & Hoc & Hsl & Hsc & Htail)".
@@ -687,7 +692,10 @@ Lemma close_stdout_spec xs fs Φ :
   ▷ (∀ ys, ⌜length ys = 4%nat⌝ -∗ close_cells fs -∗ live eb er -∗ bytes eb eo ys -∗
     pts diag_ps -∗ Φ RetVoid) -∗
   WP (ERun (invocation close_stdout_fn []) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hcell Heend Heo Herange Herr_live Herrno Herror_abi Herror_post Herror_pre Herror_reg
+  Herror_ret Herrp Hexit_abi Hexit_post Hexit_pre Hexit_reg Hfclose_abi Hfclose_post Hfclose_pre
+  Hfclose_reg Hfclose_ret Hfend Hiend Hlinked Hob Hob8 Hoend Hout Hout_live Hquery_abi Hquery_post
+  Hquery_pre Hquery_reg Hquery_ret Hrep Hsb Hsb8 Hsend Hstderr Hstdout Hxend Kerrno SafepointStable0.
   intros Hxs Hfs. iIntros "Hout Herr Hcells Hl Hx Hd HΦ".
   iEval (unfold close_cells) in "Hcells".
   iDestruct "Hcells" as "(Hol & Hoc & Htail)".

@@ -353,7 +353,7 @@ Lemma wp_setlocale_set f e ls lab d vc vp rest j c p b reg bytes old c0 Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "setlocale")) [Arg W vc; Arg P vp] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hc Hp Hcat. iIntros "Hks Hcodec Hs HK".
   iDestruct "Hs" as "[%Hok Hs]". pose proof Hok as (_ & Hb0 & Hlo & _).
   iAssert (LL.SL.string p b reg bytes) with "[Hs]" as "Hs"; [iSplit; [done | iExact "Hs"]|].

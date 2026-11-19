@@ -461,7 +461,7 @@ Lemma wp_main_setlocale f e ls lab d vc vp rest j c p b reg bytes old c0 Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "setlocale")) [Arg W vc; Arg P vp] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using Hlent Hlinked Hnb_cell Hsb_cell Hset_pre Hsetlocale Kset SafepointStable0.
   intros Hc Hp Hcat. iIntros "Hks Hcodec Hs HK".
   pose proof Hlinked as (_ & _ & Hext).
   iApply (LL.wp_lend registry wi ge Hlent f e ls lab d (TAtom "setlocale")
@@ -511,7 +511,7 @@ Context (atexit_spec : contract libc_world)
 (** Eight zero bytes and an empty slot at offset 0 are a null pointer
     cell. *)
 Lemma zero_pcell b : bytes b 0 (replicate 8 0) ∗ auxes b 0 [CNone] ⊣⊢ pcell b 0 (mkPtr 0 CNone).
-Proof.
+Proof using Type.
   change (pts (cell b 0 0) ∗ pts [(PAux b 0, VAux CNone)] ⊣⊢
     pts ([(PAux b 0, VAux CNone)] ++ cell b 0 0)).
   rewrite pts_app. apply bi.sep_comm.
@@ -529,7 +529,7 @@ Lemma mbszero_at b reg xs cs Φ :
   live b reg -∗ bytes b 0 xs -∗ auxes b 0 cs -∗
   ▷ (live b reg -∗ bytes b 0 (replicate 8 0) -∗ auxes b 0 (clear_slots 0 cs) -∗ Φ RetVoid) -∗
   WP (ERun (invocation mbszero_fn [WPtr (mkPtr b (Obj b))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemset Kmemset SafepointStable0.
   intros Lx Lc Hb8 Hend.
   pose proof (mbszero_spec registry wi ge Hlinked b reg 0 xs cs Φ) as H. rewrite !Z.add_0_r in H.
   iApply H; [exact Hmemset | exact Lx | exact Lc | exact Hb8 | reflexivity | lia | exact Hend |].

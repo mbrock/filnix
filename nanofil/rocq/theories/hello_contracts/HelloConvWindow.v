@@ -79,7 +79,7 @@ Lemma mbs_finish_output bd (i : nat) wpre cpre word cword tail ctail :
   bytes bd (Z.of_nat (4 * i) + Z.of_nat 4) tail -∗
   auxes bd (Z.of_nat (4 * i) + Z.of_nat 4) ctail -∗
   bytes bd 0 (wpre ++ word ++ tail) ∗ auxes bd 0 (cpre ++ cword ++ ctail).
-Proof.
+Proof using Type.
   intros Hwp Hcp Hw Hc. iIntros "Hwp Hcp Hw Hc Ht Hct".
   rewrite !bytes_app !auxes_app Hwp Hcp Hw Hc !Z.add_0_l. iFrame.
 Qed.
@@ -93,7 +93,7 @@ Lemma wp_mbs_count_return e bd (i : nat) Φ :
   WP (ERun (mkFrame mbs_fn e [] None
     (Exec (TAtom "L31") (drop 2 (b_insts (mbs_block "L31")))
       (b_jump (mbs_block "L31")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0 gen_heapGS0 invGS_gen0.
   intros Hb Hend Hp Hbase. iIntros "HΦ".
   cbn [mbs_block hblk b_insts b_jump drop].
   do 3 (iApply (wp_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _);
@@ -240,7 +240,7 @@ Lemma mbs_window e q dst len st sp c0 d0 b reg bs Φ :
               (Exec (TAtom "L37") (b_insts (mbs_block "L37")) (b_jump (mbs_block "L37")))) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame mbs_fn e [] None
         (Exec (TAtom "L29") (b_insts (mbs_block "L29")) (b_jump (mbs_block "L29")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemchr SafepointStable0 invGS_gen0.
   intros (Hq & H7 & H1 & H2 & Hv2 & Hc0 & H23). iIntros "Hs HK".
   iDestruct "Hs" as "[%Hok Hps]". iAssert (SL.string q b reg bs) with "[$Hps]" as "Hs"; [done|].
   pose proof Hok as (Hc & Hb0 & Hbq & Hend & H48 & Hbs).
@@ -324,12 +324,12 @@ Qed.
     bytes with the NUL, and no aux slots. *)
 Lemma string_block q b reg bs :
   SL.string q b reg bs ⊣⊢ ⌜string_ok q b reg bs⌝ ∗ pts (block_ps b reg (ptr_addr q - b) (bs ++ [0]) []).
-Proof. rewrite /SL.string /string_ps /block_ps. cbn [aux_ps]. rewrite app_nil_r. done. Qed.
+Proof using Type. rewrite /SL.string /string_ps /block_ps. cbn [aux_ps]. rewrite app_nil_r. done. Qed.
 
 (** An object's life, bytes and aux slots from offset o are its block
     from o. *)
 Lemma dest_block b reg o xs cs : live b reg ∗ bytes b o xs ∗ auxes b o cs ⊣⊢ pts (block_ps b reg o xs cs).
-Proof. rewrite /block_ps /pts big_sepL_cons big_sepL_app /live /bytes /auxes /pts big_sepL_singleton. done. Qed.
+Proof using Type. rewrite /block_ps /pts big_sepL_cons big_sepL_app /live /bytes /auxes /pts big_sepL_singleton. done. Qed.
 
 (** errno's lookup has Campaign 4's contract. *)
 Context (Herrno_reg : registry (TAtom "__errno_location") = Some (LB.errno_contract rep)).
@@ -357,7 +357,7 @@ Lemma wp_mbs_cursor_store e lab d src rest j b reg o x xp Φ :
     (Let d A (Renew 0 8 Write 8) [Tmp (TAtom "chk0"); Tmp (TAtom "v2")] ::
      RawStorePointer 0 src (Tmp d)
        [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Kpstore SafepointStable0 invGS_gen0.
   intros Hb Ho Hal Hend H48 Hchk Hv Hsrc. iIntros "Hl Hcell HK".
   pose proof (mbs_cursor_address _ _ _ Hb Ho Hend H48) as Ha.
   iApply (wp_renew _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ with "Hl");
@@ -378,7 +378,7 @@ Lemma wp_conv_errno f e ls lab d rest j Φ :
   ▷ WP (ERun (mkFrame f (put d (WPtr errno) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call (CResult d P) (Global (TAtom "__errno_location")) [] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Herrno_reg Hlibc Hlinked SafepointStable0 gen_heapGS0 invGS_gen0.
   iIntros "HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (LB.errno_contract rep) [] True%I with "[] [HK]").
   - apply linked_outside; [exact Hlinked | reflexivity].
@@ -411,7 +411,7 @@ Lemma wp_mbs_error_return e be re oe xe ce Φ :
   WP (ERun (mkFrame mbs_fn e [] None
     (Exec (TAtom "L196") (b_insts (mbs_block "L196"))
       (b_jump (mbs_block "L196")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Herrno_reg Hlibc Hlinked Kstore SafepointStable0 invGS_gen0.
   intros Herr Hb Ho Hend H48 Lxe. iIntros "HBe HK".
   cbn [mbs_block hblk b_insts b_jump].
   iApply wp_conv_errno. iApply bi.later_intro. gen_env.

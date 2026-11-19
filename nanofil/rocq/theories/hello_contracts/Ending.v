@@ -313,7 +313,7 @@ Inductive step (registry : name -> option (contract world)) ge
 (** Entry uses the actual post-pop memory, not a second chosen snapshot. *)
 Lemma callback_entry_memory : forall admitted ge slot entry s m w fuel callback,
   L.callback_entry payload admitted ge slot entry s m w fuel callback -> c_mem callback = m.
-Proof.
+Proof using Type.
   intros admitted ge slot entry s m w fuel callback
     (_ & _ & _ & _ & _ & _ & fr & _ & ->). reflexivity.
 Qed.
@@ -324,7 +324,7 @@ Theorem step_preserve : forall registry ge reserved b admitted st trace st',
   ge_free ge = R.free -> step registry ge reserved b admitted st trace st' ->
   state_ready st -> state_ready st' /\
   persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))).
-Proof.
+Proof using Type.
   intros registry ge reserved b admitted st trace st' Hfree H.
   destruct H; unfold state_ready, machine_of, RM.ready_state; simpl; intros Hr.
   - split; [eapply M.step_ready|eapply M.step_persists]; eauto.
@@ -364,7 +364,7 @@ Theorem run_preserve : forall registry ge reserved b admitted st trace st',
   ge_free ge = R.free -> run registry ge reserved b admitted st trace st' ->
   state_ready st -> state_ready st' /\
   persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))).
-Proof.
+Proof using Type.
   intros registry ge reserved b admitted st trace st' Hfree H. induction H; intros Hr.
   - split; auto using persists_refl.
   - destruct (step_preserve _ _ _ _ _ _ _ _ Hfree H Hr) as [Hr1 Hp1].
@@ -378,17 +378,17 @@ Lemma request_no_observation : forall registry ge reserved b admitted c s w site
   shutdown_unique (snd w) -> exit_request kind (main_status bits) (snd w) sh' ->
   step registry ge reserved b admitted (Executing (M.Running (c, s) w)) []
     (Draining (c, s) (fst w, sh')).
-Proof. intros. eapply ending_request; eauto. Qed.
+Proof using Type. intros. eapply ending_request; eauto. Qed.
 
 (** Partial cutpoints cannot resume shutdown or inherit a completed action. *)
 Lemma partial_terminal : forall registry ge reserved b admitted ms w trace st',
   ~ step registry ge reserved b admitted (Partial ms w) trace st'.
-Proof. intros registry ge reserved b admitted ms w trace st' H. inversion H. Qed.
+Proof using Type. intros registry ge reserved b admitted ms w trace st' H. inversion H. Qed.
 
 (** Completed external exits cannot resume a callback or request shutdown. *)
 Lemma completed_exit_terminal : forall registry ge reserved b admitted status ms w trace st',
   ~ step registry ge reserved b admitted (Executing (M.Stopped (ExternalExit status) ms w)) trace st'.
-Proof.
+Proof using Type.
   intros registry ge reserved b admitted status ms w trace st' H. inversion H; subst.
   - eapply M.stopped_no_step; eauto.
   - match goal with Hreturn : L.callback_return _ _ _ _ _ |- _ =>
@@ -398,7 +398,7 @@ Qed.
 (** abort is deliberately not mapped to soft exit. A whole-program safety
     proof must exclude every reached abort call or provide another boundary. *)
 Example abort_not_exit : exit_symbol (TAtom "abort") = None.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 End World.
 End Ending.

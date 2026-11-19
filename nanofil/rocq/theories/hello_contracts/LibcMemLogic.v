@@ -150,7 +150,7 @@ Lemma wp_memset f e ls lab d vp vc vn rest j b reg o xs cs c Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "memset")) [Arg P vp; Arg W vc; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hp Hc Hn Hc32 Hb8 Ho8 Ho Hend Hlen Hwi. iIntros "Hl Hx Hcs HK".
   iDestruct (block_pts b reg o xs cs with "[$Hl $Hx $Hcs]") as "Hps".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memset_contract world)
@@ -217,7 +217,7 @@ Lemma wp_malloc f e ls lab d v rest j n Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j)) : mexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hn Hwi. iIntros "HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (malloc_contract world) [WInt n] True%I with "[//] [HK]");
     [done | done | done | done | cbn [map_option]; rewrite Hv; done | | |].
@@ -281,7 +281,7 @@ Lemma wp_memcpy f e ls lab d vd vs vn rest j b reg o xs cs b' reg' o' c' ys ds �
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "memcpy")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hpd Hps Hc' Hn Hne Hb8 Ho8 Hb8' Ho8' Ho Ho' Hend Hend' Hly Hlc Hld Hy Hwi.
   iIntros "Hl Hx Hcs Hl' Hy Hds HK".
   iDestruct (block_pts b reg o xs cs with "[$Hl $Hx $Hcs]") as "Hdst".
@@ -369,7 +369,7 @@ Lemma wp_strdup f e ls lab d v rest j p b reg bytes Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "strdup")) [Arg P v] :: rest) j)) : mexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hb8 Hwi. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strdup_contract world) [WPtr p] (string p b reg bytes)
             with "Hs [HK]"); [done | done | done | done | cbn [map_option]; rewrite Hv; done | | |].
@@ -470,7 +470,7 @@ Lemma wp_string_copy end_return g f e ls lab d vd vs rest j b reg o xs src b' re
        {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global g) [Arg P vd; Arg P vs] :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hfree Hpd Hps Hb0 Ho Hend Hlen Hwi. iIntros "Hl Hx Hs HK".
   iDestruct (live_string_ne with "Hl Hs") as %Hne.
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (string_copy_contract end_return world)
@@ -551,7 +551,7 @@ Lemma wp_strcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "strcpy")) [Arg P vd; Arg P vs] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof. intros. apply (wp_string_copy false (TAtom "strcpy")); done. Qed.
+Proof using SafepointStable0. intros. apply (wp_string_copy false (TAtom "strcpy")); done. Qed.
 
 (** Calling stpcpy uses the scalar string-copy rule but returns the
     copied terminator's pointer, as [wp_stpcpy] specializes the general contract. *)
@@ -570,7 +570,7 @@ Lemma wp_stpcpy f e ls lab d vd vs rest j b reg o xs src b' reg' ys Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "stpcpy")) [Arg P vd; Arg P vs] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof. intros. apply (wp_string_copy true (TAtom "stpcpy")); done. Qed.
+Proof using SafepointStable0. intros. apply (wp_string_copy true (TAtom "stpcpy")); done. Qed.
 
 (** Calling memcmp preserves both owned byte ranges and returns an
     integer, but [wp_memcmp] does not specify that integer's sign or value.
@@ -591,7 +591,7 @@ Lemma wp_memcmp f e ls lab d vp vq vn rest j b reg o xs c b' reg' o' ys c' Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "memcmp")) [Arg P vp; Arg P vq; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hp Hc Hq Hc' Hn Hlen Ho Ho' Hend Hend' Hx Hy.
   iIntros "Hl Hx Hl' Hy HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memcmp_contract world)
@@ -632,7 +632,7 @@ Lemma wp_memchr f e ls lab d vp vk vn rest j b reg o xs c k Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "memchr")) [Arg P vp; Arg W vk; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hp Hc Hk Hk32 Hn Ho Hend Hx. iIntros "Hl Hx HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memchr_contract world)
             [WPtr (mkPtr (b + o) c); WInt k; WInt (Z.of_nat (length xs))]
@@ -680,7 +680,7 @@ Lemma wp_memchr_string f e ls lab d vp vk vn rest j p b reg bytes k n Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "memchr")) [Arg P vp; Arg W vk; Arg L vn] :: rest) j))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hp Hk Hk32 H0 Hn Hn64. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (memchr_contract world)
             [WPtr p; WInt k; WInt n] (string p b reg bytes) with "Hs [HK]");

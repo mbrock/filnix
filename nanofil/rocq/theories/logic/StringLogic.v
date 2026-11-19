@@ -229,7 +229,7 @@ Definition string (p : ptr) (b : Z) (reg : region) (bytes : list Z) : iProp Σ :
 Lemma string_facts {world : Type} (wi : mem -> world -> gmap piece pval -> Prop) σ p b reg bytes :
   heap_interp wi σ -∗ string p b reg bytes -∗
   ⌜terminated_length (ls_mem σ) p (Z.of_nat (length bytes)) /\ c_string (ls_mem σ) p bytes⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ [%Hok Hs]". iDestruct (pts_facts with "Hσ Hs") as %(Ha & _). iPureIntro.
   split; [exact (string_terminated _ _ _ _ _ Hok Ha) | exact (string_c_string _ _ _ _ _ Hok Ha)].
 Qed.
@@ -243,7 +243,7 @@ Lemma string_byte p b reg bytes i x :
   string p b reg bytes -∗
   ⌜string_ok p b reg bytes⌝ ∗ live b reg ∗ ibyte b (ptr_addr p - b + Z.of_nat i) x ∗
   (live b reg -∗ ibyte b (ptr_addr p - b + Z.of_nat i) x -∗ string p b reg bytes).
-Proof.
+Proof using Type.
   intros Hx. iIntros "[%Hok [Hl Hs]]". rewrite /live /ibyte /pts /=.
   iDestruct (big_sepL_lookup_acc with "Hs") as "[Hb Hk]"; [exact (byte_ps_lookup _ _ _ _ _ Hx)|].
   iSplit; [done|]. iSplitL "Hl"; [iFrame|]. iSplitL "Hb"; [iFrame|].
@@ -259,7 +259,7 @@ Lemma string_suffix p b reg bytes i :
   string p b reg bytes -∗
   string (mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p)) b reg (drop i bytes) ∗
   (string (mkPtr (ptr_addr p + Z.of_nat i) (ptr_cap p)) b reg (drop i bytes) -∗ string p b reg bytes).
-Proof.
+Proof using Type.
   intros Hi. destruct (string_ps_suffix p b reg bytes i Hi) as [Ep Eq].
   iIntros "[%Hok Hs]". rewrite /string Ep Eq /pts big_sepL_cons big_sepL_app.
   iDestruct "Hs" as "(Hl & Hpre & Hsuf)". iSplitL "Hl Hsuf".
@@ -274,7 +274,7 @@ Qed.
 Lemma string_bounded m p b reg bytes n :
   string_ok p b reg bytes -> all_agree m (string_ps p b reg bytes) -> 0 <= n < 2 ^ 64 ->
   bounded_length m p n (Z.min (Z.of_nat (length bytes)) n).
-Proof.
+Proof using Type.
   intros Hok Ha Hn. pose proof (string_bytes m p b reg bytes Hok Ha) as Hb.
   destruct Hok as (Hc & H0 & H1 & H2 & H3 & Hf). destruct Ha as [[E Lv] _].
   split; [exact Hn|]. split; [lia|]. split; [exists b, reg; auto|]. split.

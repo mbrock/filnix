@@ -179,7 +179,9 @@ Lemma mbs_loop p b reg bs bd rd sb sr so be re oe spb spr spo codec dq p0 t0 rc 
        Φ (Ret (WInt r))) -∗
     WP (ERun (mkFrame mbs_fn e [] None
           (Exec (TAtom "L28") (b_insts (mbs_block "L28")) (b_jump (mbs_block "L28")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Haudit Hbytes Herrno_reg Hlibc Hlinked Hmbrtowc Hmemchr Hmemcpy Hset Hset_abi Hset_pre
+  Hset_query Hset_ret Hstrcmp Hstrlen Hvalid0 Kalloc Kbyte Kcopy Kmbrtowc Kpstore Kstore
+  SafepointStable0 invGS_gen0 wi_lent.
   intros Herr Hbd Hbd4 Hdend Hd48 Hsb Hsal Hspb Hspo Hspal Hspend Hsp48 Hbe Hoe Heend He48.
   pose proof Hlinked as (Hm & _ & Hext).
   iLöb as "IH".

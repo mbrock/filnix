@@ -123,7 +123,7 @@ Theorem callback_return_endpoint : forall entry st ms' w',
     invalidate_locals (fr_locals (c_frame c)) (c_mem c) = Some m_return /\
     ms' = (with_mem c m_return, s) /\ fst w' = fst w /\
     shutdown_step (snd w) ReturnCallback (snd w').
-Proof.
+Proof using Type.
   intros entry st ms' w' H. destruct H.
   exists c, s, (data, mkShutdown (InCallback entry) status pending consumed q), m_return.
   repeat split; auto. constructor.
@@ -135,7 +135,7 @@ Theorem callback_prefix_preserve : forall (registry : name -> option (contract c
   ge_free ge = R.free -> M.run registry ge st trace st' -> M.state_ready _ st ->
   M.state_ready _ st' /\
   persists (c_mem (fst (M.machine_of _ st))) (c_mem (fst (M.machine_of _ st'))).
-Proof.
+Proof using Type.
   intros registry ge st trace st' Hfree H. induction H; intros Hr.
   - split; [exact Hr|apply persists_refl].
   - pose proof (M.step_ready _ _ _ _ _ _ Hfree H Hr) as Hr1.
@@ -150,7 +150,7 @@ Theorem callback_return_preserve : forall entry st ms' w',
   ready_state ms' /\ persists (c_mem (fst (M.machine_of _ st))) (c_mem (fst ms')) /\
   m_bytes (c_mem (fst ms')) = m_bytes (c_mem (fst (M.machine_of _ st))) /\
   m_aux (c_mem (fst ms')) = m_aux (c_mem (fst (M.machine_of _ st))).
-Proof.
+Proof using Type.
   intros entry st ms' w' H. destruct H as
     [c s data status pending consumed q m_return Hcallers Hunique Htoken Hlocals].
   simpl. intros Hr.
@@ -163,7 +163,7 @@ Qed.
 (** Existing stopped outcomes cannot silently become returned callbacks. *)
 Theorem callback_return_only_void : forall entry why ms w ms' w',
   callback_return entry (M.Stopped why ms w) ms' w' -> why = CoreEnd RetVoid.
-Proof. intros. inversion H. reflexivity. Qed.
+Proof using Type. intros. inversion H. reflexivity. Qed.
 
 (** A completed ordinary run followed by local teardown preserves readiness
     and every starting identity, with no reset of the runtime or fuel. *)
@@ -171,7 +171,7 @@ Theorem callback_run_preserve : forall registry ge start trace stopped entry ms'
   ge_free ge = R.free -> M.run registry ge start trace stopped ->
   callback_return entry stopped ms' w' -> M.state_ready _ start ->
   ready_state ms' /\ persists (c_mem (fst (M.machine_of _ start))) (c_mem (fst ms')).
-Proof.
+Proof using Type.
   intros registry ge start trace stopped entry ms' w' Hfree Hrun Hreturn Hr.
   destruct (callback_prefix_preserve _ _ _ _ _ Hfree Hrun Hr) as [Hr1 Hp1].
   destruct (callback_return_preserve _ _ _ _ Hreturn Hr1) as (Hr2 & Hp2 & _).

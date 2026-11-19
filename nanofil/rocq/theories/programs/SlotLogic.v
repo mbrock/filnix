@@ -255,7 +255,7 @@ Definition lent (b : Z) (reg : region) (n c : Z) : iProp Σ :=
 Lemma bytes_split b o ys x zs :
   bytes b o (ys ++ x :: zs) ⊣⊢
   bytes b o ys ∗ ibyte b (o + Z.of_nat (length ys)) x ∗ bytes b (o + Z.of_nat (length ys) + 1) zs.
-Proof.
+Proof using Type.
   rewrite /bytes /ibyte /pts byte_ps_app byte_ps_cons big_sepL_app big_sepL_cons big_sepL_singleton.
   replace (o + Z.of_nat (length ys) + 1) with (o + Z.of_nat (length ys) + 1) by lia. done.
 Qed.
@@ -263,7 +263,7 @@ Qed.
 (** Splitting an [[aux]] slot list separates the prefix slots from the
     suffix slots. *)
 Lemma auxes_app b o cs1 cs2 : auxes b o (cs1 ++ cs2) ⊣⊢ auxes b o cs1 ∗ auxes b (o + Z.of_nat (length cs1)) cs2.
-Proof.
+Proof using Type.
   rewrite /auxes /pts -big_sepL_app. f_equiv. revert o. induction cs1 as [|c cs1 IH]; intros o.
   - cbn. rewrite Z.add_0_r. reflexivity.
   - cbn [app]. rewrite !aux_ps_cons IH. cbn [app length].
@@ -275,7 +275,7 @@ Qed.
 Lemma bytes_byte b o xs i x :
   xs !! i = Some x ->
   bytes b o xs -∗ ibyte b (o + Z.of_nat i) x ∗ (ibyte b (o + Z.of_nat i) x -∗ bytes b o xs).
-Proof.
+Proof using Type.
   intros Hx. rewrite /bytes /ibyte /pts big_sepL_singleton.
   iIntros "Hs". iDestruct (big_sepL_lookup_acc with "Hs") as "[Hb Hk]"; [exact (byte_ps_lookup _ _ _ _ _ Hx)|].
   iSplitL "Hb"; [iExact "Hb"|]. iIntros "Hb". iApply ("Hk" with "Hb").
@@ -293,7 +293,7 @@ Qed.
 Lemma buffer_cap p sz :
   buffer p sz -∗ ∃ reg', ⌜0 <= ptr_addr p < 2 ^ 64⌝ ∗ live_cap (ptr_cap p) reg' ∗
     (live_cap (ptr_cap p) reg' -∗ buffer p sz).
-Proof.
+Proof using Type.
   iIntros "[[%Hp %Hz] | (%b & %reg & %xs & %cs & %Hf & Hl & Hx & Hcs)]".
   - iExists slot_reg. subst p. iSplit; [iPureIntro; cbn; lia|]. iSplit; [done|]. iIntros "_". iLeft. done.
   - pose proof Hf as (Hpe & Hb & _ & _ & _ & _ & Hend & Hend48). subst p. iExists reg.
@@ -307,7 +307,7 @@ Lemma wp_free_buffer f e ls l v rest j p sz Φ :
   buffer p sz -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : sexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv. iIntros "[[%Hp _] | (%b & %reg & %xs & %cs & %Hf & Hl & _ & _)] HK".
   - subst p. iApply (wp_free_null with "HK"); [exact R.free_succeeds | reflexivity | reflexivity | exact Hv].
   - destruct Hf as (-> & Hb & _ & Hk & _).
@@ -334,7 +334,7 @@ Lemma fill_L6 e c n b reg xs cs sz Φ :
   live b reg -∗ bytes b 0 xs -∗ auxes b 0 cs -∗
   ▷ (∀ b reg, lent b reg n c -∗ Φ (Ret (WPtr (mkPtr b (Obj b))))) -∗
   WP (ERun (mkFrame fill_fn e [] None (Exec (TAtom "L6") (b_insts f_L6) (b_jump f_L6))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hn Hc32 Hnsz Hsz Hb0 Hb16 Hk Hxs Hcs Hend Hend48.
   iIntros "Hls Hlz Hp Hz Hl Hx Hcs HΦ". cbn [b_insts b_jump f_L6].
   (* Split the buffer at n: the n bytes memset fills, the terminator, the rest. *)
@@ -400,7 +400,7 @@ Lemma fill_spec c n Φ :
   0 <= c < 2 ^ 32 -> 0 <= n < 2 ^ 47 ->
   slot_inv -∗ ▷ (∀ b reg, lent b reg n c -∗ Φ (Ret (WPtr (mkPtr b (Obj b))))) -∗
   WP (ERun (fill_entry c n) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Hn. iIntros "(Hls & Hlz & %p & %sz & %Hsz & Hp & Hz & Hbuf) HΦ". unfold fill_entry.
   remember (put (TAtom "v2") (WInt n) (put (TAtom "v0") (WInt c) [])) as e eqn:Ee.
   assert (Hv0 : lookup (TAtom "v0") e = Some (WInt c)) by (subst e; reflexivity).
@@ -465,7 +465,7 @@ Qed.
 (** Calling `use` with the initial module invariant executes three `fill`
     calls, reads one byte after each, and safely returns an integer. *)
 Lemma use_spec : slot_inv -∗ WP (ERun use_entry : sexpr) {{ o, ⌜exists k, o = Ret (WInt k)⌝ }}.
-Proof.
+Proof using Type.
   iIntros "Hinv". iApply wp_enter; [exact find_u_start | reflexivity |]. iNext. cbn [b_insts b_jump u_start].
   (* fill('a', 8), then a[7]. *)
   iApply wp_call_bind; [reflexivity | exact find_fill | reflexivity |]. iNext.
@@ -506,7 +506,7 @@ End wp.
 Theorem slot_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s fuel :
   R.ready s m -> live_disjoint m -> all_agree m slot_ps0 ->
   labelled_safe slot_registry slot_ge use_entry m s tt fuel (fun o => exists k, o = Ret (WInt k)).
-Proof.
+Proof using Type.
   intros Hr Hd Ha.
   apply (heap_labelled_safe Σ slot_registry no_world slot_ge use_entry m s tt (list_to_map slot_ps0)).
   - exact Hr.

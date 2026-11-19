@@ -415,7 +415,7 @@ Lemma xmalloc_spec n Φ :
   ▷ (∀ base, ⌜0 < base /\ base mod 16 = 0 /\ base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ -∗
        obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (invocation xmalloc_fn [WInt n]) : jexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmalloc Kalloc SafepointStable0 invGS_gen0 sargs.
   intros Hn. iIntros "HK".
   change (invocation xmalloc_fn [WInt n]) with
     (mkFrame xmalloc_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)).
@@ -446,7 +446,7 @@ Lemma arg_string_split args s :
   pts (flat_map arg_ps args) -∗
   string (arg_ptr s) (arg_base s) (arg_region s) (arg_text s) ∗
   (string (arg_ptr s) (arg_base s) (arg_region s) (arg_text s) -∗ pts (flat_map arg_ps args)).
-Proof.
+Proof using Type.
   intros Hin Hok. destruct (in_split _ _ Hin) as (l1 & l2 & ->).
   rewrite flat_map_app. cbn [flat_map]. rewrite !pts_app.
   iIntros "(H1 & Hs & H2)". iSplitL "Hs"; [iSplit; [iPureIntro; exact Hok | iExact "Hs"]|].
@@ -463,7 +463,7 @@ Lemma greeting_string g rg rt :
   ∃ b reg bs, string g b reg bs ∗
     (string g b reg bs -∗ pts (flat_map arg_ps sargs) ∗ string greeting_ptr 70000 rg greeting_bytes ∗
        string traditional_ptr 69808 rt traditional_bytes).
-Proof.
+Proof using Hargs.
   intros [-> | [-> | [(q & text & off & Hin & Hoff & ->) _]]]; iIntros "Ha Hg Ht".
   - iExists _, _, _. iFrame "Hg". iIntros "Hg". iFrame.
   - iExists _, _, _. iFrame "Ht". iIntros "Ht". iFrame.
@@ -479,7 +479,7 @@ Qed.
 
 (** A heap request's extent covers its size. *)
 Lemma heap_req_covers n : 0 <= n -> n <= req_extent (heap_req 16 n).
-Proof.
+Proof using sargs.
   intros Hn. cbn. pose proof (Z.div_mod (n + 15) 16 ltac:(lia)).
   pose proof (Z.mod_pos_bound (n + 15) 16 ltac:(lia)). lia.
 Qed.

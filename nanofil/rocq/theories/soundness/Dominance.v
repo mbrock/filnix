@@ -766,7 +766,7 @@ Definition rank (x : name) : Z :=
     of u, and that is its rank. *)
 Lemma rank_at : forall u x v, cfg_rpo g = u ++ x :: v ->
   nm_find x (labels_numbered (cfg_rpo g)) = Some (Z.of_nat (length u)) /\ rank x = Z.of_nat (length u).
-Proof.
+Proof using HM.
   intros u x v E. unfold rank, labels_numbered.
   change (fun acc l => (fst acc + 1, nm_add l (fst acc) (snd acc))) with number_step.
   rewrite (number_fold_at u _ x v (0, nm_empty) (idoms_nodup _ _ HM) E). split; reflexivity.
@@ -774,19 +774,19 @@ Qed.
 
 (** Every label of the order is numbered, with its rank. *)
 Lemma rank_find : forall x, In x (cfg_rpo g) -> nm_find x (labels_numbered (cfg_rpo g)) = Some (rank x).
-Proof.
+Proof using HM.
   intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). destruct (rank_at _ _ _ E) as [-> ->]. reflexivity.
 Qed.
 
 (** A label of the order has a rank of 0 or more. *)
 Lemma rank_nonneg : forall x, In x (cfg_rpo g) -> 0 <= rank x.
-Proof.
+Proof using HM.
   intros x Hx. destruct (in_split _ _ Hx) as (u & v & E). rewrite (proj2 (rank_at _ _ _ E)). lia.
 Qed.
 
 (** A label listed before another has a smaller rank. *)
 Lemma rank_before : forall u x v p, cfg_rpo g = u ++ x :: v -> In p u -> rank p < rank x.
-Proof.
+Proof using HM.
   intros u x v p E Hp. destruct (in_split _ _ Hp) as (u1 & u2 & ->).
   rewrite (proj2 (rank_at _ _ _ E)).
   rewrite <- app_assoc in E. simpl in E. rewrite (proj2 (rank_at _ _ _ E)).
@@ -795,11 +795,11 @@ Qed.
 
 (** The function entry always appears in the reverse postorder of g. *)
 Lemma entry_in : In (cfg_entry g) (cfg_rpo g).
-Proof. destruct Hr0 as (rest & ->). left. reflexivity. Qed.
+Proof using Hr0. destruct Hr0 as (rest & ->). left. reflexivity. Qed.
 
 (** Every label of the order has a parent in M. *)
 Lemma rpo_mem : forall x, In x (cfg_rpo g) -> nm_mem x M = true.
-Proof.
+Proof using HM.
   intros x Hx. apply nm_mem_find. destruct (name_eqb x (cfg_entry g)) eqn:E.
   - apply name_eqb_true in E. subst. exists (cfg_entry g). exact (idoms_entry _ _ HM).
   - apply name_eqb_false in E. destruct (idoms_meet _ _ HM _ Hx E) as (nw & Hnw & _). eauto.
@@ -811,7 +811,7 @@ Qed.
     smaller rank unless b is the entry. *)
 Lemma idom_rank : forall b c, In b (cfg_rpo g) -> nm_find b M = Some c ->
   In c (cfg_rpo g) /\ ((b = cfg_entry g /\ c = b) \/ rank c < rank b).
-Proof.
+Proof using HM Hr0.
   assert (Main : forall k b c, (Z.to_nat (rank b) < k)%nat -> In b (cfg_rpo g) -> nm_find b M = Some c ->
                  In c (cfg_rpo g) /\ ((b = cfg_entry g /\ c = b) \/ rank c < rank b)).
   { induction k as [|k IH]; intros b c Hk Hb Hc; [lia|].
@@ -840,7 +840,7 @@ Qed.
     comes before it. *)
 Lemma anc_rank : forall a y, anc M a y -> In y (cfg_rpo g) ->
   In a (cfg_rpo g) /\ (a = y \/ rank a < rank y).
-Proof.
+Proof using HM Hr0.
   intros a y H. induction H as [|y z Hf _ IH]; intros Hy; [auto|].
   destruct (idom_rank _ _ Hy Hf) as [Hz Hzy]. destruct (IH Hz) as [Ha Haz]. split; [exact Ha|].
   destruct Hzy as [[_ ->] | Hzy]; destruct Haz as [-> | Haz]; auto; right; lia.
@@ -855,7 +855,7 @@ Lemma common_dominator_nca : forall fuel a b c,
   In a (cfg_rpo g) -> In b (cfg_rpo g) ->
   common_dominator fuel (labels_numbered (cfg_rpo g)) M a b = Some c ->
   In c (cfg_rpo g) /\ forall D, anc M D a -> anc M D b -> anc M D c.
-Proof.
+Proof using HM Hr0.
   induction fuel as [|fuel IH]; intros a b c Ha Hb H; simpl in H; [discriminate H|].
   destruct (name_eqb a b) eqn:E.
   - injection H as <-. split; [exact Ha | auto].
@@ -887,7 +887,7 @@ Lemma common_fold_nca : forall cf others c0 nw,
   In c0 (cfg_rpo g) -> (forall p, In p others -> In p (cfg_rpo g)) ->
   fold_left (common_step cf (labels_numbered (cfg_rpo g)) M) others (Some c0) = Some nw ->
   forall D, anc M D c0 -> (forall p, In p others -> anc M D p) -> anc M D nw.
-Proof.
+Proof using HM Hr0.
   intros cf others. induction others as [|p others IH]; simpl; intros c0 nw Hc0 Ho H D Hd Hp.
   - injection H as <-. exact Hd.
   - simpl in H.
@@ -903,7 +903,7 @@ Qed.
 Theorem idoms_nca : forall b D, In b (cfg_rpo g) -> b <> cfg_entry g ->
   (forall p ps, nm_find b (cfg_preds g) = Some ps -> In p ps -> nm_mem p M = true -> anc M D p) ->
   exists nw, nm_find b M = Some nw /\ anc M D nw.
-Proof.
+Proof using HM Hr0.
   intros b D Hb Hne Hd.
   destruct (idoms_fold _ _ HM _ Hb Hne) as (cf & ps & first & others & nw & Hps & Hf & Hc & Hnw).
   exists nw. split; [exact Hnw|].
@@ -1056,12 +1056,12 @@ Definition desc (a b : name) : Prop := exists k, descn a b k.
     a child of a descendant one generation up. *)
 Lemma descn_inv : forall a b k, descn a b k ->
   (b = a /\ k = 0%nat) \/ exists p ks k', k = S k' /\ descn a p k' /\ nm_find p K = Some ks /\ In b ks.
-Proof. intros a b k H. destruct H as [|p ks b k Hp Hf Hb]; [left; auto | right; eauto 8]. Qed.
+Proof using Type. intros a b k H. destruct H as [|p ks b k Hp Hf Hb]; [left; auto | right; eauto 8]. Qed.
 
 (** A descendant at depth j of a descendant at depth k of a is a descendant
     of a at depth k + j. *)
 Lemma descn_trans : forall a b c k j, descn a b k -> descn b c j -> descn a c (k + j).
-Proof.
+Proof using Type.
   intros a b c k j Hab Hbc. induction Hbc as [|p ks c' j Hbp IH Hp Hc].
   - rewrite Nat.add_0_r. exact Hab.
   - rewrite Nat.add_succ_r. exact (descn_kid _ _ _ _ _ IH Hp Hc).
@@ -1069,21 +1069,21 @@ Qed.
 
 (** Every label is its own descendant. *)
 Lemma desc_refl : forall a, desc a a.
-Proof. intros a. exists 0%nat. constructor. Qed.
+Proof using Type. intros a. exists 0%nat. constructor. Qed.
 
 (** A descendant of a descendant of a is a descendant of a. *)
 Lemma desc_trans : forall a b c, desc a b -> desc b c -> desc a c.
-Proof. intros a b c [k Hk] [j Hj]. exists (k + j)%nat. exact (descn_trans _ _ _ _ _ Hk Hj). Qed.
+Proof using Type. intros a b c [k Hk] [j Hj]. exists (k + j)%nat. exact (descn_trans _ _ _ _ _ Hk Hj). Qed.
 
 (** A child of a descendant of a is a descendant of a. *)
 Lemma desc_kid : forall a p ks b, desc a p -> nm_find p K = Some ks -> In b ks -> desc a b.
-Proof. intros a p ks b [k Hk] Hp Hb. exists (S k). exact (descn_kid _ _ _ _ _ Hk Hp Hb). Qed.
+Proof using Type. intros a p ks b [k Hk] Hp Hb. exists (S k). exact (descn_kid _ _ _ _ _ Hk Hp Hb). Qed.
 
 (** A descendant b of a at depth k + 1 is, going down from a, a descendant
     at depth k of one of a's children. *)
 Lemma descn_first : forall a b k, descn a b (S k) ->
   exists ks c, nm_find a K = Some ks /\ In c ks /\ descn c b k.
-Proof.
+Proof using Type.
   intros a b k H. remember (S k) as n eqn:En. revert k En.
   induction H as [|p ks b' n Hp IH Hf Hb]; intros k En; [discriminate En|].
   injection En as <-. destruct n as [|n].
@@ -1097,7 +1097,7 @@ Qed.
     children. *)
 Lemma desc_split : forall a ks b, nm_find a K = Some ks -> desc a b ->
   b = a \/ exists c, In c ks /\ desc c b.
-Proof.
+Proof using Type.
   intros a ks b Ha [k Hk]. destruct k as [|k].
   - left. destruct (descn_inv _ _ _ Hk) as [[Eb _] | (p0 & ks0 & k0 & E & _)]; [exact Eb | discriminate E].
   - right. destruct (descn_first _ _ _ Hk) as (ks' & c & Ha' & Hc & Hcb). rewrite Ha in Ha'.
@@ -1108,7 +1108,7 @@ Qed.
     giving one of k times m generations: a cycle would make the tree as deep
     as one likes. *)
 Lemma descn_iter : forall a k m, descn a a k -> descn a a (k * m).
-Proof.
+Proof using Type.
   intros a k m H. induction m as [|m IH].
   - rewrite Nat.mul_0_r. constructor.
   - rewrite Nat.mul_succ_r. exact (descn_trans _ _ _ _ _ IH H).
@@ -1122,7 +1122,7 @@ Hypothesis kids_unique : forall x y ks ks' k,
 (** Two labels with a descendant in common are one below the other:
     walking up from it, each label has one parent. *)
 Lemma descn_back : forall c z k, descn c z k -> forall c' j, descn c' z j -> desc c c' \/ desc c' c.
-Proof.
+Proof using kids_unique.
   intros c z k H. induction H as [|p ks z k Hcp IH Hp Hz]; intros c' j H'.
   - right. exists j. exact H'.
   - destruct (descn_inv _ _ _ H') as [[-> _] | (p' & ks' & j' & _ & Hcp' & Hp' & Hz')].
@@ -1150,18 +1150,18 @@ Lemma si_unfold : forall f L n0 ivs, subtree_intervals (S f) K L n0 ivs =
       end
   | None => None
   end.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** A failed fold of [si_step] stays failed. *)
 Lemma si_fold_none : forall f ks, fold_left (si_step f) ks None = None.
-Proof. intros f ks. induction ks as [|c ks IH]; [reflexivity | exact IH]. Qed.
+Proof using Type. intros f ks. induction ks as [|c ks IH]; [reflexivity | exact IH]. Qed.
 
 (** If numbering a whole list of child subtrees succeeds, then numbering
     each individual child c in ks also succeeded from some starting
     counter and interval map. *)
 Lemma si_fold_each : forall f ks a r, fold_left (si_step f) ks (Some a) = Some r ->
   forall c, In c ks -> exists n0 iv r', subtree_intervals f K c n0 iv = Some r'.
-Proof.
+Proof using Type.
   intros f ks. induction ks as [|c0 ks IH]; intros a r H c Hin; [destruct Hin|]. cbn [fold_left] in H.
   change (si_step f (Some a) c0) with (subtree_intervals f K c0 (fst a) (snd a)) in H.
   destruct (subtree_intervals f K c0 (fst a) (snd a)) as [a1|] eqn:E;
@@ -1174,7 +1174,7 @@ Qed.
     fuel. *)
 Lemma si_depth : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X k, descn L X k -> (k < fuel)%nat.
-Proof.
+Proof using Type.
   induction fuel as [|f IH]; intros L n0 ivs r H X k Hd; [discriminate H|].
   rewrite si_unfold in H. destruct (nm_find L K) as [ks|] eqn:Ek; [|discriminate H].
   destruct (fold_left (si_step f) ks _) as [[n ivs1]|] eqn:Ef; [|discriminate H].
@@ -1188,7 +1188,7 @@ Qed.
     down to X has no generations. *)
 Lemma si_no_cycle : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X, desc L X -> forall k, descn X X k -> k = 0%nat.
-Proof.
+Proof using Type.
   intros fuel L n0 ivs r H X [j Hj] k Hk. destruct k as [|k]; [reflexivity|]. exfalso.
   pose proof (si_depth _ _ _ _ _ H X _ (descn_trans _ _ _ _ _ Hj (descn_iter _ _ fuel Hk))) as Hl.
   simpl in Hl. lia.
@@ -1197,7 +1197,7 @@ Qed.
 (** No descendant X of L but L itself has L as its descendant. *)
 Lemma si_acyclic : forall fuel L n0 ivs r, subtree_intervals fuel K L n0 ivs = Some r ->
   forall X, desc L X -> desc X L -> X = L.
-Proof.
+Proof using Type.
   intros fuel L n0 ivs r H X Hx [j Hj]. destruct Hx as [i Hi].
   pose proof (si_no_cycle _ _ _ _ _ H L (desc_refl L) _ (descn_trans _ _ _ _ _ Hi Hj)) as E.
   assert (i = 0%nat) by lia. subst i.
@@ -1243,7 +1243,7 @@ Lemma si_fold : forall f, si_ok f -> forall n0 ivs rest done m iv n ivm,
   fold_ok n0 ivs done m iv ->
   fold_left (si_step f) rest (Some (m, iv)) = Some (n, ivm) ->
   fold_ok n0 ivs (done ++ rest) n ivm.
-Proof.
+Proof using Type.
   intros f Hf n0 ivs rest. induction rest as [|c rest IH]; intros done m iv n ivm Hdis Hok H.
   - injection H as <- <-. rewrite app_nil_r. exact Hok.
   - cbn [fold_left] in H. change (si_step f (Some (m, iv)) c) with (subtree_intervals f K c m iv) in H.
@@ -1300,7 +1300,7 @@ Qed.
     succeeds numbers its subtree in preorder, with intervals that nest
     exactly as the tree does. *)
 Lemma si_ok_all : forall fuel, si_ok fuel.
-Proof.
+Proof using kids_unique.
   induction fuel as [|f IH]; intros L n0 ivs n ivs' H; [discriminate H|].
   pose proof H as Hsome. rewrite si_unfold in H.
   destruct (nm_find L K) as [ks|] eqn:Ek; [|discriminate H].
@@ -1465,7 +1465,7 @@ Hypothesis Hdoms : block_intervals (b0 :: rest) = Some doms.
 
 (** The entry block is reachable: it has an interval ([is_reachable]). *)
 Theorem dom_entry : is_reachable doms (b_label b0) = true.
-Proof.
+Proof using Hdoms.
   destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & Hmem & _).
   apply Hmem, desc_refl.
 Qed.
@@ -1473,14 +1473,14 @@ Qed.
 (** A label that dominates another is reachable, and so is the other. *)
 Lemma dominates_reachable : forall a b, dominates doms a b = true ->
   is_reachable doms a = true /\ is_reachable doms b = true.
-Proof.
+Proof using Hdoms.
   intros a b H. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & Hmem & Hdom & _).
   apply Hdom in H as (Ha & Hb & _). split; apply Hmem; assumption.
 Qed.
 
 (** A reachable label dominates itself. *)
 Lemma dominates_refl : forall a, is_reachable doms a = true -> dominates doms a a = true.
-Proof.
+Proof using Hdoms.
   intros a H. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & Hmem & Hdom & _).
   apply Hdom. apply Hmem in H. split; [exact H|]. split; [exact H | apply desc_refl].
 Qed.
@@ -1489,7 +1489,7 @@ Qed.
     dominates c. *)
 Lemma dominates_trans : forall a b c, dominates doms a b = true -> dominates doms b c = true ->
   dominates doms a c = true.
-Proof.
+Proof using Hdoms.
   intros a b c H1 H2. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & Hmem & Hdom & _).
   apply Hdom in H1 as (Ha & _ & Hab). apply Hdom in H2 as (_ & Hc & Hbc).
   apply Hdom. split; [exact Ha|]. split; [exact Hc | exact (desc_trans _ _ _ _ Hab Hbc)].
@@ -1497,14 +1497,14 @@ Qed.
 
 (** Two labels that dominate each other are the same label. *)
 Theorem dom_antisym : forall a b, dominates doms a b = true -> dominates doms b a = true -> a = b.
-Proof.
+Proof using Hdoms.
   intros a b H1 H2. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & _ & _ & _ & _ & _ & Hdom & Hacyc).
   apply Hdom in H1 as (Ha & _ & Hab). apply Hdom in H2 as (_ & _ & Hba). exact (Hacyc _ _ Ha Hab Hba).
 Qed.
 
 (** Only the entry dominates the entry. *)
 Theorem dom_entry_top : forall a, dominates doms a (b_label b0) = true -> a = b_label b0.
-Proof.
+Proof using Hdoms.
   intros a H. destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & _ & He & _ & Hk1 & _ & _ & Hdom & _).
   apply Hdom in H as (_ & _ & [k Hk]).
   destruct (descn_inv _ _ _ _ Hk) as [[E _] | (p0 & ks & k' & _ & _ & Hks & Hin)]; [exact (eq_sym E)|].
@@ -1523,7 +1523,7 @@ Lemma succ_parent : forall p s, no_dups (map b_label (b0 :: rest)) = true ->
     (forall x ks k, nm_find x kids = Some ks -> In k ks -> nm_find k (nm_remove (cfg_entry g) M) = Some x) /\
     cfg_entry g = b_label b0 /\
     desc kids (b_label b0) nw /\ desc kids nw p /\ exists ks, nm_find nw kids = Some ks /\ In s ks.
-Proof.
+Proof using Hdoms.
   intros p s Hnd Hp He Hs.
   destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & Hok & Hent & HM & Hk1 & Hk2 & Hmem & Hdom & _).
   apply Hmem in Hp.
@@ -1558,7 +1558,7 @@ Qed.
     is reachable: a run never leaves the blocks that have an interval. *)
 Theorem dom_closed : forall p s, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms p = true -> edge (b0 :: rest) p s -> is_reachable doms s = true.
-Proof.
+Proof using Hdoms.
   intros p s Hnd Hp He. destruct (name_eqb s (b_label b0)) eqn:Es.
   - apply name_eqb_true in Es. subst s. exact dom_entry.
   - apply name_eqb_false in Es.
@@ -1575,7 +1575,7 @@ Qed.
 Theorem dom_edge : forall p s a, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms p = true -> edge (b0 :: rest) p s ->
   dominates doms a s = true -> a = s \/ dominates doms a p = true.
-Proof.
+Proof using Hdoms.
   intros p s a Hnd Hp He Hd. destruct (name_eqb s (b_label b0)) eqn:Es.
   - apply name_eqb_true in Es. subst s. left. exact (dom_entry_top _ Hd).
   - apply name_eqb_false in Es.
@@ -1598,7 +1598,7 @@ Theorem dom_meet : forall l a, no_dups (map b_label (b0 :: rest)) = true ->
   is_reachable doms l = true -> l <> b_label b0 ->
   (forall p, edge (b0 :: rest) p l -> is_reachable doms p = true -> dominates doms a p = true) ->
   dominates doms a l = true /\ a <> l.
-Proof.
+Proof using Hdoms.
   intros l a Hnd Hl Hne Ha.
   destruct (tree_facts _ _ _ Hdoms) as (g & M & kids & Hok & Hent & HM & Hk1 & Hk2 & Hmem & Hdom & _).
   assert (Hr0 : exists r, cfg_rpo g = cfg_entry g :: r)

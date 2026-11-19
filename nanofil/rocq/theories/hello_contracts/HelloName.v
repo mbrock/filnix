@@ -176,7 +176,7 @@ Lemma name_lookups :
   lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr program_name_b (Obj program_name_b)) /\
   lookup (TAtom "progname#str.3") (ge_globals ge) = Some libs_ptr /\
   lookup (TAtom "progname#str.4") (ge_globals ge) = Some lt_ptr.
-Proof.
+Proof using Hlinked.
   destruct progname_globals as (H1 & H2 & H3). destruct Hlinked as (_ & Hg & _).
   split; [exact (Hg _ _ H1)|]. split; [exact (Hg _ _ H2) | exact (Hg _ _ H3)].
 Qed.
@@ -189,7 +189,7 @@ Lemma spn_L18 e x y x0 x1 y0 Φ :
   name_cells x0 x1 y0 -∗ ▷ (name_cells x x y -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L18") (b_insts s_L18) (b_jump s_L18)))
         : nexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hnb Hnb_cell Hpn_end Hsb Hsb_cell Knb Kpn Ksb SafepointStable0.
   intros Hx Hy. destruct name_lookups as (Hpn & _ & _).
   destruct Hnb_cell as (Hn0 & Hn8 & Hnend & Hn48). destruct Hsb_cell as (Hs0 & Hs8 & Hsend & Hs48).
   iIntros "(Hlp & Hcp & Hln & Hcn & Hls & Hcs) HΦ". cbn [b_insts b_jump s_L18].
@@ -233,7 +233,7 @@ Lemma spn_L16 e p b reg ys j r3 r4 x0 x1 y0 Φ :
      name_cells x x y -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L16") (b_insts s_L16) (b_jump s_L16)))
         : nexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hstrncmp Knb Kpn Ksb SafepointStable0.
   intros Hv15 Hj. destruct name_lookups as (_ & _ & Hlt).
   iIntros "Hs [Hlibs Hlt] Hc HΦ". iDestruct "Hs" as "[%Hok Hps]".
   iAssert (string p b reg ys) with "[$Hps]" as "Hs"; [done|].
@@ -271,7 +271,7 @@ Lemma spn_L8 e p b reg ys j r3 r4 x0 x1 y0 Φ :
      name_cells x x y -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame set_program_name_fn e [] None (Exec (TAtom "L8") (b_insts s_L8) (b_jump s_L8)))
         : nexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcmp Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hstrncmp Knb Kpn Ksb SafepointStable0.
   intros Hv15 Hv0 Hj. destruct name_lookups as (_ & Hlibs & _).
   iIntros "Hs [Hl3 Hl4] Hc HΦ". iDestruct "Hs" as "[%Hok Hps]".
   iAssert (string p b reg ys) with "[$Hps]" as "Hs"; [done|].
@@ -338,7 +338,8 @@ Lemma set_program_name_spec p b reg ys r3 r4 x0 x1 y0 Φ :
   ▷ (∀ x y, ⌜ptr_cap x = ptr_cap p /\ ptr_cap y = ptr_cap p⌝ -∗ string p b reg ys -∗ literals r3 r4 -∗
      name_cells x x y -∗ Φ RetVoid) -∗
   WP (ERun (invocation set_program_name_fn [WPtr p]) : nexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcmp Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hstrncmp Hstrrchr Knb Kpn Ksb
+  SafepointStable0.
   iIntros "Hs Hlit Hc HΦ". iDestruct "Hs" as "[%Hok Hps]".
   iAssert (string p b reg ys) with "[$Hps]" as "Hs"; [done|].
   pose proof Hok as (Hcap & Hb0 & Hb1 & Hb2 & Hb3 & _). rewrite set_program_name_entry.

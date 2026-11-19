@@ -462,7 +462,17 @@ Theorem hello_main_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece p
        string greeting_ptr 70000 rg greeting_bytes ∗ string traditional_ptr 69808 rt traditional_bytes) ->
   labelled_safe registry ge (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))])
     m s w fuel (fun _ => True).
-Proof.
+Proof using Hargc Hargs Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Haudit Hauthor_live Hav Hbytes
+  Hcells Hdiag_abi Hdiag_post Hdiag_pre Hdiag_reg Hdiag_ret Herrno_at Herrno_cell Herrno_range
+  Herrno_reg Herror_abi Herror_fatal Herror_pre Hexit Hexit_abi Hexit_post Hexit_pre Hfree Hgetopt
+  Hgetopt_apart Hgetopt_env Hgetopt_wi Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret
+  Hjoin_lookup Hlent Hlibc Hlinked Hmalloc Hmbrtowc Hmemchr Hmemcmp Hmemcpy Hmemset Hnb Hnb_cell
+  Hoptarg_g Hoptind_g Houtput_abi Houtput_frame Houtput_pre Houtput_reg Houtput_ret Hpn_end Hsb
+  Hsb_cell Hset_pre Hset_query Hset_query_pre Hsetlocale Hstderr_g Hstdout_g Hstrcmp Hstrlen Hstrncmp
+  Hstrrchr Htable Hvalid0 Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret
+  Hwprintf_abi Hwprintf_frame Hwprintf_pre Hwprintf_reg Hwprintf_ret Kalloc Katexit Kbyte Kcopy Kfree
+  Kgetopt Kmbrtowc Kmemset Knb Kpn Kpstore Ksb Kset Kstore Kversion_alloc Kversion_cursor
+  Kversion_snapshot Kversion_store SafepointStable0 wi_stderr wi_stdout.
   intros Hr Hd Ha Hw Hhd Hcs Hix Lxe Lce Hstart.
   apply (heap_labelled_safe Σ registry wi ge _ m s w h0 (fun _ => True) Hr Hd Ha Hw).
   intros HinvG HheapG. rewrite (Hstart HinvG HheapG).

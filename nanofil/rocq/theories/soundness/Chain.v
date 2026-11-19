@@ -343,7 +343,7 @@ Lemma chain_go_sound : forall fuel p lo hi pp0,
   (stable (single_definitions (fr_fn fr)) p -> offset_rel ge (fr_env fr) pp0 p lo hi) ->
   forall b blo bhi, In (b, (blo, bhi)) (guard_chain_go (single_definitions (fr_fn fr)) fuel p lo hi) ->
   stable (single_definitions (fr_fn fr)) b -> offset_rel ge (fr_env fr) pp0 b blo bhi.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   induction fuel as [|fuel IH]; intros p lo hi pp0 Hdom Hrel b blo bhi Hb Hst; simpl in Hb.
   - destruct Hb as [E | []]. injection E as -> -> ->. exact (Hrel Hst).
   - destruct Hb as [E | Hb]; [injection E as -> -> ->; exact (Hrel Hst)|].
@@ -406,7 +406,7 @@ Qed.
     slows down Rocq's kernel. This equation rewrites [guard_chain] in
     one step instead. *)
 Lemma guard_chain_eq : forall once p, guard_chain once p = guard_chain_go once 64 p 0 0.
-Proof. intros once p. reflexivity. Qed.
+Proof using Type. intros once p. reflexivity. Qed.
 
 (** Every single-definition element in a pointer's [[guard-chain|guard chain]]
     accurately bounds that pointer's offset from the element's base,
@@ -416,7 +416,7 @@ Lemma guard_chain_sound : forall p pp b blo bhi,
   (forall y, p = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
   In (b, (blo, bhi)) (guard_chain (single_definitions (fr_fn fr)) p) ->
   stable (single_definitions (fr_fn fr)) b -> offset_rel ge (fr_env fr) pp b blo bhi.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros p pp b blo bhi Hp Hdom Hb Hst. rewrite guard_chain_eq in Hb.
   refine (chain_go_sound 64 p 0 0 pp Hdom _ b blo bhi Hb Hst).
   intros _. exists pp, 0. split; [exact Hp|]. split; [reflexivity|]. split; [lia|].
@@ -438,7 +438,7 @@ Lemma pointer_distance_eq : forall once p p1,
                                             end) (guard_chain once p1)
                   | None => None
                   end) (guard_chain once p).
-Proof. intros once p p1. reflexivity. Qed.
+Proof using Type. intros once p p1. reflexivity. Qed.
 
 (** Suppose a program derives two pointers from the same base object at
     a known constant offset difference d. When their
@@ -451,7 +451,7 @@ Theorem pointer_distance_sound : forall p p1 pp pp1 d,
   (forall y, p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
   pointer_distance (single_definitions (fr_fn fr)) p p1 = Some d ->
   ptr_cap pp = ptr_cap pp1 /\ ptr_addr pp mod 2 ^ 64 = (ptr_addr pp1 + d) mod 2 ^ 64.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros p p1 pp pp1 d Hp Hp1 Hd Hd1 H. rewrite pointer_distance_eq in H.
   destruct (first_some_in _ _ _ _ _ H) as (el & Hel & Hf).
   destruct el as [[n0 | c0 | g0] [k0 k0']]; unfold exact_base in Hf; try discriminate Hf.
@@ -498,7 +498,7 @@ Lemma hull_span_passes : forall live p pp l1 h1 r1,
                                end) live) ->
   near_offset l1 = true /\ near_offset h1 = true /\
   exists al1, access_res m (raw_address (ptr_addr pp) l1) (ptr_cap pp) (h1 - l1) r1 al1 = Some ok.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros live p pp l1 h1 r1 Hl Hdom Hp Hdp Hsp.
   apply in_flat_map in Hsp as (f & Hf & Hsp).
   destruct (pointer_distance (single_definitions (fr_fn fr)) (f_p f) p) as [d|] eqn:Ed; [|contradiction].
@@ -529,7 +529,7 @@ Theorem hull_access_not_unchecked : forall i q fa live why,
   fact_of q live = Some fa ->
   hull_covered i q (f_p fa) (f_lo fa) (f_al fa) live (single_definitions (fr_fn fr)) = true ->
   inst_step ge fr m i <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros i q fa live why Hfit Hl Hdom Hf H.
   destruct (fact_of_in _ _ _ Hf) as [Hfa Hq].
   destruct (Hl fa Hfa) as (pp & Eq & Hp & Hc). rewrite Hq in Eq.

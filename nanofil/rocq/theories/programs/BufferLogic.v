@@ -193,7 +193,7 @@ Definition cells (b : Z) : iProp Σ :=
     and return it with any updated value after a load or store. *)
 Lemma cells_at b k :
   0 <= k < 4 -> cells b -∗ ∃ v, icell b (8 * k) v ∗ (∀ w, icell b (8 * k) w -∗ cells b).
-Proof.
+Proof using Type.
   intros Hk. iIntros "(%v0 & %v1 & %v2 & %v3 & H0 & H1 & H2 & H3)".
   assert (k = 0 \/ k = 1 \/ k = 2 \/ k = 3) as [-> | [-> | [-> | ->]]] by lia; cbn [Z.mul];
     [iExists v0; iFrame "H0" | iExists v1; iFrame "H1" | iExists v2; iFrame "H2" | iExists v3; iFrame "H3"];
@@ -204,7 +204,7 @@ Qed.
     and four zero-initialized cells, discarding unused [[aux]] slots. *)
 Lemma obj_buf base :
   obj base (heap_req 16 32) -∗ live base (buf_reg base) ∗ cells base.
-Proof.
+Proof using Type.
   rewrite /obj /live /cells /icell.
   assert (E : obj_ps base (heap_req 16 32) =
      [(PLive base, VLive (buf_reg base))] ++ cell base 0 0 ++ cell base 8 0 ++ cell base 16 0 ++
@@ -229,7 +229,7 @@ Lemma sum_loop n b :
       live b (buf_reg b) -∗ cells b -∗
       WP (ERun (mkFrame buffer_fn e [] None (Exec (TAtom "L24") (b_insts b_L24) (b_jump b_L24)))
            : bexpr) {{ _, True }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (e j s ((Hv4 & Hb0 & Hb1 & Hb2) & Hj & Hjr & Hs & Hn)) "Hlv Hc".
   buf_facts. cbn [b_L24 b_insts b_jump].
   wp_let_.
@@ -262,7 +262,7 @@ Lemma fill_loop n b :
       live b (buf_reg b) -∗ cells b -∗
       WP (ERun (mkFrame buffer_fn e [] None (Exec (TAtom "L6") (b_insts b_L6) (b_jump b_L6)))
            : bexpr) {{ _, True }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (e i ((Hv4 & Hb0 & Hb1 & Hb2) & Hi & Hir & Hn)) "Hlv Hc".
   buf_facts. cbn [b_L6 b_insts b_jump].
   wp_let_.
@@ -289,7 +289,7 @@ Qed.
 Lemma buffer_spec n :
   ⊢ WP (ERun (mkFrame buffer_fn [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
          : bexpr) {{ _, True }}.
-Proof.
+Proof using Type.
   buf_facts. wp_enter_.
   iApply wp_alloc; first [side | iNext; iIntros (base (Hb0 & Hb1 & Hb2)) "Hobj"; gen_env].
   change (req_align (heap_req 16 32)) with 16 in Hb1.

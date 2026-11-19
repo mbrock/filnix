@@ -190,7 +190,7 @@ Hypothesis Hl : local_effect sources roots releases born m m'.
     effect can only free existing objects; it never creates or resizes
     them. *)
 Lemma local_live_back : forall b reg, live_at m' b reg -> live_at m b reg.
-Proof.
+Proof using Hl.
   intros b reg [E L]. destruct Hl as (_ & Hr & _).
   destruct (Hr b reg E) as (reg0 & E0 & [-> | (_ & _ & _ & ->)]); [split; assumption | discriminate L].
 Qed.
@@ -198,14 +198,14 @@ Qed.
 (** Because a local effect never creates or enlarges regions, live objects
     that were disjoint before the step remain disjoint after it. *)
 Lemma local_live_disjoint : live_disjoint m -> live_disjoint m'.
-Proof.
+Proof using Hl.
   intros Hd b1 r1 b2 r2 H1 H2. exact (Hd b1 r1 b2 r2 (local_live_back _ _ H1) (local_live_back _ _ H2)).
 Qed.
 
 (** Consequently, any address that lies in a live caller-owned object
     after the step already lay in that same live object before the step. *)
 Lemma local_owned_back : forall a, owned_live h m' a -> owned_live h m a.
-Proof.
+Proof using Hl.
   intros a (l & v & reg & Hh & Hm & Hlive & Ha). exists l, v, reg. split; [exact Hh|].
   split; [exact Hm|]. split; [exact (local_live_back _ _ Hlive) | exact Ha].
 Qed.
@@ -217,7 +217,7 @@ Qed.
 Lemma local_agrees_out (ks : list piece) (out : Z -> Prop) : live_disjoint m -> agrees_except ks m h ->
   roots_out roots h m out -> pieces_off ks h m out ->
   ids_apart releases h -> ids_apart born h -> agrees_except ks m' h.
-Proof.
+Proof using Hl.
   intros Hd Ha Hra Hoff Hrel Hb l v Hh Hk. pose proof (Ha l v Hh Hk) as Hp.
   pose proof (Hoff l v Hh Hk) as Hno.
   pose proof (local_effect_kept _ _ _ _ _ _ Hl) as [Hs _].
@@ -268,7 +268,7 @@ Qed.
     after the step. *)
 Lemma local_agrees : live_disjoint m -> agrees m h -> roots_apart roots h m ->
   ids_apart releases h -> ids_apart born h -> agrees m' h.
-Proof.
+Proof using Hl.
   intros Hd Ha Hra Hrel Hb l v Hh.
   apply (local_agrees_out [] (fun _ => False) Hd); [| exact (roots_out_apart _ _ _ Hra) | | exact Hrel |
     exact Hb | exact Hh | apply not_elem_of_nil].

@@ -83,7 +83,7 @@ Context (Kmbrtowc : forall r args out src n state s m w h trace values s' m' w'
     owned once. *)
 Lemma block_ne b reg o xs cs b' reg' o' xs' cs' :
   pts (block_ps b reg o xs cs) -∗ pts (block_ps b' reg' o' xs' cs') -∗ ⌜b <> b'⌝.
-Proof.
+Proof using Type.
   rewrite /block_ps /pts !big_sepL_cons. iIntros "[Hl _] [Hl' _]".
   iDestruct (pointsto_ne with "Hl Hl'") as %Hne. iPureIntro. intros <-. apply Hne. reflexivity.
 Qed.
@@ -107,7 +107,7 @@ Lemma mbrtowc_admitted codec m w h out src n state bo ro oo xo co bs rs os ys cs
   0 < n <= Z.of_nat (length ss) -> Forall (fun x => 0 <= x < 256) ss ->
   valid codec ys ->
   mbrtowc_pre valid rep [WPtr out; WPtr src; WInt n; WPtr state] m w.
-Proof.
+Proof using Hbytes Hlibc Hvalid0.
   intros Hw Ha Hd Hfit Hcod Ho Hs He Hsr Nos Noe Nosr Nse Nssr Nesr -> -> Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal
     Lxo Lys Lxe Hn Hss Hval.
   pose proof (Hbytes _ _ Hval) as Hyb.
@@ -213,7 +213,7 @@ Lemma mbrtowc_frame r args s m w h trace values s' m' w' out src n state
                         block_ps bs rs os (mem_bytes m' (bs + os) 8) (mem_auxes m' (bs + os) 8) ++
                         block_ps be re oe (mem_bytes m' (be + oe) 4) (mem_auxes m' (be + oe) 4)) h) /\
   live_disjoint m' /\ R.ready s' m'.
-Proof.
+Proof using Hlibc.
   intros Hi Hw Ha Hd Hr Ho Hs He -> -> Herr Lxo Lco Lys Lcs Lxe Lce Hn.
   destruct (Hlibc m w h Hw) as (_ & _ & Herrno & Hown & Hpriv).
   destruct (block_facts m h bo ro oo xo co Ha Ho (nonempty_of_length xo 3 Lxo)) as (Lo & Oo & Eo & _).
@@ -284,7 +284,7 @@ Lemma conv_of_result codec m w out src n state res m' bo oo xo bs os ys be oe bs
   0 < n <= Z.of_nat (length ss) -> (forall i x, ss !! i = Some x -> m_bytes m (bsrc + osrc + Z.of_nat i) = x) ->
   conv_result valid (audit codec = Some CodecC) codec n ss xo ys (mem_bytes m' (bo + oo) 4) (mem_bytes m' (bs + os) 8)
     (mem_bytes m' (be + oe) 4) res.
-Proof.
+Proof using Type.
   intros Hfull Hprof Hcodec Herrno Eout Est Haddr Lxo Vo Lys Vs Hn Vss.
   pose proof Hfull as (_ & Hres). subst out state.
   assert (Hst4 : take 4 (mem_bytes m' (bs + os) 8) = mem_bytes m' (bs + os) 4) by reflexivity.
@@ -362,7 +362,7 @@ Lemma wp_mbrtowc f e ls lab d vo vs vn vt rest j out src n state
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d L) (Global (TAtom "mbrtowc")) [Arg P vo; Arg P vs; Arg L vn; Arg P vt]
                           :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using Haudit Hbytes Hlibc Hmbrtowc Hvalid0 Kmbrtowc SafepointStable0.
   intros Hfn Hdata Hvo Hvs Hvn Hvt Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoal Hsal Lxo Lco Lys Lcs Lxe Lce
     Hn Hss Hval.
   iIntros "Hcod HBo HBs HBe HBsrc HK".

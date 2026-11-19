@@ -263,7 +263,9 @@ Lemma main_hint e from x0 x1 y0 Φ :
   name_ok sargs x0 ->
   pts help_ps -∗ pts (flat_map arg_ps sargs) -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L113") (Some (TAtom from)))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hexit Hexit_abi Hexit_post Hexit_pre Hhelp_abi Hhelp_frame
+  Hhelp_pre Hhelp_reg Hhelp_ret Hlinked Hnb_cell Hpn_end Hsb_cell Hstderr_g SafepointStable0
+  invGS_gen0 wi_stderr.
   intros Hname.
   pose proof (main_help_lookup "hello#str.79" ltac:(simpl; tauto)) as H79.
   assert (Hpn : lookup (TAtom "program_name") (ge_globals ge) =
@@ -311,7 +313,9 @@ Lemma hint_exit b4 b6 from P x0 x1 y0 Φ :
   name_ok sargs x0 ->
   pts help_ps -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
   operand_exit b4 b6 "iw_1.L113"%string from P Φ.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hexit Hexit_abi Hexit_post Hexit_pre Hhelp_abi Hhelp_frame
+  Hhelp_pre Hhelp_reg Hhelp_ret Hlinked Hnb_cell Hpn_end Hsb_cell Hstderr_g SafepointStable0
+  wi_stderr.
   intros Hname. iIntros "Hps Hcells". rewrite /operand_exit.
   iIntros (e ps cs a i g lose _) "(_ & Has & _)".
   iApply (main_hint with "Hps Has Hcells"). exact Hname.
@@ -339,7 +343,7 @@ Context (diag_spec : contract libc_world)
 (** The literals of the extra-operand diagnostic are linked. *)
 Lemma main_extra_lookup s :
   In s ["hello#str.77"; "hello#str.78"] -> lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
-Proof.
+Proof using Hlinked.
   intros Hin. apply (proj1 (proj2 Hlinked)).
   repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
 Qed.
@@ -351,7 +355,9 @@ Lemma main_extra b4 b6 x0 x1 y0 Φ :
   name_ok sargs x0 ->
   pts help_ps -∗ HP.HN.name_cells pn nreg sreg nb sb x0 x1 y0 -∗
   operand_exit b4 b6 "iw_1.L79"%string "iw_1.L55"%string (fun _ i => i < Z.of_nat (length sargs)) Φ.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hdiag_abi Hdiag_post Hdiag_pre Hdiag_reg Hdiag_ret Hexit Hexit_abi
+  Hexit_post Hexit_pre Hgetopt_wi Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret Hlinked Hnb_cell
+  Hoptind_g Hpn_end Hsb_cell Hstderr_g SafepointStable0 wi_stderr.
   intros Hname.
   pose proof (main_extra_lookup "hello#str.77" ltac:(simpl; tauto)) as H77.
   pose proof (main_extra_lookup "hello#str.78" ltac:(simpl; tauto)) as H78.
@@ -432,7 +438,12 @@ Lemma loop_exits b4 b6 x0 x1 y0 p t b61 r61 Φ :
   (loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ ∧
    loop_exit b4 b6 "iw_1.L39"%string "iw_1.L50"%string Φ ∧
    loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ).
-Proof.
+Proof using Hargc Hargs Hauthor_live Hav Hcells Hdiag_abi Hdiag_post Hdiag_pre Hdiag_reg Hdiag_ret
+  Hexit Hexit_abi Hexit_post Hexit_pre Hgetopt_wi Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret
+  Hlent Hlinked Hnb_cell Hoptind_g Houtput_abi Houtput_frame Houtput_pre Houtput_reg Houtput_ret
+  Hpn_end Hquery Hquery_pre Hsb_cell Hsetlocale Hstderr_g Hstdout_g Hstrncmp Hversion_abi
+  Hversion_frame Hversion_pre Hversion_reg Hversion_ret Kversion_alloc Kversion_cursor
+  Kversion_snapshot Kversion_store SafepointStable0 wi_stderr wi_stdout.
   intros Hname. iIntros "Hv Hh #Hk H61 Hc Hj".
   iSplit; [iApply (main_version with "Hv")|].
   iSplit; [iApply (main_help with "Hk Hh H61 Hc"); exact Hname|].
@@ -467,7 +478,14 @@ Lemma main_to_join s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix b61 r61 Φ :
        operand_exit b4 b6 "iw_1.join"%string "iw_1.L60"%string
          (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hauthor_live Hav Hcells Hdiag_abi
+  Hdiag_post Hdiag_pre Hdiag_reg Hdiag_ret Hexit Hexit_abi Hexit_post Hexit_pre Hgetopt Hgetopt_apart
+  Hgetopt_env Hgetopt_wi Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret Hlent Hlinked Hmemcmp
+  Hmemset Hnb Hnb_cell Hoptarg_g Hoptind_g Houtput_abi Houtput_frame Houtput_pre Houtput_reg
+  Houtput_ret Hpn_end Hquery Hquery_pre Hsb Hsb_cell Hset_pre Hsetlocale Hstderr_g Hstdout_g Hstrncmp
+  Hstrrchr Htable Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret Kalloc Katexit
+  Kgetopt Kmemset Knb Kpn Kpstore Ksb Kset Kversion_alloc Kversion_cursor Kversion_snapshot
+  Kversion_store SafepointStable0 wi_stderr wi_stdout.
   intros Hhd Hcs Hix.
   iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 Hv Hh H61 HK".
   iApply (main_to_loop with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].

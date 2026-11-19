@@ -52,7 +52,7 @@ Definition body_inv (st : M.state program_world) : Prop :=
 Theorem reached_admissible : forall c s w site,
   body_inv (M.Running (c, s) w) -> external_site H.hi_genv c site ->
   M.admissible registry H.hi_genv c w site.
-Proof.
+Proof using Type.
   intros c s w site [Hbody [Hwf Ho]] Hsite.
   destruct (H.hi_reached_call_admissible rep requests _ _ _ _ Hbody Hsite) as [Heq Hadmit].
   subst site. destruct Hadmit as (spec & xs & Hreg & Hargs & Habi & Hpre).
@@ -67,7 +67,7 @@ Lemma selected_call : forall c s w site spec xs,
   registry (site_name site) = Some spec ->
   map_option (arg_x H.hi_genv (fr_env (c_frame c))) (site_args site) = Some xs ->
   site = hi_site /\ spec = program_puts rep requests.
-Proof.
+Proof using Type.
   intros c s w site spec xs [Hbody _] Hsite Hreg Hargs.
   destruct (H.hi_reached_call_admissible rep requests _ _ _ _ Hbody Hsite) as [-> _].
   split; [reflexivity|]. change (Some (program_puts rep requests) = Some spec) in Hreg.
@@ -79,7 +79,7 @@ Qed.
 Lemma step_projects : forall st trace st',
   M.step registry H.hi_genv st trace st' -> body_inv st ->
   M.step (H.hi_registry rep requests) H.hi_genv (project st) trace (project st').
-Proof.
+Proof using Type.
   intros st trace st' Hstep Hinv.
   destruct Hstep as
     [ms ms' w Hcore
@@ -104,7 +104,7 @@ Qed.
 (** Stream evolution also preserves the extra world obligations. *)
 Lemma body_step : forall st trace st',
   M.step registry H.hi_genv st trace st' -> body_inv st -> body_inv st'.
-Proof.
+Proof using stdio_stable.
   intros st trace st' Hstep Hinv.
   pose proof (step_projects _ _ _ Hstep Hinv) as Hproject.
   destruct Hinv as [Hbody [Hwf Ho]]. split.
@@ -125,7 +125,7 @@ Qed.
     obligations. This is not inferred from invoke projection alone. *)
 Theorem body_run : forall st trace st',
   M.run registry H.hi_genv st trace st' -> body_inv st -> body_inv st'.
-Proof.
+Proof using stdio_stable.
   intros st trace st' H. induction H; [auto|]. intros Hinv.
   apply IHrun. eapply body_step; eauto.
 Qed.
@@ -135,7 +135,7 @@ Qed.
 Lemma body_step_inventory : forall st trace st',
   M.step registry H.hi_genv st trace st' -> body_inv st ->
   program_pending (world_of st') = program_pending (world_of st).
-Proof.
+Proof using Type.
   intros st trace st' Hstep Hinv. destruct Hinv as [Hbody _].
   destruct Hstep; simpl in *; try reflexivity.
   all: assert (Hselected : spec = program_puts rep requests).
@@ -150,7 +150,7 @@ Qed.
 Theorem body_run_inventory : forall st trace st',
   M.run registry H.hi_genv st trace st' -> body_inv st ->
   program_pending (world_of st') = program_pending (world_of st).
-Proof.
+Proof using stdio_stable.
   intros st trace st' Hrun. induction Hrun; [reflexivity|]. intros Hinv.
   rewrite IHHrun by (eapply body_step; eauto). eapply body_step_inventory; eauto.
 Qed.
@@ -159,7 +159,7 @@ Qed.
 Theorem all_calls_admissible : forall st trace c s w site,
   body_inv st -> M.run registry H.hi_genv st trace (M.Running (c, s) w) ->
   external_site H.hi_genv c site -> M.admissible registry H.hi_genv c w site.
-Proof.
+Proof using stdio_stable.
   intros st trace c s w site Hinv Hrun Hsite.
   eapply reached_admissible; [eapply body_run; eauto|exact Hsite].
 Qed.
@@ -168,7 +168,7 @@ Qed.
     terminals. Finite safety remains conditional, without native totality. *)
 Theorem finite_safety : forall st trace why ms w,
   body_inv st -> M.run registry H.hi_genv st trace (M.Stopped why ms w) -> H.hi_ending why.
-Proof.
+Proof using stdio_stable.
   intros st trace why ms w Hinv Hrun.
   destruct (body_run _ _ _ Hrun Hinv) as [Hbody _]. inversion Hbody. assumption.
 Qed.
@@ -176,7 +176,7 @@ Qed.
 (** Normal termination, out-of-fuel stops, and genuine resource refusals
     never count as capability panics under the shared failure predicate. *)
 Lemma hi_ending_not_failure : forall why, H.hi_ending why -> ~ failure_ending why.
-Proof.
+Proof using Type.
   intros why [->|[->|(resource & -> & Hr)]]; simpl; tauto.
 Qed.
 
@@ -185,12 +185,12 @@ Qed.
 Theorem application_never_panics : forall st trace why ms w,
   body_inv st -> M.run registry H.hi_genv st trace (M.Stopped why ms w) ->
   ~ failure_ending why.
-Proof. intros st trace why ms w Hinv Hrun. apply hi_ending_not_failure. eapply finite_safety; eauto. Qed.
+Proof using stdio_stable. intros st trace why ms w Hinv Hrun. apply hi_ending_not_failure. eapply finite_safety; eauto. Qed.
 
 (** Every application observation is exit-free, including resource leaves. *)
 Lemma application_exit_free : forall st trace st' status,
   M.step registry H.hi_genv st trace st' -> body_inv st -> ~ In (ProcessExit status) trace.
-Proof.
+Proof using Type.
   intros st trace st' status Hstep Hinv. destruct Hstep; simpl; try tauto.
   all: destruct (selected_call _ _ _ _ _ _ Hinv H H0 H1) as [-> ->].
   all: destruct (C.program_invoke_continuity _ _ _ _ _ _ _ _ _ _ _ _ _ H2)

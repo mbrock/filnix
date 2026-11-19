@@ -205,7 +205,7 @@ Lemma ahead_block_eq : forall ins js b,
   ahead_block ord once ptrs (ins, js) b =
   (put (b_label b) (phis_end_needs (b_phis b) (fold_right (ahead_step once ptrs) (exit_in ord ins b) (b_insts b))) ins,
    snd (ahead_insts once ptrs (rev (b_insts b)) (exit_in ord ins b) [] js)).
-Proof.
+Proof using bs.
   intros ins js b. unfold ahead_block.
   pose proof (ahead_insts_after once ptrs (rev (b_insts b)) (exit_in ord ins b) [] js) as E.
   unfold exit_in in E |- *.
@@ -219,7 +219,7 @@ Qed.
 Lemma exit_put : forall lb jb e ins b p,
   index_of lb ord 0 = Some jb -> index_of (b_label b) ord 0 = Some p -> (jb <= p)%nat ->
   exit_in ord (put lb e ins) b = exit_in ord ins b.
-Proof.
+Proof using bs.
   intros lb jb e ins b p Hj Hp Hle. unfold exit_in. rewrite Hp. f_equal. apply map_ext. intros [l | l]; [|reflexivity].
   cbn beta iota delta [ahead_edge]. destruct (index_of l ord 0) as [tp|] eqn:Et; [|reflexivity].
   destruct (p <? tp)%nat eqn:Elt.
@@ -243,7 +243,7 @@ Lemma ahead_fold_suffix : forall j,
      exists b k i, In b (skipn j bs) /\ nth_error (b_insts b) k = Some i /\ (S k < length (b_insts b))%nat /\
        ahead_accepts once (fold_right (ahead_step once ptrs) (exit_in ord (fst (sweep (skipn j bs))) b)
                                       (skipn (S (S k)) (b_insts b))) i = Some q).
-Proof.
+Proof using Hnd.
   intros j. remember (skipn j bs) as S eqn:ES. revert j ES.
   induction S as [|b S IH]; intros j ES.
   - split; [intros b []|]. intros q Hq. destruct Hq.

@@ -122,7 +122,7 @@ Local Notation hexpr := (language.expr (nanofil_lang (HB.hi_registry rep request
     `c: puts` safely and returns zero regardless of what `c: puts` returns. *)
 Lemma main_spec :
   string hi_literal 65552 lit_reg hello_bytes -∗ WP (ERun hi_main : hexpr) {{ o, ⌜o = Ret (WInt 0)⌝ }}.
-Proof.
+Proof using stdio_stable.
   iIntros "Hs". iApply wp_enter; [reflexivity | reflexivity |]. iNext. cbn [b_insts b_jump].
   iApply wp_let; [reflexivity | reflexivity | reflexivity | intros m; reflexivity |]. iNext.
   iApply (wp_puts with "Hs"); [reflexivity | reflexivity | reflexivity | reflexivity |]. iNext. iIntros (n) "_".
@@ -137,7 +137,7 @@ End wp.
 Theorem hi_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece pval Σ} m s w fuel :
   R.ready s m -> live_disjoint m -> HB.hi_before_call rep m w -> literal_apart w ->
   labelled_safe (HB.hi_registry rep requests) HB.hi_genv hi_main m s w fuel (fun o => o = Ret (WInt 0)).
-Proof.
+Proof using stdio_stable.
   intros Hr Hd (Hrep & Hw & Hv) Hapart.
   apply (heap_labelled_safe Σ (HB.hi_registry rep requests) (stdio_wi rep) HB.hi_genv hi_main m s w
            (list_to_map lit_ps)).

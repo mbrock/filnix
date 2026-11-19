@@ -303,7 +303,7 @@ Lemma permission_entry_alloc rep out err b o m w h :
       open_permission_ps err (token_handle err)) h) /\
       stream_tokens_wi rep out err b o m w
         (overwrite (open_permission_ps out (token_handle out) ++ open_permission_ps err (token_handle err)) h)⌝.
-Proof.
+Proof using Type.
   intros Ha Hw Hol Hel Hoo Heo Hfresh. iIntros "Hh".
   destruct Hw as (Howf & Hewf & Hbase & Hkey & Hrest) eqn:E.
   iMod (pts_alloc h (open_permission_ps out (token_handle out) ++
@@ -330,7 +330,7 @@ Lemma stream_entry_alloc rep out err b o m w h op oq ep eq :
     ⌜agrees m (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h) /\
       stream_tokens_wi rep out err b o m w
         (overwrite (stream_ps out op oq ++ stream_ps err ep eq) h)⌝.
-Proof.
+Proof using Type.
   intros Ha Hw Hol Hel Hoo Heo Hfresh. iIntros "Hh".
   destruct Hw as (Howf & Hewf & Hbase & Hkey & Hrest) eqn:E.
   iMod (pts_alloc h (stream_ps out op oq ++ stream_ps err ep eq) with "Hh") as "[Hh Hps]".
@@ -350,7 +350,7 @@ Lemma stream_snapshot_alloc d pending fifo w h :
     gen_heap_interp (<[PName (token_key d) := VStream (token_handle d) (Some (pending, fifo))]> h) ∗
     pts (stream_ps d pending fifo) ∗
     ⌜stream_current d w (<[PName (token_key d) := VStream (token_handle d) (Some (pending, fifo))]> h)⌝.
-Proof.
+Proof using Type.
   intros Hfresh Hobs. iIntros "[Hh Hlife]".
   iMod (gen_heap_alloc _ (PName (token_key d))
     (VStream (token_handle d) (Some (pending, fifo))) with "Hh") as "(Hh & Hname & _)";
@@ -1040,7 +1040,7 @@ Example entry_produces_pair :
     pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
     ⌜agrees conversion_mem h /\ stream_tokens_wi (fun _ _ => True) out err 5120 0
       conversion_mem (F.world true) h⌝.
-Proof.
+Proof using Type.
   iIntros "[Hh Herrno]".
   iMod (stream_entry_alloc (fun _ _ => True) out err 5120 0 conversion_mem (F.world true)
     HelloErrnoChecks.heap 7 [65; 66] 3 [] HelloErrnoChecks.heap_agrees entry_wi

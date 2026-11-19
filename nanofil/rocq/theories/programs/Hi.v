@@ -268,7 +268,7 @@ Definition hi_before_call (m : mem) (w : stdio_world) : Prop :=
     stream representation and the global string literal survive them. *)
 Lemma hi_before_safepoint : forall s m s' m' w,
   R.safepoint s m s' m' -> hi_before_call m w -> hi_before_call m' w.
-Proof.
+Proof using stdio_stable.
   intros s m s' m' w Hsp [Hr [Hw Hl]].
   destruct (stdio_stable _ _ _ _ _ Hsp Hr Hw) as [Hr' Hw'].
   split; [exact Hr'|]. split; [exact Hw'|]. eapply hi_literal_safepoint; eauto.
@@ -299,7 +299,7 @@ Inductive hi_body_state : M.state stdio_world -> Prop :=
 Theorem hi_reached_call_admissible : forall c s w site,
   hi_body_state (M.Running (c, s) w) -> external_site hi_genv c site ->
   site = hi_site /\ M.admissible (hi_registry rep requests) hi_genv c w site.
-Proof.
+Proof using Type.
   intros c s w site Hinv Hsite. inversion Hinv; subst.
   - pose proof (external_site_stuck _ _ _ Hsite) as Hstuck.
     rewrite hi_entry_step in Hstuck. destruct (fuel =? 0); discriminate.
@@ -316,7 +316,7 @@ Qed.
 Lemma hi_body_core : forall c s c' s' w,
   hi_body_state (M.Running (c, s) w) ->
   M.P.I.RM.mstep hi_genv (c, s) (c', s') -> hi_body_state (M.Running (c', s') w).
-Proof.
+Proof using stdio_stable.
   intros c s c' s' w Hinv Hcore. inversion Hinv; subst.
   - inversion Hcore as [c0 c1 rt Hnext|c0 q k rt base rt' Hfresh Hsize Ha|c0 rt rt' m' Hdue Hsp]; subst.
     + rewrite hi_entry_step in Hnext. destruct (fuel =? 0); inversion Hnext; subst.
@@ -342,7 +342,7 @@ Qed.
 Lemma hi_body_core_end : forall c s w o,
   hi_body_state (M.Running (c, s) w) -> Semantics.step hi_genv c = Done o ->
   hi_ending (CoreEnd o).
-Proof.
+Proof using Type.
   intros c s w o Hinv Hdone. inversion Hinv; subst.
   - rewrite hi_entry_step in Hdone. destruct (fuel =? 0); inversion Hdone. right; left; reflexivity.
   - rewrite hi_copy_step in Hdone. discriminate.
@@ -355,7 +355,7 @@ Qed.
 Lemma hi_body_stuck_external : forall c s w diagnostic,
   hi_body_state (M.Running (c, s) w) -> Semantics.step hi_genv c = Stuck diagnostic ->
   exists site, external_site hi_genv c site.
-Proof.
+Proof using Type.
   intros c s w diagnostic Hinv Hstuck. inversion Hinv; subst.
   - rewrite hi_entry_step in Hstuck. destruct (fuel =? 0); discriminate.
   - rewrite hi_copy_step in Hstuck. discriminate.
@@ -366,7 +366,7 @@ Qed.
 (** No core allocation is hidden in this body. Puts' allocations remain in its contract. *)
 Lemma hi_body_no_fresh : forall c s w q k,
   hi_body_state (M.Running (c, s) w) -> Semantics.step hi_genv c <> Fresh q k.
-Proof.
+Proof using Type.
   intros c s w q k Hinv Hfresh. inversion Hinv; subst.
   - rewrite hi_entry_step in Hfresh. destruct (fuel =? 0); discriminate.
   - rewrite hi_copy_step in Hfresh. discriminate.
@@ -381,7 +381,7 @@ Lemma hi_selected_call : forall c s w site spec xs,
   map_option (arg_x hi_genv (fr_env (c_frame c))) (site_args site) = Some xs ->
   exists m fuel, c = hi_call m fuel /\ site = hi_site /\
     spec = puts_contract rep requests /\ xs = [WPtr hi_literal].
-Proof.
+Proof using Type.
   intros c s w site spec xs Hinv Hsite Hreg Hargs.
   destruct (hi_reached_call_admissible _ _ _ _ Hinv Hsite) as [-> _].
   change (Some (puts_contract rep requests) = Some spec) in Hreg. injection Hreg as <-.
@@ -402,7 +402,7 @@ Qed.
 Theorem hi_body_step : forall st trace st',
   M.step (hi_registry rep requests) hi_genv st trace st' ->
   hi_body_state st -> hi_body_state st'.
-Proof.
+Proof using stdio_stable.
   intros st trace st' Hstep Hinv.
   destruct Hstep as
     [ms ms' w Hcore
@@ -435,7 +435,7 @@ Qed.
 Theorem hi_body_run : forall st trace st',
   M.run (hi_registry rep requests) hi_genv st trace st' ->
   hi_body_state st -> hi_body_state st'.
-Proof.
+Proof using stdio_stable.
   intros st trace st' H. induction H; [auto|]. intros Hinv.
   apply IHrun. eapply hi_body_step; eauto.
 Qed.
@@ -447,7 +447,7 @@ Theorem hi_all_calls_admissible : forall m fuel s w trace c s' w' site,
   M.run (hi_registry rep requests) hi_genv (M.Running (hi_entry m fuel, s) w) trace
     (M.Running (c, s') w') -> external_site hi_genv c site ->
   M.admissible (hi_registry rep requests) hi_genv c w' site.
-Proof.
+Proof using stdio_stable.
   intros m fuel s w trace c s' w' site Hpre Hrun Hsite.
   assert (Hinv : hi_body_state (M.Running (c, s') w')).
   { eapply hi_body_run; [exact Hrun|]. apply hi_body_entry. exact Hpre. }
@@ -460,7 +460,7 @@ Theorem hi_finite_safety : forall m fuel s w trace why ms w',
   hi_before_call m w ->
   M.run (hi_registry rep requests) hi_genv (M.Running (hi_entry m fuel, s) w) trace
     (M.Stopped why ms w') -> hi_ending why.
-Proof.
+Proof using stdio_stable.
   intros m fuel s w trace why ms w' Hpre Hrun.
   assert (Hinv : hi_body_state (M.Stopped why ms w')).
   { eapply hi_body_run; [exact Hrun|]. apply hi_body_entry. exact Hpre. }

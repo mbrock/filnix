@@ -120,7 +120,8 @@ Lemma main_to_setlocale argc av ar a0 b0 r0 ys0 r3 r4 x0 x1 y0 Φ :
        WP (ERun (mkFrame main_fn e [] None (Exec (TAtom "start") start_rest (b_jump (main_block "start"))))
              : mexpr) {{ Φ }}) -∗
   WP (ERun (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcmp Hmemset Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hstrncmp Hstrrchr Kalloc Kmemset
+  Knb Kpn Ksb SafepointStable0 invGS_gen0.
   clear - SafepointStable0 Hlinked Kalloc Hmemset Kmemset Hstrrchr Hmemcmp Hstrncmp
     Hnb Hsb Hpn_end Hnb_cell Hsb_cell Kpn Knb Ksb.
   intros Hav Hav8 Haend Har48. iIntros "Hal Ha0 Hs0 Hlit Hcells HK".
@@ -202,7 +203,8 @@ Lemma main_start_rest e argc av b4 b6 old c0 r80 Φ :
          {{ Φ }}) -∗
   WP (ERun (mkFrame main_fn e [] None (Exec (TAtom "start") start_rest (b_jump (main_block "start"))))
         : mexpr) {{ Φ }}.
-Proof.
+Proof using Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hlent Hlinked Hnb_cell Hsb_cell Hset_pre
+  Hsetlocale Katexit Kpstore Kset SafepointStable0 invGS_gen0.
   intros (H0 & H2 & H4 & H6 & H11) (Hb40 & Hb416 & Hb448).
   iIntros "Hks Hcod Hs80 Hl4 Hy4 Hc4 HK".
   destruct main_globals as (G80 & G81 & Gcs). pose proof Hlinked as (Hm & Hg & _).
@@ -271,7 +273,9 @@ Lemma main_start argc av ar a0 b0 r0 ys0 r3 r4 x0 x1 y0 old c0 r80 Φ :
        WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : mexpr)
          {{ Φ }}) -∗
   WP (ERun (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hlent Hlinked Hmemcmp Hmemset Hnb Hnb_cell
+  Hpn_end Hsb Hsb_cell Hset_pre Hsetlocale Hstrncmp Hstrrchr Kalloc Katexit Kmemset Knb Kpn Kpstore
+  Ksb Kset SafepointStable0 invGS_gen0.
   intros Hav Hav8 Haend Har48. iIntros "Hal Ha0 Hs0 Hlit Hcells Hks Hcod Hs80 HK".
   iApply (main_to_setlocale with "Hal Ha0 Hs0 Hlit Hcells"); [exact Hav | exact Hav8 | exact Haend | exact Har48 |].
   iNext. iIntros (e b4 b6 i k (Hv & Hf4 & Hf6 & Hi & Hk))

@@ -466,7 +466,7 @@ Lemma distance_pointer : forall p p1 pp1 d,
   (forall y, p1 = Tmp y -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y) ->
   pointer_distance (single_definitions (fr_fn fr)) p p1 = Some d ->
   exists pp, value_x ge (fr_env fr) P p = Some (WPtr pp).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros p p1 pp1 d Hp1 Hd Hd1 H. rewrite pointer_distance_eq in H.
   destruct (first_some_in _ _ _ _ _ H) as (el & Hel & Hf).
   destruct (exact_base (single_definitions (fr_fn fr)) el) as [[n0 k0]|] eqn:Eb; [|discriminate Hf].
@@ -512,7 +512,7 @@ Hypothesis Hpt : point_site (fr_fn fr) (fr_at fr) = Some (l, k).
 Lemma operand_at : forall b kk i y,
   find_block l (fn_blocks (fr_fn fr)) = Some b -> nth_error (b_insts b) kk = Some i -> k = Z.of_nat kk ->
   In y (inst_uses i) -> once_has (single_definitions (fr_fn fr)) y = true -> dominating (fr_fn fr) l k y.
-Proof.
+Proof using Hin Hmd Hpt Hr.
   intros b kk i y Hb Hk -> Hu Ho.
   destruct (func_facts _ _ Hmd Hin) as (b0 & rest & _ & _ & _ & Hdd).
   destruct (find_block_in _ _ _ Hb) as [Hbin Hl].
@@ -533,7 +533,7 @@ Lemma renew_source_holds : forall n1 p1 lo1 hi1 al1,
     lookup n1 (fr_env fr) = Some (WPtr pp) /\ value_x ge (fr_env fr) P (Tmp p1) = Some (WPtr pp) /\
     check_passes m1 pp lo1 hi1 r1 al1 /\ persists m1 m /\ objects_fit (m_regions m1) /\
     lo1 < hi1 /\ dominating (fr_fn fr) l k p1.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros n1 p1 lo1 hi1 al1 Hsrc Hdom.
   destruct (renew_source_def _ _ _ _ _ _ _ Hsrc) as (i1 & r1 & Hn1 & Hcf & Hop1).
   destruct (dominating_replays _ _ _ _ _ _ _ Hs Hpt Hn1 (check_fact_replayable _ _ Hcf) Hdom)
@@ -566,7 +566,7 @@ Lemma reuse_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
     lookup n1 (fr_env fr) = Some (WPtr pp1) /\ value_x ge (fr_env fr) P p = Some (WPtr pp) /\
     check_passes m1 pp1 lo1 hi1 r1 al1 /\ persists m1 m /\ objects_fit (m_regions m1) /\ lo1 < hi1 /\
     ptr_cap pp = ptr_cap pp1 /\ ptr_addr pp mod 2 ^ 64 = (ptr_addr pp1 + d) mod 2 ^ 64.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk i n1 p p1 lo1 hi1 al1 d Hb Hk Hkk Hu1 Hu Esrc Ed.
   (* A function with a setjmp has no renew sources. *)
   destruct (fn_src_cases md (fr_fn fr)) as [[_ Esj] | [_ Esj]].
@@ -590,14 +590,14 @@ Qed.
 
 (** `check_align/1` allows only positive alignments. *)
 Lemma check_align_pos : forall al, check_align al = true -> 0 < al.
-Proof.
+Proof using Type.
   unfold check_align. intros al H. simpl in H.
   repeat (apply orb_true_iff in H as [H | H]; [apply Z.eqb_eq in H; lia|]). discriminate H.
 Qed.
 
 (** Every [[capability]] equals itself by [cap_eqb]. *)
 Lemma cap_eqb_refl : forall c, cap_eqb c c = true.
-Proof. intros []; simpl; try apply Z.eqb_refl; try apply name_eqb_refl; reflexivity. Qed.
+Proof using Type. intros []; simpl; try apply Z.eqb_refl; try apply name_eqb_refl; reflexivity. Qed.
 
 (** Any [[renew]] accepted by the pass never steps to [[unchecked]] in a
     memory within the address space. Its operands share one capability,
@@ -609,7 +609,7 @@ Theorem renew_not_unchecked : forall b kk q lo hi r al n1 p rest live out why,
   nth_error (b_insts b) kk = Some (Let q A (Renew lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (Renew lo hi r al) [Tmp n1; p]) rest live = Some out ->
   inst_step ge fr m (Let q A (Renew lo hi r al) [Tmp n1; p]) <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al n1 p rest live out why Hfit Hb Hk Hkk H.
   (* What the pass checked: a source, a distance, and the span inside. *)
   unfold checked_inst_rest in H. cbn beta iota zeta in H.
@@ -650,7 +650,7 @@ Theorem half_not_unchecked : forall b kk q bd lo hi r al n1 p rest live out why,
   nth_error (b_insts b) kk = Some (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) rest live = Some out ->
   inst_step ge fr m (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q bd lo hi r al n1 p rest live out why Hfit Hfe Hb Hk Hkk H.
   (* What the pass checked: a source, a distance, and the known bound. *)
   unfold checked_inst_rest in H. cbn beta iota zeta in H.
@@ -688,7 +688,7 @@ Theorem hull_renew_not_unchecked : forall b kk q lo hi r al nl nh p rest live ou
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) rest live
     = Some out ->
   inst_step ge fr m (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al nl nh p rest live out why Hfit Hb Hk Hkk H.
   (* What the pass checked: two sources, two distances, and the span
      between them. *)

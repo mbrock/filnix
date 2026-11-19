@@ -306,7 +306,7 @@ Local Notation vexpr := (language.expr (nanofil_lang registry ge)).
     assertions. *)
 Lemma zero_cell b o :
   pts (byte_ps b o (replicate 8 0)) -∗ pts (aux_ps b o (replicate 8 CNone)) -∗ pcell b o null.
-Proof.
+Proof using Type.
   assert (Hbyte : forall i, byte_of 0 i = 0).
   { intros i. unfold byte_of. destruct (Z.eq_dec (2 ^ (8 * i)) 0) as [-> | Hne];
       [reflexivity | rewrite Z.div_0_l; [reflexivity | exact Hne]]. }
@@ -324,7 +324,7 @@ Qed.
 Lemma zero_cell_prefix b o n :
   pts (byte_ps b o (replicate (8 + n) 0)) -∗ pts (aux_ps b o (replicate (8 + n) CNone)) -∗
   pcell b o null ∗ pts (byte_ps b (o + 8) (replicate n 0)) ∗ pts (aux_ps b (o + 8) (replicate n CNone)).
-Proof.
+Proof using Type.
   rewrite !replicate_add byte_ps_app aux_ps_app !pts_app.
   iIntros "[Hx Hrest] [Ha Htail]". iFrame "Hrest Htail". iApply (zero_cell with "Hx Ha").
 Qed.
@@ -344,7 +344,7 @@ Lemma wp_snapshot f e ls l xs Φ :
     WP (ERun (mkFrame f (put va_snapshot (WPtr (mkPtr base (Ro base))) e)
       ls None (Enter l None)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Snapshot xs l)) : vexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hne Hwords q Hwi.
   assert (Hex : 0 <= req_extent q).
   { pose proof (heap_req_extent 16 (8 * Z.of_nat (length xs))). unfold q. lia. }
@@ -398,7 +398,7 @@ Lemma wp_va_args f e ls l d off rest j p Φ :
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
       ls None (Exec l rest j)) : vexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArgs [Const off] :: rest) j)) : vexpr) {{ Φ }}.
-Proof. intros Hp. apply (wp_pure_next registry wi ge _ _ []). intros m fuel. apply rule_va_args. exact Hp. Qed.
+Proof using SafepointStable0. intros Hp. apply (wp_pure_next registry wi ge _ _ []). intros m fuel. apply rule_va_args. exact Hp. Qed.
 
 (** Reading a variadic argument also writes the advanced cursor back
     into its cell. The general rule [wp_va_arg] requires a memory
@@ -414,7 +414,7 @@ Lemma wp_va_arg f e ls l d k args rest j p x ps ps' upd Φ :
     wi (upd m) w (overwrite ps' h)) ->
   pts ps -∗ ▷ (pts ps' -∗ WP (ERun (mkFrame f (put d x e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k VaArg args :: rest) j)) : vexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hargs Hkeys Hread Hwi. iIntros "Hps HK".
   iApply (wp_write registry wi ge ps ps' _ _ [] upd with "Hps HK"); [exact Hkeys | | exact Hwi].
   intros m fuel Hfacts. destruct (Hread m Hfacts) as (Hres & Hrest).
@@ -442,7 +442,7 @@ Lemma wp_va_arg_pointer_shared f e ls l d args rest j cb cr sb sr off x dq ps Φ
     live sb sr -∗ pcell sb off x -∗ ptsq dq ps -∗
     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArg args :: rest) j)) : vexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hargs Hcb Hsb Hoff Hsend Hsmax Hal Hrange Htarget Hwi.
   set (before := va_cursor_ps cb cr (mkPtr (sb + off) (Ro sb))).
   set (after := va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))).
@@ -555,7 +555,7 @@ Lemma wp_va_arg_pointer f e ls l d args rest j cb cr sb sr off x ps Φ :
     live sb sr -∗ pcell sb off x -∗ pts ps -∗
     WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d P VaArg args :: rest) j)) : vexpr) {{ Φ }}.
-Proof. apply (wp_va_arg_pointer_shared f e ls l d args rest j cb cr sb sr off x (DfracOwn 1) ps Φ). Qed.
+Proof using SafepointStable0. apply (wp_va_arg_pointer_shared f e ls l d args rest j cb cr sb sr off x (DfracOwn 1) ps Φ). Qed.
 
 (** Reading an integer argument rounds the cursor up to an eight-byte
     boundary and loads either four or eight low bytes. The rule
@@ -576,7 +576,7 @@ Lemma wp_va_arg_int f e ls l d k n args rest j cb cr cur sb sr off v Φ :
   ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + n) (Ro sb))) -∗ live sb sr -∗ icell sb off v -∗
     WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ (8 * n))) e) ls None (Exec l rest j)) : vexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k VaArg args :: rest) j)) : vexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hk Hargs Hcb Hsb Hoff Hsend Hsmax Hcur0 Hround Hwi.
   assert (Hw : exists w, k <> P /\ class_width k = Some w /\ va_cell k = Some (n, 8) /\
     width_bytes w = n /\ 0 < n <= 8)

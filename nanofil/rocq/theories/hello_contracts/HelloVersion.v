@@ -156,14 +156,14 @@ Local Notation hexpr := (language.expr (nanofil_lang registry ge)).
 (** Pure steps preserve the proof-mode context without searching it for a resource. *)
 Local Lemma version_step (Δ : environments.envs (iProp Σ)) (P Q : iProp Σ) :
   (P -∗ Q) -> environments.envs_entails Δ P -> environments.envs_entails Δ Q.
-Proof.
+Proof using Type.
   rewrite !environments.envs_entails_unseal. intros HPQ HP.
   etrans; [exact HP | apply bi.wand_entails; exact HPQ].
 Qed.
 
 Local Lemma version_later (Δ : environments.envs (iProp Σ)) (P : iProp Σ) :
   environments.envs_entails Δ P -> environments.envs_entails Δ (▷ P).
-Proof.
+Proof using Type.
   rewrite !environments.envs_entails_unseal. intros H.
   etrans; [exact H | apply bi.later_intro].
 Qed.
@@ -182,7 +182,7 @@ Local Ltac version_pure rule :=
 Local Lemma version_lookup_put e k v x w :
   name_eqb x k = false -> lookup x e = Some w ->
   lookup x (put k (v : word) e) = Some w.
-Proof. intros Hne Hx. rewrite lookup_after_put_other; assumption. Qed.
+Proof using Type. intros Hne Hx. rewrite lookup_after_put_other; assumption. Qed.
 
 (** Register updates transport lookup facts directly instead of rewriting each large goal. *)
 Local Ltac gen_env :=
@@ -259,7 +259,7 @@ Lemma wp_raw_load_literal f e ls l d off args rest j classes p b reg o x xb xr p
   WP (ERun (mkFrame f e ls None
     (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
     : hexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hrange Hcap Hmember. iIntros "Hl Hc Hps HK".
   iApply (wp_read_with registry wi ge (live b reg ∗ pcell b o x ∗ pts ps)
     (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
@@ -292,7 +292,7 @@ Lemma wp_world_let f e ls l d k o args rest j classes xs x Φ :
   (forall m w h, wi m w h -> op_res o k xs m = Some (OpRes (RVal x) m)) ->
   ▷ WP (ERun (mkFrame f (put d x e) ls None (Exec l rest j)) : hexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : hexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hc Hargs Hop. iIntros "HK".
   iApply (wp_read_with _ _ _ emp
     (fun m => op_res o k xs m = Some (OpRes (RVal x) m)) _ _ [] with "[] [HK]").
@@ -308,7 +308,7 @@ Qed.
 Lemma proper_name_spec p Φ :
   ▷ Φ (Ret (WPtr p)) -∗
   WP (ERun (invocation proper_name_fn [WPtr p]) : hexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   iIntros "HΦ". rewrite proper_name_entry.
   iApply wp_enter; [exact find_proper_name_start | reflexivity |].
   iNext. cbn [b_insts b_jump proper_name_start].
@@ -358,7 +358,7 @@ Lemma emit_literal_lookup s :
         "version-etc#str.59"; "version-etc#str.60"; "version-etc#str.61";
         "version-etc#str.62"; "version-etc#str.63"; "version-etc#str.64"] ->
   lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
-Proof.
+Proof using Hlinked.
   intros Hin. apply (proj1 (proj2 Hlinked)).
   repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
 Qed.
@@ -374,7 +374,7 @@ Lemma wp_emit_output f e ls lab d g args rest j xs Φ :
     WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : hexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Houtput_abi Houtput_frame Houtput_pre Houtput_reg Houtput_ret SafepointStable0.
   intros Hin Hargs Hclasses. iIntros "Hps HK".
   assert (Hg : g = TAtom "fputs" \/ g = TAtom "printf").
   { unfold emit_output_args in Hin. repeat destruct Hin as [H | Hin];
@@ -404,7 +404,8 @@ Qed.
 Lemma emit_bug_reporting_address_spec Φ :
   pts literal_ps -∗ ▷ (pts literal_ps -∗ Φ RetVoid) -∗
   WP (ERun (invocation emit_bug_reporting_address_fn []) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Houtput_abi Houtput_frame Houtput_pre Houtput_reg Houtput_ret Hstdout_global
+  SafepointStable0 wi_stdout.
   pose proof (emit_literal_lookup "version-etc#str.43" ltac:(simpl; tauto)) as H43.
   pose proof (emit_literal_lookup "version-etc#str.45" ltac:(simpl; tauto)) as H45.
   pose proof (emit_literal_lookup "version-etc#str.58" ltac:(simpl; tauto)) as H58.
@@ -474,7 +475,7 @@ Lemma arn_literal_lookup s :
     "version-etc#str.44"; "version-etc#str.45"; "version-etc#str.46";
     "version-etc#str.47"; "version-etc#str.51"] ->
   lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
-Proof.
+Proof using Hlinked.
   intros Hin. apply (proj1 (proj2 Hlinked)).
   repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
 Qed.
@@ -494,7 +495,7 @@ Local Ltac version_goto := version_pure (wp_goto registry wi ge); iNext.
 Local Lemma version_find_block f blocks s b :
   Forall (fun lb => find_block (TAtom lb.1) (fn_blocks f) = Some lb.2) blocks ->
   (s, b) ∈ blocks -> find_block (TAtom s) (fn_blocks f) = Some b.
-Proof. rewrite Forall_forall. intros H Hin. exact (H _ Hin). Qed.
+Proof using Type. rewrite Forall_forall. intros H Hin. exact (H _ Hin). Qed.
 
 (** Cached block facts let both version helpers keep their complete function bodies opaque. *)
 Local Ltac version_enter blocks blk :=
@@ -539,7 +540,8 @@ Lemma wp_version_output f e ls lab d g args rest j xs Φ :
     WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : hexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret
+  SafepointStable0.
   intros Hin Hargs Hclasses. iIntros "Hps HK".
   assert (Hg : g = TAtom "fputs" \/ g = TAtom "fprintf").
   { unfold version_output_args in Hin. repeat destruct Hin as [H | Hin];
@@ -576,7 +578,8 @@ Lemma version_etc_arn_spec b Φ :
     [WPtr stream; WPtr (version_literal "hello#str.70");
      WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
      WPtr (mkPtr b (Obj b)); WInt 4]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hauthor_live Hlinked Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret
+  SafepointStable0.
   intros Hb Hmod Hend.
   assert (Hmod8 : b mod 8 = 0) by
     (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
@@ -708,12 +711,12 @@ Local Lemma find_va_blocks :
   Forall (fun lb => find_block (TAtom lb.1) (fn_blocks version_etc_va_fn) = Some lb.2)
     [("start", va_start); ("L12", va_L12); ("L18", va_L18);
      ("L19", va_L19); ("L14", va_L14); ("L15", va_L15)].
-Proof. vm_compute. repeat constructor. Qed.
+Proof using Type. vm_compute. repeat constructor. Qed.
 
 (** Direct calls use the same cached counting helper. *)
 Local Lemma version_etc_va_direct :
   find_direct (TAtom "version_etc_va") hello_module = Some (Defined version_etc_va_fn).
-Proof. vm_compute. reflexivity. Qed.
+Proof using Type. vm_compute. reflexivity. Qed.
 
 (** Split off one zero pointer cell without expanding the rest of its
     allocation into individually searched heap pieces: VariadicLogic's
@@ -721,14 +724,14 @@ Proof. vm_compute. reflexivity. Qed.
 Lemma version_zero_cell_prefix b o n :
   bytes b o (replicate (8 + n) 0) -∗ auxes b o (replicate (8 + n) CNone) -∗
   pcell b o null ∗ bytes b (o + 8) (replicate n 0) ∗ auxes b (o + 8) (replicate n CNone).
-Proof. exact (zero_cell_prefix b o n). Qed.
+Proof using Type. exact (zero_cell_prefix b o n). Qed.
 
 (** Five zero cells suffice for the four authors and their terminator;
     the rest of the allocated array is unused. *)
 Lemma version_array_zero b :
   obj b (heap_req 8 80) -∗ live b (mkRegion b (b + 80) Heap Live) ∗
     pcell b 0 null ∗ pcell b 8 null ∗ pcell b 16 null ∗ pcell b 24 null ∗ pcell b 32 null.
-Proof.
+Proof using Type.
   iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
     [compute; discriminate |].
   iSplitL "Hl"; [iExact "Hl" |].
@@ -752,7 +755,7 @@ Lemma version_etc_va_entry cb :
      (TAtom "v4", WPtr (version_literal "hello#str.63"));
      (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]
     [] None (Enter (TAtom "start") None).
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** Each counting-loop step uses the saved equations rather than expanding the complete C function. *)
 Local Opaque version_etc_va_fn.
@@ -814,7 +817,7 @@ Lemma version_va_round_step e i cb cr sb sr off b o x Φ :
       (Exec (TAtom "L14") [] (JGoto (Poll (TAtom "L12"))))) : hexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame version_etc_va_fn e [] None
     (Exec (TAtom "L18") va_read_body (JGoto (To (TAtom "L19"))))) : hexpr) {{ Φ }}.
-Proof.
+Proof using Kversion_cursor Kversion_store SafepointStable0.
   intros Hsaved Hcount Hflight Hi Hcb Hsb Hoff Hsend Hsmax Hsal Hb Ho Hoend Hbend Hbal Hx Htarget.
   destruct Hsaved as (Hv0 & Hv2 & Hv4 & Hv6 & Hv8 & Hv11).
   assert (Hxmod : ptr_addr x mod 2 ^ 64 = ptr_addr x) by (apply Z.mod_small; lia).
@@ -899,7 +902,8 @@ Lemma version_etc_va_spec cb cr sb sr Φ :
     [WPtr stream; WPtr (version_literal "hello#str.70");
      WPtr (version_literal "hello#str.63"); WPtr (version_literal "hello#str.71");
      WPtr (mkPtr cb (Obj cb))]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hauthor_live Hlinked Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret
+  Kversion_alloc Kversion_cursor Kversion_store SafepointStable0.
   intros Hcb Hsb Hsmod Hsend Hsmax.
   assert (Hs8 : sb mod 8 = 0) by
     (apply Z.mod_divide; [lia|]; eapply Z.divide_trans; [exists 2; reflexivity|now apply Z.mod_divide]).
@@ -989,7 +993,7 @@ Definition version_snapshot_cells sb : list (piece * pval) :=
 (** The selected cells have distinct life, byte, and capability keys.
     Their constructors and offsets distinguish them without inspecting stored pointer values. *)
 Lemma version_snapshot_cells_nodup sb : NoDup (version_snapshot_cells sb).*1.
-Proof.
+Proof using Type.
   apply (NoDup_fmap_1 (fun p => match p with
     | PLive _ => (0, 0) | PByte _ o => (1, o)
     | PAux _ o => (2, o) | PName k => (3, k) end)).
@@ -1001,7 +1005,7 @@ Qed.
 Lemma version_snapshot_cells_member sb lv :
   lv ∈ version_snapshot_cells sb ->
   lv ∈ snapshot_ps version_main_args sb (heap_req 16 72).
-Proof.
+Proof using Type.
   destruct lv as [l v]. unfold version_snapshot_cells.
   rewrite !elem_of_app. intros [Hlive | [H0 | [H1 | [H2 | [H3 | H4]]]]].
   - apply elem_of_cons in Hlive as [Hlive | Hfalse]; [|inversion Hfalse].
@@ -1029,7 +1033,7 @@ Lemma version_snapshot_authors sb :
   pcell sb 40 (version_literal "hello#str.73") ∗
   pcell sb 48 (version_literal "hello#str.74") ∗
   pcell sb 56 (version_literal "hello#str.75") ∗ pcell sb 64 null.
-Proof.
+Proof using Type.
   iIntros "Hps".
   iAssert (pts (version_snapshot_cells sb)) with "[Hps]" as "Hps".
   { iApply (big_sepL_submseteq with "Hps"). apply NoDup_submseteq.
@@ -1050,12 +1054,12 @@ Lemma version_etc_entry : invocation version_etc_fn version_main_args =
      (TAtom "v4", WPtr (version_literal "hello#str.63"));
      (TAtom "v2", WPtr (version_literal "hello#str.70")); (TAtom "v0", WPtr stream)]
     [] None (Snapshot version_main_args (TAtom "start")).
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** The local va_list begins with one zero pointer cell. *)
 Lemma version_cursor_zero cb :
   obj cb (heap_req 8 24) -∗ live cb (mkRegion cb (cb + 32) Heap Live) ∗ pcell cb 0 null.
-Proof.
+Proof using Type.
   iIntros "Hobj". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Ha)";
     [compute; discriminate |].
   iSplitL "Hl"; [iExact "Hl" |].
@@ -1076,7 +1080,8 @@ Context (Kversion_snapshot : forall m wd h sb,
 Lemma version_etc_spec Φ :
   pts literal_ps -∗ ▷ (pts literal_ps -∗ Φ RetVoid) -∗
   WP (ERun (invocation version_etc_fn version_main_args) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hauthor_live Hlinked Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret
+  Kversion_alloc Kversion_cursor Kversion_snapshot Kversion_store SafepointStable0.
   iIntros "Hps HK". rewrite version_etc_entry.
   iApply wp_snapshot;
     [discriminate | reflexivity | exact Kversion_snapshot |].

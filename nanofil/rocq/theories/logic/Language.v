@@ -478,7 +478,7 @@ Inductive head_step : expr -> lstate world -> list unit -> expr -> lstate world 
     The lemma [nanofil_mixin] also shows that a waiting caller resumes
     only after its callee has become a value. *)
 Lemma nanofil_mixin : EctxiLanguageMixin of_val to_val fill_item head_step.
-Proof.
+Proof using Type.
   split.
   - reflexivity.
   - intros e o H. destruct e; inversion H; reflexivity.
@@ -543,7 +543,7 @@ Context {world : Type} (registry : name -> option (contract world)) (ge : genv).
     running computation, preserving the order of every saved caller. *)
 Lemma stack_expr_fill e cs :
   stack_expr e cs = @ectx_language.fill (nanofil_ectx_lang registry ge) (ctx_of cs) e.
-Proof.
+Proof using Type.
   revert e. induction cs as [|[cf pd] cs IH]; intros e; [reflexivity|].
   cbn [stack_expr]. rewrite IH. reflexivity.
 Qed.
@@ -553,7 +553,7 @@ Qed.
 Lemma head_erased cs e1 σ1 e2 σ2 :
   head_step registry ge e1 σ1 [] e2 σ2 [] ->
   @erased_step (nanofil_lang registry ge) ([stack_expr e1 cs], σ1) ([stack_expr e2 cs], σ2).
-Proof.
+Proof using Type.
   intros H. exists []. apply (step_atomic (stack_expr e1 cs) σ1 (stack_expr e2 cs) σ2 [] [] []);
     [reflexivity | reflexivity |].
   rewrite !stack_expr_fill.
@@ -569,7 +569,7 @@ Lemma ctx_base_reducible cs e σ :
   (forall Ki e', e = fill_item Ki e' -> is_Some (to_val e')) ->
   @reducible (nanofil_lang registry ge) (stack_expr e cs) σ ->
   @base_reducible (nanofil_ectx_lang registry ge) e σ.
-Proof.
+Proof using Type.
   intros Hv Hsub (κ & e2 & σ2 & efs & Hs).
   rewrite stack_expr_fill in Hs.
   destruct Hs as [K e1' e2' HK _ Hb].
@@ -611,7 +611,7 @@ Lemma head_step_run_inv fr σ κ e' σ' efs :
         trace (CallReturn values) s' m' w' /\
       e' = returned_expr fr spec site values /\ σ' = mkLstate m' s' (ls_fuel σ) w') \/
    (call_admissible registry ge fr σ /\ e' = ERun fr /\ σ' = σ)).
-Proof.
+Proof using Type.
   intros H. inversion H; subst; cbn [ls_mem ls_rt ls_fuel ls_world];
     (split; [reflexivity | split; [reflexivity |]]).
   - left. eauto.
@@ -634,7 +634,7 @@ Qed.
     satisfies its external-call contract, as [run_proceeds] establishes. *)
 Lemma run_proceeds fr σ κ e' σ' efs :
   head_step registry ge (ERun fr) σ κ e' σ' efs -> proceeds registry ge fr σ.
-Proof.
+Proof using Type.
   intros H. destruct (head_step_run_inv _ _ _ _ _ _ H)
     as (_ & _ & [(c' & E & _) | [(q & k & b & s' & E & He & _) | [(q & k & E & He & _) |
         [(o & m' & E & Hr & _) | [(o & E & Hf & _) | [(s' & m' & Hp & _) |
@@ -655,7 +655,7 @@ Qed.
 Lemma run_reducible fr σ :
   ~ fails ge (mkConfig fr [] (ls_mem σ) (ls_fuel σ)) ->
   @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
-Proof.
+Proof using Type.
   destruct σ as [m s fuel w]. cbn. intros Hf. unfold fails in Hf.
   destruct (Semantics.step ge (mkConfig fr [] m fuel)) as [c' | o | q k | w'] eqn:E.
   - do 4 eexists. eapply hs_next. exact E.
@@ -673,7 +673,7 @@ Qed.
     when its contract allows no completed return. *)
 Lemma admissible_reducible fr σ :
   call_admissible registry ge fr σ -> @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
-Proof.
+Proof using Type.
   destruct σ as [m s fuel w]. intros (site & Hs & spec & xs & Hr & Hx & Ha & Hp).
   do 4 eexists. eapply hs_call_wait; eassumption.
 Qed.
@@ -684,14 +684,14 @@ Qed.
     permitted stall when no returning external invocation is available. *)
 Lemma proceeds_reducible fr σ :
   proceeds registry ge fr σ -> @base_reducible (nanofil_ectx_lang registry ge) (ERun fr) σ.
-Proof. intros [H | H]; [exact (run_reducible _ _ H) | exact (admissible_reducible _ _ H)]. Qed.
+Proof using Type. intros [H | H]; [exact (run_reducible _ _ H) | exact (admissible_reducible _ _ H)]. Qed.
 
 (** Once a callee has returned, further execution requires its waiting
     caller to accept the outcome, regardless of any outer callers. *)
 Lemma wait_resumes cs o cf pd σ :
   @reducible (nanofil_lang registry ge) (stack_expr (EWait (EEnd o) cf pd) cs) σ ->
   exists cf', resume cf pd o = Some cf'.
-Proof.
+Proof using Type.
   intros H. apply ctx_base_reducible in H as (κ & e' & σ' & efs & Hs).
   - inversion Hs; subst. eauto.
   - reflexivity.
@@ -703,7 +703,7 @@ Qed.
     The lemma [bad_stuck] shows that wrapping this rejected return in
     additional caller expressions cannot supply another execution step. *)
 Lemma bad_stuck cs σ : ~ @reducible (nanofil_lang registry ge) (stack_expr EBad cs) σ.
-Proof.
+Proof using Type.
   intros H. apply ctx_base_reducible in H as (κ & e' & σ' & efs & Hs).
   - inversion Hs.
   - reflexivity.
@@ -715,7 +715,7 @@ Qed.
 Lemma conf_reducible c s w :
   @not_stuck (nanofil_lang registry ge) (conf_expr c) (conf_state c s w) ->
   proceeds registry ge (c_frame c) (conf_state c s w).
-Proof.
+Proof using Type.
   intros [[v Hv] | Hred].
   - change (to_val (conf_expr c) = Some v) in Hv.
     unfold conf_expr in Hv. rewrite to_val_stack in Hv; [discriminate Hv | reflexivity].
@@ -753,7 +753,7 @@ Definition iris_reach (c : config) (s : R.state) (w : world) : Prop :=
 Lemma reach_proceeds φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> proceeds registry ge (c_frame c) (conf_state c s w).
-Proof.
+Proof using Type.
   intros Had Hr. apply (conf_reducible registry ge c s w).
   apply (adequate_not_stuck _ _ _ _ Had _ _ (conf_expr c) eq_refl Hr). left.
 Qed.
@@ -765,7 +765,7 @@ Qed.
 Lemma reach_step φ c s w c' s' :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> RM.mstep ge (c, s) (c', s') -> iris_reach c' s' w.
-Proof.
+Proof using Type.
   intros Had Hr Hs. pose proof (reach_proceeds φ c s w Had Hr) as Hp.
   destruct c as [fr cs m fuel].
   pose proof (step_callers ge fr cs m fuel) as Hl.
@@ -807,7 +807,7 @@ Qed.
 Lemma reach_not_fails φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> ~ fails ge (mkConfig (c_frame c) [] (c_mem c) (c_fuel c)) -> ~ fails ge c.
-Proof.
+Proof using Type.
   intros Had Hr Hnf.
   destruct c as [fr cs m fuel]. cbn in Hnf.
   pose proof (step_callers ge fr cs m fuel) as Hl.
@@ -838,7 +838,7 @@ Qed.
 Lemma reach_core φ c s w :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) -> ~ fails ge c.
-Proof.
+Proof using Type.
   intros Had Hr Hns. apply (reach_not_fails φ c s w Had Hr).
   destruct (reach_proceeds φ c s w Had Hr) as [Hnf | (site & Hs & _)]; [exact Hnf|].
   exfalso. exact (Hns site Hs).
@@ -850,7 +850,7 @@ Lemma reach_end φ c s w o :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) ->
   Semantics.step ge c = Done o -> ~ failure o /\ (returning o -> exists σ, φ o σ).
-Proof.
+Proof using Type.
   intros Had Hr Hns E. pose proof (reach_core φ c s w Had Hr Hns) as Hnf.
   unfold fails in Hnf. rewrite E in Hnf. split; [exact Hnf|]. intros Hret.
   destruct c as [fr cs m fuel].
@@ -876,7 +876,7 @@ Lemma reach_stuck φ c s w why :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> (forall site, ~ external_site ge c site) ->
   Semantics.step ge c <> Stuck why.
-Proof.
+Proof using Type.
   intros Had Hr Hns E. apply (reach_core φ c s w Had Hr Hns). unfold fails. rewrite E. exact I.
 Qed.
 
@@ -890,7 +890,7 @@ Lemma reach_return c s w site spec xs trace values s' m' w' e :
   M.E.invoke spec (site_result site) (site_args site) xs s (c_mem c) w trace (CallReturn values) s' m' w' ->
   external_env spec site values (fr_env (c_frame c)) = Some e ->
   iris_reach (resume_external c site e m') s' w'.
-Proof.
+Proof using Type.
   intros Hr Hs Hreg Hx Hi He. destruct c as [fr cs m fuel]. eapply rtc_r; [exact Hr|].
   exact (head_erased registry ge cs _ _ _ _
            (hs_call_return registry ge fr m s fuel w site spec xs trace values s' m' w' e Hs Hreg Hx Hi He)).
@@ -904,7 +904,7 @@ Lemma reach_bad φ c s w site spec xs trace values s' m' w' :
   map_option (arg_x ge (fr_env (c_frame c))) (site_args site) = Some xs ->
   M.E.invoke spec (site_result site) (site_args site) xs s (c_mem c) w trace (CallReturn values) s' m' w' ->
   external_env spec site values (fr_env (c_frame c)) = None -> False.
-Proof.
+Proof using Type.
   intros Had Hr Hs Hreg Hx Hi He. destruct c as [fr cs m fuel].
   assert (Hr' : rtc (@erased_step (nanofil_lang registry ge)) ([ERun fr0], mkLstate m0 s0 fuel0 w0)
                   ([stack_expr EBad cs], mkLstate m' s' fuel w')).
@@ -922,7 +922,7 @@ Qed.
 Lemma reach_rejected φ c s w site why :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> external_site ge c site -> M.rejected world registry ge c w site why -> False.
-Proof.
+Proof using Type.
   intros Had Hr Hs Hrej.
   destruct (reach_proceeds φ c s w Had Hr) as [Hnf | (site' & Hs' & Hadm)].
   - apply Hnf. unfold fails. cbn [conf_state ls_mem ls_fuel].
@@ -952,7 +952,7 @@ Definition labelled_good (φ : outcome -> lstate world -> Prop) (st : M.state wo
 Lemma reach_labelled φ c s w trace st :
   @adequate (nanofil_lang registry ge) NotStuck (ERun fr0) (mkLstate m0 s0 fuel0 w0) φ ->
   iris_reach c s w -> M.step registry ge (M.Running (c, s) w) trace st -> labelled_good φ st.
-Proof.
+Proof using Type.
   intros Had Hr Hs. inversion Hs; subst; cbn [labelled_good fst snd].
   - match goal with H : M.P.I.RM.mstep _ _ ?ms' |- _ =>
       destruct ms' as [c' s']; exact (reach_step φ c s w c' s' Had Hr (labelled_core_step _ _ _ H)) end.
@@ -985,7 +985,7 @@ Theorem adequate_labelled φ :
   (forall c s w, st = M.Running (c, s) w -> iris_reach c s w) /\
   (forall why ms w, st = M.Stopped why ms w ->
      ~ failure_ending why /\ forall o, why = CoreEnd o -> returning o -> exists σ, φ o σ).
-Proof.
+Proof using Type.
   intros Had.
   assert (Hgen : forall st1 trace st2, M.run registry ge st1 trace st2 ->
             labelled_good φ st1 -> labelled_good φ st2).

@@ -496,7 +496,7 @@ Definition bytesq (dq : dfrac) (b o : Z) (xs : list Z) : iProp Σ := ptsq dq (by
 
 (** Read-only byte ownership remains available after a proof uses it. *)
 #[global] Instance bytesq_persistent b o xs : Persistent (bytesq DfracDiscarded b o xs).
-Proof. unfold bytesq. apply _. Qed.
+Proof using Type. unfold bytesq. apply _. Qed.
 
 (** A buffer needs ownership of its hidden pointer capabilities when
     an operation copies or clears the pointers stored in that buffer.
@@ -507,23 +507,23 @@ Definition auxes (b o : Z) (cs : list cap) : iProp Σ := pts (aux_ps b o cs).
 (** Owning a block's complete piece list equals owning its object
     lifetime, its data bytes, and its shadow slots separately. *)
 Lemma block_pts b reg o xs cs : pts (block_ps b reg o xs cs) ⊣⊢ live b reg ∗ bytes b o xs ∗ auxes b o cs.
-Proof. rewrite /block_ps /live /bytes /auxes /pts big_sepL_cons big_sepL_app big_sepL_singleton. done. Qed.
+Proof using Type. rewrite /block_ps /live /bytes /auxes /pts big_sepL_cons big_sepL_app big_sepL_singleton. done. Qed.
 
 (** Ownership of concatenated byte lists splits into ownership of the
     first range and the second range immediately following it. *)
 Lemma bytes_app b o xs ys : bytes b o (xs ++ ys) ⊣⊢ bytes b o xs ∗ bytes b (o + Z.of_nat (length xs)) ys.
-Proof. rewrite /bytes byte_ps_app. apply pts_app. Qed.
+Proof using Type. rewrite /bytes byte_ps_app. apply pts_app. Qed.
 
 (** Ownership of concatenated shadow lists splits into ownership of the
     first range and the second range immediately following it. *)
 Lemma auxes_app b o cs ds : auxes b o (cs ++ ds) ⊣⊢ auxes b o cs ∗ auxes b (o + Z.of_nat (length cs)) ds.
-Proof. rewrite /auxes aux_ps_app. apply pts_app. Qed.
+Proof using Type. rewrite /auxes aux_ps_app. apply pts_app. Qed.
 
 (** Byte ownership can split at any position within the list,
     separating the first n bytes from the remainder at the advanced offset. *)
 Lemma bytes_take_drop b o xs n : (n <= length xs)%nat ->
   bytes b o xs ⊣⊢ bytes b o (take n xs) ∗ bytes b (o + Z.of_nat n) (drop n xs).
-Proof.
+Proof using Type.
   intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n xs))) by (rewrite length_take; lia).
   rewrite E -bytes_app take_drop. done.
 Qed.
@@ -532,7 +532,7 @@ Qed.
     separating the first n entries from the remainder at the advanced offset. *)
 Lemma auxes_take_drop b o cs n : (n <= length cs)%nat ->
   auxes b o cs ⊣⊢ auxes b o (take n cs) ∗ auxes b (o + Z.of_nat n) (drop n cs).
-Proof.
+Proof using Type.
   intros Hn. assert (E : Z.of_nat n = Z.of_nat (length (take n cs))) by (rewrite length_take; lia).
   rewrite E -auxes_app take_drop. done.
 Qed.
@@ -543,7 +543,7 @@ Lemma obj_zero_block b q :
   0 <= req_extent q ->
   obj b q ⊣⊢ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗
     bytes b 0 (replicate (Z.to_nat (req_extent q)) 0) ∗ auxes b 0 (replicate (Z.to_nat (req_extent q)) CNone).
-Proof.
+Proof using Type.
   intros H. rewrite /obj /obj_ps /live /bytes /auxes byte_ps_replicate aux_ps_replicate Z2Nat.id; [|exact H].
   rewrite /pts big_sepL_cons big_sepL_app big_sepL_singleton. done.
 Qed.
@@ -551,7 +551,7 @@ Qed.
 (** Separately owning an object lifetime and a string's lifetime forces
     different objects, because the same lifetime cannot be owned twice. *)
 Lemma live_string_ne b reg p b' reg' ys : live b reg -∗ string p b' reg' ys -∗ ⌜b <> b'⌝.
-Proof.
+Proof using Type.
   rewrite /live /string /string_ps /pts !big_sepL_cons. iIntros "[Hl _] [_ [Hs _]]".
   iDestruct (pointsto_ne with "Hl Hs") as %Hne. iPureIntro. intros <-. apply Hne. reflexivity.
 Qed.
@@ -561,7 +561,7 @@ Qed.
 Lemma block_string b reg o ys :
   string_ok (mkPtr (b + o) (Obj b)) b reg ys ->
   live b reg -∗ bytes b o (ys ++ [0]) -∗ string (mkPtr (b + o) (Obj b)) b reg ys.
-Proof.
+Proof using Type.
   intros Hok. rewrite /string /string_ps /live /bytes /pts !big_sepL_cons big_sepL_nil. cbn [ptr_addr].
   replace (b + o - b) with o by lia. iIntros "[Hl _] Hx". iSplit; [iPureIntro; exact Hok|]. iFrame.
 Qed.
@@ -575,7 +575,7 @@ Lemma string_window p b reg ys k n :
   string p b reg ys -∗
   ⌜string_ok p b reg ys⌝ ∗ live b reg ∗ bytes b (ptr_addr p - b + Z.of_nat k) (take n (drop k ys)) ∗
   (live b reg -∗ bytes b (ptr_addr p - b + Z.of_nat k) (take n (drop k ys)) -∗ string p b reg ys).
-Proof.
+Proof using Type.
   intros Hk. iIntros "[%Hok Hs]".
   assert (E : ys ++ [0] = take k ys ++ take n (drop k ys) ++ (drop (k + n) ys ++ [0])).
   { by rewrite -{1}(take_drop k ys) -{1}(take_drop n (drop k ys)) drop_drop !app_assoc. }
@@ -613,7 +613,7 @@ Lemma wp_raw_store_w f e ls l off v a rest j p b reg o xs y Φ :
   live b reg -∗ bytes b o xs -∗
   ▷ (live b reg -∗ bytes b o (le_bytes y 4) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww off v a :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hp Hoff Hlen Hwi. iIntros "Hl Hx HK".
   iApply (wp_write _ _ _ ((PLive b, VLive reg) :: byte_ps b o xs) ((PLive b, VLive reg) :: byte_ps b o (le_bytes y 4))
             _ _ [] (fun m => store_bytes m (b + o) 4 y) with "[Hl Hx] [HK]");
@@ -653,7 +653,7 @@ Lemma wp_raw_load_sub_bytes_dq f e ls l d k n off args rest j classes p b reg o 
      WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : mexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hlen Hy Hp Ha. iIntros "Hl Hb HK".
   assert (Hn : Z.of_nat (length bs) = fst (narrow_type n)) by (rewrite Hlen; destruct n; reflexivity).
   iApply (wp_read_with _ _ _ (liveq dq1 b reg ∗ bytesq dq2 b o bs)
@@ -694,7 +694,7 @@ Lemma wp_raw_cas_int f e ls l d k t off args rest j classes p b reg o bs ev nv o
      bytes b o (if of_bytes bs =? ev mod 2 ^ (8 * cas_bytes t) then le_bytes nv (length bs) else bs) -∗
      WP (ERun (mkFrame f (put d old e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawCas t off) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Ht Hlen Hc Hx Hp Ha Hal Hold Hwi. iIntros "Hl Hb HK".
   assert (Hsz : 0 < cas_bytes t) by (destruct t as [| |[]]; cbn; lia).
   assert (Hn : Z.of_nat (length bs) = cas_bytes t) by lia.
@@ -763,7 +763,7 @@ Lemma wp_raw_cas_w f e ls l d nt off args rest j classes p b reg o bs ev nv Φ :
   ▷ (live b reg -∗ bytes b o (if of_bytes bs =? ev mod 2 ^ 32 then le_bytes nv 4 else bs) -∗
      WP (ERun (mkFrame f (put d (WInt (of_bytes bs mod 2 ^ 32)) e) ls None (Exec l rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d W (RawCas (CasNarrow nt) off) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hnt Hlen Hc Hx Hp Ha Hal Hwi. iIntros "Hl Hb HK".
   assert (Hs : cas_bytes (CasNarrow nt) = 4) by (destruct Hnt as [-> | ->]; reflexivity).
   iApply (wp_raw_cas_int _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (WInt (of_bytes bs mod 2 ^ 32))

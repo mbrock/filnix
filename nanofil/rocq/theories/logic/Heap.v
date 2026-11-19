@@ -674,12 +674,12 @@ Definition pts (ps : list (piece * pval)) : iProp Σ := [∗ list] lv ∈ ps, po
 (** Exclusive ownership of a concatenated piece list splits into separate
     ownership of the two sublists. *)
 Lemma pts_app ps qs : pts (ps ++ qs) ⊣⊢ pts ps ∗ pts qs.
-Proof. by rewrite /pts big_sepL_app. Qed.
+Proof using Type. by rewrite /pts big_sepL_app. Qed.
 
 (** When a caller owns a list of pieces with [pts], each piece in that list
     is guaranteed to have its recorded value in the current memory map. *)
 Lemma pts_lookup h ps : gen_heap_interp h -∗ pts ps -∗ ⌜forall l v, (l, v) ∈ ps -> h !! l = Some v⌝.
-Proof.
+Proof using Type.
   induction ps as [|[l v] ps IH]; iIntros "Hh Hps".
   - iPureIntro. intros l v Hin. by apply not_elem_of_nil in Hin.
   - rewrite /pts /=. iDestruct "Hps" as "[Hl Hps]".
@@ -693,7 +693,7 @@ Qed.
     without affecting any other owned pieces. *)
 Lemma pts_update h ps ps' : ps'.*1 = ps.*1 ->
   gen_heap_interp h -∗ pts ps ==∗ gen_heap_interp (overwrite ps' h) ∗ pts ps'.
-Proof.
+Proof using Type.
   revert ps'. induction ps as [|[l v] ps IH]; intros [|[l' v'] ps'] Hk; try discriminate Hk.
   - iIntros "Hh _". iModIntro. iFrame. by rewrite /pts.
   - cbn in Hk. injection Hk as -> Hk. iIntros "Hh Hps". rewrite /pts /=.
@@ -706,7 +706,7 @@ Qed.
     separation logic, any list of pieces owned by [pts] has pairwise
     distinct keys. *)
 Lemma pts_keys_nodup ps : pts ps -∗ ⌜NoDup ps.*1⌝.
-Proof.
+Proof using Type.
   induction ps as [|[l v] ps IH]; [iIntros "_"; iPureIntro; constructor |].
   rewrite /pts big_sepL_cons. iIntros "[Hl Hps]".
   iDestruct (IH with "Hps") as %Hnd.
@@ -722,7 +722,7 @@ Qed.
     and hands back exclusive ownership [pts] of the new object. *)
 Lemma pts_alloc h ps : NoDup ps.*1 -> (forall l v, (l, v) ∈ ps -> h !! l = None) ->
   gen_heap_interp h ==∗ gen_heap_interp (overwrite ps h) ∗ pts ps.
-Proof.
+Proof using Type.
   induction ps as [|[l v] ps IH]; intros Hnd Hfr.
   - iIntros "Hh". iModIntro. iFrame. by rewrite /pts.
   - cbn in Hnd. apply NoDup_cons in Hnd as [Hn Hnd]. iIntros "Hh".
@@ -753,18 +753,18 @@ Definition ptsq (dq : dfrac) (ps : list (piece * pval)) : iProp Σ :=
 (** Full exclusive ownership [pts] is definitionally equal to fractional
     ownership [ptsq] with the whole fraction 1. *)
 Lemma pts_ptsq ps : pts ps ⊣⊢ ptsq (DfracOwn 1) ps.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** Fractional ownership of a concatenated list of pieces splits into
     fractional ownership of each sublist at the same fraction. *)
 Lemma ptsq_app dq ps qs : ptsq dq (ps ++ qs) ⊣⊢ ptsq dq ps ∗ ptsq dq qs.
-Proof. by rewrite /ptsq big_sepL_app. Qed.
+Proof using Type. by rewrite /ptsq big_sepL_app. Qed.
 
 (** Ownership of a piece list at a sum of two fractions splits into two
     separate assertions for the two component fractions. *)
 Lemma ptsq_split q1 q2 ps :
   ptsq (DfracOwn (q1 + q2)) ps ⊣⊢ ptsq (DfracOwn q1) ps ∗ ptsq (DfracOwn q2) ps.
-Proof.
+Proof using Type.
   rewrite /ptsq -big_sepL_sep. apply big_sepL_proper. intros _ lv _.
   exact (fractional (Φ := fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) q1 q2).
 Qed.
@@ -773,7 +773,7 @@ Qed.
     discarding its write permission, which yields a persistent, freely
     duplicable read-only assertion. *)
 Lemma ptsq_persist dq ps : ptsq dq ps ==∗ □ ptsq DfracDiscarded ps.
-Proof.
+Proof using Type.
   induction ps as [|lv ps IH]; rewrite /ptsq /=; iIntros "H"; [by iModIntro|].
   iDestruct "H" as "[Hl H]". iMod (pointsto_persist with "Hl") as "#Hl".
   iMod (IH with "H") as "#H". iModIntro. iModIntro. iFrame "#".
@@ -783,13 +783,13 @@ Qed.
     read-only assertion is persistent, so any number of functions can share
     and copy it freely. *)
 Instance ptsq_persistent ps : Persistent (ptsq DfracDiscarded ps).
-Proof. rewrite /ptsq. apply _. Qed.
+Proof using Type. rewrite /ptsq. apply _. Qed.
 
 (** Even a fractional or read-only share of a piece list in [ptsq]
     guarantees that every piece in the list holds its recorded value in the
     memory map. *)
 Lemma ptsq_lookup h dq ps : gen_heap_interp h -∗ ptsq dq ps -∗ ⌜forall l v, (l, v) ∈ ps -> h !! l = Some v⌝.
-Proof.
+Proof using Type.
   induction ps as [|[l v] ps IH]; iIntros "Hh Hps".
   - iPureIntro. intros l v Hin. by apply not_elem_of_nil in Hin.
   - rewrite /ptsq /=. iDestruct "Hps" as "[Hl Hps]".

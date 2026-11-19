@@ -291,14 +291,14 @@ Fixpoint lseg (p q : ptr) (ys : list Z) : iProp Σ :=
     pointer, value, and tail predicate. *)
 Lemma lst_cons p x xs :
   lst p (x :: xs) ⊣⊢ ∃ b nx, ⌜node_ok p b⌝ ∗ live b (node_reg b) ∗ pcell b 0 nx ∗ icell b 8 x ∗ lst nx xs.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** Extending a list segment ending at q with the node at q yields a
     segment ending at that node's next pointer. *)
 Lemma lseg_snoc p q ys b nx y :
   node_ok q b -> lseg p q ys -∗ live b (node_reg b) -∗ pcell b 0 nx -∗ icell b 8 y -∗
   lseg p nx (ys ++ [y]).
-Proof.
+Proof using Type.
   intros Hq. revert p. induction ys as [|y' ys IH]; intros p; cbn [lseg app].
   - iIntros (->) "Hl Hp Hi". iExists b, nx. by iFrame.
   - iIntros "Hs Hl Hp Hi". iDestruct "Hs" as (b' nx') "(% & Hl' & Hp' & Hi' & Hs)".
@@ -307,7 +307,7 @@ Qed.
 
 (** A segment to q and the list from q make the list from p. *)
 Lemma lseg_lst p q ys zs : lseg p q ys -∗ lst q zs -∗ lst p (ys ++ zs).
-Proof.
+Proof using Type.
   revert p. induction ys as [|y ys IH]; intros p; cbn [lseg app].
   - iIntros (->) "Hl". iExact "Hl".
   - iIntros "Hs Hl". iDestruct "Hs" as (b nx) "(% & Hlv & Hp & Hi & Hs)".
@@ -319,7 +319,7 @@ Qed.
 Lemma lst_cap p xs :
   lst p xs -∗ ⌜0 <= ptr_addr p < 2 ^ 64⌝ ∗ live_cap (ptr_cap p) (node_reg (ptr_addr p)) ∗
   (live_cap (ptr_cap p) (node_reg (ptr_addr p)) -∗ lst p xs).
-Proof.
+Proof using Type.
   destruct xs as [|x xs]; cbn [lst].
   - iIntros (->). cbn. iSplit; [iPureIntro; lia|]. iSplit; [done|]. by iIntros "_".
   - iIntros "H". iDestruct "H" as (b nx Hn) "(Hlv & Hp & Hi & Hl)".
@@ -339,7 +339,7 @@ Lemma sum_loop p Φ :
       lseg p q ys -∗ lst q zs -∗ (lst p (ys ++ zs) -∗ Φ (Ret (WInt (list_sum (ys ++ zs))))) -∗
       WP (ERun (mkFrame (ls_fn "sum") e [] None (Exec (TAtom "L3") (b_insts sum_L3) (b_jump sum_L3)))
            : lexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (e q ys zs [Hq Hs]) "Hs Hl HΦ".
   pose proof (list_sum_range ys).
   destruct zs as [|z zs].
@@ -370,7 +370,7 @@ Qed.
     returns their sum modulo 2^64 and hands the list back. *)
 Lemma sum_spec p xs :
   ⊢ {{{ lst p xs }}} (ERun (sum_frame p) : lexpr) {{{ RET (Ret (WInt (list_sum xs))); lst p xs }}}.
-Proof.
+Proof using Type.
   iIntros (Φ) "!> Hl HΦ". ls_facts. unfold sum_frame.
   wp_enter_. wp_goto_. wp_enter_.
   iApply (sum_loop p Φ $! _ p [] xs with "[%] [//] Hl HΦ").
@@ -383,7 +383,7 @@ Qed.
     value at offset 8, while discarding unused auxiliary slots. *)
 Lemma obj_node base :
   obj base (heap_req 16 16) -∗ live base (node_reg base) ∗ pcell base 0 null ∗ icell base 8 0.
-Proof.
+Proof using Type.
   rewrite /obj /live /pcell /icell.
   assert (E : obj_ps base (heap_req 16 16) =
      [(PLive base, VLive (node_reg base))] ++ cell base 0 0 ++ cell base 8 0 ++
@@ -404,7 +404,7 @@ Lemma ls_loop n :
       lst h xs -∗
       WP (ERun (mkFrame (ls_fn "listsum") e [] None (Exec (TAtom "L4") (b_insts ls_L4) (b_jump ls_L4)))
            : lexpr) {{ _, True }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (e i h xs (Hi & Hir & Hh & Hn)) "Hl".
   ls_facts. pose proof (ls_find_sum R.free). cbn [ls_L4 b_insts b_jump].
   wp_let_.
@@ -440,7 +440,7 @@ Qed.
 Lemma listsum_spec n :
   ⊢ WP (ERun (mkFrame (ls_fn "listsum") [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None))
          : lexpr) {{ _, True }}.
-Proof.
+Proof using Type.
   ls_facts. wp_enter_. wp_goto_. wp_enter_.
   iApply (ls_loop n $! _ 0 null [] with "[%] [//]").
   split; [reflexivity|]. split; [lia|]. split; reflexivity.

@@ -111,7 +111,7 @@ Lemma wp_optarg_check f e ls l d args rest j classes Φ :
   map2_option (value_x ge e) classes args = Some [WPtr optarg_cell] ->
   ▷ WP (ERun (mkFrame f (put d (WPtr optarg_cell) e) ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check 0 8 Read 8) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi SafepointStable0.
   intros Hc Hx. iIntros "HK".
   iAssert (pts []) as "Hn"; [rewrite /pts; done|].
   iApply (wp_world_let_with registry wi ge [] with "Hn [HK]"); [reflexivity | exact Hc | exact Hx | |].
@@ -131,7 +131,7 @@ Lemma wp_optarg_load f e ls l d args rest j classes a i Φ :
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer 0 [AuxRead; LowerResolve; AddressRead]) args :: rest) j)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi SafepointStable0.
   intros Hc Hx. iIntros "Ht HK".
   iApply (wp_world_let_with with "Ht HK"); [reflexivity | exact Hc | exact Hx |].
   intros m w h Hw Hl. destruct (Hgetopt_wi _ _ _ Hw) as ((Hpc & _) & Hoc & _ & Hcur).
@@ -151,7 +151,7 @@ Lemma wp_optind_check f e ls l d args rest j classes Φ :
   map2_option (value_x ge e) classes args = Some [WPtr optind_cell] ->
   ▷ WP (ERun (mkFrame f (put d (WPtr optind_cell) e) ls None (Exec l rest j)) : gexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check 0 4 Read 1) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi SafepointStable0.
   intros Hc Hx. iIntros "HK".
   iAssert (pts []) as "Hn"; [rewrite /pts; done|].
   iApply (wp_world_let_with registry wi ge [] with "Hn [HK]"); [reflexivity | exact Hc | exact Hx | |].
@@ -171,7 +171,7 @@ Lemma wp_optind_load f e ls l d args rest j classes a i Φ :
      WP (ERun (mkFrame f (put d (WInt (i mod 2 ^ 32)) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d W (RawLoad (LdNarrow Sw) 0) args :: rest) j)) : gexpr)
     {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi SafepointStable0.
   intros Hc Hx. iIntros "Ht HK".
   iApply (wp_world_let_with with "Ht HK"); [reflexivity | exact Hc | exact Hx |].
   intros m w h Hw Hl. destruct (Hgetopt_wi _ _ _ Hw) as ((_ & Hic & _) & _ & Hoc & Hcur).

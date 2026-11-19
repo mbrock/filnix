@@ -115,13 +115,13 @@ Definition memo_ok (m : memo) : Prop :=
 
 (** The empty memo is derived. *)
 Lemma memo_ok_nil : memo_ok [].
-Proof. intros n k lo hi E. discriminate E. Qed.
+Proof using Type. intros n k lo hi E. discriminate E. Qed.
 
 (** Caching a newly computed interval in the memo table preserves memo
     validity whenever the interval itself is derivable. *)
 Lemma memo_ok_cons : forall n k r m,
   memo_ok m -> (forall lo hi, r = Some (lo, hi) -> iv (Tmp n) k lo hi) -> memo_ok (((n, k), r) :: m).
-Proof.
+Proof using Type.
   intros n k r m Hm Hr n' k' lo hi H. simpl in H.
   destruct (name_eqb n n' && class_eqb k k') eqn:E.
   - apply andb_true_iff in E as [E1 E2]. apply term_eqb_eq in E1. apply class_eqb_true in E2.
@@ -144,7 +144,7 @@ Lemma op_interval_ok : forall rec o args k m r m' n,
   rec_ok rec -> memo_ok m -> defined n k o args ->
   op_interval rec o args k m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> interval_fits k lo hi = true -> iv (Tmp n) k lo hi) /\ memo_ok m'.
-Proof.
+Proof using Type.
   intros rec o args k m r m' n Hrec Hm Hd H.
   (* the cases where the op's operands' walks are the answer *)
   destruct o; simpl in H;
@@ -281,7 +281,7 @@ Qed.
 Lemma oi_sound : forall fuel v k depth m r m',
   memo_ok m -> oi once fuel v k depth m = (r, m') ->
   (forall lo hi, r = Some (lo, hi) -> iv v k lo hi) /\ memo_ok m'.
-Proof.
+Proof using Type.
   induction fuel as [|f IH]; intros v k depth m r m' Hm H; destruct v as [n | c | g]; simpl in H.
   all: try (no_answer H Hm).
   all: try (destruct (signed_value k c) as [x|] eqn:Ex; injection H as <- <-; split;
@@ -326,7 +326,7 @@ Qed.
     bounds through [offset_interval_iv]. *)
 Theorem offset_interval_iv : forall v k lo hi,
   offset_interval once v k = Some (lo, hi) -> iv v k lo hi.
-Proof.
+Proof using Type.
   intros v k lo hi H. unfold offset_interval in H.
   destruct (oi once 33 v k 0 []) as [r m'] eqn:E. simpl in H. subst r.
   apply (oi_sound _ _ _ _ _ _ _ memo_ok_nil E). reflexivity.
@@ -376,14 +376,14 @@ Definition in_iv (ge : genv) (e : env) (k : class) (v : value) (lo hi : Z) : Pro
     positive. *)
 Lemma fits_bits : forall k lo hi, interval_fits k lo hi = true ->
   exists bits, class_bits k = Some bits /\ modulus k = Some (2 ^ bits) /\ 0 < 2 ^ bits.
-Proof. intros k lo hi H. destruct k; try discriminate H; eexists; (split; [reflexivity | split; [reflexivity | lia]]). Qed.
+Proof using Type. intros k lo hi H. destruct k; try discriminate H; eexists; (split; [reflexivity | split; [reflexivity | lia]]). Qed.
 
 (** The signed value x of the constant c at a class of width bits
     ([signed_value]) is congruent to c modulo 2^bits and lies in the signed
     range of that width. *)
 Lemma signed_value_mod : forall k c x bits, signed_value k c = Some x -> class_bits k = Some bits ->
   x mod 2 ^ bits = c mod 2 ^ bits /\ - 2 ^ (bits - 1) <= x < 2 ^ (bits - 1).
-Proof.
+Proof using Type.
   intros k c x bits H Hb. unfold signed_value in H. rewrite Hb in H. simpl in H. injection H as <-.
   assert (Hp : 2 ^ bits = 2 * 2 ^ (bits - 1) /\ 0 < 2 ^ (bits - 1)).
   { destruct k; try discriminate Hb; injection Hb as <-; simpl; lia. }
@@ -397,7 +397,7 @@ Qed.
 (** A constant's signed value fits its class ([interval_fits]) as an
     interval of one point. *)
 Lemma signed_value_fits : forall k c x, signed_value k c = Some x -> interval_fits k x x = true.
-Proof.
+Proof using Type.
   intros k c x H. destruct k; try (unfold signed_value in H; discriminate H); [|reflexivity].
   destruct (signed_value_mod _ _ _ _ H eq_refl) as [_ Hr]. simpl. apply andb_true_iff.
   split; [apply Z.leb_le | apply Z.leb_le]; lia.
@@ -405,12 +405,12 @@ Qed.
 
 (** Every interval derived ([iv]) fits its class ([interval_fits]). *)
 Lemma iv_fits : forall v k lo hi, iv v k lo hi -> interval_fits k lo hi = true.
-Proof. intros v k lo hi H. destruct H; try assumption. exact (signed_value_fits _ _ _ H). Qed.
+Proof using Type. intros v k lo hi H. destruct H; try assumption. exact (signed_value_fits _ _ _ H). Qed.
 
 (** Sign-extending u from the modulus m = 2h ([sign_extension]) gives at
     least -h and less than h. *)
 Lemma sign_extension_range : forall m h u, 0 < h -> m = 2 * h -> - h <= sign_extension m h u < h.
-Proof.
+Proof using Type.
   intros m h u Hh Hm. unfold sign_extension. pose proof (Z.mod_pos_bound u m ltac:(lia)).
   destruct (h <=? u mod m) eqn:E; [apply Z.leb_le in E | apply Z.leb_gt in E]; lia.
 Qed.
@@ -419,7 +419,7 @@ Qed.
     t's [narrow_range], so narrow extensions and narrow loads are bounded
     regardless of the underlying value. *)
 Lemma narrow_extension : forall t lo hi x, narrow_range t = Some (lo, hi) -> lo <= extension t x <= hi.
-Proof.
+Proof using Type.
   intros t lo hi x H. destruct t; simpl in H; try discriminate H; injection H as <- <-; simpl.
   - pose proof (sign_extension_range 65536 32768 x ltac:(lia) ltac:(lia)). lia.
   - pose proof (Z.mod_pos_bound x 65536 ltac:(lia)). lia.
@@ -431,7 +431,7 @@ Qed.
     taken modulo 2^32 and sign-extended, is x again. *)
 Lemma sign_extension_mod : forall x, - 2 ^ 31 <= x < 2 ^ 31 ->
   sign_extension (2 ^ 32) (2 ^ 31) (x mod 2 ^ 32) = x.
-Proof.
+Proof using Type.
   intros x Hx. unfold sign_extension. rewrite Z.mod_mod by lia.
   destruct (Z_lt_le_dec x 0).
   - replace (x mod 2 ^ 32) with (x + 2 ^ 32).
@@ -443,7 +443,7 @@ Qed.
 (** The bitwise and of two nonnegative integers x and y lies from 0 to y: a
     nonnegative mask bounds an `and`. *)
 Lemma land_le : forall x y, 0 <= x -> 0 <= y -> 0 <= Z.land x y <= y.
-Proof.
+Proof using Type.
   intros x y Hx Hy. split; [apply Z.land_nonneg; auto|].
   apply (Z.ldiff_le _ _ Hy). apply Z.bits_inj'. intros i Hi.
   rewrite Z.ldiff_spec, Z.land_spec, Z.bits_0. destruct (Z.testbit x i), (Z.testbit y i); reflexivity.
@@ -453,13 +453,13 @@ Qed.
     bits, reads as w modulo 2^bits. *)
 Lemma read_tmp : forall ge e k n w bits, class_bits k = Some bits -> lookup n e = Some (WInt w) ->
   value_x ge e k (Tmp n) = Some (WInt (w mod 2 ^ bits)).
-Proof. intros ge e k n w bits Hb H. simpl. rewrite H. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
+Proof using Type. intros ge e k n w bits Hb H. simpl. rewrite H. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
 
 (** Any operand that reads as an integer u at an integer class of width bits
     has u at least 0 and below 2^bits. *)
 Lemma value_int_range : forall ge e k v u bits, class_bits k = Some bits -> value_x ge e k v = Some (WInt u) ->
   0 <= u < 2 ^ bits.
-Proof.
+Proof using Type.
   intros ge e k v u bits Hb H. destruct k; try discriminate Hb; injection Hb as <-;
     destruct v as [n | c | g]; simpl in H.
   all: try (destruct (lookup n e) as [[w| |]|]; simpl in H; try discriminate H; injection H as <-;
@@ -474,19 +474,19 @@ Qed.
 Lemma in_iv_tmp : forall ge e k n w bits x lo hi,
   class_bits k = Some bits -> lookup n e = Some (WInt w) -> w mod 2 ^ bits = x mod 2 ^ bits ->
   lo <= x <= hi -> in_iv ge e k (Tmp n) lo hi.
-Proof. intros ge e k n w bits x lo hi Hb H Hw Hx. exists bits, (w mod 2 ^ bits), x. rewrite (read_tmp _ _ _ _ _ _ Hb H). auto. Qed.
+Proof using Type. intros ge e k n w bits x lo hi Hb H Hw Hx. exists bits, (w mod 2 ^ bits), x. rewrite (read_tmp _ _ _ _ _ _ Hb H). auto. Qed.
 
 (** A constant c read at an integer class of width bits reads as c modulo
     2^bits. *)
 Lemma const_read : forall ge e k c bits, class_bits k = Some bits ->
   value_x ge e k (Const c) = Some (WInt (c mod 2 ^ bits)).
-Proof. intros ge e k c bits Hb. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
+Proof using Type. intros ge e k c bits Hb. destruct k; try discriminate Hb; injection Hb as <-; reflexivity. Qed.
 
 (** [map2_option] over two two-element lists succeeds only when f succeeds
     on each pair, and gives the two results. *)
 Lemma map2_two : forall (X Y W : Type) (f : X -> Y -> option W) k1 k2 a b xs,
   map2_option f [k1; k2] [a; b] = Some xs -> exists x y, f k1 a = Some x /\ f k2 b = Some y /\ xs = [x; y].
-Proof.
+Proof using Type.
   intros X Y W f k1 k2 a b xs H. simpl in H.
   destruct (f k1 a) as [x|]; [|discriminate H]. destruct (f k2 b) as [y|]; [|discriminate H].
   injection H as <-. eauto.
@@ -515,7 +515,7 @@ Hypothesis Hok : forall n k o args, defined n k o args -> iv_op o = true -> clas
 (** A temporary n with a derived interval has a single definition: every
     [iv] constructor for a name rests on [defined]. *)
 Lemma iv_once : forall v k lo hi, iv v k lo hi -> forall n, v = Tmp n -> once_has once n = true.
-Proof.
+Proof using Type.
   intros v k lo hi H n E. destruct H; try discriminate E; injection E as ->;
     match goal with Hd : defined _ _ _ _ |- _ => destruct Hd as (n' & Hl & _) end;
     unfold once_has; rewrite Hl; reflexivity.
@@ -529,7 +529,7 @@ Lemma walked : forall e0 args a k' lo hi,
   (forall a, In (Tmp a) args -> once_has once a = true -> ok a /\ lookup a e0 = lookup a e) ->
   In a args -> iv a k' lo hi ->
   (forall n, a = Tmp n -> ok n) /\ forall k'', value_x ge e0 k'' a = value_x ge e k'' a.
-Proof.
+Proof using Type.
   intros e0 args a k' lo hi Ha Hin Hiv.
   assert (Hag : forall n, a = Tmp n -> ok n /\ lookup n e0 = lookup n e)
     by (intros n E; subst a; exact (Ha _ Hin (iv_once _ _ _ _ Hiv _ eq_refl))).
@@ -548,7 +548,7 @@ Ltac opens H :=
     runtime value in environment e lies within that bound modulo its
     class width, provided any temporary involved is valid under ok. *)
 Theorem iv_sound : forall v k lo hi, iv v k lo hi -> (forall n, v = Tmp n -> ok n) -> in_iv ge e k v lo hi.
-Proof.
+Proof using Hok.
   intros v k lo hi H. induction H; intros Hv.
   - (* a constant *)
     assert (Hb : exists bits, class_bits k = Some bits)

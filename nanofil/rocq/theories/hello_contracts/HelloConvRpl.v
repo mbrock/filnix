@@ -156,7 +156,8 @@ Lemma rpl_tail pwc b8 b13 b15 out src n state bo ro oo xo co bs rs os ys cs be r
         (put (TAtom "pr.1") (WPtr out) (put (TAtom "v15") b15 (put (TAtom "v13") b13 (put (TAtom "v8") b8
           [(TAtom "v6", WPtr state); (TAtom "v4", WInt n); (TAtom "v2", WPtr src); (TAtom "v0", pwc)]))))
         [] None (Exec (TAtom "L11") (b_insts (rpl_block "L11")) (b_jump (rpl_block "L11")))) : cexpr) {{ Φ }}.
-Proof.
+Proof using Haudit Hbytes Hlibc Hlinked Hmbrtowc Hmemcpy Hset Hset_abi Hset_pre Hset_query Hset_ret
+  Hstrcmp Hstrlen Hvalid0 Kalloc Kbyte Kcopy Kmbrtowc Kstore SafepointStable0 invGS_gen0 wi_lent.
   intros Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoo Hosrc Heo Hesrc Ho48 Hs48 Hoal Hsal
     Lxo Lco Lys Lcs Lxe Lce Hn Hss Hval.
   iIntros "#Hk Hc Hposix Hcod HBo HBs HBe HBsrc HΦ".
@@ -280,7 +281,8 @@ Lemma rpl_mbrtowc_spec out src n state bo ro oo xo co bs rs os ys cs be re oe xe
        pts (block_ps bs rs os ys' cs') -∗ pts (block_ps be re oe xe' ce') -∗
        pts (block_ps bsrc rsrc osrc ss []) -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (invocation rpl_fn [WPtr out; WPtr src; WInt n; WPtr state]) : cexpr) {{ Φ }}.
-Proof.
+Proof using Haudit Hbytes Hlibc Hlinked Hmbrtowc Hmemcpy Hset Hset_abi Hset_pre Hset_query Hset_ret
+  Hstrcmp Hstrlen Hvalid0 Kalloc Kbyte Kcopy Kmbrtowc Kstore SafepointStable0 invGS_gen0 wi_lent.
   intros Eout Est Herr Hcap Haddr Hbo Hbs Hbsrc Hoo Hosrc Heo Hesrc Ho48 Hs48 Hoal Hsal
     Lxo Lco Lys Lcs Lxe Lce Hn Hss Hval.
   iIntros "#Hk Hc Hposix Hcod HBo HBs HBe HBsrc HΦ".

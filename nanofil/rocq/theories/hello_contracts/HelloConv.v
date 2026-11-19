@@ -155,7 +155,7 @@ Lemma mbs_entry dst src len ps :
   invocation mbs_fn [WPtr dst; WPtr src; WInt len; WPtr ps] =
   mkFrame mbs_fn [(TAtom "v6", WPtr ps); (TAtom "v4", WInt len); (TAtom "v2", WPtr src); (TAtom "v0", WPtr dst)]
     [] None (Enter (TAtom "start") None).
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** rpl_mbsrtowcs(dest, srcp, len, ps) as main calls it: dest a fresh
     buffer of len wide characters, srcp a cell holding the string p,
@@ -189,7 +189,9 @@ Lemma rpl_mbsrtowcs_spec p b reg bs bd rd ws cws sb sr so ys cs be re oe xe ce s
   WP (ERun (invocation mbs_fn [WPtr (mkPtr bd (Obj bd)); WPtr (mkPtr (spb + spo) (Obj spb));
                                 WInt (Z.of_nat (length bs) + 1); WPtr (mkPtr (sb + so) (Obj sb))]) : cexpr)
     {{ Φ }}.
-Proof.
+Proof using Haudit Hbytes Herrno_reg Hlibc Hlinked Hmbrtowc Hmemchr Hmemcpy Hset Hset_abi Hset_pre
+  Hset_query Hset_ret Hstrcmp Hstrlen Hvalid0 Kalloc Kbyte Kcopy Kmbrtowc Kpstore Kstore
+  SafepointStable0 invGS_gen0 wi_lent.
   intros Herr Hbd Hbd4 Hdend Hd48 Hsb Hso Hsal Hsend' Hs48 Hspb Hspo Hspal Hspend Hsp48 Hbe Hoe Heend He48
     Lws Lcws Hval Hinit Lys Lcs Lxe Lce.
   iIntros "#Hk Hc Hposix Hcod Hs Hdl Hdw Hda HBs HBe Hspl Hsp HΦ".

@@ -742,7 +742,7 @@ Lemma fact_holds : forall n i fa,
   lookup n (single_definitions (fr_fn fr)) = Some (DInst i) -> check_fact i = Some fa -> f_q fa = n ->
   dominating (fr_fn fr) l k n -> stable (single_definitions (fr_fn fr)) (f_p fa) ->
   exists pp, lookup n (fr_env fr) = Some (WPtr pp) /\ value_x ge (fr_env fr) P (f_p fa) = Some (WPtr pp).
-Proof.
+Proof using Hpt Hs.
   intros n i fa Hn Hf Hq (s & D & Hn' & Hpos & Hsd) Hst. rewrite Hn in Hn'. injection Hn' as <-.
   assert (Hag : forall e0, (forall a, In a (inst_uses i) -> once_has (single_definitions (fr_fn fr)) a = true ->
                                   lookup a e0 = lookup a (fr_env fr)) ->
@@ -767,7 +767,7 @@ Lemma weak_operands : forall b kk i n1 p p1 lo1 hi1 al1 d,
   pointer_distance (s_once (fn_src md (fr_fn fr))) p (Tmp p1) = Some d ->
   exists pp1 pp, lookup n1 (fr_env fr) = Some (WPtr pp1) /\ value_x ge (fr_env fr) P p = Some (WPtr pp) /\
     ptr_cap pp = ptr_cap pp1.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk i n1 p p1 lo1 hi1 al1 d Hb Hk Hkk Hu1 Hu Esrc Ed.
   (* A function with a setjmp has no renew sources. *)
   destruct (fn_src_cases md (fr_fn fr)) as [[_ Esj] | [_ Esj]].
@@ -800,7 +800,7 @@ Theorem renew_not_alias : forall b kk q lo hi r al n1 p rest live out,
   nth_error (b_insts b) kk = Some (Let q A (Renew lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (Renew lo hi r al) [Tmp n1; p]) rest live = Some out ->
   inst_step ge fr m (Let q A (Renew lo hi r al) [Tmp n1; p]) <> Some (IStop (Unchecked Alias)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al n1 p rest live out Hb Hk Hkk H.
   unfold checked_inst_rest in H. cbn beta iota zeta in H.
   destruct (lookup n1 (s_renews (fn_src md (fr_fn fr)))) as [[[[p1 lo1] hi1] al1]|] eqn:Esrc; [|discriminate H].
@@ -825,7 +825,7 @@ Theorem half_not_alias : forall b kk q bd lo hi r al n1 p rest live out,
   nth_error (b_insts b) kk = Some (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) rest live = Some out ->
   inst_step ge fr m (Let q A (HalfCheck bd lo hi r al) [Tmp n1; p]) <> Some (IStop (Unchecked Alias)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q bd lo hi r al n1 p rest live out Hb Hk Hkk H.
   unfold checked_inst_rest in H. cbn beta iota zeta in H.
   destruct (lookup n1 (s_renews (fn_src md (fr_fn fr)))) as [[[[p1 lo1] hi1] al1]|] eqn:Esrc;
@@ -853,7 +853,7 @@ Theorem hull_not_alias : forall b kk q lo hi r al nl nh p rest live out,
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) rest live
     = Some out ->
   inst_step ge fr m (Let q A (RenewHull lo hi r al) [Tmp nl; Tmp nh; p]) <> Some (IStop (Unchecked Alias)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al nl nh p rest live out Hb Hk Hkk H.
   unfold checked_inst_rest in H. cbn beta iota zeta in H.
   destruct (hull_renewable _ _ _ _ _ _ _ _) eqn:Ehr; [clear H | discriminate H].

@@ -279,7 +279,7 @@ Definition live_capq (dq : dfrac) (c : cap) (reg : region) : iProp Σ :=
 (** Owned pieces describe real memory values and bounds through
     [pts_facts], which also supplies live-object separation and the runtime's address-space restriction. *)
 Lemma pts_facts σ ps : heap_interp σ -∗ pts ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
   iDestruct (pts_lookup with "Hh Hps") as %Hl. iPureIntro.
   split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
@@ -289,7 +289,7 @@ Qed.
 (** Even a shared piece records the same memory facts as exclusive
     ownership, which [ptsq_facts] derives without granting permission to change that piece. *)
 Lemma ptsq_facts σ dq ps : heap_interp σ -∗ ptsq dq ps -∗ ⌜owned_facts ps (ls_mem σ)⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & _).
   iDestruct (ptsq_lookup with "Hh Hps") as %Hl. iPureIntro.
   split; [|split; [exact Hd | exact (R.address_space _ _ Hr)]].
@@ -299,7 +299,7 @@ Qed.
 (** A capability covered by shared target-lifetime ownership cannot
     name a freed object, so its stored shadow representation remains exact. *)
 Lemma live_capq_facts σ dq c reg : heap_interp σ -∗ live_capq dq c reg -∗ ⌜~ freed_in (m_regions (ls_mem σ)) c⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ H". iAssert (⌜forall b, c = Obj b \/ c = Ro b -> live_at (ls_mem σ) b reg⌝)%I with "[Hσ H]" as %Hl.
   - destruct c as [|b|b|g|n]; cbn [live_capq];
       try (iPureIntro; intros b' [Hc|Hc]; discriminate Hc);
@@ -313,7 +313,7 @@ Qed.
     capability or a writable capability naming a live object in actual memory. *)
 Lemma live_cap_facts σ c reg : heap_interp σ -∗ live_cap c reg -∗
   ⌜c = CNone \/ exists b reg, c = Obj b /\ live_at (ls_mem σ) b reg⌝.
-Proof.
+Proof using Type.
   destruct c; cbn [live_cap]; iIntros "Hσ H"; try done; [iPureIntro; by left|].
   iDestruct (pts_facts with "Hσ H") as %(Hf & _). iPureIntro. right.
   cbn [all_agree agree_piece fst snd] in Hf. eexists _, _. split; [reflexivity | exact (proj1 Hf)].
@@ -324,7 +324,7 @@ Qed.
 Lemma heap_interp_safepoint m s fuel w m' s' :
   R.safepoint s m s' m' ->
   heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m' s' fuel w).
-Proof.
+Proof using SafepointStable0.
   intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h) "[Hh %Hσ]". destruct Hσ as (Ha & Hd & Hr & Hw).
   iExists h. iFrame "Hh". iPureIntro. cbn [ls_mem ls_rt ls_world] in *.
   destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hreg & Hb & Haux).
@@ -339,7 +339,7 @@ Qed.
     leaves the map unchanged, as [overwrite_id] proves for a piece list. *)
 Lemma overwrite_id ps (h : gmap piece pval) :
   (forall l v, (l, v) ∈ ps -> h !! l = Some v) -> overwrite ps h = h.
-Proof.
+Proof using Type.
   induction ps as [|[l v] ps IH]; intros Hl; [reflexivity|]. cbn [overwrite fst snd].
   rewrite IH; [|intros l' v' Hin; apply Hl; apply elem_of_cons; by right].
   apply insert_id. apply Hl. apply elem_of_cons. by left.
@@ -388,7 +388,7 @@ Lemma moves_core fr σ e2 σ2 :
   (exists o m', Semantics.step ge c0 = Done o /\ returning o /\
      invalidate_locals (fr_locals fr) (ls_mem σ) = Some m' /\
      e2 = EEnd o /\ σ2 = mkLstate m' (ls_rt σ) (ls_fuel σ) (ls_world σ)).
-Proof.
+Proof using Type.
   intros [H | [H | [H | (site & _ & _ & _ & _ & _ & _ & _ & Hs & _)]]] Hns; auto.
   exfalso. exact (Hns _ (external_site_stuck _ _ _ Hs)).
 Qed.
@@ -404,7 +404,7 @@ Lemma wp_lift_run (Q : iProp Σ) fr Φ :
   (forall σ, heap_interp σ -∗ Q -∗
      ▷ ∀ e2 σ2, ⌜moves fr σ e2 σ2⌝ ==∗ heap_interp σ2 ∗ WP (e2 : lexpr) {{ Φ }}) ->
   Q -∗ WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hnf Hst. iLöb as "IH". iIntros "HQ".
   iApply wp_lift_base_step; [done|].
   iIntros (σ ns κs nt) "Hσ".
@@ -453,7 +453,7 @@ Lemma wp_write_with (Q : iProp Σ) (F : mem -> Prop) ps ps' fr fr' cs' (upd : me
      wi (upd m) w (overwrite ps' h)) ->
   pts ps -∗ Q -∗ ▷ (pts ps' -∗ Q -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hk HF Hs Hwi. iIntros "Hps HQ HK". iCombine "Hps HQ HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [Hps [HQ _]]". iDestruct (pts_facts with "Hσ Hps") as %Hf.
@@ -495,7 +495,7 @@ Lemma wp_write ps ps' fr fr' cs' (upd : mem -> mem) Φ :
      wi (upd m) w (overwrite ps' h)) ->
   pts ps -∗ ▷ (pts ps' -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hk Hs Hwi. iIntros "Hps HK".
   iApply (wp_write_with True (fun _ => True) ps ps' fr fr' cs' upd with "Hps [//] [HK]");
     [exact Hk | auto | intros m fuel Hf _; exact (Hs m fuel Hf) | exact Hwi |].
@@ -509,7 +509,7 @@ Lemma wp_read ps fr fr' cs' Φ :
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   pts ps -∗ ▷ (pts ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. apply (wp_write ps ps fr fr' cs' (fun m => m)); [reflexivity| |].
   - intros m fuel Hf. split; [exact (Hs m fuel Hf)|]. split; [reflexivity|]. split; [apply kept_refl|].
     split; [exact (proj1 Hf)|]. intros l v _ H. exact H.
@@ -521,7 +521,7 @@ Qed.
 Lemma wp_pure_next fr fr' cs' Φ :
   (forall m fuel, Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   ▷ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }} -∗ WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. iIntros "H". iApply (wp_read [] fr fr' cs' with "[] [H]"); [|by rewrite /pts|].
   - intros m fuel _. apply Hs.
   - iNext. iIntros "_". iExact "H".
@@ -542,7 +542,7 @@ Lemma wp_let f e ls l d k o args rest j classes xs w Φ :
   (forall m, op_res o k xs m = Some (OpRes (RVal w) m)) ->
   ▷ WP (ERun (mkFrame f (put d w e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hc Hx Ho. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hg Hc Hx (Ho m)).
 Qed.
@@ -559,7 +559,7 @@ Lemma wp_check f e ls l d lo hi r al args rest j classes p b reg Φ :
   live b reg -∗
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi r al) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp H1 H2 H3. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -578,7 +578,7 @@ Lemma wp_check_read f e ls l d lo hi al args rest j classes p b reg Φ :
   live b reg -∗
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp H1 H2 H3. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
@@ -599,7 +599,7 @@ Lemma wp_half_check f e ls l d bd lo hi r al args rest j classes p1 p b reg Φ :
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi r al) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
@@ -621,7 +621,7 @@ Lemma wp_half_check_read f e ls l d bd lo hi al args rest j classes p1 p b reg �
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (HalfCheck bd lo hi Read al) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp1 Hp H1 H2 H3 H4 H5. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E Lv] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
@@ -641,7 +641,7 @@ Lemma wp_renew f e ls l d lo hi r al args rest j classes p1 p b reg Φ :
   live b reg -∗
   ▷ (live b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi r al) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp1 Hp H1 H2 H3. apply (wp_read _ _ _ []).
   intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
   apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]);
@@ -659,7 +659,7 @@ Lemma wp_raw_load f e ls l d k off args rest j classes p b reg o v Φ :
   ▷ (live b reg -∗ icell b o v -∗
      WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
   iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
   - intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
@@ -686,7 +686,7 @@ Lemma wp_raw_load_byte f e ls l d k n off args rest j classes p b reg o x y Φ :
      WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hn Hy Hp Ha. iIntros "Hl Hb HK".
   iApply (wp_read ([(PLive b, VLive reg)] ++ [(PByte b o, VByte x)]) _ _ [] with "[Hl Hb] [HK]").
   - intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd app] in Hf.
@@ -711,7 +711,7 @@ Lemma wp_raw_load_read f e ls l d k off args rest j classes p b reg o v Φ :
   ▷ (live b reg -∗ icell b o v -∗
      WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
   iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
   - intros m fuel (Hf & _). apply all_agree_app in Hf as [[Hlv _] Hcl]. cbn [agree_piece fst snd] in Hlv.
@@ -738,7 +738,7 @@ Lemma wp_raw_load_sub_read f e ls l d k n off args rest j classes p b reg o v y 
      WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hy Hp Ha. iIntros "Hl Hc HK".
   assert (Hs : 0 <= fst (narrow_type n) <= 8) by (destruct n; cbn; lia).
   iApply (wp_read ([(PLive b, VLive reg)] ++ cell b o v) _ _ [] with "[Hl Hc] [HK]").
@@ -760,7 +760,7 @@ Lemma wp_read_with (Q : iProp Σ) (F : mem -> Prop) fr fr' cs' Φ :
   (forall σ, heap_interp σ -∗ Q -∗ ⌜F (ls_mem σ)⌝) ->
   (forall m fuel, F m -> Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   Q -∗ ▷ (Q -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗ WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros HF Hs. iIntros "HQ HK". iCombine "HQ HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [HQ _]". iDestruct (HF with "Hσ HQ") as %Hf. iPureIntro.
@@ -789,7 +789,7 @@ Lemma wp_raw_load_pointer f e ls l d off args rest j classes p b reg o x reg' Φ
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
   iApply (wp_read_with (live b reg ∗ pcell b o x ∗ live_cap (ptr_cap x) reg')
             (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
@@ -823,7 +823,7 @@ Lemma wp_world_let_with ps f e ls l d k o args rest j classes xs x Φ :
   pts ps -∗
   ▷ (pts ps -∗ WP (ERun (mkFrame f (put d x e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hg Hc Hargs Hop. iIntros "Hps HK".
   iApply (wp_read_with (pts ps) (fun m => op_res o k xs m = Some (OpRes (RVal x) m)) _ _ []
             with "Hps [HK]").
@@ -850,7 +850,7 @@ Lemma wp_raw_load_pointer_in f e ls l d off args rest j classes p b reg o x ps �
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hrange Hlife. iIntros "Hl Hc Hps HK".
   iApply (wp_read_with (live b reg ∗ pcell b o x ∗ pts ps)
             (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
@@ -889,7 +889,7 @@ Lemma wp_read_dq dq ps fr fr' cs' Φ :
      Semantics.step ge (mkConfig fr [] m fuel) = Next (mkConfig fr' cs' m fuel)) ->
   ptsq dq ps -∗ ▷ (ptsq dq ps -∗ WP (stack_expr (ERun fr') cs' : lexpr) {{ Φ }}) -∗
   WP (ERun fr : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hs. apply (wp_read_with _ (owned_facts ps)); [|exact Hs].
   iIntros (σ) "Hσ Hps". iApply (ptsq_facts with "Hσ Hps").
 Qed.
@@ -906,7 +906,7 @@ Lemma wp_raw_load_read_dq f e ls l d k off args rest j classes p b reg o v dq1 d
   ▷ (liveq dq1 b reg -∗ icellq dq2 b o v -∗
      WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha. iIntros "Hl Hc HK".
   iApply (wp_read_with (liveq dq1 b reg ∗ icellq dq2 b o v)
             (fun m => live_at m b reg /\ all_agree m (cell b o v)) _ _ [] with "[$Hl $Hc] [HK]").
@@ -935,7 +935,7 @@ Lemma wp_raw_load_sub_read_dq f e ls l d k n off args rest j classes p b reg o v
      WP (ERun (mkFrame f (put d y e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hy Hp Ha. iIntros "Hl Hc HK".
   assert (Hs : 0 <= fst (narrow_type n) <= 8) by (destruct n; cbn; lia).
   iApply (wp_read_with (liveq dq1 b reg ∗ icellq dq2 b o v)
@@ -967,7 +967,7 @@ Lemma wp_raw_load_pointer_dq f e ls l d off args rest j classes p b reg o x reg'
   WP (ERun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
        : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hrange. iIntros "Hl Hc Hcap HK".
   iApply (wp_read_with (liveq dq1 b reg ∗ pcellq dq2 b o x ∗ live_capq dq3 (ptr_cap x) reg')
             (fun m => live_at m b reg /\ agree_piece m (PAux b o) (VAux (ptr_cap x)) /\
@@ -1012,7 +1012,7 @@ Lemma wp_raw_cas_l f e ls l d k off args rest j classes p b reg o v ev nv Φ :
   ▷ (live b reg -∗ icell b o (if v mod 2 ^ 64 =? ev mod 2 ^ 64 then nv else v) -∗
      WP (ERun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (RawCas CasL off) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hwi. iIntros "Hl Hc HK".
   assert (Hop : forall m, live_at m b reg -> all_agree m (cell b o v) ->
     op_res (RawCas CasL off) k [WPtr p; WInt ev; WInt nv] m =
@@ -1067,7 +1067,7 @@ Lemma wp_raw_cas_ptr f e ls l d off args rest j classes p b reg o x ep np reg' d
   ▷ (live b reg -∗ pcell b o (if ptr_addr x =? ptr_addr ep then np else x) -∗ live_capq dq (ptr_cap x) reg' -∗
      WP (ERun (mkFrame f (put d (WPtr x) e) ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d P (RawCas CasP off) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hc Hx Hp Ha Hal Hrange Hwi. iIntros "Hl Hc Hcap HK".
   assert (Hop : forall m, live_at m b reg -> agree_piece m (PAux b o) (VAux (ptr_cap x)) ->
     all_agree m (cell b o (ptr_addr x)) -> ~ freed_in (m_regions m) (ptr_cap x) ->
@@ -1128,7 +1128,7 @@ Lemma wp_raw_store f e ls l off v a rest j p b reg o w w' Φ :
   live b reg -∗ icell b o w -∗
   ▷ (live b reg -∗ icell b o w' -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hp Hoff Hwi. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ cell b o w) ([(PLive b, VLive reg)] ++ cell b o w')
             _ _ [] (fun m => store_bytes m (b + o) 8 w') with "[Hl Hc] [HK]");
@@ -1165,7 +1165,7 @@ Lemma wp_raw_store_pointer f e ls l off v a rest j xp p b reg o x Φ :
   WP (ERun (mkFrame f e ls None
        (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
                 :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hp Hoff Hal Hwi. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))
             ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap xp)) :: cell b o (ptr_addr xp))
@@ -1197,7 +1197,7 @@ Lemma wp_free_null_sym fnm f e ls l v rest j Φ :
   ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfnm [Hnull _] Hfn Hdata Hx. apply (wp_pure_next _ _ []). intros m fuel.
   exact (rule_free_sym _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hfnm Hfn Hdata Hx (Hnull m)).
 Qed.
@@ -1218,7 +1218,7 @@ Lemma wp_free_sym fnm f e ls l v rest j b reg Φ :
   live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfnm [_ Hfh] Hfn Hdata Hx Hk Hb Hwi. iIntros "Hl HK". iCombine "Hl HK" as "H".
   iApply (wp_lift_run with "H").
   - iIntros (σ) "Hσ [Hl _]". iDestruct (pts_facts with "Hσ Hl") as %(Hf & _). iPureIntro.
@@ -1258,7 +1258,7 @@ Lemma wp_free_null f e ls l v rest j Φ :
   ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof. apply wp_free_null_sym. reflexivity. Qed.
+Proof using SafepointStable0. apply wp_free_null_sym. reflexivity. Qed.
 
 (** After freeing a heap object, a caller loses permission to access
     it because the object is no longer alive.
@@ -1273,7 +1273,7 @@ Lemma wp_free f e ls l v rest j b reg Φ :
   live b reg -∗ ▷ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof. apply wp_free_sym. reflexivity. Qed.
+Proof using SafepointStable0. apply wp_free_sym. reflexivity. Qed.
 
 (** A raw byte store replaces one owned byte with the integer's low
     byte and returns the updated ownership through [wp_raw_store_byte].
@@ -1288,7 +1288,7 @@ Lemma wp_raw_store_byte f e ls l off v a rest j p b reg o x y Φ :
   live b reg -∗ ibyte b o x -∗
   ▷ (live b reg -∗ ibyte b o (y mod 256) -∗ WP (ERun (mkFrame f e ls None (Exec l rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawStore Wb off v a :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Ha Hp Hoff Hwi. iIntros "Hl Hc HK".
   iApply (wp_write ([(PLive b, VLive reg)] ++ [(PByte b o, VByte x)]) ([(PLive b, VLive reg)] ++ [(PByte b o, VByte (y mod 256))])
             _ _ [] (fun m => store_bytes m (b + o) 1 y) with "[Hl Hc] [HK]");
@@ -1328,7 +1328,7 @@ Lemma wp_alloc f e ls l d k al args rest j size Φ :
        WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j)) : lexpr)
          {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hs0 Hs Hwi. set (q := heap_req al size).
   assert (Hex : 0 <= req_extent q).
   { cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia. }
@@ -1378,7 +1378,7 @@ Lemma wp_alloc_any f e ls l d k al args rest j size Φ :
        WP (ERun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j)) : lexpr)
          {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hs0 Hwi. iIntros "HK".
   destruct (Z_le_gt_dec size max_allocation_size) as [Hs | Hs];
     [iApply (wp_alloc with "HK"); assumption|].
@@ -1399,7 +1399,7 @@ Lemma wp_flight f e ls l d o args lw rest j xs n c Φ :
   flight_cap ge e lw = Some c ->
   ▷ WP (ERun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Ha Hc. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Ha Hc).
 Qed.
@@ -1408,7 +1408,7 @@ Qed.
     [heap_interp_fuel] shows that the memory interpretation does not inspect fuel. *)
 Lemma heap_interp_fuel m s fuel fuel' w :
   heap_interp (mkLstate m s fuel w) -∗ heap_interp (mkLstate m s fuel' w).
-Proof. rewrite /heap_interp /=. iIntros "H". iExact "H". Qed.
+Proof using Type. rewrite /heap_interp /=. iIntros "H". iExact "H". Qed.
 
 (** Entering a block selects its [[phi|phi arguments]] from the incoming
     edge and starts its instructions in the resulting environment.
@@ -1418,7 +1418,7 @@ Lemma wp_enter f e ls l from b e' Φ :
   find_block l (fn_blocks f) = Some b -> phis_env ge (b_phis b) from e = Some e' ->
   ▷ WP (ERun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Enter l from)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hb Hp. iIntros "H". iApply (wp_lift_run with "H").
   - iIntros (σ) "_ _". iPureIntro. left. unfold fails.
     destruct (Z.eq_dec (ls_fuel σ) 0) as [Hz|Hz].
@@ -1444,7 +1444,7 @@ Qed.
 Lemma wp_goto f e ls l t Φ :
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label t) (Some l))) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l [] (JGoto t))) : lexpr) {{ Φ }}.
-Proof. apply (wp_pure_next _ _ []). intros m fuel. apply rule_goto. Qed.
+Proof using SafepointStable0. apply (wp_pure_next _ _ []). intros m fuel. apply rule_goto. Qed.
 
 (** A conditional branch selects the second target for zero and the
     first otherwise, as [wp_branch] records using the evaluated integer condition. *)
@@ -1453,7 +1453,7 @@ Lemma wp_branch f e ls l v t1 t2 n Φ :
   ▷ WP (ERun (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) : lexpr)
       {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_branch _ _ _ _ _ _ _ _ _ _ _ _ Hv).
 Qed.
@@ -1463,7 +1463,7 @@ Qed.
 Lemma wp_ret f e l v k x Φ :
   fn_ret f = RClass k -> value_x ge e k v = Some x ->
   ▷ Φ (Ret x) -∗ WP (ERun (mkFrame f e [] None (Exec l [] (JRet v))) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hk Hv.
   assert (Hs : forall m fuel,
              Semantics.step ge (mkConfig (mkFrame f e [] None (Exec l [] (JRet v))) [] m fuel)
@@ -1484,7 +1484,7 @@ Qed.
     [RetVoid], provided that the continuation's postcondition holds for that outcome. *)
 Lemma wp_ret_void f e l Φ :
   ▷ Φ RetVoid -∗ WP (ERun (mkFrame f e [] None (Exec l [] JRetVoid)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   assert (Hs : forall m fuel,
              Semantics.step ge (mkConfig (mkFrame f e [] None (Exec l [] JRetVoid)) [] m fuel)
              = Done RetVoid).
@@ -1509,7 +1509,7 @@ Lemma wp_call f e ls l r g args rest j xs gf callee Φ :
   call_frame gf xs = Some callee ->
   ▷ WP (EWait (ERun callee) (mkFrame f e ls None (Exec l rest j)) (mkPending r None) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hf Hc.
   apply (wp_pure_next _ callee [(mkFrame f e ls None (Exec l rest j), mkPending r None)]).
   intros m fuel. exact (rule_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hx Hf Hc).
@@ -1520,7 +1520,7 @@ Qed.
 Lemma wp_resume o cf pd cf' Φ :
   resume cf pd o = Some cf' ->
   ▷ WP (ERun cf' : lexpr) {{ Φ }} -∗ WP (EWait (EEnd o) cf pd : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hr. iIntros "H". iApply wp_lift_base_step; [done|].
   iIntros (σ ns κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; exists [], (ERun cf'), σ, []; exact (hs_resume registry ge o cf pd cf' σ Hr)|].
@@ -1532,7 +1532,7 @@ Qed.
 (** A caller waiting for its callee forms an evaluation context,
     allowing Iris's binding rule to focus on the callee's execution. *)
 Local Instance wait_ctx cf pd : LanguageCtx (Λ := nanofil_lang registry ge) (fun e => EWait e cf pd).
-Proof. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang registry ge) (KWait cf pd)). Qed.
+Proof using Type. exact (ectxi_lang_ctx_item (Λ := nanofil_ectxi_lang registry ge) (KWait cf pd)). Qed.
 
 (** A caller can use the callee's specification and then prove its
     own continuation for every returned outcome that it accepts.
@@ -1544,7 +1544,7 @@ Lemma wp_call_bind f e ls l r g args rest j xs gf callee Φ :
   ▷ WP (ERun callee : lexpr) {{ o, ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) o
                                              = Some cf'⌝ ∗ ▷ WP (ERun cf' : lexpr) {{ Φ }} }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hx Hf Hc. iIntros "H". iApply (wp_call with "[H]"); [exact Hx|exact Hf|exact Hc|].
   iNext. iApply (wp_bind (fun ex => EWait ex (mkFrame f e ls None (Exec l rest j)) (mkPending r None))
                    NotStuck ⊤ (ERun callee : lexpr)).
@@ -1558,7 +1558,7 @@ Lemma wp_check_function f e ls l d v rest j p Φ :
   value_x ge e P v = Some (WPtr p) -> function_check_res ge p = Some ok ->
   ▷ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (Let d F CheckFunction [v] :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Hc. apply (wp_pure_next _ _ []).
   intros m fuel. exact (rule_check_function _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hc).
 Qed.
@@ -1574,7 +1574,7 @@ Lemma wp_raw_call f e ls l r callee args rest j p g xs gf ys words fr' Φ :
   call_frame gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else [])) = Some fr' ->
   ▷ WP (EWait (ERun fr') (mkFrame f e ls None (Exec l rest j)) (mkPending r words) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Hp Hc Hx Hf Hcv Hfr.
   apply (wp_pure_next _ fr' [(mkFrame f e ls None (Exec l rest j), mkPending r words)]).
   intros m fuel. exact (rule_raw_call _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hv Hp Hc Hx Hf Hcv Hfr).
@@ -1592,7 +1592,7 @@ Lemma wp_raw_call_bind f e ls l r callee args rest j p g xs gf ys words fr' Φ :
   ▷ WP (ERun fr' : lexpr) {{ o, ∃ cf', ⌜resume (mkFrame f e ls None (Exec l rest j)) (mkPending r words) o
                                          = Some cf'⌝ ∗ ▷ WP (ERun cf' : lexpr) {{ Φ }} }} -∗
   WP (ERun (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hv Hp Hc Hx Hf Hcv Hfr. iIntros "H".
   iApply (wp_raw_call with "[H]"); [exact Hv|exact Hp|exact Hc|exact Hx|exact Hf|exact Hcv|exact Hfr|].
   iNext. iApply (wp_bind (fun ex => EWait ex (mkFrame f e ls None (Exec l rest j)) (mkPending r words))
@@ -1631,7 +1631,7 @@ Lemma wp_external f e ls lab r g args rest j spec xs (Q : iProp Σ) Φ :
          heap_interp (mkLstate m' s' (ls_fuel σ) w') ∗
          WP (ERun (mkFrame f e' ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)) : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hfn Hdata Hfree Hreg Hx Habi Hpre. iIntros "HQ HK".
   set (site := mkCallSite lab r g args rest j).
   set (fr := mkFrame f e ls None (Exec lab (Call r (Global g) args :: rest) j)).

@@ -130,7 +130,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma pure_return {spec : contract world} r args xs (σ : lstate world) trace ending s' :
   CE.invoke spec r args xs (ls_rt σ) (ls_mem σ) (ls_world σ) trace ending s' (ls_mem σ) (ls_world σ) ->
   heap_interp wi σ -∗ heap_interp wi (mkLstate (ls_mem σ) s' (ls_fuel σ) (ls_world σ)).
-Proof.
+Proof using Type.
   intros Hi. iIntros "(%h & Hh & %Hf)". destruct Hf as (Ha & Hd & Hr & Hw).
   destruct (CE.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (born & Hp).
   destruct (CE.prefix_preserve _ _ _ _ _ _ _ _ _ _ _ Hp Hr) as [Hr' _].
@@ -150,7 +150,7 @@ Lemma wp_strlen f e ls lab d v rest j p b reg bytes Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d L) (Global (TAtom "strlen")) [Arg P v] :: rest) j)) : sexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strlen_contract world) [WPtr p] (string p b reg bytes)
             with "Hs [HK]"); [done | done | done | done | cbn [map_option]; rewrite Hv; done | | |].
@@ -191,7 +191,7 @@ Lemma wp_strchr f e ls lab d v w rest j p b reg bytes c Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "strchr")) [Arg P v; Arg W w] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hw Hc Hnz. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strchr_contract world) [WPtr p; WInt c]
             (string p b reg bytes) with "Hs [HK]");
@@ -242,7 +242,7 @@ Lemma wp_strcmp f e ls lab d v w rest j p b reg xs q b' reg' ys Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "strcmp")) [Arg P v; Arg P w] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hw. iIntros "Hs Ht HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strcmp_contract world) [WPtr p; WPtr q]
             (string p b reg xs ∗ string q b' reg' ys) with "[$Hs $Ht] [HK]");
@@ -273,7 +273,7 @@ Lemma wp_strncmp f e ls lab d v w u rest j p b reg xs q b' reg' ys n Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "strncmp")) [Arg P v; Arg P w; Arg L u] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hw Hu Hn. iIntros "Hs Ht HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strncmp_contract world) [WPtr p; WPtr q; WInt n]
             (string p b reg xs ∗ string q b' reg' ys) with "[$Hs $Ht] [HK]");
@@ -307,7 +307,7 @@ Lemma wp_strrchr f e ls lab d v w rest j p b reg bytes c Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "strrchr")) [Arg P v; Arg W w] :: rest) j))
         : sexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv Hw Hc Hnz. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strrchr_contract world) [WPtr p; WInt c]
             (string p b reg bytes) with "Hs [HK]");
@@ -369,7 +369,7 @@ Lemma wp_puts f e ls lab d v rest j p b reg bytes Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "puts")) [Arg P v] :: rest) j)) : pexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hfn Hdata Hv. iIntros "Hs HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (puts_contract rep requests) [WPtr p]
             (string p b reg bytes) with "Hs [HK]");

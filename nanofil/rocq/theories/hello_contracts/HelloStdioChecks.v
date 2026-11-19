@@ -48,7 +48,7 @@ Example callback_entry_resources :
     heap_interp close_wi (mkLstate conversion_mem InterpRuntime.start 64 (F.world true)) ∗
     pts (stream_ps T.out 7 [65; 66]) ∗ pts (stream_ps T.err 3 []) ∗
     pts (byte_ps 5120 0 [0; 0; 0; 0]).
-Proof.
+Proof using Type.
   iIntros "[Hh Herrno]".
   iMod (H.hello_callback_entry close_wi (fun _ _ => True) T.out T.err 5120 0
     (mkLstate conversion_mem InterpRuntime.start 64 (F.world true)) HelloErrnoChecks.heap
@@ -74,7 +74,7 @@ Example close_then_return_resources :
     (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
   {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
       pts (closed_ps T.out) ∗ pts (byte_ps 5120 0 ys) }}.
-Proof.
+Proof using Type.
   iIntros "Ho Herrno".
   iApply (H.wp_hello_fclose registry close_wi ge (fun _ _ => True)
     (fun _ _ _ _ => False) (fun _ _ _ _ _ => False) T.out T.err 5120 0 T.out 7 [65; 66]
@@ -185,7 +185,7 @@ Example permission_close_then_return :
     (JRet (Tmp (TAtom "r"))))) : language.expr (nanofil_lang registry ge))
   {{ result, ∃ n ys, ⌜result = Ret (WInt n) /\ length ys = 4%nat⌝ ∗
       pts (closed_ps P.out) ∗ pts (byte_ps 5120 0 ys) }}.
-Proof.
+Proof using Type.
   iIntros "Ho Herrno".
   iApply (H.wp_permission_fclose registry close_wi ge (fun _ _ => True)
     (fun _ _ _ _ => False) (fun _ _ _ _ _ => False) P.out P.err 5120 0 (token_handle P.out)

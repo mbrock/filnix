@@ -215,7 +215,7 @@ Lemma loop_spec xs : forall b reg o c creg y pb,
     {{ v, ⌜v = (Ret (WInt 0), [WTInt taint_bot])⌝ ∗
       ∃ y' pb', ⌜pb_no_store pb' = false⌝ ∗
         pts [(PLive c, VLive creg); (PByte c 0, VByte y')] ∗ ppts [(PPByte c 0, VPByte pb')] }}.
-Proof.
+Proof using Type.
   induction xs as [|x xs IH]; intros b reg o c creg y pb Hb Ho Hbound Hn Hc Hpb Hfn;
     iIntros "Hl Hxs Hd Hpd".
   - iApply wp_penter; [reflexivity|reflexivity|reflexivity|]. iNext.
@@ -307,7 +307,7 @@ Qed.
     secret byte at a time to the loop. *)
 Lemma input_ownership b o xs :
   pts (input_ps b o xs) -∗ ppts (input_pps b o xs) -∗ secret_bytes b o xs.
-Proof.
+Proof using Type.
   revert o. induction xs as [|x xs IH]; intros o; iIntros "Hv Hp"; [done|].
   rewrite /pts /ppts /=.
   iDestruct "Hv" as "[Hv Hvs]". iDestruct "Hp" as "[Hp Hps]".
@@ -325,7 +325,7 @@ Lemma kernel_spec b reg o xs :
   pts ((PLive b, VLive reg) :: input_ps b o xs) -∗ ppts (input_pps b o xs) -∗
   WP (PRun (kernel_entry (mkPtr (b + o) (Obj b)) (Z.of_nat (length xs))) kernel_te : pexprL)
     {{ v, ⌜v = (Ret (WInt 0), [WTInt taint_bot])⌝ }}.
-Proof.
+Proof using Type.
   intros Hb Ho Hbound Hn Hloop Hfree Hfn Hdata. iIntros "Hv Hp".
   rewrite /pts big_sepL_cons. iDestruct "Hv" as "[Hl Hv]".
   iAssert (pts [(PLive b, VLive reg)]) with "[Hl]" as "Hl"; [rewrite /pts; iFrame; done|].
@@ -464,7 +464,7 @@ Local Notation pexprL := (language.expr (poison_lang pol ge)).
 
 (** Public pointers pass the bounds-check taint guard under every policy. *)
 Lemma check_bot_ok : check_ptr_bounds_taint pol taint_bot taint_bot = None.
-Proof. unfold check_ptr_bounds_taint; destruct (pol_check_branches pol); reflexivity. Qed.
+Proof using Type. unfold check_ptr_bounds_taint; destruct (pol_check_branches pol); reflexivity. Qed.
 
 (** A freshly allocated 16-byte heap object supplies a live token and a
     clean 8-byte cell at offset zero. *)
@@ -473,7 +473,7 @@ Lemma alloc_16_cell c :
   ppts (pobj_ps c (heap_req 16 8)) -∗
   pts ([(PLive c, VLive (mkRegion c (c + 16) Heap Live))] ++ cell c 0 0) ∗
   ppts (pcell_ps c 0 pb_clean).
-Proof.
+Proof using Type.
   iIntros "Hv Hp".
   unfold obj_ps, pobj_ps.
   change (req_extent (heap_req 16 8)) with 16; change (req_kind (heap_req 16 8)) with Heap.
@@ -505,7 +505,7 @@ Lemma checked_loop_spec xs : forall b reg o c creg y pb,
       pts [(PLive b, VLive reg)] ∗
       ∃ y' pb', ⌜pb_no_load pb' = false /\ pb_no_store pb' = false⌝ ∗
         pts ([(PLive c, VLive creg)] ++ cell c 0 y') ∗ ppts (pcell_ps c 0 pb') }}.
-Proof.
+Proof using Type.
   induction xs as [|x xs IH]; intros b reg o c creg y pb Hb Ho Hrb Hrend Hn Hc Hcreg Hcrend Hcal Hnl Hns Hfn;
     iIntros "Hl Hxs Hd Hpd".
   - iApply wp_penter; [reflexivity|reflexivity|reflexivity|]. iNext.
@@ -634,7 +634,7 @@ Lemma checked_kernel_spec b reg o xs :
   ppts (input_pps b o xs) -∗
   WP (PRun (checked_kernel_entry (mkPtr (b + o) (Obj b)) (Z.of_nat (length xs))) kernel_te : pexprL)
     {{ v, ⌜v = (Ret (WInt 0), [WTInt taint_bot])⌝ }}.
-Proof.
+Proof using Type.
   intros Hb Ho Hrb Hrend Hn Hloop Hfree Hfn Hdata.
   iIntros "Hv Hp".
   rewrite /pts big_sepL_cons; iDestruct "Hv" as "[Hl Hv]".

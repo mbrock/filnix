@@ -178,7 +178,7 @@ Lemma getopt_returned r args xs s m w trace values s' m' w' :
   M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' ->
   exists born, getopt_post (hello_input av sargs) libc_getopt_view (libc_getopt_rep initialized)
     xs m w born trace (CallReturn values) m' w'.
-Proof.
+Proof using Type.
   intros H. apply GR.refined_invoke_base in H.
   inversion H as [trace' ending s0 m0 w0 born Habi Hpre Hp Hpost | ]; subst. exists born. exact Hpost.
 Qed.
@@ -189,7 +189,7 @@ Local Notation getopt_step := (getopt_step wi transition).
 Lemma getopt_stepped r args xs s m w h trace values s' m' w' a i :
   M.E.invoke getopt_spec r args xs s m w trace (CallReturn values) s' m' w' -> wi m w h ->
   (forall l v, (l, v) ∈ getopt_ps a i -> h !! l = Some v) -> getopt_step a i values.
-Proof.
+Proof using Type.
   intros Hi Hw Kt. destruct (GR.refined_return _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ Hi) as (born & Ht).
   exists xs, m, w, h, born, trace, m', w'. auto.
 Qed.
@@ -205,7 +205,7 @@ Lemma getopt_frame_ok r args s m w h trace values s' m' w' ps cs a' i' :
   agrees m' (overwrite (block_ps av ar 0 (mem_bytes m' av argv_len) (mem_auxes m' av argv_len) ++
                         getopt_ps a' i') h) /\
   live_disjoint m' /\ R.ready s' m'.
-Proof.
+Proof using Hav Hgetopt_apart.
   intros Hi Hw Ha Hd Hr Lx Lc Kb.
   pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
   assert (Hlv : live_at m av ar).
@@ -262,7 +262,8 @@ Lemma wp_main_getopt f e ls lab d va vv vs vl vi rest j ps cs a i Φ :
   WP (ERun (mkFrame f e ls None
      (Exec lab (Call (CResult d W) (Global (TAtom "getopt_long"))
                   [Arg W va; Arg P vv; Arg P vs; Arg P vl; Arg P vi] :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hav Hgetopt Hgetopt_apart Hgetopt_env Hgetopt_wi Hlinked Htable Kgetopt
+  SafepointStable0 invGS_gen0.
   intros Hx Ho Hc Hi. iIntros "Hb Hs Ht HK".
   assert (Lp : length ps = length sargs) by exact (order_length ps Ho).
   assert (Lx : length (argv_bytes ps) = argv_len).
@@ -350,7 +351,7 @@ Definition loop_exit (b4 b6 : Z) (lab from : String.string)
 Lemma argv_block_split b reg q rest cs :
   pts (block_ps b reg 0 (argv_bytes (q :: rest)) (ptr_cap q :: cs)) ⊣⊢
   live b reg ∗ pcell b 0 q ∗ bytes b 8 (argv_bytes rest) ∗ auxes b 1 cs.
-Proof.
+Proof using Type.
   rewrite block_pts /bytes /auxes /pcell /argv_bytes /slots_bytes. cbn [app flat_map].
   rewrite byte_ps_app aux_ps_cons. change (length (slot_bytes (ptr_addr q))) with 8%nat.
   change (0 + Z.of_nat 8) with 8. change (0 + 1) with 1.
@@ -394,7 +395,9 @@ Lemma main_to_L8 s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
        WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom "start")))) : mexpr)
          {{ Φ }}) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hav Hlent Hlinked Hmemcmp Hmemset
+  Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hset_pre Hsetlocale Hstrncmp Hstrrchr Kalloc Katexit Kmemset Knb
+  Kpn Kpstore Ksb Kset SafepointStable0 invGS_gen0.
   intros Hhd [Lc Hc] Hix. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 HK".
   pose proof Hav as (Hav0 & Hav8 & Haend & Har48).
   assert (Hok0 : string_ok (arg_ptr s0) (arg_base s0) (arg_region s0) (arg_text s0)).
@@ -439,7 +442,7 @@ Lemma wp_main_exit f e ls lab v rest j n Φ :
   arg_x ge e (Arg W v) = Some (WInt n) -> 0 <= n < 2 ^ 32 ->
   ⊢ WP (ERun (mkFrame f e ls None (Exec lab
     (Call CVoid (Global (TAtom "exit")) [Arg W v] :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hexit Hexit_abi Hexit_post Hexit_pre Hlinked SafepointStable0 gen_heapGS0 invGS_gen0.
   intros Hv Hn.
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ exit_spec [WInt n] True%I with "[] []").
   - apply linked_outside; [exact Hlinked|reflexivity].

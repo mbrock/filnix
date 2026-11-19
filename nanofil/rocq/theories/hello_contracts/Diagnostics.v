@@ -165,7 +165,7 @@ Inductive step registry ge (b : N.boundary payload) admitted :
 (** A diagnostic request carries only diagnostic events, not host exit. *)
 Theorem error_request_exit_free : forall ge c s w trace ms' w',
   error_request ge c s w trace ms' w' -> diagnostic_trace trace.
-Proof.
+Proof using Type.
   intros ge c s w trace ms' w' H. destruct H.
   destruct (E.invoke_prefix _ _ _ _ _ _ _ _ _ _ _ _ _ H2) as [born [_ [_ Htrace]]].
   exact Htrace.
@@ -176,7 +176,7 @@ Qed.
 Theorem error_request_preserve : forall ge c s w trace ms' w',
   error_request ge c s w trace ms' w' -> R.ready s (c_mem c) ->
   RM.ready_state ms' /\ persists (c_mem c) (c_mem (fst ms')).
-Proof.
+Proof using Type.
   intros ge c s w trace ms' w' H Hr. destruct H. simpl.
   eapply E.invoke_preserve; eauto.
 Qed.
@@ -188,7 +188,7 @@ Theorem step_preserve : forall registry ge b admitted st trace st',
   N.state_ready payload st -> N.state_ready payload st' /\
   persists (c_mem (fst (N.machine_of payload st)))
     (c_mem (fst (N.machine_of payload st'))).
-Proof.
+Proof using Type.
   intros registry ge b admitted st trace st' Hfree H. destruct H; intros Hr.
   - eapply N.step_preserve; eauto.
   - eapply E.invoke_preserve; eauto.

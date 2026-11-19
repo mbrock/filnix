@@ -249,7 +249,7 @@ Local Notation hexpr := (language.expr (nanofil_lang registry ge)).
 Lemma snu_spec k p t Φ :
   0 <= k < 2 ^ 32 ->
   lent k p t -∗ ▷ Φ (Ret (WPtr p)) -∗ WP (ERun (invocation snu_fn [WInt k]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hset Hset_abi Hset_pre Hset_query Hset_ret SafepointStable0.
   intros Hk32. iIntros "#Hk HΦ". rewrite snu_entry.
   iApply wp_enter; [exact find_u_start | reflexivity |]. iNext. cbn [b_insts b_jump u_start].
   iApply (wp_lent_query _ _ _ _ _ _ _ _ _ _ _ _ set_spec [WInt k; WPtr (mkPtr 0 CNone)] k p t with "Hk");
@@ -273,7 +273,8 @@ Lemma snru_spec k p t b reg xs cs Φ :
        live b reg -∗ bytes b 0 ys -∗ auxes b 0 cs' -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (invocation snru_fn [WInt k; WPtr (mkPtr b (Obj b)); WInt (Z.of_nat (length xs))]) : hexpr)
     {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcpy Hset Hset_abi Hset_pre Hset_query Hset_ret Hstrlen Kbyte Kcopy
+  SafepointStable0 wi_lent.
   intros Hk32 Hb0 Hb8 Hlc Hn Hend H48. iIntros "#Hk Hl Hx Hcs HΦ".
   iPoseProof "Hk" as "[%Hp _]". destruct Hp as (Hp & Hpt & Ht).
   destruct (locale_fns ge (proj1 Hlinked)) as (Hsnu & _ & _).
@@ -388,7 +389,8 @@ Lemma snr_spec k p t b reg xs cs Φ :
        live b reg -∗ bytes b 0 ys -∗ auxes b 0 cs' -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (invocation snr_fn [WInt k; WPtr (mkPtr b (Obj b)); WInt (Z.of_nat (length xs))]) : hexpr)
     {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcpy Hset Hset_abi Hset_pre Hset_query Hset_ret Hstrlen Kbyte Kcopy
+  SafepointStable0 wi_lent.
   intros Hk32 Hb0 Hb8 Hlc Hn Hend H48. iIntros "#Hk Hl Hx Hcs HΦ".
   destruct (locale_fns ge (proj1 Hlinked)) as (_ & Hsnru & _).
   rewrite snr_entry. iApply wp_enter; [exact find_n_start | reflexivity |]. iNext.
@@ -413,7 +415,7 @@ Lemma hard_locale_lookups :
   lookup (TAtom "hard-locale#str.32") (ge_globals ge) = Some posix_ptr /\
   find_fn ge (TAtom "streq") = Some (Defined streq_fn) /\
   find_fn ge (TAtom "setlocale_null_r") = Some (Defined snr_fn).
-Proof.
+Proof using Hlinked.
   destruct locale_globals as (H1 & H2). destruct Hlinked as (Hm & Hg & _).
   split; [exact (Hg _ _ H1)|]. split; [exact (Hg _ _ H2)|].
   split; [unfold find_fn; rewrite Hm; vm_compute; reflexivity | exact (proj2 (proj2 (locale_fns ge Hm)))].
@@ -427,7 +429,8 @@ Lemma hard_locale_spec k p t rc rp Φ :
   lent k p t -∗ string c_ptr 65824 rc c_bytes -∗ string posix_ptr 65856 rp posix_bytes -∗
   ▷ (∀ r, string c_ptr 65824 rc c_bytes -∗ string posix_ptr 65856 rp posix_bytes -∗ Φ (Ret (WInt r))) -∗
   WP (ERun (invocation hard_locale_fn [WInt k]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Hmemcpy Hset Hset_abi Hset_pre Hset_query Hset_ret Hstrcmp Hstrlen Kalloc Kbyte
+  Kcopy SafepointStable0 wi_lent.
   intros Hk32. iIntros "#Hk Hc Hposix HΦ".
   iPoseProof "Hk" as "[%Hp _]". destruct Hp as (Hp & Hpt & Ht).
   destruct hard_locale_lookups as (Hlc & Hlp & Hstreq & Hsnr).

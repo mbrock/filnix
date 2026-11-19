@@ -225,7 +225,7 @@ Definition lent (k : Z) (p : ptr) (t : list Z) : iProp Σ :=
 
 (** Lending is persistent. *)
 Global Instance lent_persistent k p t : Persistent (lent k p t).
-Proof. apply _. Qed.
+Proof using Type. apply _. Qed.
 
 (** [named] k p t: the name t at p of the key k, owned whole and not
     yet lent. A setter that changes k's name takes it ([wp_lend]). *)
@@ -237,7 +237,7 @@ Definition named (k : Z) (p : ptr) (t : list Z) : iProp Σ :=
 Lemma rename_update h ks old new :
   gen_heap_interp h -∗ ([∗ list] k ∈ ks, named k (old k).1 (old k).2) ==∗
   gen_heap_interp (rename h ks new) ∗ [∗ list] k ∈ ks, named k (new k).1 (new k).2.
-Proof.
+Proof using Type.
   induction ks as [|k ks IH]; iIntros "Hh Hks"; [iModIntro; iFrame|].
   rewrite !big_sepL_cons. iDestruct "Hks" as "[Hk Hks]".
   iMod (IH with "Hh Hks") as "[Hh Hks]". iMod (gen_heap_update with "Hh Hk") as "[Hh Hk]".
@@ -269,7 +269,7 @@ Lemma lent_facts σ k p t :
   heap_interp wi σ -∗ lent k p t -∗
   ∃ h, ⌜agrees (ls_mem σ) h /\ live_disjoint (ls_mem σ) /\ R.ready (ls_rt σ) (ls_mem σ) /\
        lent_at (ls_mem σ) h p t⌝.
-Proof.
+Proof using wi_lent.
   iIntros "(%h & Hh & %Hf) [_ Hk]". destruct Hf as (Ha & Hd & Hr & Hw).
   iDestruct (gen_heap_valid with "Hh Hk") as %Hl. iExists h. iPureIntro.
   split; [exact Ha|]. split; [exact Hd|]. split; [exact Hr|].
@@ -292,7 +292,7 @@ Lemma wp_lent_query f e ls lab d g args rest j spec xs k p t Φ :
   ▷ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec lab rest j)) : lexpr) {{ Φ }} -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global g) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hreg Hret Hfn Hdata Hfree Hx Habi Hpre Hinv. iIntros "#Hk HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs (lent k p t) with "Hk [HK]");
     [done | done | done | done | done | done | |].
@@ -335,7 +335,7 @@ Lemma wp_lend f e ls lab d g args rest j spec xs ks old gs
      WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec lab rest j)) : lexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d P) (Global g) args :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0 wi_lent.
   intros Hreg Hret Hfn Hdata Hfree Hx Habi Hgs Hpre Hpost. iIntros "Hks Hgs HQ HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ spec xs
             (Q ∗ ([∗ list] k ∈ ks, named k (old k).1 (old k).2) ∗ pts gs)%I with "[$HQ $Hks $Hgs] [HK]");
@@ -377,7 +377,7 @@ Lemma wp_strlen_lent f e ls lab d v rest j k p t Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d L) (Global (TAtom "strlen")) [Arg P v] :: rest) j)) : lexpr)
     {{ Φ }}.
-Proof.
+Proof using SafepointStable0 wi_lent.
   intros Hreg Hfn Hdata Hv. iIntros "#Hk HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strlen_contract world) [WPtr p] (lent k p t)
             with "Hk [HK]"); [done | done | done | done | cbn [map_option]; rewrite Hv; done | | |].
@@ -412,7 +412,7 @@ Lemma wp_strncmp_lent f e ls lab d v w u rest j k p t q b' reg' ys n Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d W) (Global (TAtom "strncmp")) [Arg P v; Arg P w; Arg L u] :: rest) j))
         : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0 wi_lent.
   intros Hreg Hfn Hdata Hv Hw Hu Hn. iIntros "#Hk Ht HK".
   iApply (wp_external _ _ _ _ _ _ _ _ _ _ _ _ (strncmp_contract world) [WPtr p; WPtr q; WInt n]
             (lent k p t ∗ string q b' reg' ys) with "[$Hk $Ht] [HK]");
@@ -458,7 +458,7 @@ Lemma wp_memcpy_lent f e ls lab d vd vs vn rest j b reg o xs cs k p t Φ :
   WP (ERun (mkFrame f e ls None
              (Exec lab (Call (CResult d P) (Global (TAtom "memcpy")) [Arg P vd; Arg P vs; Arg L vn] :: rest) j))
         : lexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0 wi_lent.
   intros Hreg Hfn Hdata Hpd Hps Hn Hlt Hlc Hb8 Ho8 Ho Hend Hwi.
   iIntros "#Hk Hl Hx Hcs HK".
   set (n := length xs). set (ys := take n (t ++ [0])).

@@ -319,7 +319,7 @@ Lemma wp_hello_error rep requests wide native out err b o f e ls lab v fmtv txtv
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call CVoid (Global (TAtom "error")) [Arg W (Const 0); Arg W v; Arg P fmtv; Arg P txtv] :: rest) j))
     : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hlinked Hb Hf Hreg Hv Hfmt Htext Hn Hlen. iIntros "Hps Hx HK".
   iApply (C.wp_close_error registry wi ge b o Hlinked hello_diagnostic_pieces
     (libc_error_contract rep requests wide native) Hreg with "Hps Hx HK").
@@ -369,7 +369,7 @@ Lemma hello_callback_entry rep out err b o σ h op oq ep eq
   (forall l v, (l, v) ∈ stream_ps out op oq ++ stream_ps err ep eq -> h !! l = None) ->
   gen_heap_interp h ==∗ heap_interp wi σ ∗
     pts (stream_ps out op oq) ∗ pts (stream_ps err ep eq).
-Proof.
+Proof using Type.
   intros Ha Hd Hr Hw Htokens Hol Hel Hoo Heo Hfresh. iIntros "Hh".
   iMod (stream_entry_alloc rep out err b o _ _ h op oq ep eq Ha Htokens Hol Hel Hoo Heo Hfresh
     with "Hh") as "(Hh & Ho & He & %Hnew)".
@@ -404,7 +404,7 @@ Lemma hello_callback_transfer rep out err b o stage before after
     heap_interp wi σ ∗ pts [(PName stage, after)] ∗
     pts (open_permission_ps out (token_handle out)) ∗
     pts (open_permission_ps err (token_handle err)).
-Proof.
+Proof using Type.
   intros Hstage Hso Hse Hneq Hagree σ. iIntros "Hσ Hstage".
   iDestruct "Hσ" as (h) "(Hh & %Ha & %Hd & %Hr & %Hw)".
   iDestruct (pts_lookup with "Hh Hstage") as %Howned.
@@ -437,7 +437,7 @@ Qed.
 Lemma wp_callback_transfer (P Q : iProp Σ) fr Φ :
   (forall σ, heap_interp wi σ -∗ P ==∗ heap_interp wi σ ∗ Q) ->
   P -∗ (Q -∗ WP (ERun fr : cexpr) {{ Φ }}) -∗ WP (ERun fr : cexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Htransfer. iIntros "HP HK".
   iEval (rewrite wp_unfold /wp_pre /=). iIntros (σ ns κs nt) "Hσ".
   iMod (Htransfer with "Hσ HP") as "[Hσ HQ]".
@@ -469,7 +469,7 @@ Lemma wp_hello_fclose rep requests wide out err b o dt pending fifo xs
     WP (ERun (mkFrame f (put result (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call (CResult result W) (Global (TAtom "fclose")) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hdt Hxs Hfn Hg Hreg Hv. iIntros "Hs Hx HK".
   iApply (C.wp_close_contract registry wi ge f e ls lab result W (TAtom "fclose") _ _ _
     (fclose_contract (libc_stream_model rep requests wide)) [WPtr (token_handle dt)]
@@ -521,7 +521,7 @@ Lemma wp_permission_fclose rep requests wide out err b o p xs
     WP (ERun (mkFrame f (put result (WInt n) e) ls None (Exec lab rest j)) : cexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab
     (Call (CResult result W) (Global (TAtom "fclose")) [Arg P v] :: rest) j)) : cexpr) {{ Φ }}.
-Proof.
+Proof using SafepointStable0.
   intros Hxs Hfn Hg Hreg Hv. iIntros "Hs Hx HK".
   iApply (C.wp_close_contract registry wi ge f e ls lab result W (TAtom "fclose") _ _ _
     (fclose_contract (libc_stream_model rep requests wide)) [WPtr p]

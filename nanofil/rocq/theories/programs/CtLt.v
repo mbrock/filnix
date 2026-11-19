@@ -129,7 +129,7 @@ Local Notation pexprL := (language.expr (poison_lang pol_strict ctlt_ge)).
 Lemma msb_spec x :
   ⊢ WP (PRun (msb_entry x) msb_te : pexprL)
       {{ v, ∃ n, ⌜v = (Ret (WInt n), [WTInt taint_all])⌝ }}.
-Proof.
+Proof using Type.
   iApply wp_penter; [reflexivity|reflexivity|reflexivity|]; iNext.
   iApply wp_plet; [reflexivity|reflexivity|reflexivity|intros; reflexivity|intros; reflexivity|]; iNext.
   iApply wp_plet; [reflexivity|reflexivity|reflexivity|intros; reflexivity|intros; reflexivity|]; iNext.
@@ -142,7 +142,7 @@ Qed.
 Lemma lt_spec a b :
   ⊢ WP (PRun (lt_entry a b) lt_te : pexprL)
       {{ v, ∃ n, ⌜v = (Ret (WInt n), [WTInt taint_all])⌝ }}.
-Proof.
+Proof using Type.
   iApply wp_penter; [reflexivity|reflexivity|reflexivity|]; iNext.
   do 5 (iApply wp_plet;
     [reflexivity|reflexivity|reflexivity|intros; reflexivity|intros; reflexivity|]; iNext).

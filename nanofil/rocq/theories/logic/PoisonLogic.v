@@ -303,34 +303,34 @@ Definition pptsq (dq : dfrac) (pps : list (ppiece * ppval)) : iProp Σ :=
   [∗ list] lv ∈ pps, pointsto (fst lv) dq (snd lv).
 
 Lemma ppts_pptsq pps : ppts pps ⊣⊢ pptsq (DfracOwn 1) pps.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 Lemma ppts_app pps qps : ppts (pps ++ qps) ⊣⊢ ppts pps ∗ ppts qps.
-Proof. by rewrite /ppts big_sepL_app. Qed.
+Proof using Type. by rewrite /ppts big_sepL_app. Qed.
 
 Lemma pptsq_app dq pps qps : pptsq dq (pps ++ qps) ⊣⊢ pptsq dq pps ∗ pptsq dq qps.
-Proof. by rewrite /pptsq big_sepL_app. Qed.
+Proof using Type. by rewrite /pptsq big_sepL_app. Qed.
 
 Lemma pptsq_split q1 q2 pps :
   pptsq (DfracOwn (q1 + q2)) pps ⊣⊢ pptsq (DfracOwn q1) pps ∗ pptsq (DfracOwn q2) pps.
-Proof.
+Proof using Type.
   rewrite /pptsq -big_sepL_sep. apply big_sepL_proper. intros _ lv _.
   exact (fractional (Φ := fun q => pointsto (fst lv) (DfracOwn q) (snd lv)) q1 q2).
 Qed.
 
 Lemma pptsq_persist dq pps : pptsq dq pps ==∗ □ pptsq DfracDiscarded pps.
-Proof.
+Proof using Type.
   induction pps as [|lv pps IH]; rewrite /pptsq /=; iIntros "H"; [by iModIntro|].
   iDestruct "H" as "[Hl H]". iMod (pointsto_persist with "Hl") as "#Hl".
   iMod (IH with "H") as "#H". iModIntro. iModIntro. iFrame "#".
 Qed.
 
 Instance pptsq_persistent pps : Persistent (pptsq DfracDiscarded pps).
-Proof. rewrite /pptsq. apply _. Qed.
+Proof using Type. rewrite /pptsq. apply _. Qed.
 
 Lemma ppts_lookup ph pps :
   gen_heap_interp ph -∗ ppts pps -∗ ⌜forall l v, (l, v) ∈ pps -> ph !! l = Some v⌝.
-Proof.
+Proof using Type.
   induction pps as [|[l v] pps IH]; iIntros "Hph Hpps".
   - iPureIntro. intros l v Hin. by apply not_elem_of_nil in Hin.
   - rewrite /ppts /=. iDestruct "Hpps" as "[Hl Hpps]".
@@ -341,7 +341,7 @@ Qed.
 
 Lemma pptsq_lookup ph dq pps :
   gen_heap_interp ph -∗ pptsq dq pps -∗ ⌜forall l v, (l, v) ∈ pps -> ph !! l = Some v⌝.
-Proof.
+Proof using Type.
   induction pps as [|[l v] pps IH]; iIntros "Hph Hpps".
   - iPureIntro. intros l v Hin. by apply not_elem_of_nil in Hin.
   - rewrite /pptsq /=. iDestruct "Hpps" as "[Hl Hpps]".
@@ -353,7 +353,7 @@ Qed.
 Lemma ppts_update ph pps pps' :
   pps'.*1 = pps.*1 ->
   gen_heap_interp ph -∗ ppts pps ==∗ gen_heap_interp (poverwrite pps' ph) ∗ ppts pps'.
-Proof.
+Proof using Type.
   revert pps'. induction pps as [|[l v] pps IH]; intros [|[l' v'] pps'] Hk; try discriminate Hk.
   - iIntros "Hph _". iModIntro. iFrame. by rewrite /ppts.
   - cbn in Hk. injection Hk as -> Hk. iIntros "Hph Hpps". rewrite /ppts /=.
@@ -366,7 +366,7 @@ Lemma ppts_alloc ph pps :
   NoDup pps.*1 ->
   (forall l v, (l, v) ∈ pps -> ph !! l = None) ->
   gen_heap_interp ph ==∗ gen_heap_interp (poverwrite pps ph) ∗ ppts pps.
-Proof.
+Proof using Type.
   induction pps as [|[l v] pps IH]; intros Hnd Hfr.
   - iIntros "Hph". iModIntro. iFrame. by rewrite /ppts.
   - cbn in Hnd. apply NoDup_cons in Hnd as [Hn Hnd]. iIntros "Hph".
@@ -1343,7 +1343,7 @@ Lemma preach_frame_ok φ c ps s :
   piris_reach c ps s ->
   ~ pfails pol ge (mkConfig (c_frame c) [] (c_mem c) (c_fuel c))
                   (mkPState (ps_tenv ps) [] (ps_mem ps) (ps_aux ps)).
-Proof.
+Proof using Type.
   intros Had (pcs & _ & _ & Hr).
   apply (pconf_not_pfails pol ge (c_frame c) (ps_tenv ps) pcs (c_mem c) (ps_mem ps) (ps_aux ps) s (c_fuel c)).
   apply (adequate_not_stuck _ _ _ _ Had _ _ _ eq_refl Hr). left.
@@ -1354,7 +1354,7 @@ Lemma preach_step φ c ps s c' ps' s' :
   piris_reach c ps s ->
   pmstep pol ge (c, ps, s) (c', ps', s') ->
   piris_reach c' ps' s'.
-Proof.
+Proof using Type.
   intros Had Hreach Hst.
   pose proof (preach_frame_ok φ c ps s Had Hreach) as Hnf.
   destruct Hreach as (pcs & Hcc & Htc & Hr).
@@ -1419,7 +1419,7 @@ Lemma preach_not_pfails φ c ps s :
   @adequate (poison_lang pol ge) NotStuck (PRun fr0 te0) (mkPLstate m0 pm0 paux0 s0 fuel0) φ ->
   piris_reach c ps s ->
   ~ pfails pol ge c ps.
-Proof.
+Proof using Type.
   intros Had Hreach.
   pose proof (preach_frame_ok φ c ps s Had Hreach) as Hnf.
   destruct Hreach as (pcs & Hcc & Htc & Hr).
@@ -1594,7 +1594,7 @@ Local Hint Opaque pts ptsq ppts pptsq : typeclass_instances.
     read, without granting permission to change the poison heap. *)
 Lemma poison_ptsq_facts σ dq ps :
   poison_heap_interp σ -∗ ptsq dq ps -∗ ⌜owned_facts ps (pl_mem σ)⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ Hps". iDestruct "Hσ" as (h ph) "(Hh & Hph & %Hσ)".
   destruct Hσ as (Ha & Hp & Hd & Hr).
   iDestruct (ptsq_lookup with "Hh Hps") as %Hl. iPureIntro.
@@ -1607,7 +1607,7 @@ Qed.
 Lemma poison_pptsq_facts σ dq pps :
   poison_heap_interp σ -∗ pptsq dq pps -∗
   ⌜all_p_agree (pl_mem σ) (pl_pm σ) (pl_paux σ) pps⌝.
-Proof.
+Proof using Type.
   iIntros "Hσ Hpps". iDestruct "Hσ" as (h ph) "(Hh & Hph & %Hσ)".
   destruct Hσ as (Ha & Hp & Hd & Hr).
   iDestruct (pptsq_lookup with "Hph Hpps") as %Hl. iPureIntro.
@@ -1621,7 +1621,7 @@ Lemma poison_heap_safepoint m pm paux s fuel m' s' :
   R.safepoint s m s' m' ->
   poison_heap_interp (mkPLstate m pm paux s fuel) -∗
   poison_heap_interp (mkPLstate m' pm paux s' fuel).
-Proof.
+Proof using Type.
   intros Hsp. iIntros "Hσ". iDestruct "Hσ" as (h ph) "(Hh & Hph & %Hσ)".
   destruct Hσ as (Ha & Hp & Hd & Hr).
   destruct (SS.safepoint_shape _ _ _ _ Hsp) as (Hreg & Hb & Haux).
@@ -1668,7 +1668,7 @@ Lemma wp_lift_prun (Q : iProp Σ) fr te Φ :
     ▷ ∀ e2 σ2, ⌜pmoves fr te σ e2 σ2⌝ ==∗
       poison_heap_interp σ2 ∗ WP (e2 : pexprL) {{ Φ }}) ->
   Q -∗ WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hnf Hst. iLöb as "IH". iIntros "HQ".
   iApply wp_lift_base_step; [done|]. iIntros (σ ns κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
@@ -1708,7 +1708,7 @@ Lemma wp_pread dq pdq ps pps fr te fr' te' pcs Φ :
   ▷ (ptsq dq ps -∗ pptsq pdq pps -∗
      WP (pstack_expr (PRun fr' te') pcs : pexprL) {{ Φ }}) -∗
   WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs. iIntros "Hps Hpps HK". iCombine "Hps Hpps HK" as "H".
   iApply (wp_lift_prun with "H").
   - iIntros (σ) "Hσ [Hps [Hpps _]]".
@@ -1741,7 +1741,7 @@ Lemma wp_ppure_next fr te fr' te' pcs Φ :
             (mkPState te' (pcs_tcallers pcs) pm paux)) ->
   ▷ WP (pstack_expr (PRun fr' te') pcs : pexprL) {{ Φ }} -∗
   WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hs. iIntros "HK".
   iApply (wp_pread (DfracOwn 1) (DfracOwn 1) [] [] with "[] [] [HK]");
     [intros; apply Hs|by rewrite /ptsq|by rewrite /pptsq|].
@@ -1766,7 +1766,7 @@ Lemma wp_pwrite ps ps' pps pps' fr te fr' te' pcs
   pts ps -∗ ppts pps -∗
   ▷ (pts ps' -∗ ppts pps' -∗ WP (pstack_expr (PRun fr' te') pcs : pexprL) {{ Φ }}) -∗
   WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hk Hpk Hs. iIntros "Hps Hpps HK". iCombine "Hps Hpps HK" as "H".
   iApply (wp_lift_prun with "H").
   - iIntros (σ) "Hσ [Hps [Hpps _]]".
@@ -1817,7 +1817,7 @@ Lemma wp_palloc fr te q (fr' : Z -> frame) (te' : Z -> tenv) Φ :
      pts (obj_ps base q) -∗ ppts (pobj_ps base q) -∗
      WP (PRun (fr' base) (te' base) : pexprL) {{ Φ }}) -∗
   WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hal Hex Hs. iIntros "HK". iApply (wp_lift_prun with "HK").
   - iIntros (σ) "_ _". iPureIntro. unfold pfails. rewrite Hs. lia.
   - iIntros ([m pm paux s fuel]) "Hσ HK". iNext. iIntros (e2 σ2 Hm).
@@ -1866,7 +1866,7 @@ Lemma wp_palloc_heap f e te ls l d k al v rest j size Φ :
      WP (PRun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j))
        (put d (WTPtr taint_bot taint_bot) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d k (Alloc al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ht Hs0 Hs. apply wp_palloc.
   - cbn. lia.
   - cbn. apply Z.mul_nonneg_nonneg; [apply Z.div_pos|]; lia.
@@ -1889,7 +1889,7 @@ Lemma wp_preturn fr te o ots Φ :
   (forall m pm paux fuel,
     pstep pol ge (mkConfig fr [] m fuel) (mkPState te [] pm paux) = PDone o ots) ->
   ▷ Φ (o, ots) -∗ WP (PRun fr te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hls Hret Hs. iIntros "HK". iApply (wp_lift_prun with "HK").
   - iIntros (σ) "_ _". iPureIntro. unfold pfails. rewrite Hs.
     destruct o; cbn in *; tauto.
@@ -1907,7 +1907,7 @@ Lemma wp_presume o ots cf cte r cf' cte' Φ :
   presume cf cte r o ots = Some (cf', cte') ->
   ▷ WP (PRun cf' cte' : pexprL) {{ Φ }} -∗
   WP (PWait (PEnd o ots) cf cte r : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hr. iIntros "HK". iApply wp_lift_base_step; [done|].
   iIntros (σ ns κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; do 4 eexists; exact (phs_resume pol ge o ots cf cte r cf' cte' σ Hr)|].
@@ -1920,7 +1920,7 @@ Qed.
     verified once and used through its own Hoare triple. *)
 Local Instance pwait_ctx cf cte r :
   LanguageCtx (Λ := poison_lang pol ge) (fun e => PWait e cf cte r).
-Proof. exact (ectxi_lang_ctx_item (Λ := poison_ectxi_lang pol ge) (KPWait cf cte r)). Qed.
+Proof using Type. exact (ectxi_lang_ctx_item (Λ := poison_ectxi_lang pol ge) (KPWait cf cte r)). Qed.
 
 (** A memory-independent operation checks its ordinary result and its
     taint transfer separately. In particular, [Select] joins all three
@@ -1934,7 +1934,7 @@ Lemma wp_plet f e te ls l d k o args rest j classes xs w wt Φ :
       TNext (mkPState (put d wt te) [] pm paux)) ->
   ▷ WP (PRun (mkFrame f (put d w e) ls None (Exec l rest j)) (put d wt te) : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hg Hc Hx Ho Ht. apply (wp_ppure_next _ _ _ _ []).
   intros m pm paux fuel. unfold pstep.
   change (tstep pol ge _ _) with (let_tstep pol ge e (mkPState te [] pm paux) d k o args).
@@ -1958,7 +1958,7 @@ Lemma wp_praw_load_byte f e te ls l d k n off av rest j p b reg o x y pb ta tc d
        (put d (WTInt (pb_taint pb)) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) [av] :: rest) j))
     te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Ha Hta Hn Hy Hp Hoff Hi Hb Hload.
   apply (wp_pread dq pdq _ _ _ _ _ _ []).
   intros m pm paux fuel (Hf & _) Hpf.
@@ -2002,7 +2002,7 @@ Lemma wp_praw_store_byte f e te ls l off v a rest j p b reg o x y pb tv ta tc Φ
      ppts [(PPByte b o, VPByte (note_store_byte tv pb))] -∗
      WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (RawStore Wb off v a :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ha Htv Hta Hp Hoff Hi Hb Hstore.
   apply (wp_pwrite _ _ _ _ _ _ _ _ []
     (fun m => store_bytes m (b + o) 1 y)
@@ -2068,7 +2068,7 @@ Lemma wp_pfree_sym fnm f e te ls l v rest j b reg Φ :
   pts [(PLive b, VLive reg)] -∗
   ▷ WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfnm [_ Hfh] Hfn Hdata Hx Ht Hk Hb.
   assert (Hs : forall m pm paux fuel, live_at m b reg -> exists rs,
     replace_region b (mkRegion b b Heap Freed) (m_regions m) = Some rs /\
@@ -2123,7 +2123,7 @@ Qed.
 Lemma wp_pgoto f e te ls l t Φ :
   ▷ WP (PRun (mkFrame f e ls None (Enter (edge_label t) (Some l))) te : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l [] (JGoto t))) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   apply (wp_ppure_next _ _ _ _ []). intros m pm paux fuel.
   unfold pstep. change (tstep pol ge _ _) with (TNext (mkPState te [] pm paux)).
   rewrite rule_goto. reflexivity.
@@ -2137,7 +2137,7 @@ Lemma wp_penter f e te ls l from b e' te' Φ :
   phis_env ge (b_phis b) from e = Some e' -> phis_tenv (b_phis b) from te = Some te' ->
   ▷ WP (PRun (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) te' : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Enter l from)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hb He Ht.
   assert (Hs : forall m pm paux fuel,
     pstep pol ge (mkConfig (mkFrame f e ls None (Enter l from)) [] m fuel)
@@ -2175,7 +2175,7 @@ Lemma wp_pbranch f e te ls l v t1 t2 n tv Φ :
   ▷ WP (PRun (mkFrame f e ls None
     (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) te : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ht Hb. apply (wp_ppure_next _ _ _ _ []). intros m pm paux fuel.
   unfold pstep. cbn [tstep c_frame fr_doomed fr_at jump_tstep ps_tenv]. rewrite Ht Hb.
   rewrite (rule_branch _ _ _ _ _ _ _ _ _ _ _ _ Hv). reflexivity.
@@ -2189,7 +2189,7 @@ Lemma wp_pcall f e te ls l r g args rest j xs wts gf callee cte Φ :
   call_frame gf xs = Some callee -> call_tenv gf wts = Some cte ->
   ▷ WP (PWait (PRun callee cte) (mkFrame f e ls None (Exec l rest j)) te r : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hx Ht Hf Hvar Hfr Hte.
   apply (wp_ppure_next _ _ _ _ [(mkFrame f e ls None (Exec l rest j), te, r)]).
   intros m pm paux fuel. unfold pstep.
@@ -2209,7 +2209,7 @@ Lemma wp_pcall_bind f e te ls l r g args rest j xs wts gf callee cte Φ :
     ⌜presume (mkFrame f e ls None (Exec l rest j)) te r v.1 v.2 = Some (cf', te')⌝ ∗
     ▷ WP (PRun cf' te' : pexprL) {{ Φ }} }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hx Ht Hf Hvar Hfr Hte. iIntros "HK".
   iApply (wp_pcall with "[HK]"); [exact Hx|exact Ht|exact Hf|exact Hvar|exact Hfr|exact Hte|].
   iNext. iApply (wp_bind (fun ex => PWait ex (mkFrame f e ls None (Exec l rest j)) te r)
@@ -2223,7 +2223,7 @@ Lemma wp_pret f e te l v k x wt Φ :
   fn_ret f = RClass k -> value_x ge e k v = Some x -> value_t te k v = Some wt ->
   ▷ Φ (Ret x, [wt]) -∗
   WP (PRun (mkFrame f e [] None (Exec l [] (JRet v))) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hk Hv Ht. apply wp_preturn; [reflexivity|exact I|].
   intros m pm paux fuel. unfold pstep.
   cbn [tstep c_frame fr_doomed fr_at jump_tstep fr_fn ps_tenv]. rewrite Hk Ht.
@@ -2239,7 +2239,7 @@ Lemma wp_pret_void f e te l Φ :
   fn_ret f = RVoid ->
   ▷ Φ (RetVoid, []) -∗
   WP (PRun (mkFrame f e [] None (Exec l [] JRetVoid)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hk. apply wp_preturn; [reflexivity | exact I |].
   intros m pm paux fuel. unfold pstep.
   cbn [tstep c_frame fr_doomed fr_at jump_tstep fr_fn return_tstep ps_callers].
@@ -2261,7 +2261,7 @@ Lemma wp_pflight f e te ls l d o args lw rest j xs ts n c tc Φ :
   ▷ WP (PRun (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j))
     (put d (WTPtr (join_taints ts) tc) te) : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hx Ht Ha Hc Htc Hvt. apply (wp_ppure_next _ _ _ _ []).
   intros m pm paux fuel. unfold pstep.
   cbn [tstep c_frame fr_doomed fr_at inst_tstep ps_tenv ps_callers ps_mem ps_aux].
@@ -2285,7 +2285,7 @@ Lemma wp_pcheck f e te ls l d lo hi r al v rest j p ta tc b reg dq Φ :
      WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
        (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d A (Check lo hi r al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ht Hchk Hp Hlo Hhi Hal. iIntros "Hl HK".
   iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
     [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
@@ -2317,7 +2317,7 @@ Lemma wp_pcheck_read f e te ls l d lo hi al v rest j p ta tc b reg dq Φ :
      WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
        (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ht Hchk Hp Hlo Hhi Hal. iIntros "Hl HK".
   iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
     [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
@@ -2353,7 +2353,7 @@ Lemma wp_prenew f e te ls l d lo hi r al q1 v rest j p1 p qa qc ta tc b reg dq �
      WP (PRun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j))
        (put d (WTPtr ta tc) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi r al) [q1; v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hq1 Hv Htq1 Htv Hchk Hcap Hp Hlo Hhi Hal. iIntros "Hl HK".
   iApply (wp_pread dq (DfracOwn 1) [(PLive b, VLive reg)] [] _ _ _ _ [] with "Hl [] [HK]");
     [|by rewrite /pptsq|iNext; iIntros "Hl _"; iApply ("HK" with "Hl")].
@@ -2386,7 +2386,7 @@ Lemma wp_palloc_any f e te ls l d k al v rest j size tsz Φ :
      WP (PRun (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j))
        (put d (WTPtr taint_bot taint_bot) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d k (Alloc al) [v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ht Hb Hi Hs0.
   destruct (Z.le_gt_cases size max_allocation_size) as [Hs | Hs].
   - apply wp_palloc.
@@ -2432,7 +2432,7 @@ Lemma wp_pfree_null fnm f e te ls l v rest j ta tc Φ :
   t_index tc = false ->
   ▷ WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }} -∗
   WP (PRun (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfnm [Hnull _] Hfn Hdata Hx Ht Hba Hbc Hic.
   apply (wp_ppure_next _ _ _ _ []).
   intros m pm paux fuel. unfold pstep.
@@ -2461,7 +2461,7 @@ Lemma wp_praw_load f e te ls l d k off av rest j p b reg o v pb ta tc dq pdq Φ 
      WP (PRun (mkFrame f (put d (WInt (v mod 2 ^ 64)) e) ls None (Exec l rest j))
        (put d (WTInt (pb_taint pb)) te) : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (Let d k (RawLoad LdL off) [av] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hc Ha Hta Hp Hoff Hi Hb Hload.
   apply (wp_pread dq pdq _ _ _ _ _ _ []).
   intros m pm paux fuel (Hf & _) Hpf.
@@ -2499,7 +2499,7 @@ Lemma wp_praw_store f e te ls l off v a rest j p b reg o w w' pb tv ta tc Φ :
      ppts (pcell_ps b o (note_store_byte tv pb)) -∗
      WP (PRun (mkFrame f e ls None (Exec l rest j)) te : pexprL) {{ Φ }}) -∗
   WP (PRun (mkFrame f e ls None (Exec l (RawStore Wl off v a :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ha Htv Hta Hp Hoff Hi Hb Hstore.
   apply (wp_pwrite
     ([(PLive b, VLive reg)] ++ cell b o w)
@@ -2563,7 +2563,7 @@ Lemma wp_praw_load_pointer f e te ls l d off av rest j p b reg o x reg' pb txc t
   WP (PRun (mkFrame f e ls None
        (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) [av] :: rest) j))
        te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Ha Hta Hp Hoff Hal Hrange Hi Hb Hload.
   iIntros "Hv Hp Hcap HK". iCombine "Hv Hp Hcap HK" as "H".
   iApply (wp_lift_prun with "H").
@@ -2663,7 +2663,7 @@ Lemma wp_praw_store_pointer f e te ls l off v a rest j xp p b reg o x pb txc tva
   WP (PRun (mkFrame f e ls None
        (Exec l (RawStorePointer off v a [AuxEnsure; LowerBarrier; RootedReload; LowerWrite; AddressWrite]
                 :: rest) j)) te : pexprL) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hv Ha Htv Hta Hp Hoff Hal Hi Hb Hstore.
   apply (wp_pwrite
     ([(PLive b, VLive reg)] ++ (PAux b o, VAux (ptr_cap x)) :: cell b o (ptr_addr x))

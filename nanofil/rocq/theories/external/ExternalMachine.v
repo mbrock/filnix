@@ -324,7 +324,7 @@ Definition no_violation (registry : name -> option (contract world)) (ge : genv)
 Lemma no_violation_rejected : forall registry ge start prefix c s w site why,
   no_violation registry ge start -> run registry ge start prefix (Running (c, s) w) ->
   external_site ge c site -> ~ rejected registry ge c w site why.
-Proof.
+Proof using Type.
   intros registry ge start prefix c s w site why Hsafe Hrun Hsite Hbad.
   exact (Hsafe _ _ _ _ _ _ _ _ Hrun (step_rejected _ _ _ _ _ _ _ Hsite Hbad)).
 Qed.
@@ -333,13 +333,13 @@ Qed.
     further [step]. *)
 Lemma stopped_no_step : forall registry ge why ms w trace st,
   ~ step registry ge (Stopped why ms w) trace st.
-Proof. intros registry ge why ms w trace st H. inversion H. Qed.
+Proof using Type. intros registry ge why ms w trace st H. inversion H. Qed.
 
 (** Any labelled [step] from a configuration that is not at an
     [external_site] is a core transition and emits an empty event trace. *)
 Lemma non_external_silent : forall registry ge c s w trace st,
   (forall site, ~ external_site ge c site) -> step registry ge (Running (c, s) w) trace st -> trace = [].
-Proof. intros registry ge c s w trace st Hnone H. inversion H; subst; try reflexivity; exfalso; eapply Hnone; eauto. Qed.
+Proof using Type. intros registry ge c s w trace st Hnone H. inversion H; subst; try reflexivity; exfalso; eapply Hnone; eauto. Qed.
 
 (** A labelled [step] can stop with an [[unchecked]] outcome only when the
     underlying core semantics [Semantics.step] produces that outcome directly,
@@ -348,13 +348,13 @@ Proof. intros registry ge c s w trace st Hnone H. inversion H; subst; try reflex
 Lemma unchecked_is_core : forall registry ge c s w trace ms' w' why,
   step registry ge (Running (c, s) w) trace (Stopped (CoreEnd (Unchecked why)) ms' w') ->
   Semantics.step ge c = Done (Unchecked why).
-Proof. intros registry ge c s w trace ms' w' why H. inversion H; subst; assumption. Qed.
+Proof using Type. intros registry ge c s w trace ms' w' why H. inversion H; subst; assumption. Qed.
 
 (** When an external call site satisfies [admissible], it cannot be
     [rejected] for any contract violation. *)
 Lemma admissible_not_rejected : forall registry ge c w site why,
   admissible registry ge c w site -> ~ rejected registry ge c w site why.
-Proof.
+Proof using Type.
   intros registry ge c w site why (spec & xs & Hr & Hx & Ha & Hp) H.
   destruct H; try congruence.
 Qed.
@@ -364,7 +364,7 @@ Qed.
     [[runtime]] [[ready]]. *)
 Theorem step_ready : forall registry ge st trace st',
   ge_free ge = R.free -> step registry ge st trace st' -> state_ready st -> state_ready st'.
-Proof.
+Proof using Type.
   intros registry ge st trace st' Hfree H. destruct H; simpl; intros Hr;
     try exact Hr; try solve [eapply mstep_ready; eauto].
   all: exact (proj1 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
@@ -375,7 +375,7 @@ Qed.
 Theorem step_persists : forall registry ge st trace st',
   ge_free ge = R.free -> step registry ge st trace st' -> state_ready st ->
   persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))).
-Proof.
+Proof using Type.
   intros registry ge st trace st' Hfree H. destruct H; simpl; intros Hr;
     try apply persists_refl.
   1: exact (S.ID.mstep_persists _ _ _ Hfree Hr (single_core_step _ _ _ H)).
@@ -398,7 +398,7 @@ Qed.
     preserves the [[evidence]] invariant [inv] in the new memory state. *)
 Lemma resume_inv : forall ge md c s site e m' s',
   external_site ge c site -> inv ge md (c, s) -> inv ge md (resume_external c site e m', s').
-Proof.
+Proof using Type.
   intros ge md c s site e m' s' (Hd & Ha & _) [Hfr Hcs]. split; [|exact Hcs].
   exact (parked_resume ge md m'
     (mkFrame (fr_fn (c_frame c)) (fr_env (c_frame c)) (fr_locals (c_frame c)) None
@@ -412,7 +412,7 @@ Qed.
 Lemma external_env_other : forall (spec : contract world) site values old e a,
   external_env spec site values old = Some e -> ~ In a (result_names (site_result site)) ->
   lookup a e = lookup a old.
-Proof.
+Proof using Type.
   intros spec site values old e a H Ha. unfold external_env in H.
   destruct (external_outcome _ _) as [o|]; [|discriminate H].
   exact (returned_env_other _ _ _ _ _ H Ha).
@@ -427,7 +427,7 @@ Lemma resume_sinv : forall ge md c site (spec : contract world) values e m',
   checked_module md -> external_site ge c site ->
   external_env spec site values (fr_env (c_frame c)) = Some e ->
   persists (c_mem c) m' -> sinv ge md c -> sinv ge md (resume_external c site e m').
-Proof.
+Proof using Type.
   intros ge md c site spec values e m' Hmd (Hd & Ha & _) He Hp [[Hsh Hsc] Hcs].
   destruct Hsc as [Hdoom | Hsc]; [contradiction|].
   unfold shaped in Hsh. cbv zeta in Hsh. rewrite Ha in Hsh.
@@ -468,7 +468,7 @@ Definition single_inv (ge : genv) (md : module) (st : state) : Prop :=
 Theorem step_inv : forall registry ge md st trace st',
   ge_module ge = md -> checked_module md ->
   step registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> evidence_inv ge md st'.
-Proof.
+Proof using Type.
   intros registry ge md st trace st' Hge Hmd H. destruct H; simpl; intros Hr Hi; try exact I.
   - eapply P.mstep_inv; eauto.
   - eapply resume_inv; eauto.
@@ -480,7 +480,7 @@ Qed.
 Theorem step_sinv : forall registry ge md st trace st',
   ge_module ge = md -> checked_module md -> ge_free ge = R.free ->
   step registry ge st trace st' -> state_ready st -> single_inv ge md st -> single_inv ge md st'.
-Proof.
+Proof using Type.
   intros registry ge md st trace st' Hge Hmd Hfree H. destruct H; simpl; intros Hr Hi; try exact I.
   - exact (S.mstep_sinv _ _ _ _ Hge Hmd Hfree Hr (single_core_step _ _ _ H) Hi).
   - eapply resume_sinv; eauto. exact (proj2 (E.invoke_preserve _ _ _ _ _ _ _ _ _ _ _ _ _ H2 Hr)).
@@ -495,7 +495,7 @@ Theorem run_preserve : forall registry ge md st trace st',
   run registry ge st trace st' -> state_ready st -> evidence_inv ge md st -> single_inv ge md st ->
   state_ready st' /\ persists (c_mem (fst (machine_of st))) (c_mem (fst (machine_of st'))) /\
   evidence_inv ge md st' /\ single_inv ge md st'.
-Proof.
+Proof using Type.
   intros registry ge md st trace st' Hge Hmd Hfree H.
   induction H; intros Hr Hi Hs.
   - split; [exact Hr|]. split; [apply persists_refl|auto].

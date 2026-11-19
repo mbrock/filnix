@@ -97,7 +97,7 @@ Lemma argv_slots m h ps cs :
   (forall l v, (l, v) ∈ block_ps av ar 0 (argv_bytes ps) cs -> h !! l = Some v) ->
   (forall l v, (l, v) ∈ flat_map arg_ps sargs -> h !! l = Some v) ->
   getopt_slots m av ps.
-Proof.
+Proof using Hargs.
   intros Ha Ho [Lc Hc] Kb Ks.
   assert (Hlv : live_at m av ar).
   { apply (Ha (PLive av) (VLive ar)), Kb. apply elem_of_cons. left. reflexivity. }
@@ -142,7 +142,7 @@ Lemma getopt_admitted m w h ps cs a i :
   (forall l v, (l, v) ∈ getopt_ps a i -> h !! l = Some v) ->
   getopt_pre (hello_input av sargs) libc_getopt_view (libc_getopt_rep initialized)
     (getopt_words (hello_input av sargs)) m w.
-Proof.
+Proof using Hargc Hargs Hav Hgetopt_env Hgetopt_wi Htable.
   intros Hw Ha Hd Ho Hc Hi Kb Ks Kt.
   assert (Hlv : live_at m av ar).
   { apply (Ha (PLive av) (VLive ar)), Kb. apply elem_of_cons. left. reflexivity. }

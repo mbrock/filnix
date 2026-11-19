@@ -181,7 +181,7 @@ Lemma wp_main_proper_name e ls lab d v rest j p Φ :
   ▷ WP (ERun (mkFrame main_fn (put d (WPtr p) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }} -∗
   WP (ERun (mkFrame main_fn e ls None (Exec lab
     (Call (CResult d P) (Global (TAtom "proper_name")) [Arg P v] :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0 gen_heapGS0 invGS_gen0.
   intros Hv. iIntros "HK".
   iApply (wp_call_bind _ _ _ _ _ _ _ _ _ _ _ _ _ proper_name_fn (invocation proper_name_fn [WPtr p])).
   1: cbn [map_option]; rewrite Hv; reflexivity.
@@ -250,7 +250,8 @@ Lemma loop_version b4 b6 from e lose ps cs a i g Φ :
   (forall c, 0 <= c < 2 ^ 32 -> getopt_step a i [WInt c] -> c = 129) ->
   loop_res b4 ps cs a i g -∗ loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hav Hgetopt Hgetopt_apart Hgetopt_env Hgetopt_wi Hlinked Htable Kgetopt
+  SafepointStable0.
   intros Hent Hf Hlaw. unfold loop_res, loop_exit.
   iIntros "(Hb & Hs & Ht & Hl4 & Hp4) HK".
   destruct Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
@@ -291,7 +292,12 @@ Lemma main_to_version s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
   ([∗ list] k ∈ locale_categories, LL.named k (old k).1 (old k).2) -∗ pts (codec_ps c0) -∗
   string empty_ptr 69968 r80 [] -∗ pts version_ps -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hauthor_live Hav Hcells Hexit
+  Hexit_abi Hexit_post Hexit_pre Hgetopt Hgetopt_apart Hgetopt_env Hgetopt_wi Hlent Hlinked Hmemcmp
+  Hmemset Hnb Hnb_cell Hpn_end Hsb Hsb_cell Hset_pre Hsetlocale Hstdout_g Hstrncmp Hstrrchr Htable
+  Hversion_abi Hversion_frame Hversion_pre Hversion_reg Hversion_ret Kalloc Katexit Kgetopt Kmemset
+  Knb Kpn Kpstore Ksb Kset Kversion_alloc Kversion_cursor Kversion_snapshot Kversion_store
+  SafepointStable0 invGS_gen0 wi_stdout.
   intros Hhd Hcs Hix Hlaw. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 Hv".
   iApply (main_to_L8 with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].
   iNext. iIntros (e b4 b6 i k q new c' _ Hf) "Hres _ _ _ _ _ _ _ _ _ _ _ _".
@@ -362,7 +368,7 @@ Lemma main_help_lookup s :
         "hello#str.59"; "hello#str.60"; "hello#str.61"; "hello#str.62"; "hello#str.63";
         "hello#str.79"] ->
   lookup (TAtom s) (ge_globals ge) = Some (version_literal s).
-Proof.
+Proof using Hlinked.
   intros Hin. apply (proj1 (proj2 Hlinked)).
   repeat destruct Hin as [<- | Hin]; try contradiction; vm_compute; reflexivity.
 Qed.
@@ -377,7 +383,7 @@ Lemma wp_main_output f e ls lab d g args rest j pname xs Φ :
   ▷ (∀ n, pts help_ps -∗ pts (flat_map arg_ps sargs) -∗
      WP (ERun (mkFrame f (put d (WInt n) e) ls None (Exec lab rest j)) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec lab (Call (CResult d W) (Global g) args :: rest) j)) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret Hlinked SafepointStable0 invGS_gen0.
   intros Hname Hin Hargs' Hclasses. iIntros "Hps Has HK".
   assert (Hg : g = TAtom "fputs" \/ g = TAtom "fprintf").
   { unfold main_output_args in Hin. repeat destruct Hin as [H | Hin];
@@ -411,7 +417,7 @@ Lemma name_life x0 : name_ok sargs x0 ->
   0 <= ptr_addr x0 < 2 ^ 64 /\
   (forall xb, ptr_cap x0 = Obj xb \/ ptr_cap x0 = Ro xb ->
      exists xr, (PLive xb, VLive xr) ∈ flat_map arg_ps sargs).
-Proof.
+Proof using Hargs.
   intros (s0 & srest & i & Hs0 & Hi & Ex0).
   assert (Hin0 : In s0 sargs) by (rewrite Hs0; left; reflexivity).
   pose proof (proj1 (List.Forall_forall _ _) Hargs s0 Hin0) as (Hcap & Hb0 & Hbp & Hend & H48 & _).
@@ -428,7 +434,8 @@ Lemma help_L32 e from Φ :
   lookup (TAtom "iw_1.v41") e = Some (WPtr stream) ->
   ⊢ WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.iw_1.L32") (Some (TAtom from)))) : mexpr)
       {{ Φ }}.
-Proof.
+Proof using Hexit Hexit_abi Hexit_post Hexit_pre Hlinked Hstderr_g SafepointStable0 gen_heapGS0
+  invGS_gen0 sargs wi_stderr.
   intros H41. mn_enter "iw_1.iw_1.L32".
   iApply wp_let; [reflexivity | reflexivity | cbn; rewrite Hstderr_g; reflexivity | intros ?m; word_premise |].
   iNext. gen_env.
@@ -467,7 +474,8 @@ Lemma help_locale e p t b61 r61 pname Φ :
   string (version_literal "hello#str.61") b61 r61 [101; 110; 95] -∗
   WP (ERun (mkFrame main_fn e [] None
     (Enter (TAtom "iw_1.iw_1.L36") (Some (TAtom "iw_1.L39")))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hexit Hexit_abi Hexit_post Hexit_pre Hhelp_abi Hhelp_frame Hhelp_pre Hhelp_reg Hhelp_ret
+  Hlent Hlinked Hstderr_g Hstrncmp SafepointStable0 invGS_gen0 wi_stderr.
   clear - section_irisGS SafepointStable0 Hlinked Hstrncmp Hlent
     Hexit Hexit_abi Hexit_pre Hexit_post Hstderr_g wi_stderr
     Hhelp_reg Hhelp_ret Hhelp_abi Hhelp_pre Hhelp_frame.

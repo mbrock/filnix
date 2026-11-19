@@ -502,7 +502,7 @@ Example diagnostic_then_return :
     (JRet (Const 0)))) : language.expr (nanofil_lang registry ge))
   {{ result, ∃ ys, ⌜result = Ret (WInt 0) /\ length ys = 4%nat⌝ ∗
       pts hello_diagnostic_pieces ∗ pts (byte_ps 5120 0 ys) }}.
-Proof.
+Proof using Type.
   iIntros "Hps He".
   iApply (H.wp_hello_error registry wi ge (fun _ _ => True)
     (fun _ _ _ _ => False) (fun _ _ _ _ _ => False) native T.out T.err 5120 0

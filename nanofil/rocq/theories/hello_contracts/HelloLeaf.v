@@ -211,11 +211,11 @@ Local Notation hexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The libc function s that Hello calls is no function of the genv. *)
 Lemma linked_outside s : existsb (String.eqb s) hello_externals = true -> find_fn ge (TAtom s) = None.
-Proof. apply hello_outside. exact (proj1 Hlinked). Qed.
+Proof using Hlinked. apply hello_outside. exact (proj1 Hlinked). Qed.
 
 (** The libc function s that Hello calls is no symbol of the genv. *)
 Lemma linked_unbound s : existsb (String.eqb s) hello_externals = true -> lookup (TAtom s) (ge_globals ge) = None.
-Proof. apply (proj2 (proj2 Hlinked)). Qed.
+Proof using Hlinked. apply (proj2 (proj2 Hlinked)). Qed.
 
 (** `mbszero`'s triple, from [wp_memset]: owning the 8 bytes xs and
     their aux slots cs at the 8-aligned offset o of the live object b,
@@ -231,7 +231,7 @@ Lemma mbszero_spec b reg o xs cs Φ :
   live b reg -∗ bytes b o xs -∗ auxes b o cs -∗
   ▷ (live b reg -∗ bytes b o (replicate 8 0) -∗ auxes b o (clear_slots o cs) -∗ Φ RetVoid) -∗
   WP (ERun (invocation mbszero_fn [WPtr (mkPtr (b + o) (Obj b))]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0.
   intros Hreg Hx Hc Hb8 Ho8 Ho Hend Hwi. iIntros "Hl Hx Hcs HΦ". rewrite mbszero_entry.
   iApply wp_enter; [exact find_z_start | reflexivity |]. iNext. cbn [b_insts b_jump z_start].
   iApply (wp_memset _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ 0 with "Hl Hx Hcs");
@@ -256,7 +256,7 @@ Lemma memeq_spec b reg o xs c b' reg' o' ys c' n Φ :
   ▷ (∀ k, live b reg -∗ bytes b o xs -∗ live b' reg' -∗ bytes b' o' ys -∗ Φ (Ret (WInt k))) -∗
   WP (ERun (invocation memeq_fn [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt n]) : hexpr)
     {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0.
   intros Hreg -> Hc Hc' Hlen Ho Ho' Hend Hend' Hn Hx Hy. iIntros "Hl Hx Hl' Hy HΦ". rewrite memeq_entry.
   iApply wp_enter; [exact find_e_start | reflexivity |]. iNext. cbn [b_insts b_jump e_start].
   iApply (wp_memcmp with "Hl Hx Hl' Hy");
@@ -276,7 +276,7 @@ Lemma streq_spec p b reg xs q b' reg' ys Φ :
   string p b reg xs -∗ string q b' reg' ys -∗
   ▷ (∀ k, string p b reg xs -∗ string q b' reg' ys -∗ Φ (Ret (WInt k))) -∗
   WP (ERun (invocation streq_fn [WPtr p; WPtr q]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0.
   intros Hreg. iIntros "Hs Ht HΦ". rewrite streq_entry.
   iApply wp_enter; [exact find_q_start | reflexivity |]. iNext. cbn [b_insts b_jump q_start].
   iApply (wp_strcmp with "Hs Ht");
@@ -296,7 +296,7 @@ Lemma strnlen1_spec p b reg bytes n Φ :
   SL.string p b reg bytes -∗
   ▷ (SL.string p b reg bytes -∗ Φ (Ret (WInt (Z.min (Z.of_nat (length bytes) + 1) n)))) -∗
   WP (ERun (invocation strnlen1_fn [WPtr p; WInt n]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0.
   intros Hreg Hn. iIntros "Hs HΦ". iDestruct "Hs" as "[%Hok Hs]".
   pose proof Hok as (_ & Hb0 & Hlo & Hhi & H48 & _). rewrite strnlen1_entry.
   iApply wp_enter; [exact find_n_start | reflexivity |]. iNext. cbn [b_insts b_jump n_start].
@@ -352,7 +352,7 @@ Lemma xmalloc_spec n Φ :
                n <= max_allocation_size⌝ -∗
        obj base (heap_req 16 n) -∗ Φ (Ret (WPtr (mkPtr base (Obj base))))) -∗
   WP (ERun (invocation xmalloc_fn [WInt n]) : hexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked SafepointStable0.
   intros Hreg Hn Hwi. iIntros "HΦ". rewrite xmalloc_entry.
   iApply wp_enter; [exact find_x_start | reflexivity |]. iNext. cbn [b_insts b_jump x_start].
   iApply (wp_malloc _ _ _ _ _ _ _ _ _ _ _ n);

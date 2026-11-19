@@ -181,7 +181,7 @@ Example callback_transfer_resources :
     pts [(PName stage, after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗
     pts (open_permission_ps P.err (token_handle P.err)) ∗
     pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗ pts unrelated.
-Proof.
+Proof using Type.
   iIntros "(Hh & Hstage & Herrno & Hother)".
   iAssert (heap_interp callback_wi
     (mkLstate conversion_mem InterpRuntime.start 64 (F.world true))) with "[Hh]" as "Hσ".
@@ -249,7 +249,7 @@ Example transfer_close_return :
     pts [(PName stage, after)] ∗ pts (closed_ps P.out) ∗
     pts (open_permission_ps P.err (token_handle P.err)) ∗
     pts (byte_ps 5120 0 ys) ∗ pts unrelated }}.
-Proof.
+Proof using Type.
   iIntros "Hstage Herrno Hother".
   iApply (H.wp_callback_transfer HelloPermissionChecks.registry callback_wi HelloPermissionChecks.ge
     (pts [(PName stage, before)])
@@ -436,7 +436,7 @@ Example query_return g k p other :
   {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb k W then 32 else 64)⌝ ∗
     pts (permission_ps P.out P.err p) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
     pts [(PName stage, after)] ∗ pts other }}.
-Proof.
+Proof using Type.
   intros Hwhich. iIntros "Ho Herrno Hstage Hother".
   iApply (H.C.wp_close_contract registry callback_wi ge (stub k) (entry_env p) [] (TAtom "body")
     (TAtom "r") k g [Arg P (Tmp (TAtom "p"))] [] (JRet (Tmp (TAtom "r"))) (spec g) [WPtr p]
@@ -492,7 +492,7 @@ Example transfer_query_return (error stdout : bool) :
   {{ result, ∃ n, ⌜result = Ret (WInt n) /\ 0 <= n < 2 ^ (if class_eqb (query_class error) W then 32 else 64)⌝ ∗
     pts (permission_ps P.out P.err (query_handle stdout)) ∗ pts (byte_ps 5120 0 [0; 0; 0; 0]) ∗
     pts [(PName stage, after)] ∗ pts (open_permission_ps opposite (token_handle opposite) ++ unrelated) }}.
-Proof.
+Proof using Type.
   intro opposite. iIntros "Hstage Herrno Hother".
   iApply (H.wp_callback_transfer registry callback_wi ge (pts [(PName stage, before)])
     (pts [(PName stage, after)] ∗ pts (open_permission_ps P.out (token_handle P.out)) ∗

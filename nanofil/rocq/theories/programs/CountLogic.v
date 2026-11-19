@@ -194,7 +194,7 @@ Lemma next_l_spec p b reg bytes Φ :
   string p b reg bytes -∗
   ▷ (∀ q, ⌜strchr_found p bytes 108 q⌝ -∗ string p b reg bytes -∗ Φ (Ret (WPtr q))) -∗
   WP (ERun (entry next_l_fn p) : cexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   iIntros "Hs HΦ". iApply wp_enter; [exact find_n_start | reflexivity |]. iNext.
   cbn [b_insts b_jump n_start].
   iApply (wp_strchr with "Hs");
@@ -213,7 +213,7 @@ Lemma count_loop p b reg bytes :
     string p b reg bytes -∗
     WP (ERun (mkFrame count_fn e [] None (Exec (TAtom "L6") (b_insts c_L6) (b_jump c_L6))) : cexpr)
       {{ o, ⌜exists k, o = Ret (WInt k)⌝ }}.
-Proof.
+Proof using Type.
   iLöb as "IH". iIntros (e q n (Hq & Hn & Hf)) "Hs".
   iDestruct "Hs" as "[%Hok Hps]". iAssert (string p b reg bytes) with "[$Hps]" as "Hs"; [done|].
   pose proof Hok as (Hc & Hb0 & Hb1 & Hb2 & Hb3 & _). cbn [b_insts b_jump c_L6].
@@ -258,7 +258,7 @@ Qed.
     the loop, and safely returns an integer count. *)
 Lemma count_spec p b reg bytes :
   string p b reg bytes -∗ WP (ERun (entry count_fn p) : cexpr) {{ o, ⌜exists k, o = Ret (WInt k)⌝ }}.
-Proof.
+Proof using Type.
   iIntros "Hs". iApply wp_enter; [exact find_c_start | reflexivity |]. iNext.
   cbn [b_insts b_jump c_start].
   iApply wp_call_bind; [reflexivity | exact find_next_l | reflexivity |]. iNext.

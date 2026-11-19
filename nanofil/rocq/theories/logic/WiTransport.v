@@ -50,7 +50,7 @@ Local Notation wp2 := (@wp _ _ _ _ (@wp' _ _ _ (nanofil_irisGS registry wi2 ge))
     expressions after every primitive step is empty. *)
 Lemma prim_step_no_fork (e1 : lexpr) σ1 κ e2 σ2 efs :
   language.prim_step e1 σ1 κ e2 σ2 efs -> efs = [].
-Proof. intros [K e1' e2' _ _ Hh]. destruct Hh; reflexivity. Qed.
+Proof using Type. intros [K e1' e2' _ _ Hh]. destruct Hh; reflexivity. Qed.
 
 (** A proof written for one phase of a program should carry over to a
     phase whose state checks agree with it. Here the key k holds v, and
@@ -62,7 +62,7 @@ Lemma wp_wi_transport (k : piece) dq (v : pval) (e : lexpr) Φ :
   (forall m w h, h !! k = Some v -> wi2 m w h -> wi1 m w h) ->
   (forall m w h, h !! k = Some v -> wi1 m w h -> wi2 m w h) ->
   pointsto k dq v -∗ wp1 e Φ -∗ wp2 e (fun o => pointsto k dq v ∗ Φ o)%I.
-Proof.
+Proof using Type.
   intros H21 H12. iIntros "Hk H". iLöb as "IH" forall (e).
   rewrite !wp_unfold /wp_pre /=.
   destruct (to_val e) as [o|] eqn:Ev.

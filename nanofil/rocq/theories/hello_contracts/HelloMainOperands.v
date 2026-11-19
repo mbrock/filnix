@@ -176,7 +176,7 @@ Context (Hoptind_g : lookup (TAtom "optind") (ge_globals ge) = Some optind_cell)
 
 (** A pointer cell is its bytes and its first aux slot. *)
 Lemma pcell_split b o q : pcell b o q ⊣⊢ bytes b o (slot_bytes (ptr_addr q)) ∗ auxes b o [ptr_cap q].
-Proof.
+Proof using Type.
   rewrite /pcell /bytes /auxes slot_cell.
   change ((PAux b o, VAux (ptr_cap q)) :: cell b o (ptr_addr q)) with
     ([(PAux b o, VAux (ptr_cap q))] ++ cell b o (ptr_addr q)).
@@ -193,7 +193,7 @@ Lemma argv_block_slot b reg ps cs k q :
   pcell b (8 * Z.of_nat k) q ∗
   bytes b (8 * Z.of_nat k + 8) (slots_bytes (drop (S k) (ps ++ [null]))) ∗
   auxes b (8 * Z.of_nat k + 1) (drop (S (8 * k)) cs).
-Proof.
+Proof using sargs.
   intros [Lc Hc] Hq. pose proof (lookup_lt_Some _ _ _ Hq) as Hk. pose proof (Hc k q Hq) as Hcq.
   assert (Ex : argv_bytes ps = slots_bytes (take k (ps ++ [null])) ++ slot_bytes (ptr_addr q) ++
                                slots_bytes (drop (S k) (ps ++ [null]))).
@@ -317,7 +317,7 @@ Lemma main_operands b4 b6 e ps cs a i g lose Φ :
    operand_exit b4 b6 "iw_1.join"%string "iw_1.L60"%string
      (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ) -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L10") (Some (TAtom "iw_1.L8")))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hgetopt_wi Hoptind_g SafepointStable0 nb sb.
   clear - SafepointStable0 Hav Hargc Hargs Hcells Hgetopt_wi Hoptind_g nb sb.
   iIntros ((Hf & Hpr & Hlose)) "Hr HK".
   pose proof Hf as ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg).
@@ -365,7 +365,7 @@ Lemma operands_exit b4 b6 Φ :
    operand_exit b4 b6 "iw_1.join"%string "iw_1.L60"%string
      (fun lose i => lose = 0 /\ i = Z.of_nat (length sargs)) Φ) -∗
   loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hgetopt_wi Hoptind_g SafepointStable0 nb sb.
   iIntros "HK". rewrite /loop_exit. iIntros (e ps cs a i g lose Hf) "Hr".
   iApply (main_operands with "[%] Hr HK"). exact Hf.
 Qed.

@@ -176,7 +176,7 @@ Lemma loop_greeting b4 b6 e ps cs a i g lose Φ :
   loop_exit b4 b6 "iw_1.L8"%string "iw_1.L35"%string Φ -∗
   WP (ERun (mkFrame main_fn e [] None
     (Enter (TAtom "iw_1.L35") (Some (TAtom "iw_1.L48")))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi Hoptarg_g Kpstore SafepointStable0.
   intros ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg)
     Hpr Hlose Hborrow Hnz.
   pose proof Hfr as (Hb40 & Hb416 & Hb448).
@@ -216,7 +216,7 @@ Lemma loop_traditional b4 b6 e ps cs a i g lose Φ :
   loop_exit b4 b6 "iw_1.L8"%string "iw_1.L42"%string Φ -∗
   WP (ERun (mkFrame main_fn e [] None
     (Enter (TAtom "iw_1.L42") (Some (TAtom "iw_1.L52")))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hlinked Kpstore SafepointStable0.
   intros ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho & Hc & Hi & Hg) Hpr Hlose.
   pose proof Hfr as (Hb40 & Hb416 & Hb448).
   destruct getopt_globals as (_ & _ & G76 & _). pose proof Hlinked as (_ & Hglob & _).
@@ -260,7 +260,7 @@ Lemma loop_dispatch b4 b6 e ps' cs' a' i' g lose c Φ :
       (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : mexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame main_fn e [] None
     (Enter (TAtom "iw_1.L19") (Some (TAtom "iw_1.L8")))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hcells Hgetopt_wi Hlinked Hoptarg_g Kpstore SafepointStable0.
   clear - Hlinked Kpstore optarg_cell optind_cell Hgetopt_wi Hoptarg_g Hcells SafepointStable0.
   intros ((H0 & H2 & H4 & H6 & H11) & Hc1 & Hfr & Ho' & Hc' & Hi' & Hg)
     Hpr Hlose Hcode Hcr Hgc.
@@ -322,7 +322,8 @@ Lemma main_loop b4 b6 Φ :
   (loop_exit b4 b6 "iw_1.L21"%string "iw_1.L19"%string Φ ∧ loop_exit b4 b6 "iw_1.L39"%string "iw_1.L50"%string Φ ∧
    loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ) -∗
   WP (ERun (mkFrame main_fn e [] None (Enter (TAtom "iw_1.L8") (Some (TAtom from)))) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hav Hcells Hgetopt Hgetopt_apart Hgetopt_env Hgetopt_wi Hlinked Hoptarg_g
+  Htable Kgetopt Kpstore SafepointStable0.
   clear - SafepointStable0 Hlinked Hav Hargc Hargs Hgetopt Hgetopt_wi Htable Hgetopt_env
     Hgetopt_apart Kgetopt Hoptarg_g Hcells Kpstore.
   unfold loop_res, loop_exit.
@@ -390,7 +391,10 @@ Lemma main_to_loop s0 srest r3 r4 x0 x1 y0 old c0 r80 cs0 a ix Φ :
         loop_exit b4 b6 "iw_1.L39"%string "iw_1.L50"%string Φ ∧
         loop_exit b4 b6 "iw_1.L10"%string "iw_1.L8"%string Φ)) -∗
   WP (ERun (invocation main_fn [WInt (Z.of_nat (length sargs)); WPtr (mkPtr av (Obj av))]) : mexpr) {{ Φ }}.
-Proof.
+Proof using Hargc Hargs Hatexit Hatexit_abi Hatexit_pre Hatexit_ret Hav Hcells Hgetopt Hgetopt_apart
+  Hgetopt_env Hgetopt_wi Hlent Hlinked Hmemcmp Hmemset Hnb Hnb_cell Hoptarg_g Hpn_end Hsb Hsb_cell
+  Hset_pre Hsetlocale Hstrncmp Hstrrchr Htable Kalloc Katexit Kgetopt Kmemset Knb Kpn Kpstore Ksb Kset
+  SafepointStable0.
   intros Hhd Hcs Hix. iIntros "Hb Hs Ht Hlit Hcells Hks Hcod Hs80 HK".
   iApply (main_to_L8 with "Hb Hs Ht Hlit Hcells Hks Hcod Hs80"); [exact Hhd | exact Hcs | exact Hix |].
   iNext. iIntros (e b4 b6 i k q new c' Hst Hf) "Hres Hlit Hcells Hlent Hcod Hs80 Hy4 Hc4 Hl6 Hy6 Hy6' Hc6 Hc6'".

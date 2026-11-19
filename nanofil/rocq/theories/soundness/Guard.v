@@ -157,7 +157,7 @@ Lemma span_guard_holds : forall gn glo ghi n0,
        object_region base (m_regions m1) = Some reg /\
        base <= raw_address (ptr_addr pb) glo /\ raw_address (ptr_addr pb) glo < raw_address (ptr_addr pb) ghi /\
        raw_address (ptr_addr pb) ghi <= r_end reg /\ persists m1 m /\ objects_fit (m_regions m1)).
-Proof.
+Proof using Hpt Hs.
   intros gn glo ghi n0 Hgn Ho Hdom.
   destruct (plain_replays _ _ _ _ _ _ _ Hs Hpt Hgn eq_refl eq_refl Hdom)
     as (fr0 & m0 & e1 & l1 & m1 & Hst & He1 & Hops & Hp & Hfit).
@@ -191,7 +191,7 @@ Lemma lower_chain_sound : forall fuel p pp n0,
   once_has (single_definitions (fr_fn fr)) n0 = true ->
   lower_chain (single_definitions (fr_fn fr)) fuel p (Tmp n0) = true ->
   exists pn, value_x ge (fr_env fr) P (Tmp n0) = Some (WPtr pn) /\ ptr_cap pn = ptr_cap pp.
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   induction fuel as [|fuel IH]; intros p pp n0 Hp Hdom Ho H.
   - simpl in H. rewrite orb_false_r in H. apply value_eqb_eq in H. subst. eauto.
   - simpl in H. apply orb_true_iff in H as [H | H]; [apply value_eqb_eq in H; subst; eauto|].
@@ -228,7 +228,7 @@ Theorem renew_if_not_unchecked : forall b kk q lo hi r al p g rest live out why,
   nth_error (b_insts b) kk = Some (Let q A (RenewIf lo hi r al) [p; g]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (RenewIf lo hi r al) [p; g]) rest live = Some out ->
   inst_step ge fr m (Let q A (RenewIf lo hi r al) [p; g]) <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al p g rest live out why Hb Hk Hkk H.
   set (i := Let q A (RenewIf lo hi r al) [p; g]) in Hk.
   (* What the pass checked: a span test of N0 whose span covers P's. *)
@@ -309,7 +309,7 @@ Theorem check_limit_not_unchecked : forall b kk q lo hi r al p u rest live out w
   nth_error (b_insts b) kk = Some (Let q A (CheckLimit lo hi r al) [p; u]) -> k = Z.of_nat kk ->
   checked_inst_rest (fn_src md (fr_fn fr)) (Let q A (CheckLimit lo hi r al) [p; u]) rest live = Some out ->
   inst_step ge fr m (Let q A (CheckLimit lo hi r al) [p; u]) <> Some (IStop (Unchecked why)).
-Proof.
+Proof using Hin Hmd Hpt Hr Hs.
   intros b kk q lo hi r al p u rest live out why Hb Hk Hkk H.
   set (i := Let q A (CheckLimit lo hi r al) [p; u]) in Hk.
   (* What the pass checked: a limit of N0 of the check's span, and P's

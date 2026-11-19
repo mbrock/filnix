@@ -411,15 +411,15 @@ Hypothesis lt_total : forall x y, eqb x y = false -> lt x y = false -> lt y x = 
 Lemma merge_uniq_cons : forall x xs y ys, merge_uniq lt eqb (x :: xs) (y :: ys) =
   if eqb x y then x :: merge_uniq lt eqb xs ys
   else if lt x y then x :: merge_uniq lt eqb xs (y :: ys) else y :: merge_uniq lt eqb (x :: xs) ys.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 (** [merge_uniq] with an empty side. *)
 Lemma merge_uniq_nil : forall xs, merge_uniq lt eqb xs [] = xs /\ merge_uniq lt eqb [] xs = xs.
-Proof. intros [|x xs]; split; reflexivity. Qed.
+Proof using Type. intros [|x xs]; split; reflexivity. Qed.
 
 (** Every element of a merge is an element of one side. *)
 Lemma merge_in : forall xs ys z, In z (merge_uniq lt eqb xs ys) -> In z xs \/ In z ys.
-Proof.
+Proof using Type.
   induction xs as [|x xs IHx]; intros ys z H.
   - rewrite (proj2 (merge_uniq_nil ys)) in H. auto.
   - induction ys as [|y ys IHy].
@@ -435,7 +435,7 @@ Qed.
 Lemma merge_sorted : forall xs ys, StronglySorted (fun a b => lt a b = true) xs ->
   StronglySorted (fun a b => lt a b = true) ys ->
   StronglySorted (fun a b => lt a b = true) (merge_uniq lt eqb xs ys).
-Proof.
+Proof using eqb_true lt_total lt_trans.
   induction xs as [|x xs IHx]; intros ys Hx Hy.
   - rewrite (proj2 (merge_uniq_nil ys)). exact Hy.
   - induction ys as [|y ys IHy].
@@ -457,7 +457,7 @@ Qed.
 Lemma merge_pairs_sorted : forall rs, Forall (StronglySorted (fun a b => lt a b = true)) rs ->
   Forall (StronglySorted (fun a b => lt a b = true)) (merge_pairs lt eqb rs)
   /\ (2 * length (merge_pairs lt eqb rs) <= length rs + 1)%nat.
-Proof.
+Proof using eqb_true lt_total lt_trans.
   fix IH 1. intros [|r1 [|r2 rs]] H; simpl; [auto | split; [exact H | lia] |].
   inversion H as [|? ? H1 H']; subst. inversion H' as [|? ? H2 H'']; subst.
   destruct (IH rs H'') as [A B]. split; [constructor; [apply merge_sorted; auto | exact A] | lia].
@@ -466,7 +466,7 @@ Qed.
 (** With enough rounds, merging leaves one strictly sorted run. *)
 Lemma merge_all_sorted : forall fuel rs, Forall (StronglySorted (fun a b => lt a b = true)) rs ->
   (length rs <= S fuel)%nat -> StronglySorted (fun a b => lt a b = true) (merge_all lt eqb fuel rs).
-Proof.
+Proof using eqb_true lt_total lt_trans.
   induction fuel as [|f IH]; intros [|r1 [|r2 rs]] H Hl; simpl in *; try constructor;
     try (inversion H; assumption); try lia.
   destruct (merge_pairs_sorted (r1 :: r2 :: rs) H) as [A B].
@@ -475,7 +475,7 @@ Qed.
 
 (** [sort_uniq] gives a strictly sorted list. *)
 Lemma sort_uniq_sorted : forall xs, StronglySorted (fun a b => lt a b = true) (sort_uniq lt eqb xs).
-Proof.
+Proof using eqb_true lt_total lt_trans.
   intros xs. unfold sort_uniq. apply merge_all_sorted.
   - unfold singletons. induction xs; simpl; constructor; auto. repeat constructor.
   - unfold singletons. rewrite length_map. lia.
@@ -483,7 +483,7 @@ Qed.
 
 (** [sort_uniq] gives each element once. *)
 Lemma sort_uniq_nodup : forall xs, NoDup (sort_uniq lt eqb xs).
-Proof.
+Proof using eqb_true lt_irrefl lt_total lt_trans.
   intros xs. pose proof (sort_uniq_sorted xs) as H. induction H as [|a l _ IH F]; constructor; auto.
   intros Ha. rewrite Forall_forall in F. specialize (F a Ha). rewrite lt_irrefl in F. discriminate.
 Qed.

@@ -161,7 +161,7 @@ Local Notation sexpr := (language.expr (nanofil_lang (scan_registry rep requests
     all three libc calls and returns an integer. *)
 Lemma scan_spec p b reg bytes :
   string p b reg bytes -∗ WP (ERun (scan_entry p) : sexpr) {{ o, ⌜exists n, o = Ret (WInt n)⌝ }}.
-Proof.
+Proof using stdio_stable.
   iIntros "Hs". iDestruct "Hs" as "[%Hok Hps]".
   iAssert (string p b reg bytes) with "[$Hps]" as "Hs"; [done|].
   pose proof Hok as (Hc & Hb0 & Hb1 & Hb2 & Hb3 & _).
@@ -215,7 +215,7 @@ Theorem scan_logic_safe Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpreS piece p
   (forall sp a, In sp (stdio_roots w) -> span_contains sp a -> ~ (b <= a < r_end reg)) ->
   labelled_safe (scan_registry rep requests) scan_ge (scan_entry p) m s w fuel
     (fun o => exists n, o = Ret (WInt n)).
-Proof.
+Proof using stdio_stable.
   intros Hr Hd Hrep Hw Hok Ha Hapart.
   apply (heap_labelled_safe Σ (scan_registry rep requests) (stdio_wi rep) scan_ge (scan_entry p) m s w
            (list_to_map (string_ps p b reg bytes))).
