@@ -20,7 +20,7 @@ From Nanofil Require Import Pieces Heap.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuPlans CpuSound.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -64,16 +64,26 @@ Proof. vm_compute. split; reflexivity. Qed.
 Definition ids_set : list Z := [3; 5; 6; 7; 8; 9].
 Definition upd_pre (id : Z) := spec [CP 1 (id * 136) (id * 136); par 1; par 2; par 3] [(tl, tun0)]
   [None; Some (loc 16); Some (loc 16); Some (loc 16)].
-Definition upd_plans := Eval vm_compute in somes (map (fun id => plan_of [] upd [] [] (upd_pre id)) ids_set).
+Definition upd_plans := somes (map (fun id => plan_of [] upd [] [] (upd_pre id)) ids_set).
+Definition upd_specs : list fspec :=
+  map (fun id => let sp := upd_pre id in
+    cpu_result sp (post_global sp tl (with_bytes (id * 136 + 105) [BIn 0 255] tun0)) None) ids_set.
+Lemma upd_certificate : certifies [] upd [] upd_plans upd_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma upd_checked : forallb (verified [] upd []) upd_plans = true.
-Proof. vm_compute. reflexivity. Qed.
-Definition u1 : table := [("glibc_dl_tunables#do_tunable_update_val", map fst upd_plans)].
+Proof. exact (proj2 upd_certificate). Qed.
+Definition u1 : table := [("glibc_dl_tunables#do_tunable_update_val", upd_specs)].
 
 Definition set_pre (id : Z) := spec [CI id id; par 1; par 2; par 3] [(tl, tun0)]
   [None; Some (loc 16); Some (loc 16); Some (loc 16)].
-Definition set_plans := Eval vm_compute in somes (map (fun id => plan_of u1 setv [] [] (set_pre id)) ids_set).
+Definition set_plans := somes (map (fun id => plan_of u1 setv [] [] (set_pre id)) ids_set).
+Definition set_specs : list fspec :=
+  map (fun id => let sp := set_pre id in
+    cpu_result sp (post_global sp tl (with_bytes (id * 136 + 105) [BIn 0 255] tun0)) None) ids_set.
+Lemma set_certificate : certifies u1 setv [] set_plans set_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma set_checked : forallb (verified u1 setv []) set_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 set_certificate). Qed.
 
 (** Startup reads nine rows. The first three pass a callback, and the
     others pass a null callback. *)
@@ -90,12 +100,15 @@ Lemma isin_checked : forallb (verified [] isin []) isin_plans = true.
 Proof. vm_compute. reflexivity. Qed.
 
 Definition tun_table : table :=
-  [("__tunable_set_val", map fst set_plans); ("__tunable_get_val", map fst get_plans);
+  [("__tunable_set_val", set_specs); ("__tunable_get_val", map fst get_plans);
    ("__tunable_is_initialized", map fst isin_plans)].
 
 Lemma tun_counts :
   (length upd_plans, length set_plans, length get_plans, length isin_plans) = (6, 6, 9, 1)%nat.
-Proof. reflexivity. Qed.
+Proof.
+  exact (f_equal2 pair (f_equal2 pair (f_equal2 pair (certified_count upd_certificate)
+    (certified_count set_certificate)) eq_refl) eq_refl).
+Qed.
 
 Section sound.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
@@ -104,14 +117,14 @@ Hypothesis Hends : ow_leaf4_ends w0 = true.
 Lemma u1_holds : table_holds w0 ge u1.
 Proof using Hends Hge.
   apply table_cons; [|apply table_nil].
-  exact (verified_holds w0 ge Hends [] _ upd [] upd_plans upd_find (table_nil w0 ge) upd_checked).
+  exact (certified_holds w0 ge Hends upd_find (table_nil w0 ge) upd_certificate).
 Qed.
 
 (** The three tunable functions that `c: init_cpu_features` calls
     satisfy their specifications. *)
 Lemma tun_table_holds : table_holds w0 ge tun_table.
 Proof using Hends Hge.
-  apply table_cons; [exact (verified_holds w0 ge Hends u1 _ setv [] set_plans setv_find u1_holds set_checked)|].
+  apply table_cons; [exact (certified_holds w0 ge Hends setv_find u1_holds set_certificate)|].
   apply table_cons; [exact (verified_holds w0 ge Hends [] _ getv [] get_plans getv_find (table_nil w0 ge) get_checked)|].
   apply table_cons; [|apply table_nil].
   exact (verified_holds w0 ge Hends [] _ isin [] isin_plans isin_find (table_nil w0 ge) isin_checked).

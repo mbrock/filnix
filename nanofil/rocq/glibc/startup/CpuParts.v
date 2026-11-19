@@ -15,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuPlans CpuSound
   CpuTunables CpuIntelWord CpuVendors CpuCache.
 Import ListNotations.
 Open Scope string_scope.
@@ -67,20 +67,35 @@ Proof. vm_compute. reflexivity. Qed.
 Definition t5 : table :=
   [("glibc_libc_start#get_isa_level", map fst isa_plans); ("glibc_libc_start#get_common_indices", map fst gci_plans)] ++ t4.
 
-Definition upa_plans := Eval vm_compute in somes [plan_of t5 upa [] [] (spec [glo cpu] gall [None])].
+Definition upa_plans := somes [plan_of t5 upa [] [] (spec [glo cpu] gall [None])].
+(** update_active bounds the ISA level byte in the feature structure. *)
+Definition upa_specs : list fspec :=
+  let sp := spec [glo cpu] gall [None] in
+  [cpu_result sp (post_global sp cpu (with_bytes 344 [BIn 0 15] cpu0)) None].
+Lemma upa_certificate : certifies t5 upa [] upa_plans upa_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma upa_checked : forallb (verified t5 upa []) upa_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 upa_certificate). Qed.
 
-Definition dic_plans := Eval vm_compute in somes [plan_of t5 dic [] [] (spec [glo cpu] gall [None])].
+Definition dic_plans := somes [plan_of t5 dic [] [] (spec [glo cpu] gall [None])].
+(** Cache initialization records a byte in row seven of the tunable table. *)
+Definition dic_specs : list fspec :=
+  let sp := spec [glo cpu] gall [None] in
+  [cpu_result sp (post_global sp tl (with_bytes (7 * 136 + 105) [BIn 0 255] tun0)) None].
+Lemma dic_certificate : certifies t5 dic [] dic_plans dic_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma dic_checked : forallb (verified t5 dic []) dic_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 dic_certificate). Qed.
 
 Definition t6 : table :=
-  [("glibc_libc_start#update_active", map fst upa_plans); ("glibc_libc_start#dl_init_cacheinfo", map fst dic_plans)] ++ t5.
+  [("glibc_libc_start#update_active", upa_specs); ("glibc_libc_start#dl_init_cacheinfo", dic_specs)] ++ t5.
 
 Lemma parts_counts :
   (length isa_plans, length gci_plans, length upa_plans, length dic_plans) = (1, 2, 1, 1)%nat.
-Proof. reflexivity. Qed.
+Proof.
+  exact (f_equal2 pair
+    (f_equal2 pair eq_refl (certified_count upa_certificate)) (certified_count dic_certificate)).
+Qed.
 
 Section sound.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
@@ -103,9 +118,9 @@ Qed.
     specifications. *)
 Lemma t6_holds : table_holds w0 ge t6.
 Proof using Hends Hge.
-  apply table_cons; [exact (verified_holds w0 ge Hends t5 _ upa [] upa_plans upa_find t5_holds upa_checked)|].
+  apply table_cons; [exact (certified_holds w0 ge Hends upa_find t5_holds upa_certificate)|].
   apply table_cons; [|exact t5_holds].
-  exact (verified_holds w0 ge Hends t5 _ dic [] dic_plans dic_find t5_holds dic_checked).
+  exact (certified_holds w0 ge Hends dic_find t5_holds dic_certificate).
 Qed.
 
 End sound.

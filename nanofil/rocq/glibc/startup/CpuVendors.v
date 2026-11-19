@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuSound CpuIntelWord.
+From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuPlans CpuSound CpuIntelWord.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -42,24 +42,48 @@ Proof. vm_compute. reflexivity. Qed.
 
 (** The other three handlers take only the parameter's number. *)
 Definition leaf_pre (n : Z) := spec [CI n n] [(cpu, cpu0)] [None].
-Definition am_plans := Eval vm_compute in somes (map (fun n => plan_of [] am [] [] (leaf_pre n)) names).
-Definition zh_plans := Eval vm_compute in somes (map (fun n => plan_of [] zh [] [] (leaf_pre n)) names).
-Definition hy_plans := Eval vm_compute in somes (map (fun n => plan_of [] hy [] [] (leaf_pre n)) names).
+(** Each pair joins a cache parameter to the largest result allowed by the
+    inferred interval. AMD and Hygon share their limits. Zhaoxin uses its
+    own encoding for the cache leaves. *)
+Definition vendor_specs limits :=
+  map (fun pair => let sp := leaf_pre (fst pair) in
+    cpu_result sp (sp_pre sp) (Some (CI 0 (snd pair)))) (combine names limits).
+Definition amd_limits : list Z :=
+  [4294967295; 4096; 4294967295; 261120; 4096; 4294967295;
+   67107840; 4096; 8793945538560; 2146959360; 4096; 0].
+Definition zhaoxin_limits : list Z :=
+  [4294967295; 4096; 4294967295; 1024; 4096; 4294967295; 1024; 4096; 4294967295; 1024; 4096; 0].
+
+Definition am_plans := somes (map (fun n => plan_of [] am [] [] (leaf_pre n)) names).
+Definition zh_plans := somes (map (fun n => plan_of [] zh [] [] (leaf_pre n)) names).
+Definition hy_plans := somes (map (fun n => plan_of [] hy [] [] (leaf_pre n)) names).
+Definition am_specs : list fspec := vendor_specs amd_limits.
+Lemma am_certificate : certifies [] am [] am_plans am_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma am_checked : forallb (verified [] am []) am_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 am_certificate). Qed.
+Definition zh_specs : list fspec := vendor_specs zhaoxin_limits.
+Lemma zh_certificate : certifies [] zh [] zh_plans zh_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma zh_checked : forallb (verified [] zh []) zh_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 zh_certificate). Qed.
+Definition hy_specs : list fspec := vendor_specs amd_limits.
+Lemma hy_certificate : certifies [] hy [] hy_plans hy_specs.
+Proof. vm_compute. split; reflexivity. Qed.
 Lemma hy_checked : forallb (verified [] hy []) hy_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof. exact (proj2 hy_certificate). Qed.
 
 Definition t3 : table :=
-  [("glibc_libc_start#handle_intel", map fst hi_plans); ("glibc_libc_start#handle_amd", map fst am_plans);
-   ("glibc_libc_start#handle_zhaoxin", map fst zh_plans); ("glibc_libc_start#handle_hygon", map fst hy_plans)] ++ t2.
+  [("glibc_libc_start#handle_intel", map fst hi_plans); ("glibc_libc_start#handle_amd", am_specs);
+   ("glibc_libc_start#handle_zhaoxin", zh_specs); ("glibc_libc_start#handle_hygon", hy_specs)] ++ t2.
 
 (** Every handler was checked for all twelve parameters. *)
 Lemma vendor_counts :
   (length hi_plans, length am_plans, length zh_plans, length hy_plans) = (12, 12, 12, 12)%nat.
-Proof. reflexivity. Qed.
+Proof.
+  exact (f_equal2 pair (f_equal2 pair (f_equal2 pair eq_refl (certified_count am_certificate))
+    (certified_count zh_certificate)) (certified_count hy_certificate)).
+Qed.
 
 Section sound.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
@@ -69,10 +93,10 @@ Hypothesis Hends : ow_leaf4_ends w0 = true.
 Lemma t3_holds : table_holds w0 ge t3.
 Proof using Hends Hge.
   apply table_cons; [exact (verified_holds w0 ge Hends t2 _ hi [] hi_plans hi_find (t2_holds w0 ge Hends) hi_checked)|].
-  apply table_cons; [exact (verified_holds w0 ge Hends [] _ am [] am_plans am_find (table_nil w0 ge) am_checked)|].
-  apply table_cons; [exact (verified_holds w0 ge Hends [] _ zh [] zh_plans zh_find (table_nil w0 ge) zh_checked)|].
+  apply table_cons; [exact (certified_holds w0 ge Hends am_find (table_nil w0 ge) am_certificate)|].
+  apply table_cons; [exact (certified_holds w0 ge Hends zh_find (table_nil w0 ge) zh_certificate)|].
   apply table_cons; [|exact (t2_holds w0 ge Hends)].
-  exact (verified_holds w0 ge Hends [] _ hy [] hy_plans hy_find (table_nil w0 ge) hy_checked).
+  exact (certified_holds w0 ge Hends hy_find (table_nil w0 ge) hy_certificate).
 Qed.
 
 End sound.

@@ -65,10 +65,7 @@ Proof. vm_compute. reflexivity. Qed.
     of each one in Hello. It is computed from the memory that the
     loader builds for the image. *)
 Definition hello_icf_objs : icf_objs := Eval vm_compute in
-  match hello_loaded with
-  | Some (g, m) => match icf_objs_in g (m_regions m) with Some o => o | None => icf_no_objs end
-  | None => icf_no_objs
-  end.
+  match icf_objs_in img_globals img_regions with Some o => o | None => icf_no_objs end.
 
 (** The search succeeds on Hello, whatever memory the loader builds.
     Each of the eighteen globals therefore has the right kind of

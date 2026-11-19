@@ -1,0 +1,16 @@
+<block id="b-2026-11-19-cpu-proof-interfaces" kind="bench" actor="T-01a1f1c6-7ae1-7151-8606-6b86fa38368d" created="2026-11-19T04:14:40Z">
+  <title>CPU startup proofs export their checked specifications</title>
+  <about path="nanofil/rocq/glibc/startup/CpuPlans.v"/>
+  <about path="nanofil/rocq/glibc/startup/CpuCache.v"/>
+  <about path="nanofil/rocq/glibc/startup/CpuInit.v"/>
+  <tag name="rocq"/>
+  <p>Glibc’s CPU startup proofs now state the contracts that their callers
+  need. The full proofs infer a plan for each call, check its invariants,
+  and prove that its result equals the stated contract. Rocq can build a
+  proof interface without running that inference.</p>
+  <p>On swa, with dependencies already compiled, a <sh>rocq c -vos</sh>
+  run for CpuCache fell from 43.5 seconds to 0.9 seconds. CpuInit fell
+  from 19.4 seconds to 1.0 second. CpuHello now gets object addresses from
+  the loader’s placement tables. Its interface took 0.9 seconds against
+  12.3 seconds before the change.</p>
+</block>

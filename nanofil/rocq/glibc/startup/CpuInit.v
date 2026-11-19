@@ -30,7 +30,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer AbsDen AbsSound.
-From Glibc Require Import Fix OsWorld OsCpuid OsRegistry HiAtexitModule CpuRules CpuHook CpuSetup CpuSound
+From Glibc Require Import Fix OsWorld OsCpuid OsRegistry HiAtexitModule CpuRules CpuHook CpuSetup CpuPlans CpuSound
   CpuTunables CpuParts.
 Import ListNotations.
 Open Scope string_scope.
@@ -58,19 +58,21 @@ Definition icf_start_ok (md : module) : bool :=
 Lemma icf_image_start : icf_start_ok hi_module = true.
 Proof. vm_compute. reflexivity. Qed.
 
-Definition icf_plans := Eval vm_compute in somes [plan_of t6 icf [] [] icf_pre].
-Lemma icf_checked : forallb (verified t6 icf []) icf_plans = true.
-Proof. vm_compute. reflexivity. Qed.
+Definition icf_plans := somes [plan_of t6 icf [] [] icf_pre].
+(** The call sets the low byte of _dl_hwcap to a value from two through six
+    and clears its other seven bytes. The other objects keep their bounds. *)
+Definition icf_spec : fspec :=
+  let hwcap := with_bytes 0 (BIn 2 6 :: repeat (BK 0) 7) (weak 8 8) in
+  cpu_result icf_pre (post_global icf_pre "_dl_hwcap" hwcap) None.
 
-(** The checker completes the specification with what the function
-    leaves behind. The completed specification keeps the argument and
-    the precondition, it returns nothing, and its postcondition gives
-    back every global object. *)
-Definition icf_spec : fspec := Eval vm_compute in
-  match icf_plans with p :: _ => fst p | [] => icf_pre end.
+Lemma icf_certificate : certifies t6 icf [] icf_plans [icf_spec].
+Proof. vm_compute. split; reflexivity. Qed.
+
+Lemma icf_checked : forallb (verified t6 icf []) icf_plans = true.
+Proof. exact (proj2 icf_certificate). Qed.
 
 Lemma icf_spec_in : In icf_spec (map fst icf_plans).
-Proof. vm_compute. left. reflexivity. Qed.
+Proof. rewrite (proj1 icf_certificate). left. reflexivity. Qed.
 
 Lemma icf_spec_shape :
   sp_args icf_spec = sp_args icf_pre /\ sp_pre icf_spec = sp_pre icf_pre /\ sp_guard icf_spec = false /\
