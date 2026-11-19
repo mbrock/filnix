@@ -3,44 +3,37 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import HelloImageChunks HelloImageEraseMem HelloImage_c32isprint HelloImage_closeZ2dstream HelloImage_closeout HelloImage_exitfail HelloImage_hardZ2dlocale HelloImage_hello.
-From Glibc Require Import HelloImage_mbrtoc32 HelloImage_mbrtowc HelloImage_mbsrtowcs HelloImage_mbsrtowcsZ2dstate HelloImage_mbszero HelloImage_memeq HelloImage_progname HelloImage_propername.
-From Glibc Require Import HelloImage_quotearg HelloImage_setlocale_null HelloImage_setlocale_nullZ2dunlocked HelloImage_streq HelloImage_strnlen1 HelloImage_versionZ2detc HelloImage_versionZ2detcZ2dfsf HelloImage_xallocZ2ddie.
-From Glibc Require Import HelloImage_xmalloc Unit_assert___libc_assert_fail_os Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_csu_initZ2dfirst_os Unit_csu_libcZ2dstart_os Unit_csu_libcZ2dtls_os Unit_ctype_ctypeZ2dinfo_os.
-From Glibc Require Import Unit_debug_chk_fail_os Unit_debug_fortify_fail_os Unit_debug_readonlyZ2dareaZ2dfallback_os Unit_debug_readonlyZ2darea_os Unit_dirent_closedir_os Unit_dirent_getdents64_os Unit_dirent_opendir_os Unit_dirent_readdir64_os.
-From Glibc Require Import Unit_dlfcn_libc_dlerror_result_os Unit_elf_dlZ2dlibc_os Unit_elf_dlZ2dsupport_os Unit_elf_dlZ2dtls_init_tp_os Unit_elf_dlZ2dtunables_os Unit_elf_enblZ2dsecure_os Unit_elf_libc_early_init_os Unit_iconv_gconv_builtin_os.
-From Glibc Require Import Unit_iconv_gconv_cache_os Unit_iconv_gconv_charset_os Unit_iconv_gconv_conf_os Unit_iconv_gconv_db_os Unit_iconv_gconv_dl_os Unit_iconv_gconv_open_os Unit_iconv_gconv_os Unit_iconv_gconv_simple_os.
-From Glibc Require Import Unit_iconv_gconv_trans_os Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_intl_explodename_os Unit_intl_finddomain_os Unit_intl_l10nflist_os Unit_intl_loadmsgcat_os Unit_intl_localealias_os.
-From Glibc Require Import Unit_intl_pluralZ2dexp_os Unit_intl_plural_os Unit_io_close_nocancel_nostatus_os Unit_io_close_nocancel_os Unit_io_fcntl_nocancel_os Unit_io_fstat64_os Unit_io_fstatat64_os Unit_io_getcwd_os.
-From Glibc Require Import Unit_io_lseek64_os Unit_io_open64_nocancel_os Unit_io_open64_os Unit_io_read_nocancel_os Unit_io_read_os Unit_io_stat64_os Unit_io_write_nocancel_os Unit_io_write_os.
-From Glibc Require Import Unit_libio___fpending_os Unit_libio_feof_u_os Unit_libio_ferror_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os Unit_libio_iofflush_os.
-From Glibc Require Import Unit_libio_iofgets_u_os Unit_libio_iofopen_os Unit_libio_iofopncook_os Unit_libio_iofputs_os Unit_libio_iofputws_u_os Unit_libio_iofwide_os Unit_libio_iogetdelim_os Unit_libio_iogetline_os.
-From Glibc Require Import Unit_libio_iopopen_os Unit_libio_iovdprintf_os Unit_libio_libc_fatal_os Unit_libio_memstream_os Unit_libio_obprintf_os Unit_libio_stdfiles_os Unit_libio_stdio_os Unit_libio_strops_os.
-From Glibc Require Import Unit_libio_vasprintf_os Unit_libio_vsnprintf_os Unit_libio_vtables_os Unit_libio_wfiledoalloc_os Unit_libio_wfileops_os Unit_libio_wgenops_os Unit_libio_wmemstream_os Unit_libio_wprintf_os.
-From Glibc Require Import Unit_libio_wstrops_os Unit_locale_CZ2daddress_os Unit_locale_CZ2dcollate_os Unit_locale_CZ2dctype_os Unit_locale_CZ2didentification_os Unit_locale_CZ2dmeasurement_os Unit_locale_CZ2dmessages_os Unit_locale_CZ2dmonetary_os.
-From Glibc Require Import Unit_locale_CZ2dname_os Unit_locale_CZ2dnumeric_os Unit_locale_CZ2dpaper_os Unit_locale_CZ2dtelephone_os Unit_locale_CZ2dtime_os Unit_locale_C_name_os Unit_locale_SYS_libc_os Unit_locale_findlocale_os.
-From Glibc Require Import Unit_locale_globalZ2dlocale_os Unit_locale_lcZ2dctype_os Unit_locale_loadarchive_os Unit_locale_loadlocale_os Unit_locale_localename_os Unit_locale_mb_cur_max_os Unit_locale_setlocale_os Unit_locale_xlocale_os.
-From Glibc Require Import Unit_malloc_malloc_os Unit_malloc_obstack_os Unit_malloc_scratch_buffer_grow_preserve_os Unit_malloc_scratch_buffer_set_array_size_os Unit_misc_error_os Unit_misc_getclktck_os Unit_misc_getdtsz_os Unit_misc_getpagesize_os.
-From Glibc Require Import Unit_misc_getsysstats_os Unit_misc_initZ2dmisc_os Unit_misc_makedev_os Unit_misc_mmap64_os Unit_misc_mremap_os Unit_misc_munmap_os Unit_misc_setvmaname_os Unit_misc_single_threaded_os.
-From Glibc Require Import Unit_misc_sysinfo_os Unit_misc_tsearch_os Unit_nptl_alloca_cutoff_os Unit_nptl_cleanup_compat_os Unit_nptl_futexZ2dinternal_os Unit_nptl_libcZ2dcleanup_os Unit_nptl_lowlevellock_os Unit_nptl_nptl_deallocate_tsd_os.
-From Glibc Require Import Unit_nptl_nptl_nthreads_os Unit_nptl_pthread_mutex_conf_os Unit_nptl_pthread_once_os Unit_nptl_pthread_rwlock_init_os Unit_nptl_pthread_rwlock_rdlock_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_nptl_pthread_setcancelstate_os.
-From Glibc Require Import Unit_nptl_unwind_os Unit_nptl_vars_os Unit_nss_hashZ2dstring_os Unit_posix__exit_os Unit_posix_environ_os Unit_posix_get_child_max_os Unit_posix_getopt1_os Unit_posix_getopt_os.
-From Glibc Require Import Unit_posix_sched_cpucount_os Unit_posix_sysconf_os Unit_posix_wait4_os Unit_posix_waitpid_os Unit_resource_getrlimit64_os Unit_setjmp_longjmp_os Unit_stdioZ2dcommon__fitoa_word_os Unit_stdioZ2dcommon_asprintf_os.
-From Glibc Require Import Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os Unit_stdioZ2dcommon_errlist_os Unit_stdioZ2dcommon_errname_os Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_funlockfile_os Unit_stdioZ2dcommon_fxprintf_os Unit_stdioZ2dcommon_grouping_iterator_os Unit_stdioZ2dcommon_itoaZ2ddigits_os.
-From Glibc Require Import Unit_stdioZ2dcommon_itoaZ2dudigits_os Unit_stdioZ2dcommon_itowaZ2ddigits_os Unit_stdioZ2dcommon_printfZ2dparsemb_os Unit_stdioZ2dcommon_printfZ2dparsewc_os Unit_stdioZ2dcommon_printf_buffer_as_file_os Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_flush_os Unit_stdioZ2dcommon_printf_buffer_pad_1_os.
-From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_putc_1_os Unit_stdioZ2dcommon_printf_buffer_puts_1_os Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_printf_fp_os Unit_stdioZ2dcommon_printf_fphex_os Unit_stdioZ2dcommon_printf_function_invoke_os Unit_stdioZ2dcommon_printf_os.
-From Glibc Require Import Unit_stdioZ2dcommon_regZ2dmodifier_os Unit_stdioZ2dcommon_regZ2dprintf_os Unit_stdioZ2dcommon_regZ2dtype_os Unit_stdioZ2dcommon_snprintf_os Unit_stdioZ2dcommon_translated_number_width_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_stdioZ2dcommon_wprintf_buffer_as_file_os.
-From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_done_os Unit_stdioZ2dcommon_wprintf_buffer_flush_os Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os Unit_stdioZ2dcommon_wprintf_buffer_putc_1_os Unit_stdioZ2dcommon_wprintf_buffer_to_file_os Unit_stdioZ2dcommon_wprintf_buffer_write_os Unit_stdioZ2dcommon_wprintf_function_invoke_os Unit_stdlib_abort_os.
-From Glibc Require Import Unit_stdlib_abs_os Unit_stdlib_add_n_os Unit_stdlib_addmul_1_os Unit_stdlib_atexit_oS Unit_stdlib_bsearch_os Unit_stdlib_cmp_os Unit_stdlib_cxa_atexit_os Unit_stdlib_cxa_thread_atexit_impl_os.
-From Glibc Require Import Unit_stdlib_dbl2mpn_os Unit_stdlib_divrem_os Unit_stdlib_exit_os Unit_stdlib_fpioconst_os Unit_stdlib_getenv_os Unit_stdlib_getrandom_os Unit_stdlib_grouping_os Unit_stdlib_ldbl2mpn_os.
-From Glibc Require Import Unit_stdlib_lshift_os Unit_stdlib_mul_1_os Unit_stdlib_mul_n_os Unit_stdlib_mul_os Unit_stdlib_qsort_os Unit_stdlib_rshift_os Unit_stdlib_secureZ2dgetenv_os Unit_stdlib_strtol_l_os.
-From Glibc Require Import Unit_stdlib_strtol_os Unit_stdlib_strtoul_l_os Unit_stdlib_strtoul_os Unit_stdlib_sub_n_os Unit_stdlib_submul_1_os Unit_string__strerror_os Unit_string_argzZ2daddsep_os Unit_string_argzZ2dctsep_os.
-From Glibc Require Import Unit_string_argzZ2dnext_os Unit_string_cacheinfo_os Unit_string_memchr_os Unit_string_memcmp_os Unit_string_memcpy_os Unit_string_memmem_os Unit_string_memmove_os Unit_string_mempcpy_os.
-From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_stpcpy_os Unit_string_strcasecmp_l_os Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strcpy_os.
-From Glibc Require Import Unit_string_strcspn_os Unit_string_strdup_os Unit_string_strlen_os Unit_string_strncmp_os Unit_string_strndup_os Unit_string_strnlen_os Unit_string_strrchr_os Unit_string_strspn_os.
-From Glibc Require Import Unit_string_strstr_os Unit_string_strtok_r_os Unit_termios_isatty_nostatus_os Unit_time_clock_gettime_os Unit_wcsmbs_btowc_os Unit_wcsmbs_mbrtoc32_os Unit_wcsmbs_mbrtowc_os Unit_wcsmbs_mbsinit_os.
-From Glibc Require Import Unit_wcsmbs_mbsrtowcs_l_os Unit_wcsmbs_mbsrtowcs_os Unit_wcsmbs_wcrtomb_os Unit_wcsmbs_wcschrnul_os Unit_wcsmbs_wcslen_os Unit_wcsmbs_wcsmbsload_os Unit_wcsmbs_wcsnlen_os Unit_wcsmbs_wcsrtombs_os.
-From Glibc Require Import Unit_wcsmbs_wmemchr_os Unit_wcsmbs_wmemcpy_os Unit_wcsmbs_wmemmove_os Unit_wcsmbs_wmempcpy_os Unit_wcsmbs_wmemset_os Unit_wctype_wcfuncs_os.
+From Glibc Require Import HelloImageChunks HelloImageEraseMem HelloImageObjects HelloImage_c32isprint HelloImage_closeZ2dstream HelloImage_closeout HelloImage_exitfail HelloImage_hardZ2dlocale.
+From Glibc Require Import HelloImage_hello HelloImage_mbrtoc32 HelloImage_mbrtowc HelloImage_mbsrtowcs HelloImage_mbsrtowcsZ2dstate HelloImage_mbszero HelloImage_memeq HelloImage_progname.
+From Glibc Require Import HelloImage_propername HelloImage_quotearg HelloImage_setlocale_null HelloImage_setlocale_nullZ2dunlocked HelloImage_streq HelloImage_strnlen1 HelloImage_versionZ2detc HelloImage_versionZ2detcZ2dfsf.
+From Glibc Require Import HelloImage_xallocZ2ddie HelloImage_xmalloc Unit_assert___libc_assert_fail_os Unit_csu_errnoZ2dloc_os Unit_csu_errno_os Unit_csu_initZ2dfirst_os Unit_csu_libcZ2dstart_os Unit_csu_libcZ2dtls_os.
+From Glibc Require Import Unit_ctype_ctypeZ2dinfo_os Unit_debug_readonlyZ2dareaZ2dfallback_os Unit_dirent_opendir_os Unit_dirent_readdir64_os Unit_dlfcn_libc_dlerror_result_os Unit_elf_dlZ2dsupport_os Unit_elf_dlZ2dtls_init_tp_os Unit_elf_dlZ2dtunables_os.
+From Glibc Require Import Unit_elf_enblZ2dsecure_os Unit_elf_libc_early_init_os Unit_iconv_gconv_builtin_os Unit_iconv_gconv_cache_os Unit_iconv_gconv_charset_os Unit_iconv_gconv_conf_os Unit_iconv_gconv_db_os Unit_iconv_gconv_dl_os.
+From Glibc Require Import Unit_iconv_gconv_open_os Unit_iconv_gconv_os Unit_iconv_gconv_simple_os Unit_iconv_gconv_trans_os Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_intl_explodename_os Unit_intl_finddomain_os.
+From Glibc Require Import Unit_intl_l10nflist_os Unit_intl_loadmsgcat_os Unit_intl_localealias_os Unit_intl_pluralZ2dexp_os Unit_intl_plural_os Unit_io_close_nocancel_nostatus_os Unit_io_close_nocancel_os Unit_io_fstat64_os.
+From Glibc Require Import Unit_io_getcwd_os Unit_io_lseek64_os Unit_io_write_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_filedoalloc_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_libio_iofflush_os Unit_libio_iofgets_u_os Unit_libio_iofopen_os Unit_libio_iofopncook_os Unit_libio_iofputs_os Unit_libio_iofwide_os.
+From Glibc Require Import Unit_libio_iogetdelim_os Unit_libio_iogetline_os Unit_libio_iopopen_os Unit_libio_iovdprintf_os Unit_libio_libc_fatal_os Unit_libio_memstream_os Unit_libio_obprintf_os Unit_libio_stdfiles_os.
+From Glibc Require Import Unit_libio_stdio_os Unit_libio_strops_os Unit_libio_vasprintf_os Unit_libio_vsnprintf_os Unit_libio_vtables_os Unit_libio_wfiledoalloc_os Unit_libio_wfileops_os Unit_libio_wgenops_os.
+From Glibc Require Import Unit_libio_wmemstream_os Unit_libio_wprintf_os Unit_libio_wstrops_os Unit_locale_CZ2dcollate_os Unit_locale_CZ2dctype_os Unit_locale_CZ2didentification_os Unit_locale_CZ2dmonetary_os Unit_locale_CZ2dtime_os.
+From Glibc Require Import Unit_locale_C_name_os Unit_locale_SYS_libc_os Unit_locale_findlocale_os Unit_locale_globalZ2dlocale_os Unit_locale_lcZ2dctype_os Unit_locale_loadarchive_os Unit_locale_loadlocale_os Unit_locale_localename_os.
+From Glibc Require Import Unit_locale_mb_cur_max_os Unit_locale_setlocale_os Unit_malloc_malloc_os Unit_malloc_obstack_os Unit_malloc_scratch_buffer_grow_preserve_os Unit_malloc_scratch_buffer_set_array_size_os Unit_misc_error_os Unit_misc_getpagesize_os.
+From Glibc Require Import Unit_misc_getsysstats_os Unit_misc_initZ2dmisc_os Unit_misc_makedev_os Unit_misc_mmap64_os Unit_misc_setvmaname_os Unit_misc_single_threaded_os Unit_misc_tsearch_os Unit_nptl_alloca_cutoff_os.
+From Glibc Require Import Unit_nptl_cleanup_compat_os Unit_nptl_futexZ2dinternal_os Unit_nptl_libcZ2dcleanup_os Unit_nptl_nptl_deallocate_tsd_os Unit_nptl_nptl_nthreads_os Unit_nptl_pthread_mutex_conf_os Unit_nptl_pthread_once_os Unit_nptl_pthread_rwlock_rdlock_os.
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_nptl_pthread_setcancelstate_os Unit_nptl_unwind_os Unit_nptl_vars_os Unit_posix__exit_os Unit_posix_environ_os Unit_posix_getopt1_os.
+From Glibc Require Import Unit_posix_getopt_os Unit_posix_sysconf_os Unit_resource_getrlimit64_os Unit_stdioZ2dcommon__fitoa_word_os Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os Unit_stdioZ2dcommon_errlist_os Unit_stdioZ2dcommon_errname_os Unit_stdioZ2dcommon_fprintf_os.
+From Glibc Require Import Unit_stdioZ2dcommon_funlockfile_os Unit_stdioZ2dcommon_fxprintf_os Unit_stdioZ2dcommon_grouping_iterator_os Unit_stdioZ2dcommon_printfZ2dparsemb_os Unit_stdioZ2dcommon_printfZ2dparsewc_os Unit_stdioZ2dcommon_printf_buffer_as_file_os Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_flush_os.
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_pad_1_os Unit_stdioZ2dcommon_printf_buffer_putc_1_os Unit_stdioZ2dcommon_printf_buffer_puts_1_os Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_printf_fp_os Unit_stdioZ2dcommon_printf_fphex_os Unit_stdioZ2dcommon_printf_function_invoke_os.
+From Glibc Require Import Unit_stdioZ2dcommon_printf_os Unit_stdioZ2dcommon_regZ2dmodifier_os Unit_stdioZ2dcommon_snprintf_os Unit_stdioZ2dcommon_translated_number_width_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_stdioZ2dcommon_wprintf_buffer_as_file_os Unit_stdioZ2dcommon_wprintf_buffer_done_os.
+From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_flush_os Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os Unit_stdioZ2dcommon_wprintf_buffer_putc_1_os Unit_stdioZ2dcommon_wprintf_buffer_to_file_os Unit_stdioZ2dcommon_wprintf_buffer_write_os Unit_stdioZ2dcommon_wprintf_function_invoke_os Unit_stdlib_abort_os Unit_stdlib_addmul_1_os.
+From Glibc Require Import Unit_stdlib_atexit_oS Unit_stdlib_cxa_atexit_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_dbl2mpn_os Unit_stdlib_divrem_os Unit_stdlib_exit_os Unit_stdlib_fpioconst_os Unit_stdlib_getenv_os.
+From Glibc Require Import Unit_stdlib_getrandom_os Unit_stdlib_grouping_os Unit_stdlib_ldbl2mpn_os Unit_stdlib_mul_1_os Unit_stdlib_mul_n_os Unit_stdlib_mul_os Unit_stdlib_qsort_os Unit_stdlib_rshift_os.
+From Glibc Require Import Unit_stdlib_strtol_l_os Unit_stdlib_strtoul_l_os Unit_stdlib_submul_1_os Unit_string__strerror_os Unit_string_argzZ2daddsep_os Unit_string_argzZ2dctsep_os Unit_string_cacheinfo_os Unit_string_memchr_os.
+From Glibc Require Import Unit_string_memcmp_os Unit_string_memcpy_os Unit_string_memmem_os Unit_string_mempcpy_os Unit_string_memrchr_os Unit_string_memset_os Unit_string_stpcpy_os Unit_string_strcasecmp_l_os.
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strcspn_os Unit_string_strdup_os Unit_string_strlen_os Unit_string_strncmp_os Unit_string_strnlen_os.
+From Glibc Require Import Unit_string_strrchr_os Unit_string_strspn_os Unit_string_strstr_os Unit_string_strtok_r_os Unit_termios_isatty_nostatus_os Unit_time_clock_gettime_os Unit_wcsmbs_btowc_os Unit_wcsmbs_mbrtowc_os.
+From Glibc Require Import Unit_wcsmbs_mbsinit_os Unit_wcsmbs_mbsrtowcs_l_os Unit_wcsmbs_wcrtomb_os Unit_wcsmbs_wcschrnul_os Unit_wcsmbs_wcslen_os Unit_wcsmbs_wcsmbsload_os Unit_wcsmbs_wcsrtombs_os Unit_wcsmbs_wmemchr_os.
+From Glibc Require Import Unit_wcsmbs_wmemcpy_os Unit_wcsmbs_wmempcpy_os Unit_wcsmbs_wmemset_os Unit_wctype_wcfuncs_os.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -210,23 +203,23 @@ Local Definition hello_image_linked_items_03 : module :=
   Unit_ctype_ctypeZ2dinfo_os.item___libc_tsd_CTYPE_B;
   Unit_ctype_ctypeZ2dinfo_os.item___libc_tsd_CTYPE_TOLOWER;
   Unit_ctype_ctypeZ2dinfo_os.item___libc_tsd_CTYPE_TOUPPER;
-  IFunc Unit_debug_chk_fail_os.fn___GI___chk_fail;
-  Unit_debug_chk_fail_os.item_glibc_chk_fail'23str'2e134;
-  IFunc Unit_debug_fortify_fail_os.fn___GI___fortify_fail;
-  Unit_debug_fortify_fail_os.item_glibc_fortify_fail'23str'2e19;
-  Unit_debug_fortify_fail_os.item_glibc_fortify_fail'23str'2e20;
+  IFunc HelloImageObjects.Unit_debug_chk_fail_os.fn___GI___chk_fail;
+  HelloImageObjects.Unit_debug_chk_fail_os.item_glibc_chk_fail'23str'2e134;
+  IFunc HelloImageObjects.Unit_debug_fortify_fail_os.fn___GI___fortify_fail;
+  HelloImageObjects.Unit_debug_fortify_fail_os.item_glibc_fortify_fail'23str'2e19;
+  HelloImageObjects.Unit_debug_fortify_fail_os.item_glibc_fortify_fail'23str'2e20;
   IFunc Unit_debug_readonlyZ2dareaZ2dfallback_os.fn___readonly_area_fallback;
   Unit_debug_readonlyZ2dareaZ2dfallback_os.item_glibc_readonly_area_fallback'23str'2e252;
   Unit_debug_readonlyZ2dareaZ2dfallback_os.item_glibc_readonly_area_fallback'23str'2e253;
-  IFunc Unit_debug_readonlyZ2darea_os.fn___readonly_area;
-  IFunc Unit_dirent_closedir_os.fn___closedir;
-  IFunc Unit_dirent_getdents64_os.fn___GI___getdents64;
+  IFunc HelloImageObjects.Unit_debug_readonlyZ2darea_os.fn___readonly_area;
+  IFunc HelloImageObjects.Unit_dirent_closedir_os.fn___closedir;
+  IFunc HelloImageObjects.Unit_dirent_getdents64_os.fn___GI___getdents64;
   IFunc Unit_dirent_opendir_os.fn___opendir;
   IFunc Unit_dirent_opendir_os.fn___alloc_dir;
   IFunc Unit_dirent_readdir64_os.fn___GI___readdir64;
-  IFunc Unit_elf_dlZ2dlibc_os.fn___libc_dlopen_mode;
-  IFunc Unit_elf_dlZ2dlibc_os.fn___libc_dlsym;
-  IFunc Unit_elf_dlZ2dlibc_os.fn___libc_dlclose;
+  IFunc HelloImageObjects.Unit_elf_dlZ2dlibc_os.fn___libc_dlopen_mode;
+  IFunc HelloImageObjects.Unit_elf_dlZ2dlibc_os.fn___libc_dlsym;
+  IFunc HelloImageObjects.Unit_elf_dlZ2dlibc_os.fn___libc_dlclose;
   Unit_elf_dlZ2dsupport_os.item___libc_stack_end;
   Unit_elf_dlZ2dsupport_os.item__dl_auxv;
   Unit_elf_dlZ2dsupport_os.item__dl_clktck;
@@ -552,7 +545,7 @@ Proof. reflexivity. Qed.
 Local Definition hello_image_linked_items_08 : module :=
   [IFunc Unit_io_close_nocancel_nostatus_os.fn___GI___close_nocancel_nostatus;
   IFunc Unit_io_fstat64_os.fn___GI___fstat64;
-  IFunc Unit_io_fstatat64_os.fn___GI___fstatat64;
+  IFunc HelloImageObjects.Unit_io_fstatat64_os.fn___GI___fstatat64;
   IFunc Unit_io_getcwd_os.fn___GI___getcwd;
   Unit_io_getcwd_os.item_glibc_getcwd'23str'2e242;
   Unit_io_getcwd_os.item_glibc_getcwd'23str'2e243;
@@ -561,20 +554,20 @@ Local Definition hello_image_linked_items_08 : module :=
   Unit_io_getcwd_os.item_glibc_getcwd'23str'2e246;
   Unit_io_getcwd_os.item_glibc_getcwd'23str'2e247;
   IFunc Unit_io_lseek64_os.fn___lseek64;
-  IFunc Unit_io_open64_os.fn___libc_open64;
-  Unit_io_open64_os.item___GI___open;
-  IFunc Unit_io_open64_nocancel_os.fn___GI___open64_nocancel;
-  Unit_io_open64_nocancel_os.item___GI___open_nocancel;
-  IFunc Unit_io_read_os.fn___GI___libc_read;
-  Unit_io_read_os.item___GI___read;
-  IFunc Unit_io_read_nocancel_os.fn___GI___read_nocancel;
-  IFunc Unit_io_stat64_os.fn___GI___stat64;
+  IFunc HelloImageObjects.Unit_io_open64_os.fn___libc_open64;
+  HelloImageObjects.Unit_io_open64_os.item___GI___open;
+  IFunc HelloImageObjects.Unit_io_open64_nocancel_os.fn___GI___open64_nocancel;
+  HelloImageObjects.Unit_io_open64_nocancel_os.item___GI___open_nocancel;
+  IFunc HelloImageObjects.Unit_io_read_os.fn___GI___libc_read;
+  HelloImageObjects.Unit_io_read_os.item___GI___read;
+  IFunc HelloImageObjects.Unit_io_read_nocancel_os.fn___GI___read_nocancel;
+  IFunc HelloImageObjects.Unit_io_stat64_os.fn___GI___stat64;
   IFunc Unit_io_write_os.fn___GI___libc_write;
   Unit_io_write_os.item___GI___write;
   Unit_io_write_os.item___GI_write;
   IFunc Unit_io_write_nocancel_os.fn___GI___write_nocancel;
   IFunc Unit_libio___fpending_os.fn___fpending;
-  IFunc Unit_libio_feof_u_os.fn___feof_unlocked;
+  IFunc HelloImageObjects.Unit_libio_feof_u_os.fn___feof_unlocked;
   IFunc Unit_libio_ferror_os.fn__IO_ferror;
   Unit_libio_ferror_os.item_ferror;
   IFunc Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate;
@@ -797,9 +790,9 @@ Local Definition hello_image_linked_items_11 : module :=
   Unit_libio_wstrops_os.item_glibc_wstrops'23str'2e257;
   Unit_libio_wstrops_os.item_glibc_wstrops'23str'2e258;
   Unit_libio_wstrops_os.item_glibc_wstrops'23str'2e259;
-  Unit_locale_CZ2daddress_os.item__nl_C_LC_ADDRESS;
-  Unit_locale_CZ2daddress_os.item_glibc_C_address'23str'2e40;
-  Unit_locale_CZ2daddress_os.item_glibc_C_address'23str'2e41;
+  HelloImageObjects.Unit_locale_CZ2daddress_os.item__nl_C_LC_ADDRESS;
+  HelloImageObjects.Unit_locale_CZ2daddress_os.item_glibc_C_address'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2daddress_os.item_glibc_C_address'23str'2e41;
   Unit_locale_CZ2dcollate_os.item__nl_C_LC_COLLATE;
   Unit_locale_CZ2dcollate_os.item_glibc_C_collate'23collseqmb;
   Unit_locale_CZ2dcollate_os.item_glibc_C_collate'23collseqwc;
@@ -869,27 +862,27 @@ Local Definition hello_image_linked_items_12 : module :=
   Unit_locale_CZ2didentification_os.item_glibc_C_identification'23str'2e49;
   Unit_locale_CZ2didentification_os.item_glibc_C_identification'23str'2e50;
   Unit_locale_CZ2didentification_os.item_glibc_C_identification'23str'2e51;
-  Unit_locale_CZ2dmeasurement_os.item__nl_C_LC_MEASUREMENT;
-  Unit_locale_CZ2dmeasurement_os.item_glibc_C_measurement'23str'2e40;
-  Unit_locale_CZ2dmessages_os.item__nl_C_LC_MESSAGES;
-  Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e40;
-  Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e41;
-  Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e42;
+  HelloImageObjects.Unit_locale_CZ2dmeasurement_os.item__nl_C_LC_MEASUREMENT;
+  HelloImageObjects.Unit_locale_CZ2dmeasurement_os.item_glibc_C_measurement'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2dmessages_os.item__nl_C_LC_MESSAGES;
+  HelloImageObjects.Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e41;
+  HelloImageObjects.Unit_locale_CZ2dmessages_os.item_glibc_C_messages'23str'2e42;
   Unit_locale_CZ2dmonetary_os.item__nl_C_LC_MONETARY;
   Unit_locale_CZ2dmonetary_os.item_glibc_C_monetary'23conversion_rate;
   Unit_locale_CZ2dmonetary_os.item_glibc_C_monetary'23not_available;
   Unit_locale_CZ2dmonetary_os.item_glibc_C_monetary'23str'2e40;
   Unit_locale_CZ2dmonetary_os.item_glibc_C_monetary'23str'2e41;
-  Unit_locale_CZ2dname_os.item__nl_C_LC_NAME;
-  Unit_locale_CZ2dname_os.item_glibc_C_name'23str'2e40;
-  Unit_locale_CZ2dname_os.item_glibc_C_name'23str'2e41;
-  Unit_locale_CZ2dnumeric_os.item__nl_C_LC_NUMERIC;
-  Unit_locale_CZ2dnumeric_os.item_glibc_C_numeric'23str'2e40;
-  Unit_locale_CZ2dnumeric_os.item_glibc_C_numeric'23str'2e41;
-  Unit_locale_CZ2dpaper_os.item__nl_C_LC_PAPER;
-  Unit_locale_CZ2dtelephone_os.item__nl_C_LC_TELEPHONE;
-  Unit_locale_CZ2dtelephone_os.item_glibc_C_telephone'23str'2e40;
-  Unit_locale_CZ2dtelephone_os.item_glibc_C_telephone'23str'2e41].
+  HelloImageObjects.Unit_locale_CZ2dname_os.item__nl_C_LC_NAME;
+  HelloImageObjects.Unit_locale_CZ2dname_os.item_glibc_C_name'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2dname_os.item_glibc_C_name'23str'2e41;
+  HelloImageObjects.Unit_locale_CZ2dnumeric_os.item__nl_C_LC_NUMERIC;
+  HelloImageObjects.Unit_locale_CZ2dnumeric_os.item_glibc_C_numeric'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2dnumeric_os.item_glibc_C_numeric'23str'2e41;
+  HelloImageObjects.Unit_locale_CZ2dpaper_os.item__nl_C_LC_PAPER;
+  HelloImageObjects.Unit_locale_CZ2dtelephone_os.item__nl_C_LC_TELEPHONE;
+  HelloImageObjects.Unit_locale_CZ2dtelephone_os.item_glibc_C_telephone'23str'2e40;
+  HelloImageObjects.Unit_locale_CZ2dtelephone_os.item_glibc_C_telephone'23str'2e41].
 
 Local Lemma hello_image_linked_items_12_zero : zero_nonneg hello_image_linked_items_12 = true.
 Proof. reflexivity. Qed.
@@ -1062,7 +1055,7 @@ Local Definition hello_image_linked_items_15 : module :=
   Unit_locale_setlocale_os.item_glibc_setlocale'23_nl_category_postload;
   Unit_locale_setlocale_os.item_glibc_setlocale'23str'2e234;
   Unit_locale_setlocale_os.item_setlocale;
-  Unit_locale_xlocale_os.item__nl_C_locobj;
+  HelloImageObjects.Unit_locale_xlocale_os.item__nl_C_locobj;
   IFunc Unit_malloc_malloc_os.fn_glibc_malloc'23_dl_tunable_set_mmap_threshold;
   IFunc Unit_malloc_malloc_os.fn_glibc_malloc'23_dl_tunable_set_mmaps_max;
   IFunc Unit_malloc_malloc_os.fn_glibc_malloc'23_dl_tunable_set_top_pad;
@@ -1117,8 +1110,8 @@ Local Definition hello_image_linked_items_16 : module :=
   Unit_misc_error_os.item_glibc_error'23str'2e253;
   Unit_misc_error_os.item_glibc_error'23str'2e254;
   Unit_misc_error_os.item_glibc_error'23str'2e255;
-  IFunc Unit_misc_getclktck_os.fn___getclktck;
-  IFunc Unit_misc_getdtsz_os.fn___getdtablesize;
+  IFunc HelloImageObjects.Unit_misc_getclktck_os.fn___getclktck;
+  IFunc HelloImageObjects.Unit_misc_getdtsz_os.fn___getdtablesize;
   IFunc Unit_misc_getpagesize_os.fn___GI___getpagesize;
   Unit_misc_getpagesize_os.item_glibc_getpagesize'23str'2e279;
   Unit_misc_getpagesize_os.item_glibc_getpagesize'23str'2e280;
@@ -1145,15 +1138,15 @@ Local Definition hello_image_linked_items_16 : module :=
   IFunc Unit_misc_mmap64_os.fn___GI___mmap64;
   Unit_misc_mmap64_os.item___GI___mmap;
   Unit_misc_mmap64_os.item_glibc_mmap64'23str'2e279;
-  Unit_misc_munmap_os.item___munmap;
-  Unit_misc_munmap_os.item___GI___munmap;
+  HelloImageObjects.Unit_misc_munmap_os.item___munmap;
+  HelloImageObjects.Unit_misc_munmap_os.item___GI___munmap;
   IFunc Unit_misc_setvmaname_os.fn___is_decorate_maps_enabled;
   IFunc Unit_misc_setvmaname_os.fn___set_vma_name;
   Unit_misc_setvmaname_os.item_glibc_setvmaname'23decorate_maps;
   Unit_misc_setvmaname_os.item_glibc_setvmaname'23str'2e282;
   Unit_misc_single_threaded_os.item___libc_single_threaded_internal;
   Unit_misc_single_threaded_os.item___libc_single_threaded;
-  Unit_misc_sysinfo_os.item___sysinfo;
+  HelloImageObjects.Unit_misc_sysinfo_os.item___sysinfo;
   IFunc Unit_misc_tsearch_os.fn_glibc_tsearch'23maybe_split_for_insert;
   IFunc Unit_misc_tsearch_os.fn___GI___tsearch;
   IFunc Unit_misc_tsearch_os.fn___GI___tfind;
@@ -1173,17 +1166,17 @@ Proof. reflexivity. Qed.
 Local Definition hello_image_linked_items_17 : module :=
   [IFunc Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer;
   IFunc Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore;
-  IFunc Unit_nptl_lowlevellock_os.fn___GI___lll_lock_wait_private;
-  IFunc Unit_nptl_lowlevellock_os.fn___GI___lll_lock_wake_private;
+  IFunc HelloImageObjects.Unit_nptl_lowlevellock_os.fn___GI___lll_lock_wait_private;
+  IFunc HelloImageObjects.Unit_nptl_lowlevellock_os.fn___GI___lll_lock_wake_private;
   IFunc Unit_nptl_pthread_once_os.fn_glibc_pthread_once'23clear_once_control;
   IFunc Unit_nptl_pthread_once_os.fn_glibc_pthread_once'23__pthread_once_slow;
   IFunc Unit_nptl_pthread_once_os.fn____pthread_once;
   IFunc Unit_nptl_pthread_once_os.fn_glibc_pthread_once'23__pthread_cleanup_combined_routine_voidptr;
   Unit_nptl_pthread_once_os.item___fork_generation;
   Unit_nptl_pthread_once_os.item___GI___pthread_once;
-  IFunc Unit_nptl_pthread_rwlock_init_os.fn____pthread_rwlock_init;
-  Unit_nptl_pthread_rwlock_init_os.item_glibc_pthread_rwlock_init'23default_rwlockattr;
-  Unit_nptl_pthread_rwlock_init_os.item___GI___pthread_rwlock_init;
+  IFunc HelloImageObjects.Unit_nptl_pthread_rwlock_init_os.fn____pthread_rwlock_init;
+  HelloImageObjects.Unit_nptl_pthread_rwlock_init_os.item_glibc_pthread_rwlock_init'23default_rwlockattr;
+  HelloImageObjects.Unit_nptl_pthread_rwlock_init_os.item___GI___pthread_rwlock_init;
   IFunc Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock;
   Unit_nptl_pthread_rwlock_rdlock_os.item___GI___pthread_rwlock_rdlock;
   Unit_nptl_pthread_rwlock_rdlock_os.item_glibc_pthread_rwlock_rdlock'23str'2e286;
@@ -1211,12 +1204,12 @@ Local Definition hello_image_linked_items_17 : module :=
   Unit_nptl_unwind_os.item_glibc_unwind'23str'2e289;
   Unit_nptl_unwind_os.item_glibc_unwind'23str'2e290;
   Unit_nptl_unwind_os.item_glibc_unwind'23str'2e291;
-  IFunc Unit_nss_hashZ2dstring_os.fn___hash_string;
+  IFunc HelloImageObjects.Unit_nss_hashZ2dstring_os.fn___hash_string;
   IFunc Unit_posix__exit_os.fn___GI__exit;
   Unit_posix__exit_os.item__exit;
   Unit_posix_environ_os.item___environ;
   Unit_posix_environ_os.item___environ_counter;
-  IFunc Unit_posix_get_child_max_os.fn___get_child_max;
+  IFunc HelloImageObjects.Unit_posix_get_child_max_os.fn___get_child_max;
   IFunc Unit_posix_getopt_os.fn_glibc_getopt'23process_long_option;
   IFunc Unit_posix_getopt_os.fn__getopt_internal_r;
   IFunc Unit_posix_getopt_os.fn__getopt_internal;
@@ -1263,15 +1256,15 @@ Local Definition hello_image_linked_items_18 : module :=
   Unit_posix_sysconf_os.item_glibc_sysconf'23str'2e354;
   Unit_posix_sysconf_os.item_glibc_sysconf'23str'2e355;
   Unit_posix_sysconf_os.item_glibc_sysconf'23str'2e356;
-  IFunc Unit_posix_wait4_os.fn___GI___wait4;
-  IFunc Unit_posix_waitpid_os.fn___GI___waitpid;
+  IFunc HelloImageObjects.Unit_posix_wait4_os.fn___GI___wait4;
+  IFunc HelloImageObjects.Unit_posix_waitpid_os.fn___GI___waitpid;
   IFunc Unit_resource_getrlimit64_os.fn___GI___getrlimit64;
   Unit_resource_getrlimit64_os.item___GI___getrlimit;
-  IFunc Unit_setjmp_longjmp_os.fn___libc_siglongjmp;
-  Unit_setjmp_longjmp_os.item___libc_longjmp;
+  IFunc HelloImageObjects.Unit_setjmp_longjmp_os.fn___libc_siglongjmp;
+  HelloImageObjects.Unit_setjmp_longjmp_os.item___libc_longjmp;
   IFunc Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word;
-  IFunc Unit_stdioZ2dcommon_asprintf_os.fn____asprintf;
-  Unit_stdioZ2dcommon_asprintf_os.item___GI___asprintf;
+  IFunc HelloImageObjects.Unit_stdioZ2dcommon_asprintf_os.fn____asprintf;
+  HelloImageObjects.Unit_stdioZ2dcommon_asprintf_os.item___GI___asprintf;
   Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item__sys_errlist_internal;
   Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item__sys_errlist_internal_len;
   Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e247;
@@ -1433,10 +1426,10 @@ Local Definition hello_image_linked_items_20 : module :=
   Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e41;
   Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e42;
   Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e43;
-  Unit_stdioZ2dcommon_itoaZ2ddigits_os.item___GI__itoa_lower_digits;
-  Unit_stdioZ2dcommon_itoaZ2dudigits_os.item___GI__itoa_upper_digits;
-  Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_lower_digits;
-  Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_upper_digits;
+  HelloImageObjects.Unit_stdioZ2dcommon_itoaZ2ddigits_os.item___GI__itoa_lower_digits;
+  HelloImageObjects.Unit_stdioZ2dcommon_itoaZ2dudigits_os.item___GI__itoa_upper_digits;
+  HelloImageObjects.Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_lower_digits;
+  HelloImageObjects.Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_upper_digits;
   IFunc Unit_stdioZ2dcommon_printfZ2dparsemb_os.fn___parse_one_specmb;
   IFunc Unit_stdioZ2dcommon_printfZ2dparsewc_os.fn___parse_one_specwc;
   IFunc Unit_stdioZ2dcommon_printf_os.fn___printf;
@@ -1533,9 +1526,9 @@ Local Definition hello_image_linked_items_22 : module :=
   IFunc Unit_stdioZ2dcommon_regZ2dmodifier_os.fn___handle_registered_modifier_mb;
   IFunc Unit_stdioZ2dcommon_regZ2dmodifier_os.fn___handle_registered_modifier_wc;
   Unit_stdioZ2dcommon_regZ2dmodifier_os.item___printf_modifier_table;
-  Unit_stdioZ2dcommon_regZ2dprintf_os.item___printf_arginfo_table;
-  Unit_stdioZ2dcommon_regZ2dprintf_os.item___printf_function_table;
-  Unit_stdioZ2dcommon_regZ2dtype_os.item___printf_va_arg_table;
+  HelloImageObjects.Unit_stdioZ2dcommon_regZ2dprintf_os.item___printf_arginfo_table;
+  HelloImageObjects.Unit_stdioZ2dcommon_regZ2dprintf_os.item___printf_function_table;
+  HelloImageObjects.Unit_stdioZ2dcommon_regZ2dtype_os.item___printf_va_arg_table;
   IFunc Unit_stdioZ2dcommon_snprintf_os.fn___GI___snprintf;
   IFunc Unit_stdioZ2dcommon_translated_number_width_os.fn___translated_number_width;
   Unit_stdioZ2dcommon_translated_number_width_os.item_glibc_translated_number_width'23str'2e45;
@@ -1646,7 +1639,7 @@ Local Definition hello_image_linked_items_23 : module :=
   Unit_stdlib_abort_os.item_glibc_abort'23str'2e268;
   Unit_stdlib_abort_os.item_glibc_abort'23str'2e269;
   Unit_stdlib_abort_os.item_abort;
-  IFunc Unit_stdlib_add_n_os.fn___mpn_add_n;
+  IFunc HelloImageObjects.Unit_stdlib_add_n_os.fn___mpn_add_n;
   IFunc Unit_stdlib_addmul_1_os.fn___mpn_addmul_1;
   IFunc Unit_stdlib_addmul_1_os.fn_glibc_addmul_1'23u128_lshift].
 
@@ -1654,8 +1647,8 @@ Local Lemma hello_image_linked_items_23_zero : zero_nonneg hello_image_linked_it
 Proof. reflexivity. Qed.
 
 Local Definition hello_image_linked_items_24 : module :=
-  [IFunc Unit_stdlib_bsearch_os.fn___GI_bsearch;
-  IFunc Unit_stdlib_cmp_os.fn___mpn_cmp;
+  [IFunc HelloImageObjects.Unit_stdlib_bsearch_os.fn___GI_bsearch;
+  IFunc HelloImageObjects.Unit_stdlib_cmp_os.fn___mpn_cmp;
   IFunc Unit_stdlib_cxa_atexit_os.fn___internal_atexit;
   IFunc Unit_stdlib_cxa_atexit_os.fn___GI___cxa_atexit;
   IFunc Unit_stdlib_cxa_atexit_os.fn___new_exitfn;
@@ -1679,7 +1672,7 @@ Local Definition hello_image_linked_items_24 : module :=
   Unit_stdlib_fpioconst_os.item__fpioconst_pow10;
   IFunc Unit_stdlib_getenv_os.fn___GI_getenv;
   IFunc Unit_stdlib_grouping_os.fn___correctly_grouped_prefixmb;
-  IFunc Unit_stdlib_lshift_os.fn___mpn_lshift;
+  IFunc HelloImageObjects.Unit_stdlib_lshift_os.fn___mpn_lshift;
   IFunc Unit_stdlib_mul_os.fn___mpn_mul;
   IFunc Unit_stdlib_mul_os.fn_glibc_mul'23__mpn_add_1'2egnu_inline;
   IFunc Unit_stdlib_mul_1_os.fn___mpn_mul_1;
@@ -1695,15 +1688,15 @@ Local Definition hello_image_linked_items_24 : module :=
   Unit_stdlib_rshift_os.item_glibc_rshift'23str'2e62;
   Unit_stdlib_rshift_os.item_glibc_rshift'23str'2e63;
   Unit_stdlib_rshift_os.item_glibc_rshift'23str'2e64;
-  IFunc Unit_stdlib_secureZ2dgetenv_os.fn___GI___libc_secure_getenv;
-  Unit_stdlib_secureZ2dgetenv_os.item_secure_getenv;
-  IFunc Unit_stdlib_strtol_os.fn___GI___isoc23_strtol;
+  IFunc HelloImageObjects.Unit_stdlib_secureZ2dgetenv_os.fn___GI___libc_secure_getenv;
+  HelloImageObjects.Unit_stdlib_secureZ2dgetenv_os.item_secure_getenv;
+  IFunc HelloImageObjects.Unit_stdlib_strtol_os.fn___GI___isoc23_strtol;
   IFunc Unit_stdlib_strtol_l_os.fn___GI_____strtol_l_internal;
   Unit_stdlib_strtol_l_os.item___strtol_ul_max_tab;
   Unit_stdlib_strtol_l_os.item___strtol_ul_rem_tab;
-  IFunc Unit_stdlib_strtoul_os.fn___GI___isoc23_strtoul;
+  IFunc HelloImageObjects.Unit_stdlib_strtoul_os.fn___GI___isoc23_strtoul;
   IFunc Unit_stdlib_strtoul_l_os.fn___GI_____strtoul_l_internal;
-  IFunc Unit_stdlib_sub_n_os.fn___mpn_sub_n;
+  IFunc HelloImageObjects.Unit_stdlib_sub_n_os.fn___mpn_sub_n;
   IFunc Unit_stdlib_submul_1_os.fn___mpn_submul_1;
   IFunc Unit_stdlib_submul_1_os.fn_glibc_submul_1'23u128_lshift;
   IFunc Unit_string__strerror_os.fn___GI___strerror_r;
@@ -1711,7 +1704,7 @@ Local Definition hello_image_linked_items_24 : module :=
   Unit_string__strerror_os.item_glibc__strerror'23str'2e137;
   IFunc Unit_string_argzZ2daddsep_os.fn___argz_add_sep;
   IFunc Unit_string_argzZ2dctsep_os.fn___argz_create_sep;
-  IFunc Unit_string_argzZ2dnext_os.fn___GI___argz_next;
+  IFunc HelloImageObjects.Unit_string_argzZ2dnext_os.fn___GI___argz_next;
   IFunc Unit_string_cacheinfo_os.fn___cache_sysconf;
   IFunc Unit_string_memchr_os.fn___memchr;
   Unit_string_memchr_os.item___GI_memchr;
@@ -1727,7 +1720,7 @@ Local Definition hello_image_linked_items_25 : module :=
   Unit_string_memcpy_os.item_memcpy;
   IFunc Unit_string_memmem_os.fn_glibc_memmem'23two_way_long_needle;
   IFunc Unit_string_memmem_os.fn___GI___memmem;
-  IFunc Unit_string_memmove_os.fn___GI_memmove;
+  IFunc HelloImageObjects.Unit_string_memmove_os.fn___GI_memmove;
   IFunc Unit_string_mempcpy_os.fn___GI___mempcpy;
   Unit_string_mempcpy_os.item___GI_mempcpy;
   IFunc Unit_string_memrchr_os.fn___GI___memrchr;
@@ -1740,7 +1733,7 @@ Local Definition hello_image_linked_items_25 : module :=
   IFunc Unit_string_strchrnul_os.fn___GI___strchrnul;
   IFunc Unit_string_strcmp_os.fn___GI_strcmp;
   Unit_string_strcmp_os.item_strcmp;
-  IFunc Unit_string_strcpy_os.fn___GI_strcpy;
+  IFunc HelloImageObjects.Unit_string_strcpy_os.fn___GI_strcpy;
   IFunc Unit_string_strcspn_os.fn___GI_strcspn;
   IFunc Unit_string_strdup_os.fn___GI___strdup;
   IFunc Unit_string_strlen_os.fn___strlen;
@@ -1748,7 +1741,7 @@ Local Definition hello_image_linked_items_25 : module :=
   Unit_string_strlen_os.item_strlen;
   IFunc Unit_string_strncmp_os.fn___GI_strncmp;
   Unit_string_strncmp_os.item_strncmp;
-  IFunc Unit_string_strndup_os.fn___GI___strndup;
+  IFunc HelloImageObjects.Unit_string_strndup_os.fn___GI___strndup;
   IFunc Unit_string_strnlen_os.fn___GI___strnlen;
   IFunc Unit_string_strrchr_os.fn___GI_strrchr;
   Unit_string_strrchr_os.item_strrchr;
@@ -1758,8 +1751,8 @@ Local Definition hello_image_linked_items_25 : module :=
   IFunc Unit_string_strtok_r_os.fn___GI___strtok_r;
   IFunc Unit_termios_isatty_nostatus_os.fn___isatty_nostatus;
   IFunc Unit_wcsmbs_btowc_os.fn___btowc;
-  IFunc Unit_wcsmbs_mbrtoc32_os.fn_mbrtoc32;
-  Unit_wcsmbs_mbrtoc32_os.item_glibc_mbrtoc32'23state;
+  IFunc HelloImageObjects.Unit_wcsmbs_mbrtoc32_os.fn_mbrtoc32;
+  HelloImageObjects.Unit_wcsmbs_mbrtoc32_os.item_glibc_mbrtoc32'23state;
   IFunc Unit_wcsmbs_mbrtowc_os.fn___GI___mbrtowc;
   Unit_wcsmbs_mbrtowc_os.item___GI_mbrtowc;
   Unit_wcsmbs_mbrtowc_os.item_glibc_mbrtowc'23state;
@@ -1796,31 +1789,31 @@ Local Definition hello_image_linked_items_26 : module :=
   Unit_wcsmbs_wcsmbsload_os.item_glibc_wcsmbsload'23str'2e258;
   Unit_wcsmbs_wcsmbsload_os.item_glibc_wcsmbsload'23str'2e259;
   Unit_wcsmbs_wcsmbsload_os.item_glibc_wcsmbsload'23str'2e260;
-  IFunc Unit_wcsmbs_wcsnlen_os.fn___wcsnlen;
+  IFunc HelloImageObjects.Unit_wcsmbs_wcsnlen_os.fn___wcsnlen;
   IFunc Unit_wcsmbs_wmemchr_os.fn___GI___wmemchr;
   IFunc Unit_wcsmbs_wmemcpy_os.fn___wmemcpy;
   IFunc Unit_wcsmbs_wmempcpy_os.fn___wmempcpy;
   IFunc Unit_wcsmbs_wmemset_os.fn___GI___wmemset;
   IFunc Unit_wctype_wcfuncs_os.fn___iswprint;
   Unit_wctype_wcfuncs_os.item_iswprint;
-  IFunc Unit_io_fcntl_nocancel_os.fn___GI___fcntl64_nocancel;
+  IFunc HelloImageObjects.Unit_io_fcntl_nocancel_os.fn___GI___fcntl64_nocancel;
   IFunc Unit_libio_iofgets_u_os.fn___GI___fgets_unlocked;
-  IFunc Unit_libio_iofputws_u_os.fn___GI_fputws_unlocked;
-  IFunc Unit_misc_mremap_os.fn___GI___mremap;
+  IFunc HelloImageObjects.Unit_libio_iofputws_u_os.fn___GI_fputws_unlocked;
+  IFunc HelloImageObjects.Unit_misc_mremap_os.fn___GI___mremap;
   IFunc Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff;
-  IFunc Unit_posix_sched_cpucount_os.fn___GI___sched_cpucount;
+  IFunc HelloImageObjects.Unit_posix_sched_cpucount_os.fn___GI___sched_cpucount;
   IFunc Unit_stdioZ2dcommon_printf_buffer_puts_1_os.fn___printf_buffer_puts_1;
   Unit_stdioZ2dcommon_printf_buffer_puts_1_os.item_glibc_printf_buffer_puts_1'23str'2e41;
   Unit_stdioZ2dcommon_printf_buffer_puts_1_os.item_glibc_printf_buffer_puts_1'23str'2e42;
   Unit_stdioZ2dcommon_printf_buffer_puts_1_os.item_glibc_printf_buffer_puts_1'23str'2e43;
-  IFunc Unit_stdlib_abs_os.fn_abs;
+  IFunc HelloImageObjects.Unit_stdlib_abs_os.fn_abs;
   IFunc Unit_stdlib_atexit_oS.fn_atexit;
   IFunc Unit_stdlib_dbl2mpn_os.fn___mpn_extract_double;
   IFunc Unit_stdlib_divrem_os.fn___mpn_divrem;
   IFunc Unit_stdlib_divrem_os.fn_glibc_divrem'23u128_lshift;
   IFunc Unit_stdlib_ldbl2mpn_os.fn___mpn_extract_long_double;
-  IFunc Unit_wcsmbs_mbsrtowcs_os.fn___mbsrtowcs;
-  Unit_wcsmbs_mbsrtowcs_os.item_glibc_mbsrtowcs'23state;
+  IFunc HelloImageObjects.Unit_wcsmbs_mbsrtowcs_os.fn___mbsrtowcs;
+  HelloImageObjects.Unit_wcsmbs_mbsrtowcs_os.item_glibc_mbsrtowcs'23state;
   IFunc Unit_wcsmbs_mbsrtowcs_l_os.fn___mbsrtowcs_l;
   Unit_wcsmbs_mbsrtowcs_l_os.item_glibc_mbsrtowcs_l'23str'2e270;
   Unit_wcsmbs_mbsrtowcs_l_os.item_glibc_mbsrtowcs_l'23str'2e271;
@@ -1836,7 +1829,7 @@ Local Definition hello_image_linked_items_26 : module :=
   Unit_wcsmbs_wcsrtombs_os.item_glibc_wcsrtombs'23str'2e273;
   Unit_wcsmbs_wcsrtombs_os.item_glibc_wcsrtombs'23str'2e274;
   Unit_wcsmbs_wcsrtombs_os.item_glibc_wcsrtombs'23str'2e275;
-  IFunc Unit_wcsmbs_wmemmove_os.fn___wmemmove;
+  IFunc HelloImageObjects.Unit_wcsmbs_wmemmove_os.fn___wmemmove;
   IFunc Unit_csu_libcZ2dstart_os.fn_glibc_libc_start'23get_isa_level;
   IFunc Unit_csu_libcZ2dstart_os.fn_glibc_libc_start'23intel_02_known_compare;
   IFunc Unit_csu_libcZ2dstart_os.fn_glibc_libc_start'23intel_check_word;

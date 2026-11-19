@@ -104,10 +104,13 @@ class TypedCode:
         self.budget = budget
         self.units = defaultdict(dict)
         self.descriptions = {}
+        self.groups = {}
 
-    def add(self, file, description, record):
+    def add(self, file, description, record, *, group=None):
         if not record.symbol:
             raise ValueError(f'{file}: the linker must supply an atomic symbol')
+        if self.groups.setdefault(file, group) != group:
+            raise ValueError(f'{file}: only one fixture may use a grouped object')
         old = self.units[file].setdefault(record.symbol, record)
         if old != record:
             raise ValueError(f'{file}: linked copies of {record.symbol!r} differ')
@@ -117,6 +120,30 @@ class TypedCode:
         return file, record
 
     def write_unit(self, root, file):
+        body, deps = self.unit_body(root, file)
+        write(root, file, self.descriptions[file], body, deps)
+
+    def write_units(self, root, directories):
+        groups = defaultdict(list)
+        for file in sorted(self.units):
+            group = self.groups[file]
+            if (group or file).parent not in directories:
+                continue
+            if group is None:
+                self.write_unit(root, file)
+            else:
+                groups[group].append(file)
+        for group, files in sorted(groups.items()):
+            modules, deps = [], []
+            for file in files:
+                body, imports = self.unit_body(root, file)
+                modules.append(f'(** {self.descriptions[file]} *)\n'
+                               f'Module {file.name}.\n{body}End {file.name}.\n')
+                deps.extend(imports)
+            write(root, group, 'This file defines captured glibc objects used only by one linked image.',
+                  '\n'.join(modules), deps)
+
+    def unit_body(self, root, file):
         definitions, deps = [], []
         for record in sorted(self.units[file].values(), key=lambda record: record.symbol):
             ident, body = record.identifier, record.body
@@ -127,7 +154,7 @@ class TypedCode:
                 body += self.function_blocks(root, file, record, deps)
             ty = 'func' if record.is_function else 'item'
             definitions.append(f'Definition {ident} : {ty} :=\n  {body}.\n')
-        write(root, file, self.descriptions[file], '\n'.join(definitions), deps)
+        return '\n'.join(definitions), deps
 
     def function_blocks(self, root, file, record, deps):
         blocks = record.blocks
@@ -160,13 +187,13 @@ class TypedCode:
         description = 'This module assembles the selected IR items in link order.'
         chunks = [items[start:start + 64] for start in range(0, len(items), 64)]
         if len(chunks) <= 1 and not check_zero:
-            expressions, imports = item_refs(items)
+            expressions, imports = self.item_refs(items)
             write(root, file, description, f'{provenance}Definition {prefix} : module :=\n'
                   f'  {listing(expressions)}.\n', imports)
             return
         for index, chunk in enumerate(chunks, 1):
             ref = f'{prefix}_items_{index:02}'
-            expressions, imports = item_refs(chunk)
+            expressions, imports = self.item_refs(chunk)
             deps.extend(imports)
             definitions.append(f'Local Definition {ref} : module :=\n  {listing(expressions)}.\n')
             if check_zero:
@@ -187,13 +214,15 @@ class TypedCode:
         write(root, file, description, body, deps)
 
 
-def item_refs(items):
-    expressions, imports = [], []
-    for file, record in items:
-        if file is None:
-            expressions.append(record.body)
-            continue
-        ref = f'{file.name}.{record.identifier}'
-        expressions.append('IFunc ' + ref if record.is_function else ref)
-        imports.append(file.name)
-    return expressions, imports
+    def item_refs(self, items):
+        expressions, imports = [], []
+        for file, record in items:
+            if file is None:
+                expressions.append(record.body)
+                continue
+            group = self.groups[file]
+            module = f'{group.name}.{file.name}' if group else file.name
+            ref = f'{module}.{record.identifier}'
+            expressions.append('IFunc ' + ref if record.is_function else ref)
+            imports.append((group or file).name)
+        return expressions, imports

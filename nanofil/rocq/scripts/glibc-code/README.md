@@ -343,6 +343,12 @@ initializers and link order. When a fixture has a synthetic root, the code
 view writes it directly in the list. The code view keeps any list chunks
 in the same file.
 
+The complete Hello image lists its private captured objects in `pack_units`.
+The generator writes these objects as nested modules in
+`gen/glibc/HelloImageObjects.v`. The list fixes each object's module path
+across changes to its body. If another fixture needs one of these objects,
+remove it from the list and regenerate the views and object files together.
+
 Import the generated object to use its function or data in a proof. For
 example, `Unit_string_strlen_os.fn___strlen` names the body in
 `string/strlen.os`. You can also import `IRNotation` to use the same SSA

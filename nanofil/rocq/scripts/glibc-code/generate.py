@@ -273,6 +273,9 @@ class Generator:
         if layouts_only and not cfg.get('layouts', False):
             return
         layout = cfg["layout"]
+        pack_units = set(cfg.get("pack_units", []))
+        if pack_units and layout != "linked_image":
+            raise ValueError(f"{manifest}: only a linked_image can group captured objects")
         rel = manifest.parent.relative_to(GEN)
         dest = output / rel
         if views:
@@ -339,6 +342,7 @@ class Generator:
             if layout in ("libio", "stdio", "buffer"):
                 records = [r for r in records if r.is_function and r.symbol.decode() in names]
             items = []
+            group = Path("glibc", name + "Objects")
             for record in records:
                 unit, obj = owners[record.symbol]
                 # The synthetic root is a data item owned by this view.
@@ -351,7 +355,8 @@ class Generator:
                 else:
                     file = rel / (name + '_' + typed['file_identifier'](obj))
                     description = f'This file defines checked IR from the `{obj}` object of {name}.'
-                items.append(self.code.add(file, description, record))
+                items.append(self.code.add(file, description, record,
+                                           group=group if unit in pack_units else None))
             if views:
                 module = {"HiAtexit": "hi_linked", "HelloImage": "hello_image_linked"}.get(name, lower + "_module")
                 self.code.write_view(output, rel / (name + "Code"), module, items, provenance, name == "HelloImage")
@@ -447,9 +452,7 @@ def main():
             generator.generate(manifest, cfg, out,
                                manifest.parent.relative_to(GEN) in code_dirs,
                                capture_layouts, args.layouts_only)
-        for file in sorted(generator.code.units):
-            if file.parent in code_dirs:
-                generator.code.write_unit(out, file)
+        generator.code.write_units(out, code_dirs)
         if capture_layouts:
             for file, source in captured_layouts['layout_tables'](generator.layout_views).items():
                 path = out / file

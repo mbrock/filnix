@@ -63,22 +63,38 @@ with tempfile.TemporaryDirectory() as tmp:
     assert all(case in records for case in ('LdNarrow Sw', 'RawLoadPointer', 'IOutside', 'func_raw'))
     code = typed['TypedCode'](budget=1200)
     unit = Path('SharedUnit')
+    private, group = Path('PrivateUnit'), Path('ImageObjects')
     records = list(typed['records'](records))
-    refs = [(None, record) if record.symbol == b'fixture_roots'
-            else code.add(unit, 'Shared test object.', record) for record in records]
+    refs = []
+    for record in records:
+        if record.symbol == b'fixture_roots':
+            refs.append((None, record))
+        elif record.symbol == b'ascii':
+            refs.append(code.add(private, 'Private test object.', record, group=group))
+        else:
+            refs.append(code.add(unit, 'Shared test object.', record))
     code.add(unit, 'Shared test object.', records[0])
-    assert len(code.units[unit]) == len(records) - 1
+    assert len(code.units[unit]) == len(records) - 2
     try:
         code.add(unit, 'Shared test object.', replace(records[0], body='changed'))
     except ValueError as error:
         assert 'linked copies' in str(error)
     else:
         raise AssertionError('accepted a conflicting copy from the same object')
-    code.write_unit(root, unit)
+    ascii_record = next(iter(code.units[private].values()))
+    try:
+        code.add(private, 'Private test object.', ascii_record)
+    except ValueError as error:
+        assert 'only one fixture' in str(error)
+    else:
+        raise AssertionError('accepted use of a grouped object from another fixture')
+    code.write_units(root, {Path('.')})
     code.write_view(root, Path('FirstCode'), 'first_image', refs)
     code.write_view(root, Path('SecondCode'), 'second_image', [refs[2], refs[0]])
     assert list(root.glob('*Blocks*.v')) and not list(root.glob('*CodeItems*.v'))
     assert 'Local Definition first_image_items_02' in (root / 'FirstCode.v').read_text()
+    assert not (root / 'PrivateUnit.v').exists()
+    assert 'Module PrivateUnit.' in (root / 'ImageObjects.v').read_text()
     swipl = os.environ.get('SWIPL', 'swipl')
     raw = run(swipl, ROCQ / 'scripts/gallina.pl', '--chunk',
               'sample', 'typed image test', input=source, capture_output=True).stdout
