@@ -52,13 +52,30 @@ Definition icw_pre (n : Z) := spec [CI n n; CI 0 4294967295; par 2; par 3; glo c
   [None; None; Some (loc 16); Some (loc 16); None; Some cache0].
 Definition icw_nc := [TAtom "iw_1.L12"; TAtom "iw_1.L36"; TAtom "iw_1.join"].
 Definition icw_sv := [TAtom "pr.6"; TAtom "pr.7"; TAtom "pr.9"].
-Definition icw_plans := Eval vm_compute in somes (map (fun n => plan_of t1 icw icw_nc icw_sv (icw_pre n)) names).
+(** The descriptor lookup returns a machine word and preserves every
+    abstract bound that the caller supplied for its objects. *)
+Definition icw_spec n : fspec :=
+  let sp := icw_pre n in
+  mkSpec (sp_args sp) (sp_pre sp) false (sp_pre sp) false (Some (CI 0 18446744073709551615)).
+
+(** The search supplies the loop invariants when Rocq checks the proof.
+    Importers can read the completed specifications directly from the table. *)
+Definition icw_plans := somes (map (fun n => plan_of t1 icw icw_nc icw_sv (icw_pre n)) names).
+Lemma icw_certificate :
+  let plans := icw_plans in
+  map fst plans = map icw_spec names /\ forallb (verified t1 icw icw_nc) plans = true.
+Proof. vm_compute. split; reflexivity. Qed.
+
 Lemma icw_checked : forallb (verified t1 icw icw_nc) icw_plans = true.
-Proof. vm_compute. reflexivity. Qed.
-Definition t2 : table := ("glibc_libc_start#intel_check_word", map fst icw_plans) :: t1.
+Proof. exact (proj2 icw_certificate). Qed.
+Definition t2 : table := ("glibc_libc_start#intel_check_word", map icw_spec names) :: t1.
 
 Lemma icw_counts : (length cmp_plans, length icw_plans) = (1, 12)%nat.
-Proof. reflexivity. Qed.
+Proof.
+  refine (f_equal (pair (length cmp_plans)) _).
+  exact (eq_trans (eq_sym (length_map fst icw_plans))
+    (eq_trans (f_equal (@length fspec) (proj1 icw_certificate)) (length_map icw_spec names))).
+Qed.
 
 Section sound.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv) {Hge : CpuImage ge}.
@@ -75,6 +92,7 @@ Qed.
 Lemma t2_holds : table_holds w0 ge t2.
 Proof using Hends Hge.
   apply table_cons; [|apply t1_holds].
+  rewrite <- (proj1 icw_certificate).
   exact (verified_holds w0 ge Hends t1 _ icw icw_nc icw_plans icw_find t1_holds icw_checked).
 Qed.
 
