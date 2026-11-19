@@ -19,14 +19,13 @@ the same Rocq and load path as one.sh.
 step stops at the first syntax error, tactic failure or interrupt, and
 keeps every sentence before it. try leaves the session where it was
 unless --commit is given. A query such as Show never commits. reload
-keeps the snapshots before the first edited byte; when an imported .vo
-changed (warm.sh, one.sh), it restarts the session from scratch. Scratch
+keeps the snapshots before the first edited byte; when an imported object
+changes, it restarts the session from scratch. Scratch
 sentences committed with step are dropped by reload and saved in the
 session's dropped.v, so `rq step R1 -f DIR/dropped.v` replays them.
 
 "Qed passed in session R1" is not "the file passed one.sh": the session
-sees the objects beside the sources, whose imported proofs may be blanked
-interfaces, and the file on disk may differ from what the session ran.
+normally loads interfaces for the imports, and the file on disk may differ from what the session ran.
 
 There is no time limit on any sentence. Interrupting a waiting rq call
 (Ctrl-C) only stops waiting; the job goes on, and `rq wait R1` returns its
@@ -49,6 +48,8 @@ one, the worker is a detached process group and rq reports its RSS; a
 requested cap is then refused, since it could not be enforced.
 """
 import argparse, json, os, re, signal, socket, subprocess, sys, time
+
+import interfaces
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 REPO = subprocess.run(["git", "-C", HERE, "rev-parse", "--show-toplevel"],
@@ -316,7 +317,7 @@ def worker_binary():
     src = os.path.join(HERE, "worker")
     newest = worker_newest_mtime(src)
     if not os.path.exists(link) or os.lstat(link).st_mtime < newest:
-        expr = ('import %s/nanofil/nix/rq-worker.nix { pkgs = import (builtins.getFlake "%s").inputs.nixpkgs '
+        expr = ('import %s/nanofil/nix/rq-worker.nix { pkgs = import (builtins.getFlake "git+file://%s").inputs.nixpkgs '
                 '{ system = builtins.currentSystem; }; }' % (REPO, REPO))
         r = subprocess.run(["nix", "build", "--impure", "-o", link, "--expr", expr])
         if r.returncode:
@@ -344,8 +345,12 @@ def start_worker(sid, file, tree, flags, args):
     binary = worker_binary()
     env = {k: os.environ[k] for k in ("PATH", "ROCQPATH", "OCAMLRUNPARAM", "ROCQLIB", "HOME") if k in os.environ}
     env["RQ_FILE"] = file
+    env["RQ_VOS"] = "1" if args.interfaces else "0"
     cmd = [binary, d] + flags
     meta = {"id": sid, "file": file, "tree": tree, "flags": flags, "started": time.time(),
+            "interfaces": args.interfaces, "model": args.model,
+            "build_env": {k: os.environ[k] for k in ("PE_CACHE", "PATH", "ROCQPATH", "OCAMLRUNPARAM") if k in os.environ},
+            "memory_high": args.memory_high, "memory_max": args.memory_max,
             "target": {"theorem": args.theorem, "line": args.line}}
     caps = [("MemoryHigh", args.memory_high), ("MemoryMax", args.memory_max)]
     if systemd_ok():
@@ -386,10 +391,21 @@ def load_req(args):
     return req
 
 
+def prepare_interfaces(tree, file, model):
+    try:
+        return interfaces.prepare(tree, file, model)
+    except (OSError, subprocess.CalledProcessError) as exc:
+        die("could not prepare imports for %s: %s" % (file, exc), 1)
+
+
 def cmd_open(args):
     tree, file, flags = tree_and_flags(args.file, args.tree)
-    sid = new_id()
     t0 = time.time()
+    args.model = os.path.realpath(os.environ["PE_MODEL"])
+    args.interfaces = not args.vo and os.path.commonpath([tree, file]) == tree and not tree.startswith("/nix/store/")
+    if args.interfaces:
+        flags = prepare_interfaces(tree, file, args.model)
+    sid = new_id()
     start_worker(sid, file, tree, flags, args)
     rep = request(sid, load_req(args))
     rep["session"] = sid
@@ -500,12 +516,20 @@ def cmd_reload(args):
     if not args.theorem and not args.line:
         args.theorem, args.line = meta["target"]["theorem"], meta["target"]["line"]
     t0 = time.time()
-    rep = request(args.session, load_req(args))
+    flags = meta["flags"]
+    os.environ.update(meta.get("build_env", {}))
+    if meta.get("interfaces"):
+        flags = prepare_interfaces(meta["tree"], meta["file"], meta["model"])
+    if flags == meta["flags"]:
+        rep = request(args.session, load_req(args))
+    else:
+        rep = {"restart": [meta["model"]]}
     if "restart" in rep:
         changed = rep["restart"]
         stop_worker(args.session, meta, remove=False)
-        start_worker(args.session, meta["file"], meta["tree"], meta["flags"], argparse.Namespace(
-            theorem=args.theorem, line=args.line, memory_high=None, memory_max=None))
+        start_worker(args.session, meta["file"], meta["tree"], flags, argparse.Namespace(
+            theorem=args.theorem, line=args.line, interfaces=meta.get("interfaces", False),
+            model=meta.get("model"), memory_high=meta.get("memory_high"), memory_max=meta.get("memory_max")))
         rep = request(args.session, load_req(args))
         rep["restarted_for"] = changed
     if args.json:
@@ -660,6 +684,7 @@ def main():
     q = add("open", cmd_open, session=False)
     q.add_argument("file")
     q.add_argument("--tree", help="the proof tree (default nanofil/rocq/glibc; $PE_MODEL for theories)")
+    q.add_argument("--vo", action="store_true", help="load existing full objects beside the sources")
     q.add_argument("--memory-high")
     q.add_argument("--memory-max")
     target(q)

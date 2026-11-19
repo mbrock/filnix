@@ -47,7 +47,9 @@ nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/theories exec/AbsSound.v
 
 ## Work in a proof session
 
-Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. The first `rq open` builds the worker with `nanofil/nix/rq-worker.nix` from the same Rocq as `one.sh`.
+Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. On open and reload, Rocq lists the file’s imports and make builds their missing or stale `.vos` interfaces. The worker checks the sentences in the file you open. Interfaces live under `$PE_CACHE/rq-interfaces`. Set `RQ_JOBS` to choose the number of compiler processes (the default is eight). Use `rq open --vo` to load the existing objects beside the sources, including objects copied by `warm.sh`.
+
+The first `rq open` builds the worker with `nanofil/nix/rq-worker.nix` from the same Rocq as `one.sh`.
 
 ```sh
 . nanofil/rocq/scripts/glibc-tools/env.sh
@@ -65,7 +67,7 @@ A step stops at the first syntax error, tactic failure or interrupt, and reports
 
 Sentences have no time limit. Ctrl-C on a waiting `rq` stops only the waiting, and `rq wait R1` returns the result later. A request that is still waiting in line is withdrawn instead. `rq cancel R1` interrupts the running sentence, and the session keeps what it committed before it. The worker runs Rocq in its main domain and serves the socket from a second one, so a busy session still answers `rq status` and `rq cancel` at once. With a systemd user manager, each session is a transient service in `rq.slice`. `rq ls` then shows the memory of the whole worker tree, and `--memory-high` and `--memory-max` set the service's limits. Without a user manager, the worker runs as a detached process group, and `rq` refuses a memory limit because it could not enforce it.
 
-A passing `rq check` does not mean that the file passes `one.sh`. The session loads the objects beside the sources, which may be interfaces with blanked proofs, and the file on disk may differ from what the session ran. `rq --help` lists every command.
+A passing `rq check` does not mean that the file passes `one.sh`. The session can load interfaces that skip imported proofs, and the file on disk may differ from what the session ran. `rq --help` lists every command.
 
 ## Write a proof
 

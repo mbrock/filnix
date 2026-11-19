@@ -110,9 +110,15 @@ let stop_succeeded = function
 let read_file path =
   In_channel.with_open_bin path In_channel.input_all
 
+let save_scratch t entries =
+  if entries <> [] then
+    t.emit (Dropped (String.concat "\n" (List.map (fun (e : node) -> e.text) entries) ^ "\n"))
+
 let load t (target : Rocq_engine.target) =
   match Rocq_engine.changed_imports t.engine with
-  | _ :: _ as changed -> Restart_needed changed
+  | _ :: _ as changed ->
+      save_scratch t (List.filter (fun (e : node) -> e.origin <> "file") (History.entries t.history));
+      Restart_needed changed
   | [] ->
       let text = read_file t.file in
       let source = Source.of_string text in
@@ -128,13 +134,7 @@ let load t (target : Rocq_engine.target) =
       let plan =
         History.plan_reload t.history ~first_diff ~target_end_offset ~reopen_theorem
       in
-      if plan.dropped_scratch <> [] then begin
-        let body =
-          String.concat "\n" (List.map (fun (e : node) -> e.text) plan.dropped_scratch)
-          ^ "\n"
-        in
-        t.emit (Dropped body)
-      end;
+      save_scratch t plan.dropped_scratch;
       t.history <- plan.kept;
       t.file_text <- text;
       let outcome =

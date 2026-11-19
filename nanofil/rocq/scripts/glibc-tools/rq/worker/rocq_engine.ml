@@ -67,6 +67,7 @@ let create ~args callbacks =
   in
   Coqinit.init_runtime ~usage opts;
   Coqinit.init_document opts;
+  Loadpath.load_vos_libraries := Sys.getenv_opt "RQ_VOS" = Some "1";
   let sentence_messages = ref [] in
   let loaded_objects = ref [] in
   Feedback.warn_no_listeners := false;
