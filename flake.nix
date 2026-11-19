@@ -362,25 +362,12 @@
             nanofil-glibc = import ./nanofil/nix/glibc.nix {
               inherit pkgs;
               filcc = filcc-staging;
-              model =
-                (import ./nanofil/nix/rocq.nix {
-                  inherit pkgs;
-                  filcc = filcc-staging;
-                }).model;
+              model = self.checks.${system}.nanofil-rocq.model;
             };
             # Every glibc proof file that does not need the interpreter's
             # runtime compiles against an abstract one twice daily, with
             # assumption audits. The push check uses a sealed runtime.
-            nanofil-glibc-abstract =
-              (import ./nanofil/nix/glibc.nix {
-                inherit pkgs;
-                filcc = filcc-staging;
-                model =
-                  (import ./nanofil/nix/rocq.nix {
-                    inherit pkgs;
-                    filcc = filcc-staging;
-                  }).model;
-              }).abstractGeneral;
+            nanofil-glibc-abstract = self.checks.${system}.nanofil-glibc.abstractGeneral;
             nanofil-backend = import ./nanofil/nix/backend.nix {
               inherit pkgs;
               filcc = filcc-staging;

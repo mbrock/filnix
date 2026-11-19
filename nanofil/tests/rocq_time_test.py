@@ -62,37 +62,34 @@ class RocqTimeTests(unittest.TestCase):
             self.assertEqual(result.stdout, "")
 
     def test_actual_nix_capture_keeps_compiler_status_and_logs(self):
-        # Exercise the exact shell slice used in glibc.nix, replacing only Nix
-        # interpolations. A fake rocq avoids building the full proof campaign.
-        nix = (HERE.parent / "nix" / "glibc.nix").read_text()
-        capture = nix[nix.index("        start=$(date"):nix.index("        mkdir $out")]
-        capture = (capture.replace("${watch}", str(HERE / "watch.py"))
-                   .replace("${../tests/rocq_time.py}", str(REPORTER))
-                   .replace("${path.${n}}", "Timing"))
+        compile_script = HERE.parent / "nix" / "glibc" / "compile.sh"
         with tempfile.TemporaryDirectory() as directory:
             root = Path(directory)
             (root / "glibc").mkdir()
             (root / "glibc" / "Timing.v").write_text("Goal True.\n")
+            (root / "sentence-timings").mkdir()
+            (root / "times").mkdir()
+            broken_reporter = root / "broken-reporter"
+            broken_reporter.mkdir()
+            (broken_reporter / "watch.py").symlink_to(HERE / "watch.py")
+            (broken_reporter / "rocq_time.py").write_text("raise SystemExit(1)\n")
             rocq = root / "rocq"
             rocq.write_text('#!/bin/sh\necho "Chars 0 - 10 [Goal~True.] 6. secs (0.u,0.s)"\n'
                             'echo "compiler diagnostic" >&2\nexit "$COMPILER_STATUS"\n')
             rocq.chmod(0o755)
             for status, reporter_fails in [(0, False), (7, False), (124, False), (0, True), (7, True)]:
                 with self.subTest(status=status, reporter_fails=reporter_fails):
-                    source = root / "glibc" / "Timing.v"
-                    source.write_text("Goal True.\n")
-                    if reporter_fails:
-                        source.unlink()
-                    result = subprocess.run(["bash", "-e", "-o", "pipefail", "-c", capture],
+                    result = subprocess.run(["bash", compile_script, "glibc/Timing.v"],
                                             cwd=root, capture_output=True, text=True, timeout=10,
                                             env={**os.environ, "PATH": f"{root}:{os.environ['PATH']}",
+                                                 "out": str(root), "tests": str(broken_reporter if reporter_fails else HERE),
                                                  "COMPILER_STATUS": str(status)})
                     self.assertEqual(result.returncode, status, result.stdout + result.stderr)
                     if reporter_fails:
                         self.assertIn("warning: Rocq sentence timing reporter failed", result.stderr)
                     else:
                         self.assertIn("warning: Rocq sentence took 6.s", result.stdout)
-                    log = (root / "sentence-timings.log").read_text()
+                    log = (root / "sentence-timings" / "Timing.log").read_text()
                     self.assertIn("compiler diagnostic", log)
                     self.assertIn(f"done exit={status}", log)
 

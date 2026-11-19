@@ -2,13 +2,8 @@
 """Write the interface of a Rocq file: the file with its comments removed
 and each opaque proof that no other file can see replaced by Admitted.
 
-A file that imports another one needs that file's statements and its
-transparent definitions, but not the scripts of its Qed proofs, which
-Rocq never unfolds. nix/glibc.nix compiles each glibc file's interface
-and compiles the files that import it against that, so an edit to a
-comment or a proof script leaves the interface's text, and with it every
-importer's derivation, unchanged. Each real file is still compiled
-against those interfaces, which checks every one of its proofs.
+The proof-using tool uses the statistics to find section proofs for which
+Rocq can suggest an explicit list of variables.
 
 A proof is replaced only when it starts with "Proof." or "Proof using
 ...", ends with "Qed.", and stands outside every Section, or inside one

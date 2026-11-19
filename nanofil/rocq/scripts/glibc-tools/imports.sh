@@ -5,7 +5,7 @@
 #
 #   . env.sh; imports.sh FILE... [-- TREE]   # FILE relative to TREE (default nanofil/rocq/glibc)
 #
-# Objects already newer than their sources are kept, so run warm.sh first.
+# Make reuses objects that are current with their sources and imports.
 # A failing import prints "FAIL file" and the head of its log.
 set -uo pipefail
 files=()

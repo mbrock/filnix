@@ -1,16 +1,11 @@
 #!/usr/bin/env python3
-"""Give each Qed proof inside a Section the Proof using clause that Rocq
-infers for it, so that tests/rocq_interface.py can replace the proof in
-the file's interface.
+"""Give section proofs the Proof using clause that Rocq infers for them.
 
-Rocq adds to a section lemma's type the section variables that its proof
-uses. Without a Proof using clause only the proof script says which ones,
-so the interface has to keep the proof, and an edit to it recompiles every
-importer. With "Set Suggest Proof Using", Rocq prints, for each such
-proof, the clauses that name exactly the variables it inferred. Every
-clause it prints gives the lemma the type it has now, so this script
-picks the shortest one: "Type*" or "Type" when Rocq offers it, the list
-of names otherwise. It changes no statement and no proof script.
+A section lemma's type includes the section variables used by its proof.
+An explicit clause lets Rocq determine those variables when building a
+native interface. With "Set Suggest Proof Using", Rocq prints clauses
+that preserve the inferred type. This script prefers "Type*" or "Type"
+when available and otherwise picks the shortest list of names.
 
     proof-using.py FILE.v LOG     # LOG: rocq c -set "Suggest Proof Using" output
 

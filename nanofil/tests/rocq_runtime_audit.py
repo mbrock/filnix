@@ -4,6 +4,7 @@ import json
 import re
 import subprocess
 import sys
+import tempfile
 from pathlib import Path
 from proof_inventory import inventory
 
@@ -50,9 +51,11 @@ def audit(source, glob, out):
     if len(queried) + len(users) + len(hypothetical) != declarations:
         raise ValueError('coverage count mismatch')
     out.mkdir(exist_ok=True)
-    Path('RuntimeAudit.v').write_text(f'Require {module}.\n' + ''.join(f'Print Assumptions {n}.\n' for n in queried))
-    result = subprocess.run(['rocq', 'c', '-q', '-R', 'theories', 'Nanofil', '-R', 'glibc', 'Glibc', 'RuntimeAudit.v'],
-                            text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) if queried else subprocess.CompletedProcess([], 0, stdout='')
+    with tempfile.TemporaryDirectory() as directory:
+        query = Path(directory) / 'RuntimeAudit.v'
+        query.write_text(f'Require {module}.\n' + ''.join(f'Print Assumptions {n}.\n' for n in queried))
+        result = subprocess.run(['rocq', 'c', '-q', '-R', 'theories', 'Nanofil', '-R', 'glibc', 'Glibc', str(query)],
+                                text=True, stdout=subprocess.PIPE, stderr=subprocess.STDOUT) if queried else subprocess.CompletedProcess([], 0, stdout='')
     (out / 'assumptions.log').write_text(result.stdout)
     if result.returncode:
         raise ValueError(result.stdout)

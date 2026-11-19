@@ -10,7 +10,7 @@
   <p>The proof has one assumption about the processor, and the assumption is needed. <c>get_common_cache_info</c> walks the caches of CPUID leaf 4 and counts the subleaves in a signed 32-bit integer. A processor that never reported cache type zero up to subleaf 0x7fffffff would wrap the counter to a negative number, and the index into a table of sixteen rows computed from it would fail its bounds check. The world states the assumption as <c>ow_leaf4_ends</c>, and <rocq path="nanofil/rocq/glibc/startup/CpuCache.v">gcc_needs_leaf4</rocq> shows that the check fails without it.</p>
   <p>No assumption about XSAVE is needed. The function calls <c>zxgetbv</c> only after it has seen the XSAVE bit in the answer for leaf 1, and the contract of <c>zcpuid</c> ties that bit to the kernel.</p>
   <p>The linked image does not contain <c>__tunables_init</c>, so the tunable table holds the bytes of the image when the function runs. The function writes six rows. The rows that later startup code reads keep their type codes and their cleared <c>initialized</c> flags.</p>
-  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-glibc.check.CpuInit">
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-glibc">
     <p>Suppose that the processor's list of leaf 4 caches ends. Then a call of <c>init_cpu_features</c> runs without a panic, whatever the processor and the kernel answer. The initial globals of the image meet the precondition of the call.</p>
   </claim>
 </block>

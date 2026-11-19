@@ -18,36 +18,13 @@ nanofil/rocq/scripts/glibc-tools/one.sh /tmp/glibc libio/LibioPutsNl.v -time
 
 ## Check an edit before pushing
 
-Before you push, check the files you edited and the files that import them. `affected.sh` builds them with the push check's own per-file derivations and takes every other object from the binary cache. Without arguments, it checks the `.v` files under `rocq/theories` and `rocq/glibc` that differ from `origin/main`. Nix recompiles an importer only when the interface of one of its imports changed. `--list` prints the files without building them. Nix sees a new file only after `git add -N FILE`.
+Run `rq verify DIR/FILE.v` after saving a glibc proof. Rocq builds its imports as native interfaces and checks every proof in the selected file. To edit the model, set `PE_THEORIES=1` when sourcing `env.sh` and pass `--tree "$PE_MODEL"` to `rq verify`.
 
-Importers never look inside a Qed proof, so the check gives an imported glibc file an interface for them to load. The interface is the file with its comments removed and its Qed proofs replaced by `Admitted` (`tests/rocq_interface.py`). A proof inside a `Section` stays unless it has a `Proof using` clause, because Rocq adds the section variables that the proof uses to the lemma's type. An edit to a replaced proof or a comment then compiles that file alone. An edit to a statement, a definition or a kept proof also compiles the importers.
-
-```sh
-nanofil/rocq/scripts/glibc-tools/affected.sh
-nanofil/rocq/scripts/glibc-tools/affected.sh --list nanofil/rocq/glibc/GlibcEnv.v
-```
-
-## Start from cached objects
-
-A fresh orb can start from compiled objects instead of a cold build. `warm.sh` copies the objects that importers load from the binary cache into a tree, which defaults to the checkout's `nanofil/rocq/glibc`. It gives them one modification time, later than every source. CI publishes a commit's objects while it builds them, so the newest commits of main can lag the cache. When the checkout's commit misses many objects, `warm.sh` warms from the most recent commit of `origin/main` that is cached. It then deletes the objects of files that differ from that commit, and of files that import a changed theory, and reports how many files still have no object. `build.sh` then compiles the files edited since the cached commit and every file that imports them, because make knows nothing of interfaces.
-
-```sh
-. nanofil/rocq/scripts/glibc-tools/env.sh
-nanofil/rocq/scripts/glibc-tools/warm.sh
-nanofil/rocq/scripts/glibc-tools/build.sh nanofil/rocq/glibc 16
-```
-
-By default the glibc files compile against the model that Nix built, which is read-only. To edit a theory under `nanofil/rocq/theories`, source `env.sh` with `PE_THEORIES=1`. `PE_MODEL` is then the checkout's theories, and `warm.sh` copies the compiled objects of HEAD into them, except for theories that differ from HEAD. `one.sh` and `rq open --tree` take that tree as well as a glibc tree:
-
-```sh
-PE_THEORIES=1 . nanofil/rocq/scripts/glibc-tools/env.sh
-nanofil/rocq/scripts/glibc-tools/warm.sh
-nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/theories exec/AbsSound.v
-```
+CI builds the glibc sources together against full objects. To reproduce the sealed check, run `nix build -L .#checks.x86_64-linux.nanofil-glibc`. The result contains the compiled tree under `glibc/` and the per-file logs under `sentence-timings/`. A new source must be visible to Git for Nix to include it.
 
 ## Work in a proof session
 
-Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. On open and reload, Rocq lists the file’s imports and make builds their missing or stale `.vos` interfaces. The worker checks the sentences in the file you open. Interfaces live under `$PE_CACHE/rq-interfaces`. Set `RQ_JOBS` to choose the number of compiler processes (the default is eight). Use `rq open --vo` to load the existing objects beside the sources, including objects copied by `warm.sh`.
+Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. On open and reload, Rocq lists the file’s imports and make builds their missing or stale `.vos` interfaces. The worker checks the sentences in the file you open. Interfaces live under `$PE_CACHE/rq-interfaces`. Set `RQ_JOBS` to choose the number of compiler processes (the default is eight). Use `rq open --vo` to load the existing objects beside the sources.
 
 The first `rq open` builds the worker with `nanofil/nix/rq-worker.nix` from the same Rocq as `one.sh`.
 
@@ -64,7 +41,7 @@ $rq verify hello/HelloSetlocaleAll.v  # check every saved proof with rocq c -vok
 $rq ls; $rq stop R1
 ```
 
-A step stops at the first syntax error, tactic failure or interrupt, and reports what it committed, where it stopped and the goal that remains. Its exit status is 1 when it stopped early. `rq reload` keeps the states before the first edited byte of the file. When an object that the session loaded has changed, for example after `warm.sh` or `one.sh`, it restarts the session instead. Reload drops the sentences that `step` added and saves them in the session's `dropped.v`.
+A step stops at the first syntax error, tactic failure or interrupt, and reports what it committed, where it stopped and the goal that remains. Its exit status is 1 when it stopped early. `rq reload` keeps the states before the first edited byte of the file. When an object that the session loaded has changed, for example after `one.sh`, it restarts the session instead. Reload drops the sentences that `step` added and saves them in the session's `dropped.v`.
 
 Sentences have no time limit. Ctrl-C on a waiting `rq` stops only the waiting, and `rq wait R1` returns the result later. A request that is still waiting in line is withdrawn instead. `rq cancel R1` interrupts the running sentence, and the session keeps what it committed before it. The worker runs Rocq in its main domain and serves the socket from a second one, so a busy session still answers `rq status` and `rq cancel` at once. With a systemd user manager, each session is a transient service in `rq.slice`. `rq ls` then shows the memory of the whole worker tree, and `--memory-high` and `--memory-max` set the service's limits. Without a user manager, the worker runs as a detached process group, and `rq` refuses a memory limit because it could not enforce it.
 

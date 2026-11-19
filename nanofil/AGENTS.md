@@ -131,8 +131,6 @@ these steps in this order and keep the slow ones out of the loop:
    ```
 
    `rq open` builds the imported interfaces that your file needs.
-   `warm.sh` is available when you want the push check's objects beside
-   the sources for `one.sh` or a session opened with `rq open --vo`.
 2. While you write a proof, keep an rq session open. A session is one
    worker that holds Rocq with your file loaded up to the lemma or line
    you are working on, and keeps the state after every sentence, so each
@@ -163,10 +161,9 @@ these steps in this order and keep the slow ones out of the loop:
 3. When a file is done, check every saved proof with
    `$rq verify DIR/FILE.v`. This runs Rocq in `-vok` mode against the
    current interfaces of that file's imports.
-4. Before pushing, run `affected.sh` as described below, then push with
-   `scripts/ship` and start the next task. Do not wait on CI or poll it:
-   no push waits on it, your subscription reports a red run, and you fix
-   it forward.
+4. After verifying the saved files, push with `scripts/ship`. CI checks
+   their importers by compiling the complete glibc tree against full
+   objects. Your subscription reports a red run so you can fix it forward.
 
 Keep these out of the loop. The whole gate (`nix build
 .#checks.x86_64-linux.nanofil-glibc`) is CI's job. `make` and `build.sh`
@@ -174,20 +171,6 @@ have no early cutoff, so after an edit to a widely imported file they
 recompile every importer: one proof edit in `GlibcEnv.v` rebuilt 201
 files in 6 min 45 s. Do not sit in `sleep` loops waiting on a build;
 work in a session meanwhile, or take the next task.
-
-Before pushing a Rocq edit, compile the files you edited and every file
-that imports them, not the whole gate:
-
-```sh
-nanofil/rocq/scripts/glibc-tools/affected.sh
-```
-
-It takes the `.v` files under `rocq/theories` and `rocq/glibc` that
-differ from `origin/main` and builds them and their importers with the
-push checks' own per-file derivations. Every other object comes from
-Cachix, and an importer recompiles only when an interface it loads
-changed, so an edit to a glibc Qed proof often compiles one file. `--list` prints the files without building them.
-`glibc-tools/README.md` describes the tools.
 
 When a proof feels slow, see where its time goes with `rocq c -q -time
 -R theories Nanofil FILE.v`; the glibc gate also prints sentences over

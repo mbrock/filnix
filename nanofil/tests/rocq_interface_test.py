@@ -1,7 +1,5 @@
 #!/usr/bin/env python3
-"""Tests of rocq_interface.py, whose output the glibc check compiles in
-place of a file for its importers. Each case states which proofs the
-interface may replace and which it must keep."""
+"""Test the source transformation and its treatment of section variables."""
 import pathlib
 import sys
 import unittest

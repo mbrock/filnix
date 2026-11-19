@@ -1,4 +1,4 @@
-# The glibc campaign stays incremental and on push, beside Rocq and Gate.
+# Each glibc check builds a complete tree against the compiled Nanofil model.
 name: Nanofil glibc
 
 on:
@@ -10,6 +10,7 @@ on:
       - "nanofil/rocq/glibc/**"
       - "nanofil/rocq/theories/**"
       - nanofil/nix/glibc.nix
+      - "nanofil/nix/glibc/**"
       - nanofil/nix/hello-glibc.nix
       - nanofil/nix/rocq.nix
       - nanofil/nix/rocq-packages.nix
@@ -25,7 +26,13 @@ on:
       - nanofil/tests/rocq_time.py
       - nanofil/tests/rocq_time_test.py
       - nanofil/tests/rocq_runtime_audit.py
-      - nanofil/tests/rocq_reject.py
+      - nanofil/tests/assumption_scan.py
+      - nanofil/tests/proof_inventory.py
+      - nanofil/tests/test_scan.py
+      - nanofil/tests/test_nested_audit.py
+      - nanofil/tests/rocq_totals.py
+      - nanofil/tests/rocq_totals_test.py
+      - nanofil/tests/rocq_interface_test.py
       - nanofil/tests/rocq_interface.py
       - nanofil/tests/hello_premises.py
       - nanofil/web/rocq/rocq_syntax.pl
@@ -48,10 +55,7 @@ permissions:
   contents: read
 
 # The push check and the scheduled or manual abstract check run independently.
-# Every push gets its own group: GitHub keeps one queued run per group and
-# cancels the rest, so on a busy main a shared group let few runs finish,
-# and the cache of compiled objects fell behind main. Runs that overlap
-# share their objects through Cachix as they build them.
+# Give each push its own group so a busy main checks every revision.
 concurrency:
   group: nanofil-glibc-${{ github.ref }}-${{ github.event_name == 'push' && github.sha || 'full' }}
   cancel-in-progress: false
@@ -66,7 +70,7 @@ jobs:
   glibc:
     if: github.event_name != 'schedule'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -87,27 +91,12 @@ jobs:
             sudo mkswap /mnt/nanofil.swap >/dev/null && sudo swapon /mnt/nanofil.swap ||
             echo "::warning::could not add swap"
           free -m
-      # On main, cachix watch-exec publishes each object as it is built, so a
-      # run that fails or that a later push overtakes still fills the cache
-      # that glibc-tools/warm.sh reads. The last step below remains a backstop.
-      # The runner has 4 cores and 16 GB. A glibc compile peaks at 3.5 GB
-      # (most files) to 9 GB (LibioWFwide), and three or four at once
-      # exhausted memory: the runner killed the step (exit 143) or lost
-      # contact. Two jobs fit unless two of the heaviest files coincide,
-      # and the swap step above gives that case room to page out.
+      # Limit Make to two concurrent compilers on the 16 GB runner.
       - name: Compile and probe glibc contracts
-        env:
-          CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
           set -o pipefail
-          publish=()
-          if [ "$GITHUB_REF" = refs/heads/main ] && [ -n "$CACHIX_AUTH_TOKEN" ]; then
-            publish=(cachix watch-exec filc --)
-          fi
-          # A change to Fix.v rebuilds its importers even with a warm cache.
-          # Each file still has its own watchdog in glibc.nix.
-          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 6000 -- \
-            "${publish[@]}" nix build -L --no-link --keep-going --max-jobs 2 --cores 0 \
+          python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 9600 -- \
+            nix build -L --no-link --keep-going --max-jobs 2 --cores 2 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock
@@ -119,19 +108,13 @@ jobs:
           set -o pipefail
           python3 nanofil/tests/watch.py --label glibc-units --warn-after 300 --timeout 1200 -- \
             nix build -L --no-link -f nanofil/survey/glibc/regress.nix units 2>&1 | tee glibc-units.log
-      - name: Cache completed objects and verdicts
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+      - name: Cache the sealed tree and the compiled model
+        if: success() && github.ref == 'refs/heads/main'
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
         run: |
-          { nix eval --raw .#checks.x86_64-linux.nanofil-glibc --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.model.vo ++ builtins.attrValues g.check ++ builtins.attrValues g.exports ++ [ g.interfaces g.probes g ]))'; echo
-            # The Rocq 9.3 package set (nanofil/nix/rocq-packages.nix), which no
-            # public cache has.
-            nix eval --raw --impure --expr 'let pkgs = import (builtins.getFlake (toString ./.)).inputs.nixpkgs { system = "x86_64-linux"; };
-                r = import ./nanofil/nix/rocq-packages.nix { inherit pkgs; }; in builtins.concatStringsSep "\n" (map (d: d.outPath) [ r.rocq-core r.stdlib r.stdpp r.iris ])'; echo
-          } |
-            while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
+          nix path-info .#checks.x86_64-linux.nanofil-glibc \
+            .#checks.x86_64-linux.nanofil-glibc.model.objects | cachix push filc
       # nanofil/AGENTS.md, Rocq proof speed: serial time, critical path,
       # edit-to-result time and the slowest files, printed by the
       # aggregate check whenever it rebuilds. A readout, not a gate.
@@ -152,7 +135,7 @@ jobs:
   abstract:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 120
+    timeout-minutes: 240
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -173,17 +156,14 @@ jobs:
         run: |
           set -o pipefail
           # Two jobs, like the push check, to stay within the runner's memory.
-          python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 6000 -- \
-            nix build -L --no-link --keep-going --max-jobs 2 --cores 0 \
+          python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 13800 -- \
+            nix build -L --no-link --keep-going --max-jobs 2 --cores 2 \
             .#checks.x86_64-linux.nanofil-glibc-abstract 2>&1 | tee nanofil-glibc-abstract.log
-      - name: Cache completed abstract objects
-        if: ${{ !cancelled() && github.ref == 'refs/heads/main' }}
+      - name: Cache the abstract tree and audit reports
+        if: success() && github.ref == 'refs/heads/main'
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}
-        run: |
-          { nix eval --raw .#checks.x86_64-linux.nanofil-glibc-abstract --apply 'g: builtins.concatStringsSep "\n"
-              (map (d: d.outPath) (builtins.attrValues g.vo ++ [ g.rejectTests g.abstractHello ]))'; echo; } |
-            while read -r p; do if [ -e "$p" ]; then echo "$p"; fi; done | cachix push filc
+        run: nix path-info .#checks.x86_64-linux.nanofil-glibc-abstract | cachix push filc
       - uses: actions/upload-artifact@v4
         if: always()
         with:

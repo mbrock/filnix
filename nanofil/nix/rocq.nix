@@ -261,8 +261,7 @@ let
       cp nanofil-model $out/bin/
     '';
   };
-  # The compiled theories as one tree, for the logic spikes (spikes.nix),
-  # which compile against them. Nothing in CI's gate needs it.
+  # The glibc checks and logic spikes compile against this tree of model objects.
   objects = pkgs.runCommand "nanofil-rocq-objects" { } ''
     mkdir -p $out/share/rocq/theories
     cp ${theorySrc}/rocq/_RocqProject $out/share/rocq/
@@ -283,6 +282,7 @@ let
         nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
         passthru = {
           inherit
+            rocqInputs
             vo
             reprint
             parse

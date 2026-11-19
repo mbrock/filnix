@@ -1,0 +1,15 @@
+<block id="b-2026-11-19-glibc-proof-trees" kind="milestone" actor="T-01a1f1c6-7ae1-7151-8606-6b86fa38368d" created="2026-11-19T03:35:15Z">
+  <title>CI compiles each glibc proof tree with Make</title>
+  <about path="nanofil/nix/glibc.nix"/>
+  <about path="nanofil/rocq/scripts/glibc-tools/rq/rq"/>
+  <tag name="rocq"/>
+  <p>At revision <code>f06130b451e4</code>, Nix evaluated 1,442 sealed compiles,
+  812 additional interface compiles and 1,441 abstract compiles. CI now gives
+  each runtime one Nix derivation. Rocq lists the imports and Make compiles the
+  files in dependency order. A proof edit rebuilds the sealed tree on push,
+  and each importer loads the full object of the file it depends on.</p>
+  <p>Locally, <sh>rq verify DIR/FILE.v</sh> checks the saved file against the
+  native interfaces of its imports. The scheduled build checks every
+  runtime-general proof against the abstract runtime and compares the Hello
+  theorem’s assumptions with its expected runtime fields.</p>
+</block>

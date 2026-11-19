@@ -54,10 +54,7 @@ FILCC=... rocq/glibc/code.sh /tmp/glibc-pp
 nix build -L .#checks.x86_64-linux.nanofil-glibc
 ```
 
-The Nix check compiles the proofs against the model's theories, runs
-parse.sh on them and runs the native probe, in about a minute. It is
-off the quick gate. code.sh needs the six-minute capture, so it is
-run by hand.
+The push check compiles the glibc proofs against the model’s theories and runs the native probes. The scheduled check compiles the runtime-general proofs against an abstract runtime and audits their assumptions. The grammar round trip is available by file under `nanofil-glibc.reprint`. Run `code.sh` by hand to check the captured program fixtures.
 
 ## Assumption G1: the proofs are about nanofil's IR of glibc
 

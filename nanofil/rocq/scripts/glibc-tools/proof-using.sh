@@ -5,8 +5,7 @@
 #
 #   . env.sh; proof-using.sh TREE DIR...    # DIR relative to rocq/glibc, such as libio
 #
-# TREE is a compiled copy of the checkout's rocq/glibc (warm.sh, then
-# build.sh). For each file under DIR with a kept section proof, Rocq
+# TREE is a compiled copy of the checkout's rocq/glibc (build.sh). For each file under DIR with a kept section proof, Rocq
 # prints its suggestions while compiling it in TREE, and proof-using.py
 # rewrites the checkout's file. TREE then gets the new files, and make
 # recompiles them, not their importers. "Print Module" of every rewritten file, before and

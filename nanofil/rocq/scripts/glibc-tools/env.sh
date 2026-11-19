@@ -8,8 +8,7 @@
 # PE_REFRESH=1 after a change under rocq/theories to rebuild the model.
 #
 # To edit theories, set PE_THEORIES=1 instead: PE_MODEL is then the
-# checkout's nanofil/rocq/theories, warm.sh fills it with the compiled
-# objects of HEAD, and one.sh compiles an edited theory in place.
+# checkout's nanofil/rocq/theories. Use rq verify --tree to check an edit.
 pe_repo=$(git -C "$(dirname "${BASH_SOURCE[0]}")" rev-parse --show-toplevel)
 PE_CACHE=${PE_CACHE:-$pe_repo/.amp/in/scratchpad/glibc-tools}
 mkdir -p "$PE_CACHE"
@@ -30,7 +29,7 @@ if [ -n "${PE_THEORIES:-}" ]; then
   export PE_MODEL=$pe_repo/nanofil/rocq/theories
 else
   if [ ! -e "$PE_CACHE/model" ] || [ -n "${PE_REFRESH:-}" ]; then
-    nix build -o "$PE_CACHE/model" "$pe_repo#checks.x86_64-linux.nanofil-glibc.model.objects" || return 1
+    nix build -o "$PE_CACHE/model" "$pe_repo#checks.x86_64-linux.nanofil-rocq.model.objects" || return 1
   fi
   export PE_MODEL=$PE_CACHE/model/share/rocq/theories
 fi

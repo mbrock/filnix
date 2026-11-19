@@ -3,8 +3,7 @@
 # order, paths relative to this directory and subdirectories allowed,
 # against compiled model theories, printing each file's time, and refuse
 # Admitted or any axiom in any .v file here. Needs rocq, stdlib, std++
-# and Iris on ROCQPATH. nix/glibc.nix builds the same files one
-# derivation each.
+# and Iris on ROCQPATH. nix/glibc.nix builds the full tree in dependency order.
 #
 #   rocq/glibc/build.sh [THEORIES]   # default: ../theories, compiled
 set -euo pipefail
