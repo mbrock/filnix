@@ -18,7 +18,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
+From Nanofil Require Import Term FrameNotation Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrncmpCode StrcmpBits StrcmpLoop
   StrncmpBits StrncmpLoop StrncmpWords.
@@ -48,8 +48,7 @@ Context {world : Type} (registry : name -> option (contract world))
 (** Instance [rules_irisGS] builds the [[iris]] machine semantics from
     the external registry and world invariant. *)
 Local Instance rules_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-(** Notation [gexpr] abbreviates expressions in the instantiated language. *)
-Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
+Import L.RunNotation.
 
 (** Tactic [sl] steps past a `let` instruction while keeping its bound
     value symbolic. *)
@@ -106,13 +105,14 @@ Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 n c Q1 q1 q2 z1 z2
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= c < n -> n < 2 ^ 64 ->
   ptr_addr p1 mod 8 + c = 8 * Q1 -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
   ptr_addr q1 = ptr_addr p1 + c -> ptr_cap q1 = ptr_cap p1 -> ptr_addr q2 = ptr_addr p2 + c -> ptr_cap q2 = ptr_cap p2 ->
-  lookup (TAtom "v4") e = Some (WInt n) -> lookup (TAtom "v21") e = Some (WInt c) ->
+  e.[@"v4"] = Some (WInt n) -> e.[@"v21"] = Some (WInt c) ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
    Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp (put (TAtom "v65") z1 (put (TAtom "v31") z2 (put (TAtom "v30") z3
-       (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") z4 e)))))) [] None
-       (Enter (TAtom "L62") (Some (TAtom "L27")))) : gexpr) {{ Φ }}.
+  WP run{ glibc_strncmp
+          env: e.[@"pr.3" := z4].[@"pr.2" := WPtr q2].[@"pr.1" := WPtr q1]
+                .[@"v30" := z3].[@"v31" := z2].[@"v65" := z1]
+        | enter: @"L62" from: @"L27" } {{ Φ }}.
 Proof using SafepointStable0.
   intros Hs1 Hs2 [Hc Hcn] Hn HQ1 Hsame Hq1 Hc1 Hq2 Hc2 H4 H21. facts Hs1 Hs2.
   destruct (same_upto_len _ _ _ _ _ A1 A2 Hsame) as [L1 L2].
@@ -205,12 +205,13 @@ Lemma byte_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 n i q1 q2 e Φ :
   str_shape p1 b1 reg1 ws1 s1 -> str_shape p2 b2 reg2 ws2 s2 -> 0 <= n < 2 ^ 64 ->
   0 <= i <= Z.min ((- ptr_addr p1) mod 8) n -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) i ->
   ptr_addr q1 = ptr_addr p1 + i -> ptr_cap q1 = ptr_cap p1 -> ptr_addr q2 = ptr_addr p2 + i -> ptr_cap q2 = ptr_cap p2 ->
-  lookup (TAtom "v21") e = Some (WInt (Z.min ((- ptr_addr p1) mod 8) n)) -> lookup (TAtom "v4") e = Some (WInt n) ->
+  e.[@"v21"] = Some (WInt (Z.min ((- ptr_addr p1) mod 8) n)) -> e.[@"v4"] = Some (WInt n) ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
    Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") (WInt i) e)))
-       [] None (Exec (TAtom "L24") (b_insts blk24) (b_jump blk24))) : gexpr) {{ Φ }}.
+  WP run{ glibc_strncmp
+          env: e.[@"pr.3" := WInt i].[@"pr.2" := WPtr q2].[@"pr.1" := WPtr q1]
+        | at @"L24" { b_insts blk24 => b_jump blk24 } } {{ Φ }}.
 Proof using SafepointStable0.
   intros Hs1 Hs2 [Hn0 Hn]. facts Hs1 Hs2. set (n8 := (- ptr_addr p1) mod 8). set (m := Z.min n8 n).
   assert (H8 : 0 <= n8 < 8) by (apply Z.mod_pos_bound; lia).
@@ -281,7 +282,7 @@ Lemma strncmp_entry dq1 dq2 p1 p2 s1 s2 n e Φ :
   e = [(TAtom "v4", WInt n); (TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP run{ glibc_strncmp env: e | enter: @"start" } {{ Φ }}.
 Proof using SafepointStable0.
   intros Hn He. iIntros "(%b1 & %reg1 & %ws1 & %Hs1 & W1) (%b2 & %reg2 & %ws2 & %Hs2 & W2) HK". facts Hs1 Hs2.
   set (n8 := (- ptr_addr p1) mod 8). assert (H8 : 0 <= n8 < 8) by (apply Z.mod_pos_bound; lia).
@@ -305,8 +306,9 @@ Lemma wp_glibc_strncmp_ws dq1 dq2 p1 p2 s1 s2 n Φ :
   0 <= n < 2 ^ 64 ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strncmp_res n s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2); (TAtom "v4", WInt n)] [] None
-             (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP run{ glibc_strncmp
+          env: [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2); (TAtom "v4", WInt n)]
+        | enter: @"start" } {{ Φ }}.
 Proof using SafepointStable0. intros Hn. apply strncmp_entry; [exact Hn | left; reflexivity]. Qed.
 
 (** Bounded comparison preserves both strings and records its limit as a pure premise. *)
@@ -340,10 +342,10 @@ Proof using SafepointStable0. apply strncmp_spec_valid. apply defines. Qed.
 Lemma wp_call_glibc_strncmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 n cf' Φ :
   0 <= n < 2 ^ 64 ->
   map_option (arg_x ge e) args = Some [WPtr p1; WPtr p2; WInt n] -> find_fn ge g = Some (Defined glibc_strncmp) ->
-  resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WInt (strncmp_res n s1 s2))) = Some cf' ->
+  resume frame{ f env: e locals: ls | at l { rest => j } } (mkPending r None) (Ret (WInt (strncmp_res n s1 s2))) = Some cf' ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
-  ▷ (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
+  ▷ (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ WP run{ cf' } {{ Φ }}) -∗
+  WP run{ f env: e locals: ls | at l { Call r (Global g) args :: rest => j } } {{ Φ }}.
 Proof using SafepointStable0.
   intros Hn Hx Hg Hr. iIntros "H1 H2 HK".
   pose proof (strncmp_spec_valid g Hg) as Hspec.

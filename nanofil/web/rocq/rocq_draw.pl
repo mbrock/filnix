@@ -289,6 +289,7 @@ term_(list(_, []), _) --> el(span, "l empty", "[ ]").
 term_(list(_, Es), Env) --> el(span, l, ['data-d'=args], sep_items(Es, Env, ";")).
 term_(record(_, Fs), Env) --> el(span, "c rec", ['data-d'=args], el(span, "args recbr", rec_fields(Fs, Env))).
 term_(scope(_, E, K), Env) --> term(E, Env), el(span, scope, [title="scope"], ( "%", esc(K) )).
+term_(mixfix(_, Parts), Env) --> seq(Parts, mixfix_part(Env)).
 term_(braces(_, E), Env) --> el(span, braces, term(E, Env)).
 term_(sig(_, n(_, X), T, Q), Env) -->
     el(span, "braces sig", ( var_def(X), "\u00A0", el(span, "op wide", ":"), " ", term(T, Env), " ",
@@ -342,6 +343,9 @@ term_(bigall(_, Op, E), Env) --> el(span, "o pre rq-big", ( el(span, "q rq-big-o
 term_(eval(_, Ws, E), Env) --> kw("Eval"), " ", el(span, "rq-mods", esc_words(Ws)), " ", kw("in"), " ", term(E, Env).
 
 spaced_prefix(Op) :- memberchk(Op, ['⊢', '|==>', '●', '◯', '✓', '£']) ; sub_atom(Op, 0, _, _, '<').
+
+mixfix_part(_, S) --> { string(S) }, !, esc(S).
+mixfix_part(Env, E) --> term(E, Env).
 
 %  An update's arrow, with one mask after it, or two around it.
 %  A step-taking update's later and count follow in the same operator.

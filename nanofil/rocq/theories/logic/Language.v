@@ -36,6 +36,7 @@
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language ectx_language ectxi_language weakestpre adequacy.
 From Stdlib Require Import ZArith Relations.
+From Nanofil Require Import FrameNotation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics Steps
   ExternalCalls ExternalMachine.
 
@@ -505,6 +506,16 @@ Canonical Structure nanofil_ectx_lang {world : Type} (registry : name -> option 
 Canonical Structure nanofil_lang {world : Type} (registry : name -> option (contract world))
     (ge : genv) : language :=
   LanguageOfEctx (nanofil_ectx_lang registry ge).
+
+(** Import [RunNotation] to use a running [[frame]] as the expression of an
+    Iris [[weakest-precondition]]. The surrounding judgment supplies the
+    contract registry and global environment for this runtime. *)
+Module RunNotation.
+  Notation "'run{' fr '}'" := (ERun fr : language.expr (nanofil_lang _ _))
+    (only parsing, fr custom active_frame at level 10).
+  Notation "'run{' fr '}'" := (ERun fr)
+    (only printing, fr custom active_frame at level 10, format "'[hv' run{  fr  } ']'").
+End RunNotation.
 
 (** Nesting an expression beneath two concatenated caller stacks equals
     nesting it beneath the first stack and then beneath the second. *)

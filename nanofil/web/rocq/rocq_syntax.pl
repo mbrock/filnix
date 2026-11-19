@@ -668,6 +668,9 @@ std_op(^, 30, right).
 
 op_word(mod).
 
+op_rest(Max, L, E) --> { Max >= 70 }, tk(sym('⟶')), tk(p('[')), !,
+    term(G), tk(p(']')), expr(69, R), { start(L, F), end(R, T) },
+    op_rest(Max, mixfix(F-T, [L," ⟶[",G,"] ",R]), E).
 op_rest(Max, L, E) --> iris_op(Max, L, N), !, op_rest(Max, N, E).
 op_rest(Max, L, E) -->
     (   peek(K), { op_token(K, Op), binop(Op, Lv, As), Lv =< Max }
@@ -737,6 +740,9 @@ atom(E) --> atom0(E00), bits(E00, E01), projs(E01, E0),
     ( tk(sym('%')), tk(id(K), _, T) -> { start(E0, F), E = scope(F-T, E0, K) } ; { E = E0 } ).
 
 %  stdpp's projections: lv.1, ps.*1 (fst <$> ps).
+projs(E, E2) --> tk(sym('.')), tk(p('[')), !, frame_name(K),
+    ( tk(sym(':=')) -> term(V), { Binding=[" := ",V] } ; { Binding=[] } ), tk(p(']'), _, T),
+    { start(E, F), flatten([E,".[",K,Binding,"]"], Parts) }, projs(mixfix(F-T, Parts), E2).
 projs(E, E2) --> tk(sym(Op), _, T), { memberchk(Op, ['.1', '.2', '.*1', '.*2']) }, !,
     { start(E, F) }, projs(proj(F-T, E, Op), E2).
 projs(E, E) --> [].
@@ -754,6 +760,8 @@ bit(D, T) --> tk(sym('~')), tk(num(N), _, T), { memberchk(N, ['0', '1']), atom_c
 as_pat(E, aspat(F-T, E, N)) --> { nb_current(rocq_mode, pattern) }, tk(kw(as)), !, name(N), { start(E, F), N = n(_-T, _) }.
 as_pat(E, E) --> [].
 
+atom0(mixfix(F-T, Parts)) --> tk(id(Kind), F, Brace), { memberchk(Kind, [cfg,frame,run]) },
+    tk(p('{'), Brace, _), !, frame_literal(Kind, Parts), tk(p('}'), _, T).
 atom0(E) --> tk(id(Kind), F, _), { memberchk(Kind, [cap,cap_fn,cap_blk]) }, tk(p('{')), !,
     cap_entry(Kind, Term), tk(p('}'), _, T), { cap_tree(F-T, Term, E) }.
 atom0(id(F-T, '..')) --> { nb_current(rocq_notation_rhs, true) }, tk(sym('..'), F, T), !.
@@ -791,6 +799,32 @@ atom0(match(F-T, Ss, Ret, Brs)) --> tk(kw(match), F, _), !,
     scrutinees(Ss), ( tk(kw(return)) -> expr(100, Ret) ; { Ret = none } ),
     tk(kw(with)), ( tk(sym('|')) -> [] ; [] ),
     branches(Brs), tk(kw(end), _, T).
+
+% Each field is a Gallina subterm. Keep the punctuation between the fields
+% so the page and the checked reprint both show the frame as it was written.
+frame_literal(Kind, Parts) -->
+    atom(F), ( frame_field(env) -> atom(E), frame_locals(Ls), frame_doom(D),
+        tk(sym('|')), frame_pc(P), { Frame = [F," env: ",E,Ls,D," | ",P] }
+    ; { Frame = [F] } ),
+    ( { Kind == cfg } -> tk(p(';')), frame_stack(Cs), frame_field(mem), term(M),
+        tk(p(';')), frame_field(fuel), term(N), { Tail = [Cs,"; mem: ",M,"; fuel: ",N] }
+    ; { Tail = [] } ),
+    { atom_string(Kind, K), flatten([K,"{ ",Frame,Tail," }"], Parts) }.
+
+frame_field(K) --> tk(id(K)), tk(sym(':')).
+frame_locals([" locals: ",L]) --> frame_field(locals), !, atom(L).
+frame_locals([]) --> [].
+frame_doom([" doomed: ",D]) --> frame_field(doomed), !, atom(D).
+frame_doom([]) --> [].
+frame_stack(["; stack: ",C]) --> frame_field(stack), !, term(C), tk(p(';')).
+frame_stack([]) --> [].
+frame_name(["@",S]) --> tk(sym('@')), !, atom(S).
+frame_name([N]) --> atom(N).
+frame_pc(["at ",L," { ",Is," => ",J," }"]) -->
+    tk(id(at)), !, frame_name(L), tk(p('{')), term(Is), tk(sym('=>')), term(J), tk(p('}')).
+frame_pc(["enter: ",L,From]) --> frame_field(enter), !, frame_name(L),
+    ( frame_field(from) -> frame_name(K), {From=[" from: ",K]} ; {From=[]} ).
+frame_pc(["pc: ",P]) --> frame_field(pc), atom(P).
 
 % The transport fixture notation expands to ordinary Term.v constructors.
 % Keeping their trees lets the census count the same functions across both

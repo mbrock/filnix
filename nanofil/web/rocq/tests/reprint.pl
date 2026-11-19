@@ -177,6 +177,7 @@ pr(match(_, Ss, Ret, Brs)) :- !,
 pr(list(_, Es)) :- !, write("["), sep(Es, "; "), write("]").
 pr(record(_, Fs)) :- !, write("{| "), fsep(Fs), write(" |}").
 pr(scope(_, E, K)) :- !, write("("), pr(E), format(")%~w", [K]).
+pr(mixfix(_, Parts)) :- !, write("("), forall(member(X, Parts), (string(X) -> write(X) ; pr(X))), write(")").
 pr(braces(_, E)) :- !, write("{"), pr(E), write("}").
 pr(pure(_, E)) :- !, write("⌜"), pr(E), write("⌝").
 pr(const(_, C)) :- !, write(C).

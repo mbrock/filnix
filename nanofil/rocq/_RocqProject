@@ -19,6 +19,7 @@ theories/core/Runtime.v
 theories/core/RuntimeWitness.v
 theories/core/Ops.v
 theories/core/Semantics.v
+theories/core/FrameNotation.v
 theories/core/Run.v
 theories/soundness/Machine.v
 theories/core/Validate.v

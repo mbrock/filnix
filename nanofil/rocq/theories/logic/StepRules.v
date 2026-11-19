@@ -21,7 +21,7 @@
     failure. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
+From Nanofil Require Import Term Syntax Values Memory Ops Semantics FrameNotation.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -78,10 +78,12 @@ Qed.
     its head instruction evaluates cleanly, [rule_inst] advances the
     configuration to that instruction's next state. *)
 Lemma rule_inst : forall ge f e ls l i rest j cs m fuel out,
-  inst_step ge (mkFrame f e ls None (Exec l (i :: rest) j)) m i = Some out ->
-  doomed_result ge (mkFrame f e ls None (Exec l (i :: rest) j)) m i out = Some (out, None) ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (i :: rest) j)) cs m fuel) =
-  inst_next (mkConfig (mkFrame f e ls None (Exec l (i :: rest) j)) cs m fuel) l rest j out None.
+  inst_step ge frame{ f env: e locals: ls | at l { i :: rest => j } } m i = Some out ->
+  doomed_result ge frame{ f env: e locals: ls | at l { i :: rest => j } } m i out = Some (out, None) ->
+  step ge cfg{ f env: e locals: ls | at l { i :: rest => j };
+               stack: cs; mem: m; fuel: fuel } =
+  inst_next cfg{ f env: e locals: ls | at l { i :: rest => j };
+                 stack: cs; mem: m; fuel: fuel } l rest j out None.
 Proof.
   intros ge f e ls l i rest j cs m fuel out Hi Hd.
   unfold step; cbn [fr_at c_frame c_mem fr_doomed]. rewrite Hi.
@@ -97,12 +99,14 @@ Lemma rule_let : forall ge f e ls l d k o args rest j cs m fuel classes xs w m',
   op_arg_classes o k = Some classes ->
   map2_option (value_x ge e) classes args = Some xs ->
   op_res o k xs m = Some (OpRes (RVal w) m') ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f (put d w e) ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { Let d k o args :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e.[d := w] locals: ls | at l { rest => j };
+               stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge f e ls l d k o args rest j cs m fuel classes xs w m' Hg Hc Hx Ho.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Let d k o args :: rest) j)) m
-                 (Let d k o args) = Some (IContinue (put d w e) ls m')).
+  assert (Hi : inst_step ge frame{ f env: e locals: ls | at l { Let d k o args :: rest => j } } m
+                 (Let d k o args) = Some (IContinue e.[d := w] ls m')).
   { transitivity (let* classes := op_arg_classes o k in
                   let* xs := map2_option (value_x ge e) classes args in
                   let* out := op_res o k xs m in
@@ -110,7 +114,7 @@ Proof.
                   | OpRes r m' => Some (bind_res d r e ls m')
                   | OpUB why => Some (IStop (UB why))
                   | OpAlloc q kont =>
-                      Some (IFresh q (fun base => let (x, m') := kont base in (put d x e, ls, m')))
+                      Some (IFresh q (fun base => let (x, m') := kont base in (e.[d := x], ls, m')))
                   end).
     - destruct o; try discriminate Hg; destruct k; reflexivity.
     - rewrite Hc. cbn - [op_res map2_option]. rewrite Hx. cbn - [op_res]. rewrite Ho. reflexivity. }
@@ -125,15 +129,16 @@ Qed.
 Lemma rule_alloc : forall ge f e ls l d k al args rest j cs m fuel size,
   map2_option (value_x ge e) [L] args = Some [WInt size] ->
   size <= max_allocation_size ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) cs m fuel) =
+  step ge cfg{ f env: e locals: ls | at l { Let d k (Alloc al) args :: rest => j };
+               stack: cs; mem: m; fuel: fuel } =
   Fresh (heap_req al size)
-        (fun base => mkConfig (mkFrame f (put d (WPtr (mkPtr base (Obj base))) e) ls None (Exec l rest j))
-                              cs (allocated m (heap_req al size) base) fuel).
+        (fun base => cfg{ f env: e.[d := WPtr (mkPtr base (Obj base))] locals: ls | at l { rest => j };
+                         stack: cs; mem: allocated m (heap_req al size) base; fuel: fuel }).
 Proof.
   intros ge f e ls l d k al args rest j cs m fuel size Hx Hs.
   apply (rule_inst ge f e ls l _ rest j cs m fuel
     (IFresh (heap_req al size) (fun base =>
-      (put d (WPtr (mkPtr base (Obj base))) e, ls, allocated m (heap_req al size) base)))).
+      (e.[d := WPtr (mkPtr base (Obj base))], ls, allocated m (heap_req al size) base)))).
   - destruct k; cbn - [map2_option heap_req allocated max_allocation_size]; rewrite Hx;
       cbn - [heap_req allocated max_allocation_size];
       replace (max_allocation_size <? size) with false by (symmetry; apply Z.ltb_ge; exact Hs);
@@ -158,11 +163,13 @@ Lemma rule_flight : forall ge f e ls l d o args lw rest j cs m fuel xs n c,
   map_option (flight_arg_x ge e) args = Some xs ->
   alu o L xs = Some (WInt n) ->
   flight_cap ge e lw = Some c ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Flight d o args lw :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f (put d (WPtr (mkPtr n c)) e) ls None (Exec l rest j)) cs m fuel).
+  cfg{ f env: e locals: ls | at l { Flight d o args lw :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e.[d := WPtr (mkPtr n c)] locals: ls | at l { rest => j };
+               stack: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l d o args lw rest j cs m fuel xs n c Hx Ha Hc.
-  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue (put d (WPtr (mkPtr n c)) e) ls m)).
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e.[d := WPtr (mkPtr n c)] ls m)).
   - cbn - [map_option alu flight_cap]. rewrite Hx, Ha, Hc. reflexivity.
   - apply doomed_result_continue. reflexivity.
 Qed.
@@ -176,8 +183,9 @@ Lemma rule_raw_store : forall ge f e ls l w off v a rest j cs m fuel vk x p m',
   value_x ge e vk v = Some x ->
   value_x ge e A a = Some (WPtr p) ->
   store_res w m (raw_address (ptr_addr p) off) (ptr_cap p) x = Some (ok, m') ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (RawStore w off v a :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { RawStore w off v a :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | at l { rest => j }; stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge f e ls l w off v a rest j cs m fuel vk x p m' Hw Hv Ha Hs.
   apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
@@ -194,8 +202,9 @@ Lemma rule_raw_store_pointer : forall ge f e ls l off v a es rest j cs m fuel xp
   value_x ge e A a = Some (WPtr p) ->
   access_res m (raw_address (ptr_addr p) off) (ptr_cap p) 8 Write 8 = Some ok ->
   pointer_store_effects (raw_address (ptr_addr p) off) xp m es = Some m' ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (RawStorePointer off v a es :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { RawStorePointer off v a es :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | at l { rest => j }; stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge f e ls l off v a es rest j cs m fuel xp p m' Hv Ha Hc Hs.
   apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
@@ -220,11 +229,13 @@ Lemma rule_call : forall ge f e ls l r g args rest j cs m fuel xs gf callee,
   map_option (arg_x ge e) args = Some xs ->
   find_fn ge g = Some (Defined gf) ->
   call_frame gf xs = Some callee ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) cs m fuel) =
-  Next (mkConfig callee ((mkFrame f e ls None (Exec l rest j), mkPending r None) :: cs) m fuel).
+  cfg{ f env: e locals: ls | at l { Call r (Global g) args :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ callee;
+               stack: (frame{ f env: e locals: ls | at l { rest => j } }, mkPending r None) :: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l r g args rest j cs m fuel xs gf callee Hx Hf Hc.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) m
+  assert (Hi : inst_step ge frame{ f env: e locals: ls | at l { Call r (Global g) args :: rest => j } } m
                  (Call r (Global g) args) = Some (ICall gf xs (mkPending r None))).
   { cbn - [map_option find_fn]. rewrite Hx, Hf. reflexivity. }
   rewrite (rule_inst _ _ _ _ _ _ _ _ _ _ _ _ Hi) by (apply doomed_result_call; reflexivity).
@@ -237,11 +248,11 @@ Qed.
     advances the caller in the resulting memory. *)
 Lemma rule_free_sym : forall ge fnm f e ls l v rest j cs m fuel x m',
   is_free_name fnm = true ->
-  find_fn ge fnm = None -> lookup fnm (ge_globals ge) = None ->
+  find_fn ge fnm = None -> (ge_globals ge).[fnm] = None ->
   arg_x ge e (Arg P v) = Some x -> ge_free ge x m = Some (ok, m') ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Call CVoid (Global fnm) [Arg P v] :: rest) j))
-             cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { Call CVoid (Global fnm) [Arg P v] :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | at l { rest => j }; stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge fnm f e ls l v rest j cs m fuel x m' Hn Hf Hd Hx Hfree.
   apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e ls m')).
@@ -253,11 +264,11 @@ Qed.
 (** Specializing [rule_free_sym] to standard C's `c: free` symbol gives the
     stepping rule [rule_free] for ordinary heap deallocation calls. *)
 Lemma rule_free : forall ge f e ls l v rest j cs m fuel x m',
-  find_fn ge free_name = None -> lookup free_name (ge_globals ge) = None ->
+  find_fn ge free_name = None -> (ge_globals ge).[free_name] = None ->
   arg_x ge e (Arg P v) = Some x -> ge_free ge x m = Some (ok, m') ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Call CVoid (Global free_name) [Arg P v] :: rest) j))
-             cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { Call CVoid (Global free_name) [Arg P v] :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | at l { rest => j }; stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge f e ls l v rest j cs m fuel x m' Hf Hd Hx Hfree.
   exact (rule_free_sym ge free_name f e ls l v rest j cs m fuel x m' eq_refl Hf Hd Hx Hfree).
@@ -279,8 +290,9 @@ Lemma rule_enter : forall ge f e ls l from cs m fuel b e',
   fuel <> 0 ->
   find_block l (fn_blocks f) = Some b ->
   phis_env ge (b_phis b) from e = Some e' ->
-  step ge (mkConfig (mkFrame f e ls None (Enter l from)) cs m fuel) =
-  Next (mkConfig (mkFrame f e' ls None (Exec l (b_insts b) (b_jump b))) cs m (fuel - 1)).
+  cfg{ f env: e locals: ls | pc: (Enter l from); stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e' locals: ls | at l { b_insts b => b_jump b };
+               stack: cs; mem: m; fuel: fuel - 1 }.
 Proof.
   intros ge f e ls l from cs m fuel b e' Hf Hb Hp. unfold step; cbn [fr_at c_frame c_fuel fr_fn fr_env].
   replace (fuel =? 0) with false by (symmetry; apply Z.eqb_neq; exact Hf).
@@ -291,15 +303,17 @@ Qed.
     basic block, [rule_out_of_fuel] halts the run cleanly with an
     out-of-fuel outcome. *)
 Lemma rule_out_of_fuel : forall ge f e ls l from cs m,
-  step ge (mkConfig (mkFrame f e ls None (Enter l from)) cs m 0) = Done OutOfFuel.
+  step ge cfg{ f env: e locals: ls | pc: (Enter l from);
+               stack: cs; mem: m; fuel: 0 } = Done OutOfFuel.
 Proof. reflexivity. Qed.
 
 (** When a block finishes its instructions and reaches an unconditional
     `JGoto` terminator, [rule_goto] transitions the frame to enter the
     target block along the current block's outgoing edge. *)
 Lemma rule_goto : forall ge f e ls l t cs m fuel,
-  step ge (mkConfig (mkFrame f e ls None (Exec l [] (JGoto t))) cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Enter (edge_label t) (Some l))) cs m fuel).
+  cfg{ f env: e locals: ls | at l { [] => JGoto t }; stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | enter: (edge_label t) from: l;
+               stack: cs; mem: m; fuel: fuel }.
 Proof. intros. destruct t; reflexivity. Qed.
 
 (** A conditional `JBranch` terminator inspects its integer condition
@@ -307,8 +321,9 @@ Proof. intros. destruct t; reflexivity. Qed.
     the first target block when it is nonzero. *)
 Lemma rule_branch : forall ge f e ls l v t1 t2 cs m fuel n,
   value_x ge e W v = Some (WInt n) ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l [] (JBranch v t1 t2))) cs m fuel) =
-  Next (mkConfig (mkFrame f e ls None (Enter (edge_label (if n =? 0 then t2 else t1)) (Some l))) cs m fuel).
+  cfg{ f env: e locals: ls | at l { [] => JBranch v t1 t2 }; stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e locals: ls | enter: (edge_label (if n =? 0 then t2 else t1)) from: l;
+               stack: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l v t1 t2 cs m fuel n Hv. unfold step; cbn [fr_at c_frame fr_doomed jump_step fr_env].
   rewrite Hv. cbn [or_stuck]. destruct (n =? 0), t1, t2; reflexivity.
@@ -320,8 +335,10 @@ Qed.
 Lemma rule_ret : forall ge f e ls l v cs m fuel k x,
   fn_ret f = RClass k ->
   value_x ge e k v = Some x ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l [] (JRet v))) cs m fuel) =
-  return_step (mkConfig (mkFrame f e ls None (Exec l [] (JRet v))) cs m fuel) (Ret x).
+  step ge cfg{ f env: e locals: ls | at l { [] => JRet v };
+               stack: cs; mem: m; fuel: fuel } =
+  return_step cfg{ f env: e locals: ls | at l { [] => JRet v };
+                   stack: cs; mem: m; fuel: fuel } (Ret x).
 Proof.
   intros ge f e ls l v cs m fuel k x Hk Hv. unfold step; cbn [fr_at c_frame fr_doomed jump_step fr_env fr_fn].
   rewrite Hk, Hv. reflexivity.
@@ -331,8 +348,10 @@ Qed.
     [rule_ret_void] finishes the function body and enters the frame-return
     step with no return value. *)
 Lemma rule_ret_void : forall ge f e ls l cs m fuel,
-  step ge (mkConfig (mkFrame f e ls None (Exec l [] JRetVoid)) cs m fuel) =
-  return_step (mkConfig (mkFrame f e ls None (Exec l [] JRetVoid)) cs m fuel) RetVoid.
+  step ge cfg{ f env: e locals: ls | at l { [] => JRetVoid };
+               stack: cs; mem: m; fuel: fuel } =
+  return_step cfg{ f env: e locals: ls | at l { [] => JRetVoid };
+                   stack: cs; mem: m; fuel: fuel } RetVoid.
 Proof. intros. reflexivity. Qed.
 
 (** When the top-level entry function returns with an empty caller stack,
@@ -340,7 +359,7 @@ Proof. intros. reflexivity. Qed.
     memory and finishes the run with the returned outcome. *)
 Lemma rule_return_top : forall fr m fuel o m',
   invalidate_locals (fr_locals fr) m = Some m' ->
-  return_step (mkConfig fr [] m fuel) o = Done o.
+  return_step cfg{ fr; mem: m; fuel: fuel } o = Done o.
 Proof. intros fr m fuel o m' H. unfold return_step; cbn [c_frame c_mem c_callers]. rewrite H. reflexivity. Qed.
 
 (** When a called function returns to a waiting caller on the call stack,
@@ -350,8 +369,9 @@ Lemma rule_return : forall fr cf pd cs m fuel o m' e',
   invalidate_locals (fr_locals fr) m = Some m' ->
   pd_conv pd = None ->
   returned_env (pd_res pd) o (fr_env cf) = Some e' ->
-  return_step (mkConfig fr ((cf, pd) :: cs) m fuel) o =
-  Next (mkConfig (mkFrame (fr_fn cf) e' (fr_locals cf) (fr_doomed cf) (fr_at cf)) cs m' fuel).
+  return_step cfg{ fr; stack: (cf, pd) :: cs; mem: m; fuel: fuel } o =
+  Next cfg{ (fr_fn cf) env: e' locals: (fr_locals cf) doomed: (fr_doomed cf) | pc: (fr_at cf);
+            stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros fr cf pd cs m fuel o m' e' H Hc He. unfold return_step; cbn [c_frame c_mem c_callers c_fuel].
   rewrite H, Hc, He. reflexivity.
@@ -645,7 +665,8 @@ Qed.
 Lemma rule_alloc_too_big : forall ge f e ls l d k al args rest j cs m fuel size,
   map2_option (value_x ge e) [L] args = Some [WInt size] ->
   max_allocation_size < size ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k (Alloc al) args :: rest) j)) cs m fuel) =
+  step ge cfg{ f env: e locals: ls | at l { Let d k (Alloc al) args :: rest => j };
+               stack: cs; mem: m; fuel: fuel } =
   Done (Trap TooBig).
 Proof.
   intros ge f e ls l d k al args rest j cs m fuel size Hx Hs.
@@ -671,11 +692,13 @@ Qed.
     the verified function pointer. *)
 Lemma rule_check_function : forall ge f e ls l d v rest j cs m fuel p,
   value_x ge e P v = Some (WPtr p) -> function_check_res ge p = Some ok ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d F CheckFunction [v] :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) cs m fuel).
+  cfg{ f env: e locals: ls | at l { Let d F CheckFunction [v] :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e.[d := WPtr p] locals: ls | at l { rest => j };
+               stack: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l d v rest j cs m fuel p Hv Hc.
-  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue (put d (WPtr p) e) ls m)).
+  apply (rule_inst ge f e ls l _ rest j cs m fuel (IContinue e.[d := WPtr p] ls m)).
   - cbn [inst_step fr_env fr_locals]. rewrite Hv. cbn - [function_check_res]. rewrite Hc. reflexivity.
   - apply doomed_result_continue. reflexivity.
 Qed.
@@ -689,11 +712,13 @@ Lemma rule_raw_call : forall ge f e ls l r callee args rest j cs m fuel p g xs g
   map_option (arg_x ge e) args = Some xs -> find_fn ge g = Some (Defined gf) ->
   indirect_call_conv gf r args xs = Some (Converted ys words) ->
   call_frame gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else [])) = Some fr' ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) cs m fuel) =
-  Next (mkConfig fr' ((mkFrame f e ls None (Exec l rest j), mkPending r words) :: cs) m fuel).
+  cfg{ f env: e locals: ls | at l { RawCall r callee args :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ fr';
+               stack: (frame{ f env: e locals: ls | at l { rest => j } }, mkPending r words) :: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l r callee args rest j cs m fuel p g xs gf ys words fr' Hv Hp Hc Hx Hf Hcv Hfr.
-  assert (Hi : inst_step ge (mkFrame f e ls None (Exec l (RawCall r callee args :: rest) j)) m
+  assert (Hi : inst_step ge frame{ f env: e locals: ls | at l { RawCall r callee args :: rest => j } } m
                  (RawCall r callee args) =
                Some (ICall gf (ys ++ (if variadic_func gf then skipn (length (fn_params gf)) xs else []))
                        (mkPending r words))).
@@ -717,15 +742,15 @@ Qed.
     offset while keeping its capability. Because the snapshot pointer lives
     in the call frame's environment, this step does not touch memory. *)
 Lemma rule_va_args : forall ge f e ls l d off rest j cs m fuel p,
-  lookup va_snapshot e = Some (WPtr p) ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d P VaArgs [Const off] :: rest) j)) cs m fuel) =
-  Next (mkConfig
-    (mkFrame f (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e)
-      ls None (Exec l rest j)) cs m fuel).
+  e.[va_snapshot] = Some (WPtr p) ->
+  cfg{ f env: e locals: ls | at l { Let d P VaArgs [Const off] :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e.[d := WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))] locals: ls | at l { rest => j };
+               stack: cs; mem: m; fuel: fuel }.
 Proof.
   intros ge f e ls l d off rest j cs m fuel p Hp.
   apply (rule_inst ge f e ls l (Let d P VaArgs [Const off]) rest j cs m fuel
-    (IContinue (put d (WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))) e) ls m)).
+    (IContinue e.[d := WPtr (mkPtr ((ptr_addr p + off) mod 2 ^ 64) (ptr_cap p))] ls m)).
   - cbn [inst_step fr_env fr_locals]. rewrite Hp. reflexivity.
   - apply doomed_result_continue. reflexivity.
 Qed.
@@ -737,8 +762,10 @@ Qed.
 Lemma rule_va_arg : forall ge f e ls l d k args rest j cs m fuel p x m',
   map2_option (value_x ge e) [P] args = Some [WPtr p] ->
   va_arg_res k p m = Some (RVal x, m') ->
-  step ge (mkConfig (mkFrame f e ls None (Exec l (Let d k VaArg args :: rest) j)) cs m fuel) =
-  Next (mkConfig (mkFrame f (put d x e) ls None (Exec l rest j)) cs m' fuel).
+  cfg{ f env: e locals: ls | at l { Let d k VaArg args :: rest => j };
+       stack: cs; mem: m; fuel: fuel }
+    ⟶[ge] cfg{ f env: e.[d := x] locals: ls | at l { rest => j };
+               stack: cs; mem: m'; fuel: fuel }.
 Proof.
   intros ge f e ls l d k args rest j cs m fuel p x m' Hargs Hread.
   apply rule_let with (classes := [P]) (xs := [WPtr p]); [reflexivity | reflexivity | exact Hargs |].
