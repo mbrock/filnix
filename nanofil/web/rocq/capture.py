@@ -219,7 +219,10 @@ def capture(project, output, replay=""):
     for line in project_file.read_text().splitlines():
         words = shlex.split(line, comments=True)
         if words and words[0] in ("-R", "-Q"):
-            flags.extend(words)
+            option, path, logical = words
+            physical = (project / path).resolve()
+            # Relative imports outside the copied project still live beside the original.
+            flags.extend((option, path if physical.is_relative_to(project) else str(physical), logical))
         elif words and (len(words) != 1 or words[0].startswith("-")):
             raise ValueError(f"Unsupported project option: {line}")
     here = Path(__file__).resolve().parent

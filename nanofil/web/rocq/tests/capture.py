@@ -67,16 +67,23 @@ class BalancedHTML(HTMLParser):
 here = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
-    (root / "_RocqProject").write_text("-Q . Test\n.\n")
-    (root / "Example.v").write_text(source)
+    project, model = root / "project", root / "model"
+    project.mkdir()
+    model.mkdir()
+    (model / "Library.v").write_text("Definition number := nat.\n")
+    subprocess.run(["coqc", "-Q", ".", "Model", "Library.v"], cwd=model, check=True)
+    (project / "_RocqProject").write_text("-Q ../model Model\n-Q . Test\n.\n")
+    (project / "Example.v").write_text(source)
     client = """From Test Require Import Example.
+From Model Require Import Library.
+Definition external_type := number.
 Definition imported := Nested.rewriting.
 Lemma rewriting : forall b : bool, b = b.
 Proof. intro b. reflexivity. Qed.
 """
-    (root / "Client.v").write_text(client)
+    (project / "Client.v").write_text(client)
     result = root / "states.json"
-    subprocess.run(["python3", str(here / "capture.py"), str(root), str(result)], check=True)
+    subprocess.run(["python3", str(here / "capture.py"), str(project), str(result)], check=True)
     files = json.loads(result.read_text())["files"]
     assert set(files) == {"Example.v", "Client.v"}
     # Dependent files must find checked imports, while concurrent prover
@@ -181,7 +188,7 @@ Proof. intro b. reflexivity. Qed.
     sys.path.insert(0, str(here))
     from capture import fit_budget
     plans = {p["file"]: p for p in json.loads(subprocess.check_output(
-        ["swipl", str(here / "capture_plan.pl"), "Example.v"], cwd=root, stdin=subprocess.DEVNULL))}
+        ["swipl", str(here / "capture_plan.pl"), "Example.v"], cwd=project, stdin=subprocess.DEVNULL))}
     capped = json.loads(result.read_text())
     capped["files"] = {"Example.v": capped["files"]["Example.v"]}
     total = sum(len(json.dumps(v, ensure_ascii=False)) for v in capped["files"]["Example.v"]["states"].values())
@@ -198,8 +205,8 @@ Proof. intro b. reflexivity. Qed.
     assert stale.returncode != 0 and "stale_proof_capture" in stale.stdout, stale.stdout
 
     # Invalid tactics must fail the build, never produce an empty success.
-    (root / "Example.v").write_text(source.replace("rewrite Nat.add_0_r.", "exact false."))
-    bad = subprocess.run(["python3", str(here / "capture.py"), str(root), str(root / "bad.json")],
+    (project / "Example.v").write_text(source.replace("rewrite Nat.add_0_r.", "exact false."))
+    bad = subprocess.run(["python3", str(here / "capture.py"), str(project), str(root / "bad.json")],
                          stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
     assert bad.returncode != 0 and not (root / "bad.json").exists(), bad.stdout
     print("ok: real rewrites, contexts, branching, deferred/shelved goals, closure, Unicode offsets, failure and 200 proofs in 64 MiB")
