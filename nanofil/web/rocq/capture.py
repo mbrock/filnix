@@ -27,6 +27,9 @@ import xml.etree.ElementTree as ET
 from xml.sax.saxutils import escape
 
 
+PROVER_FLAGS = ["-w", "-rewrite-rw"]
+
+
 def stamp(message):
     print(time.strftime("%Y-%m-%dT%H:%M:%SZ", time.gmtime()), message, flush=True)
 
@@ -46,7 +49,7 @@ def plain(node):
 class Prover:
     def __init__(self, cwd, flags, log):
         self.proc = subprocess.Popen(
-            ["coqidetop", "-main-channel", "stdfds", "-async-proofs", "off", *flags],
+            ["coqidetop", *PROVER_FLAGS, "-main-channel", "stdfds", "-async-proofs", "off", *flags],
             cwd=cwd, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=log,
         )
         self.parser = ET.XMLPullParser(events=("end",))
@@ -240,7 +243,7 @@ def capture(project, output, replay=""):
 
         def compile_file(file):
             stamp(f"proof capture: compile {file}")
-            subprocess.run(["coqc", *flags, file], cwd=work, check=True, stdin=subprocess.DEVNULL)
+            subprocess.run(["coqc", *PROVER_FLAGS, *flags, file], cwd=work, check=True, stdin=subprocess.DEVNULL)
 
         # Jobs: compile an imported file, replay every file. Either may
         # start once the file's imports are compiled. The longest chain of

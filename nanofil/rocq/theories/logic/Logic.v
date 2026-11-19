@@ -407,14 +407,14 @@ Lemma wp_lift_run (Q : iProp Σ) fr Φ :
 Proof.
   intros Hnf Hst. iLöb as "IH". iIntros "HQ".
   iApply wp_lift_base_step; [done|].
-  iIntros (σ ns κ κs nt) "Hσ".
+  iIntros (σ ns κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
   iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; by apply proceeds_reducible|].
   iAssert ((▷ ∀ e2 σ2, ⌜moves fr σ e2 σ2⌝ ==∗ heap_interp σ2 ∗ WP (e2 : lexpr) {{ Φ }})
            ∧ (heap_interp σ ∗ Q))%I with "[Hσ HQ]" as "H".
   { iSplit; [iApply (Hst with "Hσ HQ") | iFrame]. }
-  iNext. iIntros (e2 σ2 efs Hstep) "_". iMod "Hclose" as "_".
+  iNext. iIntros (e2 σ2 efs κ κs' _ Hstep) "_". iMod "Hclose" as "_".
   destruct (head_step_run_inv _ _ _ _ _ _ _ _ Hstep) as (_ & -> & Hc).
   destruct Hc as [Hn | [Ha | [(q & k & _ & _ & _ & -> & ->) | [Hr | [(o & _ & _ & _ & -> & ->) |
     [(s' & m' & _ & _ & Hsp & -> & ->) | [Hx | (_ & -> & ->)]]]]]]].
@@ -1522,9 +1522,9 @@ Lemma wp_resume o cf pd cf' Φ :
   ▷ WP (ERun cf' : lexpr) {{ Φ }} -∗ WP (EWait (EEnd o) cf pd : lexpr) {{ Φ }}.
 Proof.
   intros Hr. iIntros "H". iApply wp_lift_base_step; [done|].
-  iIntros (σ ns κ κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
+  iIntros (σ ns κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; exists [], (ERun cf'), σ, []; exact (hs_resume registry ge o cf pd cf' σ Hr)|].
-  iNext. iIntros (e2 σ2 efs Hs) "_". iMod "Hclose" as "_".
+  iNext. iIntros (e2 σ2 efs κ κs' _ Hs) "_". iMod "Hclose" as "_".
   inversion Hs; subst.
   match goal with H : resume cf pd o = Some ?c |- _ => assert (c = cf') as -> by congruence end. iModIntro. iFrame "Hσ". iSplitL; [iExact "H"|done].
 Qed.

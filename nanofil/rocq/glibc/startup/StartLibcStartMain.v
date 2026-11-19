@@ -140,11 +140,11 @@ Lemma wp_liveq_fit_start dq b reg fr Φ :
   (⌜0 <= b /\ r_end reg <= 2 ^ 48⌝ -∗ liveq dq b reg -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.
-  iIntros "Hl HK". rewrite !wp_unfold /wp_pre /=. iIntros (σ ns κ κs nt) "Hσ".
+  iIntros "Hl HK". rewrite !wp_unfold /wp_pre /=. iIntros (σ ns κs nt) "Hσ".
   iDestruct (ptsq_facts with "Hσ Hl") as %(Hag & _ & Hfit).
   cbn [all_agree agree_piece fst snd] in Hag. destruct Hag as [[Hreg _] _].
   destruct (Hfit b reg Hreg) as [H0 H48].
-  iSpecialize ("HK" with "[%] Hl"); [lia|]. iApply ("HK" $! σ ns κ κs nt with "Hσ").
+  iSpecialize ("HK" with "[%] Hl"); [lia|]. iApply ("HK" $! σ ns κs nt with "Hσ").
 Qed.
 
 (** The same holds for a whole life token. *)

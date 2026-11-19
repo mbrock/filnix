@@ -49,7 +49,7 @@ Lemma wp_live_apart dq dq' b reg b' reg' fr Φ :
 Proof using Type*.
   iIntros "H1 H2 HK". iApply wp_unfold. rewrite /wp_pre.
   change (language.to_val (ERun fr : gexpr)) with (@None (language.val (nanofil_lang registry ge))).
-  iIntros (σ ns κ κs nt) "Hσ". change (state_interp σ ns (κ ++ κs) nt) with (heap_interp wi σ).
+  iIntros (σ ns κs nt) "Hσ". change (state_interp σ ns κs nt) with (heap_interp wi σ).
   iDestruct (ptsq_facts with "Hσ H1") as %((Ha1 & _) & Hd & _).
   iDestruct (ptsq_facts with "Hσ H2") as %((Ha2 & _) & _).
   iSpecialize ("HK" with "[%] H1 H2"); [intros Hne; exact (Hd b reg b' reg' Ha1 Ha2 Hne)|].

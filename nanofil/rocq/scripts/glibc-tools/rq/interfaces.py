@@ -11,6 +11,10 @@ import sys
 import time
 
 
+# The in-process worker needs the same warning policy as the Nanofil Rocq CLI.
+SESSION_FLAGS = ("-q", "-w", "-rewrite-rw")
+
+
 def prepare(tree, file, model):
     tree, file, model = map(Path, (tree, file, model))
     model = model.resolve()
@@ -29,7 +33,7 @@ def prepare(tree, file, model):
     if namespace == "Glibc":
         roots["Glibc"] = tree
     build_flags = []
-    worker_flags = ["-q"]
+    worker_flags = list(SESSION_FLAGS)
     sources = []
     with (work / "build.lock").open("a") as lock:
         try:

@@ -21,7 +21,7 @@ let
   # native_compute compiles with this OCaml and findlib, and assembles
   # and links with the C toolchain, which runCommand does not provide.
   rocqInputs = [
-    rocq.rocq-core
+    rocq.rocq-cli
     rocq.stdlib
     rocq.stdpp
     rocq.iris
@@ -366,7 +366,7 @@ let
         nativeBuildInputs = [
           pkgs.swi-prolog
           pkgs.python3
-          rocq.rocq-core
+          rocq.rocq-cli
           rocq.stdlib
           rocq.stdpp
           rocq.iris

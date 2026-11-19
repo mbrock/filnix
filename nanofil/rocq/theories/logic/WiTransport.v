@@ -67,15 +67,15 @@ Proof.
   rewrite !wp_unfold /wp_pre /=.
   destruct (to_val e) as [o|] eqn:Ev.
   - iMod "H". iModIntro. iFrame.
-  - iIntros (σ ns κ κs nt) "Hσ".
+  - iIntros (σ ns κs nt) "Hσ".
     iDestruct "Hσ" as (h) "[Hh %Hf]". destruct Hf as (Ha & Hd & Hr & Hw).
     iDestruct (gen_heap_valid with "Hh Hk") as %Hl.
-    iMod ("H" $! σ ns κ κs nt with "[Hh]") as "[%Hred H]".
+    iMod ("H" $! σ ns κs nt with "[Hh]") as "[%Hred H]".
     { iExists h. iFrame "Hh". iPureIntro. eauto. }
     iModIntro. iSplit; [done|].
-    iIntros (e2 σ2 efs Hstep) "Hcred".
+    iIntros (e2 σ2 efs κ κs' Hsplit Hstep) "Hcred".
     pose proof (prim_step_no_fork _ _ _ _ _ _ Hstep) as ->.
-    iMod ("H" $! e2 σ2 [] Hstep with "Hcred") as "H". iModIntro. iNext.
+    iMod ("H" $! e2 σ2 [] κ κs' with "[//] [//] Hcred") as "H". iModIntro. iNext.
     iMod "H" as "H". iModIntro. iMod "H" as "(Hσ & H & _)".
     iDestruct "Hσ" as (h2) "[Hh %Hf]". destruct Hf as (Ha2 & Hd2 & Hr2 & Hw2).
     iDestruct (gen_heap_valid with "Hh Hk") as %Hl2.

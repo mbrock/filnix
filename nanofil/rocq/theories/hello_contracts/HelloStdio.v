@@ -439,11 +439,11 @@ Lemma wp_callback_transfer (P Q : iProp Σ) fr Φ :
   P -∗ (Q -∗ WP (ERun fr : cexpr) {{ Φ }}) -∗ WP (ERun fr : cexpr) {{ Φ }}.
 Proof.
   intros Htransfer. iIntros "HP HK".
-  iEval (rewrite wp_unfold /wp_pre /=). iIntros (σ ns κ κs nt) "Hσ".
+  iEval (rewrite wp_unfold /wp_pre /=). iIntros (σ ns κs nt) "Hσ".
   iMod (Htransfer with "Hσ HP") as "[Hσ HQ]".
   iSpecialize ("HK" with "HQ").
   iEval (rewrite wp_unfold /wp_pre /=) in "HK".
-  iApply ("HK" $! σ ns κ κs nt with "Hσ").
+  iApply ("HK" $! σ ns κs nt with "Hσ").
 Qed.
 
 (** A designated-handle fclose rule, not a dispatcher for arbitrary

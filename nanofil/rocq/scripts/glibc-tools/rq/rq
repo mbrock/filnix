@@ -301,7 +301,7 @@ def tree_and_flags(file, tree):
         flags = ["-R", ".", "Nanofil"]
     else:
         flags = ["-R", model, "Nanofil", "-R", ".", "Glibc"]
-    return tree, path, ["-q"] + flags
+    return tree, path, [*interfaces.SESSION_FLAGS, *flags]
 
 
 def worker_newest_mtime(src):

@@ -1670,7 +1670,7 @@ Lemma wp_lift_prun (Q : iProp Σ) fr te Φ :
   Q -∗ WP (PRun fr te : pexprL) {{ Φ }}.
 Proof.
   intros Hnf Hst. iLöb as "IH". iIntros "HQ".
-  iApply wp_lift_base_step; [done|]. iIntros (σ ns κ κs nt) "Hσ".
+  iApply wp_lift_base_step; [done|]. iIntros (σ ns κs nt) "Hσ".
   iDestruct (Hnf with "Hσ HQ") as %Hnf'.
   iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; by apply prun_reducible|].
@@ -1678,7 +1678,7 @@ Proof.
       poison_heap_interp σ2 ∗ WP (e2 : pexprL) {{ Φ }}) ∧ (poison_heap_interp σ ∗ Q))%I
     with "[Hσ HQ]" as "H".
   { iSplit; [iApply (Hst with "Hσ HQ")|iFrame]. }
-  iNext. iIntros (e2 σ2 efs Hstep) "_". iMod "Hclose" as "_".
+  iNext. iIntros (e2 σ2 efs κ κs' _ Hstep) "_". iMod "Hclose" as "_".
   destruct (phead_step_run_inv _ _ _ _ _ _ _ _ _ Hstep) as (_ & -> & Hc).
   destruct Hc as [Hn | [Ha | [(q & k & _ & _ & _ & -> & ->) |
     [Hr | [(o & ots & _ & _ & _ & -> & ->) | (s' & m' & _ & _ & Hsp & -> & ->)]]]]].
@@ -1909,9 +1909,9 @@ Lemma wp_presume o ots cf cte r cf' cte' Φ :
   WP (PWait (PEnd o ots) cf cte r : pexprL) {{ Φ }}.
 Proof.
   intros Hr. iIntros "HK". iApply wp_lift_base_step; [done|].
-  iIntros (σ ns κ κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
+  iIntros (σ ns κs nt) "Hσ". iApply fupd_mask_intro; [set_solver|]. iIntros "Hclose".
   iSplitR; [iPureIntro; do 4 eexists; exact (phs_resume pol ge o ots cf cte r cf' cte' σ Hr)|].
-  iNext. iIntros (e2 σ2 efs Hs) "_". iMod "Hclose" as "_". inversion Hs; subst.
+  iNext. iIntros (e2 σ2 efs κ κs' _ Hs) "_". iMod "Hclose" as "_". inversion Hs; subst.
   simplify_eq.
   iModIntro. iFrame "Hσ". iSplitL; [iExact "HK"|done].
 Qed.

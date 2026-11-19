@@ -36,7 +36,7 @@ pkgs.runCommandCC "nanofil-logic-spikes"
     nativeBuildInputs = [
       pkgs.swi-prolog
       pkgs.python3
-      rocq.rocq-core
+      rocq.rocq-cli
       rocq.stdlib
       rocq.stdpp
       rocq.iris

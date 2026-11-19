@@ -1,5 +1,5 @@
-# This package set builds Rocq 9.3.0, stdlib 9.2.0, std++ bd38c741 and
-# Iris 7e9583b2 with OCaml 5.4.1 from the repository's own nixpkgs. Only the Nanofil
+# This package set builds Rocq 9.3.0, stdlib 9.2.0, std++ and Iris
+# with OCaml 5.4.1 from the repository's own nixpkgs. Only the Nanofil
 # proof derivations (rocq.nix, glibc.nix) and the glibc-tools scripts use
 # these packages, so the Fil-C toolchain and nixpkgs pin are unchanged.
 #
@@ -10,6 +10,15 @@
 # the archives had. A derivation that runs native_compute needs this rocq-core's OCaml
 # and findlib among its inputs, since native code is linked with ocamlopt.
 { pkgs }:
+let
+  # The generated project now starts with a comment and a blank line.
+  # Select its compiler flags explicitly when building an individual package.
+  fixPackageFlags = ''
+    substituteInPlace make-package \
+      --replace-fail "sed -n '/./!q;p' _RocqProject | grep -E -v \"^-Q \"" \
+        "grep '^-arg ' _RocqProject"
+  '';
+in
 pkgs.rocqPackages_9_2.overrideScope (
   final: prev: {
     rocq-core =
@@ -25,6 +34,24 @@ pkgs.rocqPackages_9_2.overrideScope (
             hash = "sha256-Wr9+5Mq3/hS3gnyZDnzBo9aJCjeqQDGi4eaU1LinwaE=";
           };
         };
+    # Iris and std++ keep the ssreflect spelling for Rocq releases before 9.3.
+    rocq-cli = pkgs.symlinkJoin {
+      name = "nanofil-rocq-${final.rocq-core.version}";
+      paths = [ final.rocq-core ];
+      postBuild = ''
+        rm "$out/bin/rocq"
+        ln -s ${pkgs.writeShellScript "nanofil-rocq" ''
+          case "''${1-}" in
+            c|compile|repl|top|repl-with-drop|top-with-drop)
+              command=$1
+              shift
+              set -- "$command" -w -rewrite-rw "$@"
+              ;;
+          esac
+          exec ${final.rocq-core}/bin/rocq "$@"
+        ''} "$out/bin/rocq"
+      '';
+    };
     stdlib = (prev.stdlib.override { version = "9.1.0"; }).overrideAttrs {
       version = "9.2.0";
       src = pkgs.fetchzip {
@@ -33,24 +60,26 @@ pkgs.rocqPackages_9_2.overrideScope (
       };
     };
     stdpp = (prev.stdpp.override { version = "1.13.0"; }).overrideAttrs {
-      version = "dev-bd38c741";
+      version = "dev-b4dc05b6";
       src = pkgs.fetchgit {
         name = "source";
         url = "https://gitlab.mpi-sws.org/iris/stdpp.git";
-        rev = "bd38c741cac9bb9803a322f2a69c794ae1407e76";
-        hash = "sha256-VfvcmGELcRDMqVLupaAyMb6RXarDNo2iCSCsbX2xPjA=";
+        rev = "b4dc05b6af93df9e0e9a9337ffb6c5a274b8df97";
+        hash = "sha256-DPY3/Xl4JM4WOHexOuhj5b8oFKhnm/8wp983jOU/NWU=";
       };
+      postPatch = fixPackageFlags;
       buildPhase = "./make-package stdpp -j$NIX_BUILD_CORES";
       installPhase = "./make-package stdpp install $installFlags";
     };
     iris = (prev.iris.override { version = "4.5.0"; }).overrideAttrs {
-      version = "dev-7e9583b2";
+      version = "dev-2fe2f450";
       src = pkgs.fetchgit {
         name = "source";
         url = "https://gitlab.mpi-sws.org/iris/iris.git";
-        rev = "7e9583b2af18fd82b44b6a33d447146e37da67ca";
-        hash = "sha256-R6hllx9eoNg/E6il9qBzYkkpLnhnP71pWvVHI+GtC1w=";
+        rev = "2fe2f450add5678d9a2492343c638ccdb428a677";
+        hash = "sha256-SW+y0p8/VloS6IGJg2mgRhCzL7g4CJZJqZQzvKAbikM=";
       };
+      postPatch = fixPackageFlags;
       buildPhase = "./make-package iris -j$NIX_BUILD_CORES";
       installPhase = "./make-package iris install $installFlags";
     };

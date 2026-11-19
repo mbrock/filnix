@@ -6,6 +6,16 @@
   spikes ? false,
 }:
 let
+  rocq = import ../../nix/rocq-packages.nix { inherit pkgs; };
+  # The capture client uses the Coq command shims and the RocqIDE XML server.
+  coq =
+    (pkgs.coq_9_2.override {
+      coq-version = rocq.rocq-core.rocq-version;
+      rocqPackages = rocq;
+    }).overrideAttrs
+      {
+        inherit (rocq.rocq-core) version src;
+      };
   src = pkgs.lib.fileset.toSource {
     root = ../../..;
     fileset = pkgs.lib.fileset.unions (
@@ -33,12 +43,15 @@ pkgs.runCommand
     # The theories' program logic (Heap.v, Language.v, Logic.v) and the
     # spikes both need std++ and Iris.
     nativeBuildInputs = [
-      pkgs.coq
-      pkgs.coqPackages.stdlib
+      coq
+      rocq.stdlib
+      rocq.stdpp
+      rocq.iris
+      rocq.rocq-core.ocamlPackages.ocaml
+      rocq.rocq-core.ocamlPackages.findlib
+      pkgs.stdenv.cc
       pkgs.swi-prolog
       pkgs.python3
-      pkgs.rocqPackages.stdpp
-      pkgs.rocqPackages.iris
     ];
   }
   (
