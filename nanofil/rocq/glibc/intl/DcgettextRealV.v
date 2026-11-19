@@ -111,7 +111,7 @@ Lemma wp_dcgettext_c_v f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-Proof.
+Proof using Herr.
   intros Hcal Hglo Hbnd Hv Hlinks Hargs Hm. iIntros "(Hr & HL1 & HL2 & HT & HK & HC & HM & Herr) HΦ".
   iApply wp_call_bind; [exact Hargs | apply defines | reflexivity |]. iNext.
   step.

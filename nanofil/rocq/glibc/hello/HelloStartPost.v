@@ -135,10 +135,10 @@ Local Lemma file_offsets : off_flags = 0 /\ off_fileno = 112 /\ off_flags2 = 116
   off_column = 128 /\ off_lock = 136 /\ off_offset = 144 /\ off_codecvt = 152 /\ off_wide = 160 /\
   off_freeres_list = 168 /\ off_freeres_buf = 176 /\ off_mode = 192 /\ off_total_written = 200 /\
   off_vtable = 216.
-Proof. vm_compute. repeat split. Qed.
+Proof using Type. vm_compute. repeat split. Qed.
 
 Local Lemma lock_offsets : off_lk_lock = 0 /\ off_lk_cnt = 4 /\ off_lk_owner = 8.
-Proof. vm_compute. repeat split. Qed.
+Proof using Type. vm_compute. repeat split. Qed.
 
 (** This is the state in which the linker leaves a stream: unoriented,
     with no buffer, both offsets at minus one and the lock free. *)

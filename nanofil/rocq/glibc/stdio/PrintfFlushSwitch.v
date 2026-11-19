@@ -41,7 +41,7 @@ Definition select_cuts : list (string * cut_sig) := Eval vm_compute in cut_table
 
 Lemma select_cuts_read :
   cut_in select_cuts "L40" = [(‹buf›, ("buf", 0))] /\ cut_in select_cuts "L88" = [(‹buf›, ("buf", 0))].
-Proof. split; reflexivity. Qed.
+Proof using Type. split; reflexivity. Qed.
 
 (** Each site returns the pointers that the switch wrote into the printf
     buffer. The caller can use those pointers to lend the next window. *)

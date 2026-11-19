@@ -138,7 +138,7 @@ Lemma wp_glibc___libc_write_dq fr fd p n eb dq ps Φ :
   ptsq dq ps -∗ errno_any eb -∗
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ ptsq dq ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg.
   intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
   iApply (wp_zsys_write_dq with "Hps Herr");
     [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
@@ -161,7 +161,7 @@ Lemma wp_glibc___write_nocancel_dq fr fd p n eb dq ps Φ :
   ptsq dq ps -∗ errno_any eb -∗
   ▷ (∀ k, ⌜(0 <= k <= n /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1⌝ -∗ ptsq dq ps -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg.
   intros Hfr Hfd Hn He Hin Hrd. injection Hfr as <-. iIntros "Hps Herr HK". step.
   iApply (wp_zsys_write_dq with "Hps Herr");
     [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
@@ -254,7 +254,7 @@ Lemma wp_file_write_call_nocancel_dq
      WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L14") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hext Hreg.
   intros Hloan Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
   assert (Hlen : 0 <= Z.of_nat (length xs) < 2 ^ 63) by lia.

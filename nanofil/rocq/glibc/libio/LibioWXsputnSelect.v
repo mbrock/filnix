@@ -45,7 +45,7 @@ Local Lemma positive_room b i j : 0 <= b -> 0 <= i <= j -> b+4*j <= 2^63 -> 4*j 
   (if sign_extension (2^64) (2^63) (4 mod 2^64) =? 0 then 0 else
     (sign_extension (2^64) (2^63) ((((b+4*j) mod 2^64 - (b+4*i) mod 2^64) mod 2^64) mod 2^64)
      ÷ sign_extension (2^64) (2^63) (4 mod 2^64)) mod 2^64) = j-i.
-Proof.
+Proof using Type.
   intros. change (sign_extension (2^64) (2^63) (4 mod 2^64)) with 4. change (4 =? 0) with false. cbn iota.
   rewrite (Z.mod_small (b+4*j) (2^64)); [|lia]. rewrite (Z.mod_small (b+4*i) (2^64)); [|lia].
   rewrite Z.mod_mod; [|lia]. replace (b+4*j-(b+4*i)) with ((j-i)*4) by lia.

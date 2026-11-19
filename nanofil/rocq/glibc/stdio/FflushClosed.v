@@ -110,7 +110,7 @@ Lemma wp_fflush_closed_dispatch e fb freg fl off lb lbreg sb sreg vb vreg (E : i
     pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt 0))) -∗
   WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None
     (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
-Proof.
+Proof using Hsync.
   intros Hv0 Hc0 Hfb Hal Hend Hregion Huser Hbackup.
   iIntros "#Hvt #Hslot #Hs Hl Hfl H8 H16 H32 H40 Hoff Hvtp Hlp Hlk HE HK".
   iApply (wp_fflush_closed_dispatch_with vt_file _ _ _ _ _ _ _ _ _ _ _ _ _

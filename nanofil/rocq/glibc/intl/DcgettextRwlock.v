@@ -67,7 +67,7 @@ Lemma dci_rdlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_
     lk lb lreg tb treg r cw sh fl dqt dqi tid :
   rw_ready lk lb lreg tb treg r cw tid ->
   dci_rdlock_rule lk (rw_held lb lreg r cw sh fl dqt tb treg dqi tid) (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid).
-Proof.
+Proof using Hext Hreg.
   intros (Hp & Hr0 & Hr & Hr8 & Hcw) f e ls l d args rest j Φ Hargs. iIntros "U HK".
   iApply (wp_call_rdlock_state Hreg Hext with "U [HK]"); [exact Hargs | exact Hp | exact Hr0 | exact Hr | exact Hr8 | exact Hcw |].
   iNext. iIntros "U". iApply ("HK" $! 0 with "U").
@@ -79,7 +79,7 @@ Lemma dci_unlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_
     lk lb lreg tb treg r cw sh fl dqt dqi tid :
   rw_ready lk lb lreg tb treg r cw tid ->
   dci_unlock_rule lk (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid) (rw_held lb lreg r cw sh fl dqt tb treg dqi tid).
-Proof.
+Proof using Hext Hreg.
   intros (Hp & Hr0 & Hr & Hr8 & Hcw) f e ls l d args rest j Φ Hargs. iIntros "U HK".
   iApply (wp_call_rwunlock_state Hreg Hext with "U [HK]"); [exact Hargs | exact Hp | exact Hr0 | exact Hr | exact Hcw |].
   iNext. iIntros "U". iApply ("HK" $! 0 with "U").

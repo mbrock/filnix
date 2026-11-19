@@ -47,16 +47,16 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
 
 (** The lowest bit of an odd word is set. *)
 Lemma odd_land1 x : x mod 2 = 1 -> Z.land x 1 = 1.
-Proof. intros H. change 1 with (Z.ones 1) at 1. rewrite Z.land_ones; [exact H | lia]. Qed.
+Proof using Type. intros H. change 1 with (Z.ones 1) at 1. rewrite Z.land_ones; [exact H | lia]. Qed.
 (** A word that is 1 modulo 4 has its second bit clear. *)
 Lemma low1_land2 x : x mod 4 = 1 -> Z.land x 2 = 0.
-Proof.
+Proof using Type.
   intros H. change 2 with (Z.land 3 2) at 1. rewrite Z.land_assoc.
   change 3 with (Z.ones 2). rewrite Z.land_ones; [|lia]. change (2 ^ 2) with 4. rewrite H. reflexivity.
 Qed.
 (** Clearing the lowest bit of an odd word subtracts 1. *)
 Lemma odd_lxor1 x : x mod 2 = 1 -> Z.lxor x 1 = x - 1.
-Proof.
+Proof using Type.
   intros H. assert (Hx : x = Z.lxor (x - 1) 1).
   { rewrite <- Z.add_nocarry_lxor; [lia|]. change 1 with (Z.ones 1) at 2. rewrite Z.land_ones; [|lia].
     change (2 ^ 1) with 2. Z.div_mod_to_equations; lia. }

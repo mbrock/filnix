@@ -189,7 +189,7 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
 Qed.
 
 Local Lemma report_wsync_link : ge_fn hge "__GI__IO_wfile_sync" Unit_libio_wfileops_os.fn___GI__IO_wfile_sync.
-Proof. exists (img_addr "__GI__IO_wfile_sync"). split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]. Qed.
+Proof using Type. exists (img_addr "__GI__IO_wfile_sync"). split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]. Qed.
 
 Local Abbreviation WM tw tm wd := (report_state_for tb fb freg (closed_wide_fields fb vb lb lr tw tm wd) nb nr).
 

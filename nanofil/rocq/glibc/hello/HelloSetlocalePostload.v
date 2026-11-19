@@ -77,7 +77,7 @@ Lemma wp_postload_ctype_c fr0 dqt Φ :
   liveq dqt lt ltreg -∗ pcellq dqt lt 0 glp -∗ live gl glreg -∗ pcell gl 0 ccp -∗ pl_ro -∗ pl_cells -∗
   ▷ (liveq dqt lt ltreg -∗ pcellq dqt lt 0 glp -∗ live gl glreg -∗ pcell gl 0 ccp -∗ pl_cells -∗ Φ RetVoid) -∗
   WP (ERun fr0 : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr. injection Hfr as <-.
   iIntros "Hlt Hlc Hgl Hg0 #(Hcc & Hv0 & Hv1 & Hv2 & Hv12 & Hv15 & Hv16 & Hxc & Hxu & Hxl & H32)".
   iIntros "(H104 & H112 & H120 & (Hlb & Hcb) & (Hlu & Hcu) & (Hll & Hcl) & (Lb & Cb) & (Lu & Cu) & (Ll & Cl) & (L32 & C32) & (L3u & C3u) & (L3l & C3l)) HK".

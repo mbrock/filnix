@@ -110,7 +110,7 @@ Lemma wp_flush_L94_over e from fb freg fl f2 fd md c breg arp are awb awp vb vre
      WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L94") (Some from))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hov Hovf.
   intros fp Hp5 Hc13 Hp4 Hv3 Hr Hfb Hfal Hfend Hfreg Hf2 Hmd Hfd Hw Hwp. subst fp.
   pose proof Hfend as Hfend'. unfold file_size in Hfend.
   iIntros "#Hvt Hl Hfl [%Hf2r Hf2] [%Hmdr Hmd] Hfd Hrp Hre Hwb Hwp Hbc Hvtp HR HK".

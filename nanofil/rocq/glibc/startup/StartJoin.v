@@ -313,7 +313,7 @@ Fixpoint words_of (n : nat) (xs : list Z) : list Z :=
 (** Splitting each word into its bytes turns [words_ps] into
     [byte_ps] at the same offset. *)
 Lemma start_words_ps_bytes b o ws : words_ps b o ws = byte_ps b o (wbytes ws).
-Proof.
+Proof using Type.
   revert o. induction ws as [|w ws IH]; intros o; [reflexivity|].
   cbn [words_ps]. rewrite wbytes_cons byte_ps_app IH.
   unfold cell. cbn [List.map]. rewrite !byte_ps_cons. unfold byte_ps. cbn. repeat (f_equal; try lia).
@@ -323,7 +323,7 @@ Qed.
     bytes, and every word fits in 64 bits. *)
 Lemma words_of_ok n xs : length xs = (8 * n)%nat -> Forall (fun x => 0 <= x < 256) xs ->
   wbytes (words_of n xs) = xs /\ Forall (fun w => 0 <= w < 2 ^ 64) (words_of n xs) /\ length (words_of n xs) = n.
-Proof.
+Proof using Type.
   revert xs. induction n as [|n IH]; intros xs L Hx.
   - destruct xs; [|cbn in L; lia]. split; [reflexivity|]. split; [constructor | reflexivity].
   - destruct xs as [|y0 [|y1 [|y2 [|y3 [|y4 [|y5 [|y6 [|y7 rest]]]]]]]]; cbn in L; try lia.

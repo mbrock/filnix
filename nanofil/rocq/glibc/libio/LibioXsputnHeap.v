@@ -130,7 +130,7 @@ Lemma xs_after_idle st nb wp we fl tw off m fb :
   let st' := xs_after st nb wp we fl tw off m in
   flags_ok st' /\ idle_ok (fs_fileno st) (fs_with_flags2 st' 0) /\
   buf_ptrs_ok fb (heap_kind nb) (fs_ptrs st') /\ short_idle (heap_kind nb) st'.
-Proof.
+Proof using Type.
   intros Hlen Hok Hi [Hfl Hput] Hrange Hm Hw. cbn zeta.
   destruct (fs_ptrs st) as [|p0 [|p1 [|p2 [|p3 [|p4 [|p5 [|p6 [|p7 [|p8 [|p9 [|p10 [|p11 [|]]]]]]]]]]]]] eqn:Hps;
     try discriminate Hlen.

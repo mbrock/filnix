@@ -46,7 +46,7 @@ Lemma wp_printf_xsputn_heap_switch e from bb breg vb self fp mode flags2 held
     pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hswitch.
   intros Hbb Hba Hbe Hbr Hv0.
   iIntros "Hb Hfp HF Hbase Hptr Hend HK".
   iDestruct "HF" as "(%fb & %freg & %st & %db & %dreg & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp & Hf & Hst & Hrest)".

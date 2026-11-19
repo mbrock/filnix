@@ -101,7 +101,7 @@ Lemma va_round (i : nat) q e p0 pc pp pv cb cr sb sr b Ψ :
            (Exec (TAtom "L12") (b_insts va12) (b_jump va12))) : gexpr) {{ Ψ }}) -∗
   WP (ERun (mkFrame version_etc_va_fn (put (TAtom "pr.1") (WInt i) e) [] None
         (Exec (TAtom "L12") (b_insts va12) (b_jump va12))) : gexpr) {{ Ψ }}.
-Proof.
+Proof using Type.
   intros Hi (Hv0 & Hv2 & Hv4 & Hv6 & Hv8 & Hv11) Hcb Hsb Hs8 Hsend Hsmax Hb Hb8 Hbend.
   iIntros "Hcur Hsl Hsc #Hq Hl Hc HK".
   cbn [va12 b_insts b_jump]. step. branch_symbolic.
@@ -139,7 +139,7 @@ Lemma va_triple pc pp pv cb cr sb sr q1 q2 q3 q4 (R : iProp Σ) :
     (fun r => ⌜r = RetVoid⌝ ∗ out_idle w0 o ∗ errno_any (ho_eb o) ∗
      pts (va_cursor_ps cb cr (mkPtr (sb + 72) (Ro sb))) ∗ live sb sr ∗
      pcell sb 32 q1 ∗ pcell sb 40 q2 ∗ pcell sb 48 q3 ∗ pcell sb 56 q4 ∗ pcell sb 64 null ∗ R)%I.
-Proof.
+Proof using Herr Hfd Hfprintf Hfputs Hk Hl Hv.
   intros Hcb Hsb Hs8 Hsend Hsmax.
   exists version_etc_va_fn. split; [exact (vl_va _ Hv)|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-.
@@ -234,7 +234,7 @@ Lemma version_etc_triple pc pp pv q1 q2 q3 q4 (R : iProp Σ) :
     (hello_ro ge o ∗ out_idle w0 o ∗ errno_any (ho_eb o) ∗ str_ro pc ∗ str_ro pp ∗ str_ro pv ∗
      str_ro q1 ∗ str_ro q2 ∗ str_ro q3 ∗ str_ro q4 ∗ R)
     (fun r => ⌜r = RetVoid⌝ ∗ out_idle w0 o ∗ errno_any (ho_eb o) ∗ R)%I.
-Proof.
+Proof using Herr Hfd Hfprintf Hfputs Hk Hl Hv.
   exists version_etc_fn. split; [exact (vl_etc _ Hv)|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-.
   iIntros "(#Hro & Hout & He & #Hc & #Hp & #Hv & #Q1 & #Q2 & #Q3 & #Q4 & HR) HK".

@@ -55,7 +55,7 @@ Definition nowrite_after st mode :=
 Lemma nowrite_idle st nb fd mode :
   flags_ok st -> idle_ok fd (fs_with_flags2 st 0) -> short_idle nb st -> (mode = 0 \/ mode = 2^32-1) ->
   let st' := nowrite_after st mode in flags_ok st' /\ idle_ok fd (fs_with_flags2 st' 0) /\ short_idle nb st'.
-Proof.
+Proof using Type.
   cbn zeta. destruct nb; unfold flags_ok, idle_ok, short_idle, fs_with_flags2, fs_ptr, nowrite_after, has;
     cbn [fs_flags fs_ptrs fs_flags2 fs_fileno fs_mode fs_column];
     repeat (rewrite land_lor_const; [|reflexivity]); intros (Hfl & ?) ? ? ?.

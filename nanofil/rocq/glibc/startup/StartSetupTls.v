@@ -110,7 +110,7 @@ Lemma setup_tls_has_spec :
   registry (TAtom "zthread_set_self_cookie") = Some os_set_cookie_contract ->
   os_ext ge "zthread_set_self_cookie" ->
   HasSpec registry (os_wi_start w0 k) ge (TAtom "__libc_setup_tls") (setup_tls_spec ge k).
-Proof.
+Proof using Hinit.
   intros Hf Hrs Hes [[[[[[[c re] rereg] x] se] sereg] sp] spreg].
   exists start_setup_tls_fn. split; [exact Hf|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fs_args setup_tls_spec].

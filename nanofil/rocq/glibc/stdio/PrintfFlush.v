@@ -55,7 +55,7 @@ Definition flush_cuts : list (string * cut_sig) :=
   Eval vm_compute in cut_table S.temp_keys S.live_in.
 
 Lemma file_call_cut : cut_in flush_cuts "iw_2.L12" = [(‹chk(buf+32)›, ("buf", 32)); (‹buf›, ("buf", 0))].
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 Definition flush_blocks : list bspec :=
   [BSpec "start" None (cut_in flush_cuts "start") Z (fun bb => [("buf", WPtr (mkPtr bb (Obj bb)))])

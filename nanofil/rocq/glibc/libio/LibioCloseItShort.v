@@ -41,7 +41,7 @@ Proof using Type.
 Qed.
 
 Lemma short_close_spec : LibioCloseItMid.close_spec w0 registry ge.
-Proof.
+Proof using Hcn Hext Hreg.
   intros fr fb freg fd eb Φ Hfr Hfb Hal Hend Hreg' He.
   exact (LibioRead.wp_glibc__IO_file_close Hreg Hext fr fb freg fd eb Φ
     Hfr Hcn Hfb Hal Hend Hreg' He).

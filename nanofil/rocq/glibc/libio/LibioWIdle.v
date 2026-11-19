@@ -231,7 +231,7 @@ Definition widle_ok (fd : Z) (st : fstate) : Prop :=
 (** Orientation can carry all the narrow idle facts across this change
     of mode: it only gives up a condition on unused space. *)
 Lemma idle_ok_widle_ok fd st : idle_ok fd st -> widle_ok fd st.
-Proof. unfold idle_ok, widle_ok. tauto. Qed.
+Proof using Type. unfold idle_ok, widle_ok. tauto. Qed.
 
 (** The narrow buffer of a wide stream follows the rules of wide mode,
     which are not those of an idle narrow stream. The first wide output

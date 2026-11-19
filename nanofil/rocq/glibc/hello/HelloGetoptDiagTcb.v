@@ -261,7 +261,7 @@ Lemma hello_getopt_diag_rule_tcb v :
   (forall mid a0 s0 c, diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
      fx_format vb fp mid [WPtr a0; WInt c] ((errno_any eb ∗ F) ∗ word_string DfracDiscarded a0 s0) Q) ->
   getopt_diag_rule w0 registry ge (dtx_G v) (dtx_T v) fp dom.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hlm Hfm. pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
   refine (conj Hd (conj Hf (conj (dtx_cap v) (conj _ _)))).
   - intros f e ls l d args rest j mid Φ Hmid Hargs. exact (dtx_translate v _ f e ls l d args rest j mid Φ Hp Hm Hmid Hargs).
@@ -285,7 +285,7 @@ Lemma hello_getopt_ldiag_rule_tcb v :
      ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)) Q) ->
   fx_format vb fp f141 [] ((errno_any eb ∗ F) ∗ True) Q ->
   getopt_ldiag_rule w0 registry ge (dtx_G v) (dtx_T v) fp dom.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hlm H140 Hr140 H141 Hr141 Hfm Hfm140 Hfm141.
   pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
   refine (conj Hd (conj Hf (conj (dtx_cap v) (conj _ (conj _ (conj _ _)))))).

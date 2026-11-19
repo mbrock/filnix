@@ -68,7 +68,7 @@ Definition dci_heap_glibc (mpb tcb : Z) : Prop :=
 Lemma dci_rest_rwf_glibc `{!Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
       !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} dq mpb tcb dmb mpr tcr dr :
   dci_heap_glibc mpb tcb -> dci_rest_rwf (hi_malloc_state dq mpb tcb dmb mpr tcr dr).
-Proof.
+Proof using Hreg.
   intros (Hfh & Hzf & Hzg & Hmp & Htc & Hmf & Hmd). split_and!.
   - apply Hreg. reflexivity.
   - exact Hmf.

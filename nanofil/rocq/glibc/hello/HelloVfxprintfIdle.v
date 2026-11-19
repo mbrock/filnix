@@ -203,7 +203,7 @@ Qed.
     snapshot, past the stream and the format. That cursor is the
     formatter's argument cursor at offset 16. *)
 Lemma fx_va_at ap xs : (2 <= length xs)%nat -> fx_va ap xs -∗ va_at ap 16 xs.
-Proof.
+Proof using Hself Hselfr.
   intros Hl. iIntros "H". iDestruct "H" as (cb sb Hp) "[Hc Hs]".
   iExists cb, sb. iFrame. iPureIntro. destruct Hp as (? & ? & ? & ? & ? & ? & ?). split_and!; auto; lia.
 Qed.

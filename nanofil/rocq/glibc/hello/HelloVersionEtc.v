@@ -164,7 +164,7 @@ Lemma arn_triple pc pp pv b q1 q2 q3 q4 (R : iProp Σ) :
      str_ro q1 ∗ str_ro q2 ∗ str_ro q3 ∗ str_ro q4 ∗ R)
     (fun r => ⌜r = RetVoid⌝ ∗ out_idle w0 o ∗ errno_any (ho_eb o) ∗
      live b (mkRegion b (b + 80) Heap Live) ∗ pcell b 0 q1 ∗ pcell b 8 q2 ∗ pcell b 16 q3 ∗ pcell b 24 q4 ∗ R)%I.
-Proof.
+Proof using Herr Hfd Hfprintf Hfputs Hk Hl Hv.
   intros Hb Hb8 Hbend.
   exists version_etc_arn_fn. split; [exact (vl_arn _ Hv)|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-.

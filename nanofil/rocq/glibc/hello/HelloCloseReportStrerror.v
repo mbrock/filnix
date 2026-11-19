@@ -35,7 +35,7 @@ Lemma report_strerror_links :
   find_fn hge (TAtom "__get_errlist") = Some (Defined Unit_stdioZ2dcommon_errlist_os.fn___get_errlist) /\
   find_fn hge (TAtom "__GI___snprintf") = Some (Defined report_snprintf) /\
   find_fn hge (TAtom "__GI___strerror_r") = Some (Defined Unit_string__strerror_os.fn___GI___strerror_r).
-Proof. split_and!; vm_compute; reflexivity. Qed.
+Proof using Type. split_and!; vm_compute; reflexivity. Qed.
 
 (** A table message remains readable after translation. A missing
     entry requires the caller to run the linked snprintf on its own

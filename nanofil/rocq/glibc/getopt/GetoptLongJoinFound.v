@@ -41,7 +41,7 @@ Lemma long_arg_res s has i n cur a ps i' a' :
   long_arg s has i n cur a ps i' a' ->
   (i <= i' <= i + 1 \/ (i' = i + 2 /\ i + 1 < n)) /\
   (a' = a \/ a' = ptr_add cur (Z.of_nat (eq_len s) + 1) \/ a' = nth (Z.to_nat (i + 1)) ps null).
-Proof.
+Proof using Type.
   intros [(_ & _ & -> & ->) | [(_ & _ & -> & ->) | (_ & _ & Hlt & -> & ->)]].
   - split; [lia | right; left; reflexivity].
   - split; [lia | left; reflexivity].

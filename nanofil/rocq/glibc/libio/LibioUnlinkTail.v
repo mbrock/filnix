@@ -37,9 +37,9 @@ Import ProgramAbbreviations.
 Section rules_values.
 Definition unlinked_flags (fl : Z) : Z := Z.land fl 4294967167.
 Lemma unlinked_flags_range fl : 0 <= fl < 2 ^ 32 -> 0 <= unlinked_flags fl < 2 ^ 32.
-Proof. intros H. unfold unlinked_flags. apply land_lt32; lia. Qed.
+Proof using Type. intros H. unfold unlinked_flags. apply land_lt32; lia. Qed.
 Lemma unlinked_user_lock fl : Z.land fl 32768 = 0 -> Z.land (unlinked_flags fl) 32768 = 0.
-Proof.
+Proof using Type.
   intros H. unfold unlinked_flags. rewrite <- Z.land_assoc.
   change (Z.land 4294967167 32768) with 32768. exact H.
 Qed.

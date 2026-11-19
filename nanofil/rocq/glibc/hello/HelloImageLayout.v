@@ -217,7 +217,7 @@ Local Ltac ro := apply hello_image_ro_sym; inl.
 
 (** The choice of objects satisfies hello_layout in the loaded image. *)
 Theorem hello_image_layout : hello_layout ge hello_image_objs.
-Proof.
+Proof using Hi.
   constructor; cbn [ge_globals hello_image_objs ho_cp ho_so ho_soreg ho_se ho_sereg ho_oa ho_oareg
     ho_oi ho_oireg ho_pb ho_preg ho_eb ho_ereg gd r_end]; try (split_and!; first [lia | reflexivity]); try obj.
   - intros s Hs. rewrite <- hello_image_lits_names in Hs. apply in_map_iff in Hs as [[n b] [<- Hin]].
@@ -247,7 +247,7 @@ Theorem hello_image_link_objects : let o := hello_image_objs in
    0 <= ptr_addr (ho_fcp o) < 2 ^ 64) /\
   (ptr_cap (ho_cp o) = Fn (TAtom "close_stdout") /\ function_check_res ge (ho_cp o) = Some ok /\
    0 < ptr_addr (ho_cp o) < 2 ^ 64).
-Proof.
+Proof using Hi.
   cbv zeta. unfold exit_layout, exit_globals.
   cbn [ge_globals hello_image_objs ho_pb ho_nb ho_nsb ho_preg ho_nreg ho_nsreg ho_lp ho_tp ho_eb ho_mp ho_tc
     ho_x ho_el ho_elr ho_fcp ho_cp xo_lock xo_lock_reg xo_done xo_done_reg xo_called xo_called_reg

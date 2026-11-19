@@ -264,7 +264,7 @@ Lemma hello_getopt_diag_rule_lock v :
   (forall mid a0 s0 c, diag_msg ge mid -> 0 <= c < 2 ^ 32 ->
      fx_format vb fp mid [WPtr a0; WInt c] ((errno_any eb ∗ F) ∗ word_string DfracDiscarded a0 s0) Q) ->
   getopt_diag_rule w0 registry ge (dlk_G v) (dlk_T v) fp dom.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hlm Hfm. pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
   refine (conj Hd (conj Hf (conj (dlk_cap v) (conj _ _)))).
   - intros f e ls l d args rest j mid Φ Hmid Hargs. exact (dlk_translate v _ f e ls l d args rest j mid Φ Hp Hm Hmid Hargs).
@@ -288,7 +288,7 @@ Lemma hello_getopt_ldiag_rule_lock v :
      ((errno_any eb ∗ F) ∗ (word_string DfracDiscarded pfx sp ∗ word_string DfracDiscarded nm sn)) Q) ->
   fx_format vb fp f141 [] ((errno_any eb ∗ F) ∗ True) Q ->
   getopt_ldiag_rule w0 registry ge (dlk_G v) (dlk_T v) fp dom.
-Proof.
+Proof using Herr Hreg.
   intros Hp Hm Hlm H140 Hr140 H141 Hr141 Hfm Hfm140 Hfm141.
   pose proof Hp as (_ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & _ & Hd & Hf & _).
   refine (conj Hd (conj Hf (conj (dlk_cap v) (conj _ (conj _ (conj _ _)))))).
@@ -323,7 +323,7 @@ Definition dlk_busy : dlk_state := mkDlk 0 (tid + 7) 3 0.
 Example dlk_state_controls v :
   dlk_ready dlk_free /\ dlk_ready dlk_busy /\ dlk_free <> dlk_busy /\
   (dlk_G0 dlk_free dlk_free dlk_free v ⊢ dlk_G v) /\ (dlk_G0 dlk_busy dlk_free dlk_busy v ⊢ dlk_G v).
-Proof.
+Proof using Q.
   assert (Hf : dlk_ready dlk_free) by (unfold dlk_ready, dlk_free; cbn; split_and!; lia).
   assert (Hb : dlk_ready dlk_busy) by (unfold dlk_ready, dlk_busy; cbn; split_and!; lia).
   split_and!; [exact Hf | exact Hb | unfold dlk_free, dlk_busy; intros H; discriminate H |
@@ -346,7 +346,7 @@ Example dlk_repeat_controls v :
     tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗
       ∃ bs2, errno_own eb bs2 ∗ (errno_own eb [0; 0; 0; 0] -∗
         tcb_cleanup_inv (ow_self w0) ∗ (tcb_cleanup_inv (ow_self w0) -∗ dlk_G v)))).
-Proof.
+Proof using Q.
   iIntros "H0". iDestruct (proj2 (proj2 (proj2 (proj2 (dlk_state_controls v)))) with "H0") as "HG".
   iDestruct (dlk_errno with "HG") as (bs) "[He Hb]". iExists bs. iFrame "He". iIntros "He".
   iDestruct ("Hb" with "He") as "HG". iDestruct (dlk_lend with "HG") as "[$ Hb]". iIntros "Ht".

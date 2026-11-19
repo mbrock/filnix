@@ -208,7 +208,7 @@ Variable m0 : mem.
     word. *)
 Lemma w_free_byte a : w_str + 5 <= a -> ~ (w_argv <= a < w_argv + 8) ->
   m_bytes (w_mem m0) a = 0 /\ m_aux (w_mem m0) a = CNone.
-Proof.
+Proof using Type.
   intros H1 H2. pose proof w_tb_eq. unfold w_str in H1.
   cbn [m_bytes m_aux w_mem]. rewrite w_word_none, w_aux_none by lia.
   rewrite (proj2 (Z.ltb_ge a _)) by lia. unfold w_str_byte, w_str.
@@ -216,18 +216,18 @@ Proof.
 Qed.
 
 Lemma byte_of_0 i : byte_of 0 i = 0.
-Proof. unfold byte_of. rewrite Zdiv_0_l. reflexivity. Qed.
+Proof using Type. unfold byte_of. rewrite Zdiv_0_l. reflexivity. Qed.
 
 (** A free slot holds the null pointer and the integer 0. *)
 Lemma w_null_slot a : w_str + 5 <= a -> ~ (w_argv - 8 < a < w_argv + 8) -> ptr_slot (w_mem m0) a (mkPtr 0 CNone).
-Proof.
+Proof using Type.
   intros H1 H2. split; [cbn; lia|]. split.
   - intros i Hi. rewrite (proj1 (w_free_byte (a + i) ltac:(lia) ltac:(lia))). symmetry. apply byte_of_0.
   - exact (proj2 (w_free_byte a H1 ltac:(lia))).
 Qed.
 
 Lemma w_zero_slot a : w_str + 5 <= a -> ~ (w_argv - 8 < a < w_argv + 8) -> int_slot (w_mem m0) a 0.
-Proof. intros H1 H2. destruct (w_null_slot a H1 H2) as (_ & Hb & Ha). split; [lia|]. split; [exact Hb | exact Ha]. Qed.
+Proof using Type. intros H1 H2. destruct (w_null_slot a H1 H2) as (_ & Hb & Ha). split; [lia|]. split; [exact Hb | exact Ha]. Qed.
 
 Ltac slot_bytes :=
   intros i Hi; assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7) as Hc by lia;
@@ -235,7 +235,7 @@ Ltac slot_bytes :=
 
 (** Each of the runtime's four objects is a live heap granule. *)
 Lemma w_heap_object b n : In b [w_av; w_env; w_argv; w_str] -> 0 <= n <= 16 -> heap_object (w_mem m0) b n.
-Proof.
+Proof using Type.
   intros Hb Hn. assert ((n + 15) / 16 < 2) by (apply Z.div_lt_upper_bound; lia).
   assert (0 <= (n + 15) / 16) by (apply Z.div_pos; lia).
   exists (w_heap b). split; [split; [|reflexivity]|].
@@ -247,7 +247,7 @@ Qed.
 
 (** The string object holds "hello" and zeros after it. *)
 Lemma w_c_string : c_string (w_mem m0) w_str w_name.
-Proof.
+Proof using Type.
   split; [apply w_heap_object; [cbn; tauto | cbn; lia]|]. split.
   - intros i Hi. cbn in Hi. destruct i as [|[|[|[|[|i]]]]]; try lia;
       (eexists; split; [reflexivity | split; [lia | vm_compute; reflexivity]]).
@@ -257,7 +257,7 @@ Qed.
 
 (** The argument array holds a pointer to "hello", then null. *)
 Lemma w_argv_array : string_array (w_mem m0) w_argv [(w_str, w_name)].
-Proof.
+Proof using Type.
   split; [apply w_heap_object; [cbn; tauto | cbn; lia]|]. split.
   - intros [|[|i]] sb s E; cbn in E; try discriminate. injection E as <- <-. split; [|exact w_c_string].
     split; [unfold w_str; cbn; lia|]. split; [slot_bytes | vm_compute; reflexivity].
@@ -266,7 +266,7 @@ Qed.
 
 (** The environment array holds only its null terminator. *)
 Lemma w_env_array : string_array (w_mem m0) w_env [].
-Proof.
+Proof using Type.
   split; [apply w_heap_object; [cbn; tauto | cbn; lia]|]. split.
   - intros [|i] sb s E; discriminate.
   - apply w_null_slot; unfold w_env, w_argv, w_str; cbn; lia.
@@ -274,7 +274,7 @@ Qed.
 
 (** The auxiliary vector holds only its zero key. *)
 Lemma w_auxv : auxv_array (w_mem m0) w_av [].
-Proof.
+Proof using Type.
   split; [apply w_heap_object; [cbn; tauto | cbn; lia]|].
   split; [constructor|]. split; [constructor|]. split; [intros [|i] k v E; discriminate|].
   apply w_zero_slot; unfold w_av, w_argv, w_str; cbn; lia.
@@ -283,7 +283,7 @@ Qed.
 (** The constructor table holds argc, argv, environ and the
     constructors in [w_order]. *)
 Lemma w_ctor_table : ctor_table (w_mem m0) img_globals w_tb 1 (mkPtr w_argv (Obj w_argv)) (mkPtr w_env (Obj w_env)) w_order.
-Proof.
+Proof using Type.
   split; [split; [lia|]; split; [slot_bytes | vm_compute; reflexivity]|].
   split; [split; [unfold w_argv; cbn; lia|]; split; [slot_bytes | vm_compute; reflexivity]|].
   split; [split; [unfold w_env; cbn; lia|]; split; [slot_bytes | vm_compute; reflexivity]|].
@@ -297,10 +297,10 @@ Qed.
 (** The interpreter's runtime is ready to allocate from 2^32 on. *)
 Lemma w_regions_ok : forallb (fun r => (0 <? r_base r) && (r_base r <? r_end r) && (r_end r <=? 2 ^ 32) &&
   match r_life r with Live => true | Freed => false end) w_regions = true.
-Proof. vm_compute. reflexivity. Qed.
+Proof using Type. vm_compute. reflexivity. Qed.
 
 Lemma w_ready : InterpRuntime.ready InterpRuntime.start (w_mem m0).
-Proof.
+Proof using Type.
   unfold InterpRuntime.ready, InterpRuntime.start, InterpRuntime.address_end. split; [lia|]. split.
   - intros b reg E. cbn [m_regions w_mem] in E. destruct (object_region_in _ _ _ E) as [I <-].
     pose proof (proj1 (forallb_forall _ _) w_regions_ok reg I) as F.
@@ -312,7 +312,7 @@ Qed.
 
 (** The witness memory keeps the image, except for the table. *)
 Lemma w_keeps : m_regions m0 = img_regions -> keeps_image m0 (w_mem m0) w_tb (ctor_table_size (length w_order)).
-Proof.
+Proof using Type.
   intros Hreg. assert (Ets : ctor_table_size (length w_order) = 48) by (vm_compute; reflexivity). rewrite Ets.
   split; [|split].
   - intros b reg E. rewrite Hreg in E. destruct (object_region_in _ _ _ E) as [I <-].

@@ -74,7 +74,7 @@ Lemma wp_glibc__IO_doallocbuf_alloc fr fb freg fl fd eb oe vb vreg Φ :
   Mres -∗
   ▷ (pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗ doalloc_k Mres fb freg fl fd eb (fun _ => Φ RetVoid)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hda_spec Hdaf.
   intros Hfr Hfb Hal Hend Hfreg He Hfd Hfd31 Hub. injection Hfr as <-.
   iIntros "#Hvt Hl Hfl Hfd Herr Hb Hbe Hvtp HM HK". unfold file_size in Hend. unfold io_unbuffered in Hub.
   iPoseProof (vtables_slot ge vb vreg slot_doallocate "__GI__IO_file_doallocate" with "Hvt") as "#Hsd"; [cbn; tauto|].

@@ -221,7 +221,7 @@ Qed.
 (** The three constructors differ from each other. *)
 Lemma ctor_names_differ :
   ctor_stdfiles <> ctor_vtables /\ ctor_stdfiles <> ctor_init_first /\ ctor_vtables <> ctor_init_first.
-Proof. split; [|split]; discriminate. Qed.
+Proof using Type. split; [|split]; discriminate. Qed.
 
 (** ## Each call keeps the memory *)
 

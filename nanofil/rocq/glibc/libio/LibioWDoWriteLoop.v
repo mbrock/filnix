@@ -177,7 +177,7 @@ Lemma consumed_quot q k : 0 < q -> 0 <= k -> q + 4 * k <= 2 ^ 63 ->
   (if sign_extension (2 ^ 64) (2 ^ 63) (4 mod 2 ^ 64) =? 0 then 0 else
    (sign_extension (2 ^ 64) (2 ^ 63) ((((q + 4 * k) mod 2 ^ 64 - q mod 2 ^ 64) mod 2 ^ 64) mod 2 ^ 64)
      ÷ sign_extension (2 ^ 64) (2 ^ 63) (4 mod 2 ^ 64)) mod 2 ^ 64) = k.
-Proof.
+Proof using Type.
   intros Hq Hk Hb. change (sign_extension (2 ^ 64) (2 ^ 63) (4 mod 2 ^ 64)) with 4. cbn [Z.eqb].
   rewrite (Z.mod_small (q + 4 * k)); [|lia]. rewrite (Z.mod_small q); [|lia].
   replace (q + 4 * k - q) with (4 * k) by lia. rewrite !(Z.mod_small (4 * k)); try lia.

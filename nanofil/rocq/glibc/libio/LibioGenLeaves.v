@@ -36,7 +36,7 @@ Definition unsave_frame (fb : Z) : frame :=
     (Enter (TAtom "start") None).
 Lemma unsave_frame_call fb :
   call_frame Unit_libio_genops_os.fn___GI__IO_unsave_markers [WPtr (mkPtr fb (Obj fb))] = Some (unsave_frame fb).
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

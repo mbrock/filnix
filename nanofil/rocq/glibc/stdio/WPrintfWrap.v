@@ -31,7 +31,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Lemma wide_text_prefix ws : wide_text ws -> ∃ xs,
   Forall (fun c => 0 < c < 256) xs /\ (4*length xs+4 <= length ws)%nat /\
   take (4*length xs+4) ws = stage_bytes (xs++[0]).
-Proof.
+Proof using Type.
   intros (xs & Hx & Hlen & P). exists xs. split; [done|]. split; [done|].
   rewrite P /stage_bytes flat_map_app. clear P Hlen. induction Hx; [reflexivity|].
   cbn [flat_map]. rewrite conv_le_byte; [simpl; by rewrite -IHHx|lia].

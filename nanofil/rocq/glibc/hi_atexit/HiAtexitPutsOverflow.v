@@ -61,7 +61,7 @@ Lemma hi_puts_overflow s fr fp eb vb vreg Φ :
   ▷ (∀ r, ⌜r = 10 \/ r = 2 ^ 32 - 1⌝ -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
      hi_malloc_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
-Proof.
+Proof using Hmp Htc.
   intros Hfr Heb. iIntros "#Hvt Hf HM HK".
   iDestruct "Hf" as (fb freg nb wp we lb (-> & Hfb & Hal & Hend & Hreg & Hlb & Hprogress))
     "(Hl & Hvtp & Hwb & Hxf & Htail)".

@@ -127,7 +127,7 @@ Lemma itoa_loop (n : nat) u acc a b reg hi old tb treg e Φ :
   WP (ERun (mkFrame Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word
       (put (TAtom "pr.1") (WInt u) (put (TAtom "pr.6") (WPtr (mkPtr a (Obj b))) e))
       [] None (Exec (TAtom "L20") (b_insts iblk20) (b_jump iblk20))) : sexpr) {{ Φ }}.
-Proof.
+Proof using Type.
   intros Ha Hn Hu Hu64 Hk Hold Hb Hhi Hend Hmax Hv15 Htb Htend Htmax.
   revert u acc a e Ha Hn Hu Hu64 Hk Hv15. induction n as [|n IH]; intros u acc a e Ha Hn Hu Hu64 Hk Hv15; [lia|]. subst a.
   iIntros "Hl Hbs #Htl #Htb HK". cbn [iblk20 b_insts b_jump]. step. step. step. cbn [ptr_addr ptr_cap].
@@ -177,7 +177,7 @@ Qed.
     compiled function. *)
 Lemma itoa_word_has_spec (n : string) `{!Defines ge n Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word} :
   HasSpec registry (os_wi w0) ge (TAtom n) itoa_word_spec.
-Proof.
+Proof using Type.
   intros [[[[v b] reg] hi] old]. exists Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args itoa_word_spec].
   iIntros "[%Hp (Hl & Hbs & Hro)] HK". destruct Hp as (Hv & Hb & Hhi & Hend & Hmax & Hold).

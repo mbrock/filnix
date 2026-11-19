@@ -78,7 +78,7 @@ Lemma wp_printf_file_select e from bb br vb self fp mode flags2 held base cur st
     Φ RetVoid) -∗
   WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
-Proof.
+Proof using Hswitch.
   intros Hb Ha He Hr Hv. iIntros "Hb Hfp HF Hbase Hcur Hend HK".
   iDestruct "HF" as "(%fb & %fr & %st & %db & %dr & %sz & %k & %we & %xs & %fl & %tw & %off & %col & %Hp & Hf & Hst & Hrest)".
   pose proof Hp as (Hfp & Hfb & Hfa & Hfe & Hfr & _). subst fp.

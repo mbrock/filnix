@@ -69,7 +69,7 @@ Qed.
 (** glibc's malloc meets the parser's rule for malloc with Hello's share
     of the thread cache. *)
 Lemma hello_malloc_rule : getopt_malloc_rule w0 glibc_os_registry ge hello_tcache.
-Proof.
+Proof using Hk.
   intros f e ls l d v rest j n Φ Hx Hn. iIntros "HM HK".
   iApply wp_call_bind; [cbn [map_option]; rewrite Hx; reflexivity | exact (hk_malloc _ _ Hk) | reflexivity |].
   iNext.
@@ -89,7 +89,7 @@ Qed.
 (** glibc's memset meets the parser's rule for memset. *)
 Lemma hello_memset_rule : find_fn ge (TAtom "__GI_memset") = Some (Defined Unit_string_memset_os.fn___GI_memset) ->
   getopt_memset_rule w0 glibc_os_registry ge.
-Proof.
+Proof using Hk.
   intros Hgm f e ls l d args rest j b reg xs cs nz Φ Hx -> Hn Hb8 Hend Hlen. iIntros "Hl Hx Hcs HK".
   destruct (hk_zmemset _ _ Hk) as [Hzf Hzs].
   replace (mkPtr b (Obj b)) with (mkPtr (b + 0) (Obj b)) in Hx by (rewrite Z.add_0_r; reflexivity).
