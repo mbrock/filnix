@@ -31,7 +31,7 @@ From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry WordString F
   HelloGetoptStart HelloGetoptBackend GetenvScan GetenvEntry GetenvStatic GetenvCall
   StrlenLogic HelloImageModule HelloImageLoad HelloImageLayout HelloImageStart
   HelloStartBridge HelloStartPost StartGetenv.
-From Glibc Require HelloGlibcJoin CutoffLogic.
+From Glibc Require AtexitLogic ExitRun CutoffLogic.
 Import ListNotations GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -55,7 +55,7 @@ Context (Hk : hello_link hge o) (Hos : hello_os_layout w o).
 
 (** The exit handlers start with no callback and a free lock. *)
 Definition hello_exit0 : iProp Σ :=
-  HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] 0 ∗ HelloGlibcJoin.Libs.exit_lock o.
+  AtexitLogic.exit_funcs_inv (ho_x o) [] 0 ∗ ExitRun.exit_lock_free (ho_el o) (ho_elr o).
 
 (** The parser reads two frozen objects between calls: the name of its
     environment variable and the thread's stack size sz. *)

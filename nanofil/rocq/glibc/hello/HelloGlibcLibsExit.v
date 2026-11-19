@@ -13,49 +13,20 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
 From Glibc Require Import IRFrames HelloBodies.
 
 From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunTail ExitRun
-  HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsSys HelloGlibcLibsCleanup.
+  HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsCleanup.
 From Glibc Require ExitRun ExitRunTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The interface keeps the exit implementation out of later substitutions. *)
-Module Type HelloLibsExitSig (D : HelloDebtsT) (AX : AtexitT).
-Import LG0 LG0.L D D.SW.FI.ML.
-(** The recursive exit lock starts unlocked, with no owner. *)
-Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
-  live (ho_el o) (ho_elr o) ∗ bytes (ho_el o) 0 [0; 0; 0; 0] ∗ bytes (ho_el o) 4 [0; 0; 0; 0] ∗
-  pcell (ho_el o) 8 null.
-(** Exit invokes the registered callback and never returns to main. *)
-Parameter libs_exit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-  (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o ->
-  forall (priv : iProp Σ) c n (S : iProp Σ),
-  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)
-    (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
-  D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o ∗
-      (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
-End HelloLibsExitSig.
-
-(** The implementation composes the exit loop with the two proved bridges. *)
-Module HelloGlibcLibsExitOn (D : HelloDebtsT) (AX : AtexitT)
-  : HelloLibsExitSig D AX.
-(** The sealed cleanup bridge supplies the final stream call. *)
-Module CL := HelloGlibcLibsCleanupOn D.
-(** The exit proof dispatches the callback and terminates through zsys_exit_soft. *)
-Module ER := ExitRun.
-Import LG0 LG0.L D D.SW.FI.ML.
-(** The recursive exit lock starts unlocked, with no owner. *)
-Definition hello_exit_lock `{!gen_heapGS piece pval Σ} (o : hello_objs) : iProp Σ :=
-  live (ho_el o) (ho_elr o) ∗ bytes (ho_el o) 0 [0; 0; 0; 0] ∗ bytes (ho_el o) 4 [0; 0; 0; 0] ∗
-  pcell (ho_el o) 8 null.
+Import LG0 LG0.L HelloGlibcDebts HelloGlibcDebts.SW.FI.ML.
 
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs) (Hk : hello_link ge o) (Hos : hello_os_layout w0 o).
 (** Collector safepoints preserve the concrete OS interpretation. *)
 Local Instance exit_stable : SafepointStable (os_wi w0) :=
-  D.SW.OW.os_wi_stable w0.
+  SW.OW.os_wi_stable w0.
 (** The call runs with the concrete glibc OS registry. *)
 Local Instance exit_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) Σ :=
   nanofil_irisGS glibc_os_registry (os_wi w0) ge.
@@ -90,10 +61,10 @@ Proof using Hk.
 Qed.
 
 (** The concrete cleanup triple supplies the exit loop's cleanup call rule. *)
-Lemma hello_cleanup : ⊢ ExitRunTail.cleanup_rule w0 ge (D.exit_io w0 ge o).
+Lemma hello_cleanup : ⊢ ExitRunTail.cleanup_rule w0 ge (exit_io w0 ge o).
 Proof using Hk.
   iIntros (f e ls lab d rest j Ψ) "HP HK".
-  iApply (D.wp_call_fn w0 ge _ [] with "HP"); [exact (CL.libs_cleanup w0 ge o Hk)|reflexivity|].
+  iApply (wp_call_fn w0 ge _ [] with "HP"); [exact (libs_cleanup w0 ge o Hk)|reflexivity|].
   iIntros (r) "(%n & %Hr & _)". destruct Hr as [-> Hn].
   iExists _. iSplit; [iPureIntro; cbn; rewrite Z.mod_small; [reflexivity|exact Hn]|].
   iNext. iApply "HK".
@@ -101,17 +72,17 @@ Qed.
 
 (** Exit invokes the registered callback and never returns to main. *)
 Lemma libs_exit (priv : iProp Σ) c n (S : iProp Σ) :
-  D.fn_triple w0 ge (TAtom "close_stdout") [] (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)
-    (fun r => ⌜r = RetVoid⌝ ∗ D.exit_io w0 ge o)%I ->
-  D.fn_triple w0 ge (TAtom "exit") [WInt n]
-    (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o ∗
-      (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
+  fn_triple w0 ge (TAtom "close_stdout") [] (hello_ro ge o ∗ S ∗ priv ∗ names o)
+    (fun r => ⌜r = RetVoid⌝ ∗ exit_io w0 ge o)%I ->
+  fn_triple w0 ge (TAtom "exit") [WInt n]
+    (hello_ro ge o ∗ S ∗ priv ∗ names o ∗
+      (AtexitLogic.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ ExitRun.exit_lock_free (ho_el o) (ho_elr o))) (fun _ => False)%I.
 Proof using Hk Hos.
   intros Hclose. exists Unit_stdlib_exit_os.fn___GI_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
   change (Some (mkFrame Unit_stdlib_exit_os.fn___GI_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
     in Hfr. injection Hfr as <-.
-  set (P := (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)%I).
-  set (Q := fun i : nat => if Nat.eqb i 0 then D.exit_io w0 ge o else P).
+  set (P := (hello_ro ge o ∗ S ∗ priv ∗ names o)%I).
+  set (Q := fun i : nat => if Nat.eqb i 0 then exit_io w0 ge o else P).
   iIntros "(Hro & Hio & Hpv & Hnames & HX & Hl) _".
   iApply (ExitRun.wp_glibc_exit w0 ge (ho_x o) (ho_el o) (ho_elr o) [(ho_cp o, null, null)] c n P Q
     with "HX Hl [Hro Hio Hpv Hnames] [] [] []");
@@ -121,7 +92,7 @@ Proof using Hk Hos.
   - cbn [Q]. iSplitL; [|done].
     destruct (hk_cp _ _ Hk) as (Hcap & Hcheck & Haddr).
     iApply (ExitRun.exit_handler_void w0 ge _ (ho_cp o) null (TAtom "close_stdout") close_stdout_fn
-      (invocation close_stdout_fn []) P (D.exit_io w0 ge o));
+      (invocation close_stdout_fn []) P (exit_io w0 ge o));
       [exact Hcap | exact Hcheck | exact (hk_close_stdout _ _ Hk) | lia | reflexivity | reflexivity |
        reflexivity | reflexivity |].
     destruct Hclose as (gf & Hgf & Hcall & Hspec).
@@ -130,4 +101,3 @@ Proof using Hk Hos.
   - iApply hello_cleanup.
 Qed.
 End libs.
-End HelloGlibcLibsExitOn.

@@ -1,8 +1,7 @@
 From Glibc Require Import GlibcProgram.
 (** This file discharges the program-name call in Hello's library interface.
-    The proof uses the closed glibc proof, which in turn proves the calls
-    of memrchr and memcmp. Its sealed interface keeps those proofs out of
-    later functor substitutions. *)
+    The proof uses glibc's reverse search and byte comparison to find the
+    part of the program name that Hello stores. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -12,32 +11,13 @@ From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import OsWorld OsRegistry WordString HelloGlibcProgCells HelloGlibcProgName HelloGlibcMainNameSearch
+From Glibc Require Import OsWorld OsRegistry WordString HelloGlibcProgCells HelloGlibcProgName MemrchrLogic MemcmpLogic
   HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require HelloGlibcProgName OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 
-(** The interface exposes only the proved program-name triple. *)
-Module Type HelloLibsNameSig (D : HelloDebtsT).
-Import LG0 LG0.L D D.SW.FI.ML.
-(** The call stores the suffix pointers selected from the argument string. *)
-Parameter libs_name : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-  (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> forall p s x y z,
-  D.fn_triple w0 ge (TAtom "set_program_name") [WPtr p]
-    (D.hello_ro ge o ∗ word_string DfracDiscarded p s ∗ D.ncells o x y z)
-    (fun r => ⌜r = RetVoid⌝ ∗ D.ncells o (ptr_add p (Z.of_nat (name_idx s)))
-       (ptr_add p (Z.of_nat (name_idx s))) (ptr_add p (Z.of_nat (short_idx s))))%I.
-End HelloLibsNameSig.
-
-(** The implementation instantiates the closed proof once. *)
-Module HelloGlibcLibsNameOn (D : HelloDebtsT)
-  : HelloLibsNameSig D.
-(** The name proof supplies the control flow and cell stores. *)
-Module PN := HelloGlibcProgName.
-(** The sealed search proofs discharge basename and directory comparisons. *)
-Module NS := HelloGlibcMainNameSearchOn.
-Import LG0 LG0.L D D.SW.FI.ML.
+Import LG0 LG0.L HelloGlibcDebts HelloGlibcDebts.SW.FI.ML.
 
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -50,9 +30,9 @@ Local Instance name_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
 
 (** The call stores the suffix pointers selected from the argument string. *)
 Lemma libs_name : hello_link ge o -> forall p s x y z,
-  D.fn_triple w0 ge (TAtom "set_program_name") [WPtr p]
-    (D.hello_ro ge o ∗ word_string DfracDiscarded p s ∗ D.ncells o x y z)
-    (fun r => ⌜r = RetVoid⌝ ∗ D.ncells o (ptr_add p (Z.of_nat (name_idx s)))
+  fn_triple w0 ge (TAtom "set_program_name") [WPtr p]
+    (hello_ro ge o ∗ word_string DfracDiscarded p s ∗ ncells o x y z)
+    (fun r => ⌜r = RetVoid⌝ ∗ ncells o (ptr_add p (Z.of_nat (name_idx s)))
        (ptr_add p (Z.of_nat (name_idx s))) (ptr_add p (Z.of_nat (short_idx s))))%I.
 Proof using Type.
   intros Hk p s x y z. exists set_program_name_fn. split; [exact (hk_name _ _ Hk)|].
@@ -66,10 +46,9 @@ Proof using Type.
     (ho_pb o) (ho_nb o) (ho_nsb o) (ho_preg o) (ho_nreg o) (ho_nsreg o) (ho_lp o) (ho_tp o)
     (hk_pb _ _ Hk) (hk_nb _ _ Hk) (hk_nsb _ _ Hk) (hk_lp _ _ Hk) (hk_tp _ _ Hk)
     (hk_pb_at _ _ Hk) (hk_nb_at _ _ Hk) (hk_nsb_at _ _ Hk)
-    (NS.name_memrchr (glibc_program := program_of w0 glibc_os_registry ge) (hk_memrchr _ _ Hk))
-    (NS.name_memcmp (glibc_program := program_of w0 glibc_os_registry ge) (hk_memcmp _ _ Hk))
+    (MemrchrLogic.glibc_memrchr_spec glibc_os_registry (os_wi w0) ge (hk_memrchr _ _ Hk))
+    (MemcmpLogic.glibc_memcmp_small glibc_os_registry (os_wi w0) ge (hk_memcmp _ _ Hk))
     DfracDiscarded p s x y z with "Hs Hlp Htp Hn"); [left; reflexivity|].
   iNext. iIntros "_ Hn". iApply "HK". iSplit; [done|iExact "Hn"].
 Qed.
 End libs.
-End HelloGlibcLibsNameOn.

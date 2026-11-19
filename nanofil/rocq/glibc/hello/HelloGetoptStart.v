@@ -26,7 +26,7 @@ From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioWIdle Strle
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr GetoptInitial
   AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop
   HelloGlibcMainFull HelloGetoptCall.
-From Glibc Require FileInv HelloGlibcDebts HelloGlibcMainFull HelloGlibcJoin HelloGetoptCall.
+From Glibc Require FileInv HelloGlibcDebts HelloGlibcMainFull ExitRun HelloGlibcMainLibs HelloGetoptCall.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -100,7 +100,7 @@ Lemma hello_getopt_start_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
         [45; 45] [45] [45; 87; 32] n1 n2 n3 n4 ∗ □ X)%I /\
     (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
       hello_ro ge o ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      ncells o x y z ∗ (AtexitLogic.exit_funcs_inv (ho_x o) [] c ∗ ExitRun.exit_lock_free (ho_el o) (ho_elr o)) ∗
       hello_stdio w0 ge o ∗ priv ∗ getopt_cells o a i ∗
       opt_table (sym_ptr ge "hello#parse_options.longopts.64") (hello_los n1 n2 n3 n4) ∗
       word_string DfracDiscarded (sym_ptr ge "hello#str.69") s_optstring)) ->
@@ -127,7 +127,7 @@ Proof.
   iDestruct (int_global_own with "Ho") as "[Hol Hoc]"; [lia|].
   destruct Hav as (Hav0 & Hav8 & Hn & Hfit & Har).
   iApply (HelloGlibcMainFull.main_full_state w0 ge o priv _ _
-    (HelloGlibcJoin.Libs.hello_libs w0 ge o Hk Hos priv c Hsa Hq Hcl Hcw Hm Hwp (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
+    (HelloGlibcMainLibs.hello_libs w0 ge o Hk Hos priv c Hsa Hq Hcl Hcw Hm Hwp (Hprints _ _ _)) Hy av ar p0 ps x y z a i _ _ Hi Hix
     with "Hro Hps [Havl Hcl] Hn HX Hio Hpv Hgo [Hz Hel Hec Hol Hoc]").
   - iSplit; [iPureIntro; split_and!; assumption|]. iSplitL "Havl"; [iExact "Havl" | iExact "Hcl"].
   - iSplitL "Hz".
@@ -235,7 +235,7 @@ Lemma hello_getopt_table_core_sep Σ {HinvP : invGpreS Σ} {HheapP : gen_heapGpr
         □ X)%I /\
     (([∗ map] l ↦ v ∈ h1, pointsto l (DfracOwn 1) v) ==∗
       hello_ro_rest ge o ∗ hello_printf_ro ge ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-      ncells o x y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] c ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+      ncells o x y z ∗ (AtexitLogic.exit_funcs_inv (ho_x o) [] c ∗ ExitRun.exit_lock_free (ho_el o) (ho_elr o)) ∗
       hello_stdio w0 ge o ∗ priv ∗ getopt_cells o a i)) ->
   labelled_safe glibc_os_registry ge (invocation main_fn [WInt argc; WPtr (mkPtr av (Obj av))])
     m s w fuel (fun _ => True).

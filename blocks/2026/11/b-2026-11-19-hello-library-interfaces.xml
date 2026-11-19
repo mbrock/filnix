@@ -1,0 +1,16 @@
+<block id="b-2026-11-19-hello-library-interfaces" kind="bench" actor="Codex" created="2026-11-19T10:06:09Z">
+  <title>Hello's library proofs share their compiled interfaces</title>
+  <about path="nanofil/rocq/glibc/hello/HelloGlibcMainLibs.v"/>
+  <about path="nanofil/rocq/glibc/hello/HelloGlibcLibsSys.v"/>
+  <tag name="formal"/>
+  <p>Every library proof for GNU Hello used the same call contracts and the same
+    exit-handler list. Each functor stored another copy of those definitions
+    in its compiled interface. The bridge lemmas now refer directly to the
+    contracts in <code>HelloGlibcDebts</code> and the resources in
+    <code>AtexitLogic</code>.</p>
+  <p>With Rocq 9.3, the ten largest Hello library interfaces occupied 78.14 MiB
+    before the change. The seven files that still supply those results occupy
+    108 KiB. Counting every glibc <code>.vos</code> in the dependency graph
+    of the completed library record, including the record's own file, gives
+    94.48 MiB before and 15.27 MiB after.</p>
+</block>

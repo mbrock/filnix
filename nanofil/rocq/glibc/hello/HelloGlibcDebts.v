@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv FileIdle SysWrappers AtexitLogic AllocLogic
-  LibioLogic LibioWIdle HelloGlibcProgCells HelloGlibcMainStreams HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
+  LibioLogic LibioWIdle HelloGlibcProgCells LibioFlushInv HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
 From Glibc Require FileInv LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -91,13 +91,16 @@ Definition wreq (n : Z) : alloc_req := heap_req 16 n.
 
 
 (** The flush interface supplies the concrete stream predicates needed at exit. *)
-Module FB := HelloGlibcMainStreamsOn.
+Module FB := LibioFlushInv.
 (** The resource namespace shares file ownership and OS preservation rules. *)
 Module SW.
 (** File ownership includes the thread cleanup fields. *)
 Module FI := FileInv.
 (** The OS interpretation supplies its safepoint rules. *)
-Module OW := HelloGlibcWorldOn.
+Module OW.
+(** Collector safepoints preserve the OS interpretation. *)
+Definition os_wi_stable := OsWorld.os_wi_stable.
+End OW.
 (** The step rules support checked reads of shared stream cells. *)
 Module ST := LibioLogic.
 End SW.

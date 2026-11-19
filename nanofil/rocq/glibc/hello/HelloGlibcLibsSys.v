@@ -18,40 +18,7 @@ From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-(** The interface exposes the three proved triples. *)
-Module Type HelloLibsSysSig (D : HelloDebtsT) (AX : AtexitT).
-Import LG0 LG0.L D D.SW.FI.ML.
-(** Allocation returns a positive fresh object rather than a null pointer. *)
-Parameter libs_xmalloc : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-  (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> forall n, 0 <= n < 2 ^ 64 ->
-  D.fn_triple w0 ge (TAtom "xmalloc") [WInt n] (D.hello_ro ge o)
-    (fun r => ∃ b, ⌜r = Ret (WPtr (mkPtr b (Obj b))) /\ 0 < b /\ b mod 16 = 0 /\
-      b + req_extent (wreq n) <= 2 ^ 48⌝ ∗ obj b (wreq n))%I.
-(** Deallocation consumes the heap object's live token. *)
-Parameter libs_free : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-  (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> forall b reg,
-  r_kind reg = Heap -> b <> 0 ->
-  D.fn_triple w0 ge (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I.
-(** Registration appends Hello's callback to the initially empty list. *)
-Parameter libs_atexit : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
-  (w0 : os_world) (ge : genv) (o : hello_objs), hello_link ge o -> hello_os_layout w0 o -> forall c,
-  D.fn_triple w0 ge (TAtom "atexit") [WPtr (ho_cp o)] (AX.exit_funcs_inv (ho_x o) [] c)
-    (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝ ∗
-      AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64))%I.
-(** Exit-state writes cannot change the registered errno object's kind. *)
-Parameter libs_ignores : forall (w0 : os_world) (o : hello_objs), hello_os_layout w0 o -> forall b e,
-  In b [xo_lock (ho_x o); xo_done (ho_x o); xo_called (ho_x o);
-        xo_funcs (ho_x o); xo_init (ho_x o); ho_el o] -> AX.wi_ignores (os_wi w0) b e.
-End HelloLibsSysSig.
-
-(** The implementation uses the existing glibc proofs at the linked names. *)
-Module HelloGlibcLibsSysOn (D : HelloDebtsT) (AX : AtexitT)
-  : HelloLibsSysSig D AX.
-(** Hello's allocation wrapper uses glibc's allocator. *)
-Module XM := HelloGlibcXmalloc.
-(** Registration uses the existing proof while exporting only its resources. *)
-Module AR := AtexitLogic.
-Import LG0 LG0.L D D.SW.FI.ML.
+Import LG0 LG0.L HelloGlibcDebts HelloGlibcDebts.SW.FI.ML.
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv) (o : hello_objs).
@@ -63,7 +30,7 @@ Local Instance sys_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) �
 
 (** Allocation returns a positive fresh object rather than a null pointer. *)
 Lemma libs_xmalloc : hello_link ge o -> forall n, 0 <= n < 2 ^ 64 ->
-  D.fn_triple w0 ge (TAtom "xmalloc") [WInt n] (D.hello_ro ge o)
+  fn_triple w0 ge (TAtom "xmalloc") [WInt n] (hello_ro ge o)
     (fun r => ∃ b, ⌜r = Ret (WPtr (mkPtr b (Obj b))) /\ 0 < b /\ b mod 16 = 0 /\
       b + req_extent (wreq n) <= 2 ^ 48⌝ ∗ obj b (wreq n))%I.
 Proof using Type.
@@ -79,7 +46,7 @@ Qed.
 
 (** Deallocation consumes the heap object's live token. *)
 Lemma libs_free : hello_link ge o -> forall b reg, r_kind reg = Heap -> b <> 0 ->
-  D.fn_triple w0 ge (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I.
+  fn_triple w0 ge (TAtom "free") [WPtr (mkPtr b (Obj b))] (live b reg) (fun r => ⌜r = RetVoid⌝)%I.
 Proof using Type.
   intros Hk b reg Hheap Hb. exists free_fn. split; [exact (hk_free _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
@@ -95,16 +62,16 @@ Qed.
 (** Exit-state writes cannot change the registered errno object's kind. *)
 Lemma libs_ignores (w : os_world) (ob : hello_objs) : hello_os_layout w ob -> forall b e,
   In b [xo_lock (ho_x ob); xo_done (ho_x ob); xo_called (ho_x ob);
-        xo_funcs (ho_x ob); xo_init (ho_x ob); ho_el ob] -> AX.wi_ignores (os_wi w) b e.
+        xo_funcs (ho_x ob); xo_init (ho_x ob); ho_el ob] -> AtexitLogic.wi_ignores (os_wi w) b e.
 Proof using Type*.
   intros Hos b e Hb. exact (hello_os_write w ob b e Hos Hb).
 Qed.
 
 (** Registration appends Hello's callback to the initially empty list. *)
 Lemma libs_atexit : hello_link ge o -> hello_os_layout w0 o -> forall c,
-  D.fn_triple w0 ge (TAtom "atexit") [WPtr (ho_cp o)] (AX.exit_funcs_inv (ho_x o) [] c)
+  fn_triple w0 ge (TAtom "atexit") [WPtr (ho_cp o)] (AtexitLogic.exit_funcs_inv (ho_x o) [] c)
     (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝ ∗
-      AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64))%I.
+      AtexitLogic.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((c + 1) mod 2 ^ 64))%I.
 Proof using Type.
   intros Hk Hos c. exists atexit_fn. split; [exact (hk_atexit _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
@@ -117,4 +84,3 @@ Proof using Type.
   iIntros "HX". iApply "HK". iExists 0. iSplit; [iPureIntro; split; [reflexivity|lia]|iExact "HX"].
 Qed.
 End libs.
-End HelloGlibcLibsSysOn.

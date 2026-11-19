@@ -10,14 +10,6 @@ DECL = set('Axiom Axioms Parameter Parameters Conjecture Conjectures'.split())
 LOCAL = set('Variable Variables Hypothesis Hypotheses Context'.split())
 WORD = re.compile(r"[A-Za-z_][\w']*|:=")
 PARAMETERS = {
-    ('hello/HelloGlibcLibsCleanup.v', 'HelloLibsCleanupSig'): {'libs_cleanup'},
-    ('hello/HelloGlibcLibsExit.v', 'HelloLibsExitSig'): {'libs_exit'},
-    ('hello/HelloGlibcLibsName.v', 'HelloLibsNameSig'): {'libs_name'},
-    ('hello/HelloGlibcLibsStr.v', 'HelloLibsStrSig'): {'libs_mbszero', 'libs_strlen', 'libs_strncmp', 'libs_errno'},
-    ('hello/HelloGlibcLibsSys.v', 'HelloLibsSysSig'): {'libs_xmalloc', 'libs_free', 'libs_atexit', 'libs_ignores'},
-    ('hello/HelloGlibcMainLibs.v', 'HelloMainLibsSig'): {'hello_libs'},
-    ('hello/HelloGlibcMainNameSearch.v', 'HelloNameSearchSig'): {'name_memrchr', 'name_memcmp'},
-    ('hello/HelloGlibcMainStreams.v', 'HelloWorldSig'): {'os_wi_stable'},
     ('hi_atexit/HiAtexitCleanup.v', 'HiCleanupSig'): {'hi_cleanup_rule'},
 }
 # Under theories, only the Runtime module type may declare assumptions.
@@ -106,15 +98,7 @@ def scan(path, abstract_fix=None):
         section = any(k == 'section' for k, _ in stack)
         for i in range(len(words) - 1):
             if words[i:i+2] == ['Declare', 'Module']:
-                named_site = (
-                    parts[-3:] == ('glibc', 'hello', 'HelloGlibcMainLibsCalls.v')
-                    and signatures == ['HelloLibsCallsSig']
-                    and words[i:] in [
-                        ['Declare', 'Module', 'ST', ':', 'HelloLibsStrSig', 'D'],
-                        ['Declare', 'Module', 'NM', ':', 'HelloLibsNameSig', 'D'],
-                    ]
-                )
-                if not named_site and not theory_signature and (abstract_fix is None or path.resolve() != Path(abstract_fix).resolve()):
+                if not theory_signature and (abstract_fix is None or path.resolve() != Path(abstract_fix).resolve()):
                     errors.append(f'{path}:{cmd[i][1]}: forbidden Declare Module')
         for i, (w, line) in enumerate(cmd):
             declaration_allowed = theory_signature if namespace == 'theories' else signature

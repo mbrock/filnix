@@ -2,11 +2,7 @@ From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** This file connects Hello's small memory calls to their proved glibc
     implementations. It proves zeroing, string length, bounded comparison
-    and errno lookup over the concrete resources used by main.
-
-    The interface exports the call contracts but hides their internal
-    proof modules. Later composition therefore reuses the results
-    without repeating the large proof substitutions. *)
+    and errno lookup over the concrete resources used by main. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -35,47 +31,7 @@ Qed.
 Lemma mod16_mod8' b : b mod 16 = 0 -> b mod 8 = 0.
 Proof. intros H. apply Z.mod_divide; [lia|]. apply Z.mod_divide in H; [|lia]. destruct H as [k ->]. exists (2 * k). lia. Qed.
 
-(** This interface exposes the proved string and memory call contracts. *)
-Module Type HelloLibsStrSig (D : HelloDebtsT).
-Import LG0 LG0.L D D.SW.FI.ML.
-(** `mbszero` zeroes the 16-byte object b, over glibc's `memset`. *)
-Parameter libs_mbszero : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv)
-  (o : hello_objs),
-  hello_link ge o -> forall b, 0 < b -> b mod 16 = 0 -> b + 16 <= 2 ^ 48 ->
-  D.fn_triple w0 ge (TAtom "mbszero") [WPtr (mkPtr b (Obj b))] (obj b (heap_req 4 8))
-    (fun r => ⌜r = RetVoid⌝ ∗ obj b (heap_req 4 8))%I.
-(** glibc's `strlen` of a string at any share returns its length. *)
-Parameter libs_strlen : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv)
-  (o : hello_objs),
-  hello_link ge o -> forall dq p s,
-  D.fn_triple w0 ge (TAtom "strlen") [WPtr p] (word_string dq p s)
-    (fun r => ⌜r = Ret (WInt (Z.of_nat (length s)))⌝ ∗ word_string dq p s)%I.
-(** glibc's `strncmp` of two read-only strings and 3 returns a `c: int`. *)
-Parameter libs_strncmp : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv)
-  (o : hello_objs),
-  hello_link ge o -> forall p1 p2 s1 s2,
-  D.fn_triple w0 ge (TAtom "strncmp") [WPtr p1; WPtr p2; WInt 3]
-    (word_string DfracDiscarded p1 s1 ∗ word_string DfracDiscarded p2 s2)
-    (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝)%I.
-(** glibc's `__errno_location` returns the pointer to `c: errno`. *)
-Parameter libs_errno : forall `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world) (ge : genv)
-  (o : hello_objs),
-  hello_link ge o ->
-  D.fn_triple w0 ge (TAtom "__errno_location") [] True
-    (fun r => ⌜r = Ret (WPtr (mkPtr (ho_eb o) (Obj (ho_eb o))))⌝)%I.
-End HelloLibsStrSig.
-
-(** The implementation proves the triples over the caller's runtime and logic. *)
-Module HelloGlibcLibsStrOn (D : HelloDebtsT) : HelloLibsStrSig D.
-(** The memory proof supplies the memset call used by mbszero. *)
-Module MF := MemFwdLogic.
-(** The length proof reads glibc strings one word at a time. *)
-Module SL := StrlenWord.
-(** The comparison proof bounds the number of bytes read. *)
-Module SN := StrncmpLogic.
-(** The leaf proofs provide the concrete errno call. *)
-Module LV := LeavesLogic.
-Import LG0 LG0.L D D.SW.FI.ML.
+Import LG0 LG0.L HelloGlibcDebts HelloGlibcDebts.SW.FI.ML.
 
 Section libs.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -117,7 +73,7 @@ Local Instance str_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) �
 (** `mbszero` zeroes the 16-byte object b, over glibc's `memset`. *)
 Lemma libs_mbszero :
   hello_link ge o -> forall b, 0 < b -> b mod 16 = 0 -> b + 16 <= 2 ^ 48 ->
-  D.fn_triple w0 ge (TAtom "mbszero") [WPtr (mkPtr b (Obj b))] (obj b (heap_req 4 8))
+  fn_triple w0 ge (TAtom "mbszero") [WPtr (mkPtr b (Obj b))] (obj b (heap_req 4 8))
     (fun r => ⌜r = RetVoid⌝ ∗ obj b (heap_req 4 8))%I.
 Proof using Type.
   intros Hk b Hb0 Hb16 Hb48. exists mbszero_fn. split; [exact (hk_mbszero _ _ Hk)|].
@@ -140,7 +96,7 @@ Qed.
 (** glibc's `strlen` of a string at any share returns its length. *)
 Lemma libs_strlen :
   hello_link ge o -> forall dq p s,
-  D.fn_triple w0 ge (TAtom "strlen") [WPtr p] (word_string dq p s)
+  fn_triple w0 ge (TAtom "strlen") [WPtr p] (word_string dq p s)
     (fun r => ⌜r = Ret (WInt (Z.of_nat (length s)))⌝ ∗ word_string dq p s)%I.
 Proof using Type.
   intros Hk dq p s. exists glibc_strlen. split; [exact (hk_strlen _ _ Hk)|].
@@ -155,7 +111,7 @@ Qed.
 (** glibc's `strncmp` of two read-only strings and 3 returns a `c: int`. *)
 Lemma libs_strncmp :
   hello_link ge o -> forall p1 p2 s1 s2,
-  D.fn_triple w0 ge (TAtom "strncmp") [WPtr p1; WPtr p2; WInt 3]
+  fn_triple w0 ge (TAtom "strncmp") [WPtr p1; WPtr p2; WInt 3]
     (word_string DfracDiscarded p1 s1 ∗ word_string DfracDiscarded p2 s2)
     (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝)%I.
 Proof using Type.
@@ -173,7 +129,7 @@ Qed.
 (** glibc's `__errno_location` returns the pointer to `c: errno`. *)
 Lemma libs_errno :
   hello_link ge o ->
-  D.fn_triple w0 ge (TAtom "__errno_location") [] True
+  fn_triple w0 ge (TAtom "__errno_location") [] True
     (fun r => ⌜r = Ret (WPtr (mkPtr (ho_eb o) (Obj (ho_eb o))))⌝)%I.
 Proof using Type.
   intros Hk. exists errno_location_fn. split; [exact (hk_errno _ _ Hk)|].
@@ -186,4 +142,3 @@ Proof using Type.
 Qed.
 
 End libs.
-End HelloGlibcLibsStrOn.

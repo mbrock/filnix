@@ -32,7 +32,7 @@ From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld FileInv FileIdle LibioWIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
-From Glibc Require AllocLogic AtexitLogic ExitRun HelloGlibcJoin.
+From Glibc Require AllocLogic AtexitLogic ExitRun.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -263,7 +263,7 @@ Definition hello_start_main_res (w : os_world) (av : Z) (ar : region) (p0 : ptr)
   word_string DfracDiscarded (sym_ptr ge "glibc_getopt#str.145") [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84] ∗
   word_string DfracDiscarded (sym_ptr ge "hello#str.80") [] ∗
   pts hello_start_ps ∗ ([∗ list] q ∈ p0 :: ps, str_ro q) ∗ argv_own av ar (p0 :: ps) ∗
-  ncells o null y z ∗ (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [] 0 ∗ HelloGlibcJoin.Libs.exit_lock o) ∗
+  ncells o null y z ∗ (AtexitLogic.exit_funcs_inv (ho_x o) [] 0 ∗ ExitRun.exit_lock_free (ho_el o) (ho_elr o)) ∗
   hello_stdio w ge o ∗ getopt_cells o null 1.
 
 (** A full allocator cache can be given up for a read-only one. *)

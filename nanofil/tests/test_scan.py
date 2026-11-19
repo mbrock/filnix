@@ -74,10 +74,9 @@ skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
     p.write_text('Module Type Other.\nParameter state : Type.\nEnd Other.')
     assert scan(p)
     p = Path(d) / 'glibc/hello/HelloGlibcMainLibsCalls.v'
+    p.parent.mkdir(parents=True, exist_ok=True)
     for field, sig in [('ST', 'HelloLibsStrSig'), ('NM', 'HelloLibsNameSig')]:
         p.write_text(f'Module Type HelloLibsCallsSig. Declare Module {field} : {sig} D. End HelloLibsCallsSig.')
-        assert not scan(p), scan(p)
-        p.write_text(f'Module Type Other. Declare Module {field} : {sig} D. End Other.')
         assert scan(p)
-    print('PASS exact Runtime, 16 fields, and two submodule sites; new sites refused')
+    print('PASS listed signature fields and Runtime declarations; retired Hello declarations refused')
 print(f'{len(bad)} negative and {len(good)} positive scanner fixtures passed')

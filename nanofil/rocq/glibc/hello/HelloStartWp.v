@@ -32,7 +32,7 @@ From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid St
   HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale
   HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage
   HelloCloseStdoutCall.
-From Glibc Require HelloGlibcJoin HelloCloseStdoutWideCall HelloWDoWriteImage HelloWPrintfCall HelloWPrintfWrite.
+From Glibc Require AtexitLogic ExitRun HelloGlibcMainLibs HelloCloseStdoutWideCall HelloWDoWriteImage HelloWPrintfCall HelloWPrintfWrite.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -135,8 +135,8 @@ Proof using Hi.
   pose proof (hello_image_layout img_globals m0 fr Hi) as Hy.
   assert (Lb : forall tb, 0 < tb -> tb + 2496 <= 2 ^ 48 ->
     HelloLibs (final_world w0 tb) hge o (hello_main_priv env tb) hello_exit0
-      (HelloGlibcJoin.AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
-       HelloGlibcJoin.Libs.exit_lock o)%I).
+      (AtexitLogic.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] ((0 + 1) mod 2 ^ 64) ∗
+       ExitRun.exit_lock_free (ho_el o) (ho_elr o))%I).
   { intros tb H0 H1. destruct (hello_final_world_facts w0 tb He ltac:(lia)) as (Herr & _ & Hfds).
     assert (Hpv : hello_main_priv env tb ⊣⊢ hello_main_priv env tb) by reflexivity.
     unfold hello_main_priv at 2 in Hpv.
@@ -149,7 +149,7 @@ Proof using Hi.
     assert (Hgi : getenv_image_ok hge (img_a "__environ_counter") (img_gd "__environ_counter")
       (img_a "__environ") (img_gd "__environ")) by (split_and!; vm_compute; first [reflexivity | congruence]).
     assert (Hle : c_locale_env (map entry_text (env_entries m env))) by (rewrite env_entries_text; exact Hloc).
-    exact (HelloGlibcJoin.Libs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
+    exact (HelloGlibcMainLibs.hello_libs (final_world w0 tb) hge o (hello_link_all fr Hfree)
       (hello_os_layout_final w0 tb He ltac:(lia)) (hello_main_priv env tb) 0
       (hello_setlocale_all (final_world w0 tb) fr tb ltac:(rewrite Hfds; exact Hfd2) _ _ _ _ _ _ _ _ _ _ _ _
          (hello_setlocale_lend (final_world w0 tb) fr) Hgi Hle Hfree Hpv)

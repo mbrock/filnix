@@ -1,11 +1,7 @@
 (** This file states the linking and object-layout facts needed by
     Hello's concrete library bridges. The linked environment binds each
     call to its compiled implementation and leaves OS calls external.
-    The proof fixes no symbol addresses.
-
-    The interfaces keep the bridges on the same resource definitions.
-    They hide internal proofs from later substitutions while exposing
-    the concrete predicates needed to compose registration and exit. *)
+    The proof fixes no symbol addresses. *)
 
 From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
 From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
@@ -20,7 +16,6 @@ From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic
   AllocLogic LeavesLogic AtexitLogic
   HelloGlibcDebts.
-From Glibc Require AtexitLogic HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -112,47 +107,3 @@ Proof.
     intros eb reg Herr Hl Hkind Hg. rewrite E. split; [exact (proj1 Hl)|eapply Hkeep; eauto]. }
   split; split; try reflexivity; apply Hinv; reflexivity.
 Qed.
-
-(** The bridge interfaces share the concrete debt and resource definitions. *)
-Module Type HelloDebtsT.
-Include HelloGlibcDebts.
-End HelloDebtsT.
-
-(** The exit-resource interface hides registration proofs from later substitutions. *)
-Module Type AtexitT.
-(** The cells use the caller's memory logic. *)
-Module ML := MemLogicOn R LG0.
-Import LG0 LG0.L ML.
-Section resources.
-Context `{!gen_heapGS piece pval Σ}.
-(** Each handler slot stores its flavor, function, argument and DSO handle. *)
-Definition slot (b o v : Z) (x y z : ptr) : iProp Σ :=
-  icell b o v ∗ pcell b (o + 8) x ∗ pcell b (o + 16) y ∗ pcell b (o + 24) z.
-(** A registered slot has the cxa flavor and the selected callback. *)
-Definition entry (b o : Z) (e : ptr * ptr * ptr) : iProp Σ := slot b o 4 e.1.1 e.1.2 e.2.
-(** An unused slot may hold any flavor and pointer values. *)
-Definition spare (b o : Z) : iProp Σ := ∃ v x y z, slot b o v x y z.
-(** The initial block owns its registered entries and remaining spare slots. *)
-Definition exit_block (b : Z) (reg : region) (ents : list (ptr * ptr * ptr)) : iProp Σ :=
-  live b reg ∗ pcell b 0 null ∗ icell b 8 (Z.of_nat (List.length ents)) ∗
-  ([∗ list] i ↦ e ∈ ents, entry b (16 + 32 * Z.of_nat i) e) ∗
-  ([∗ list] i ∈ seqZ (Z.of_nat (List.length ents)) (32 - Z.of_nat (List.length ents)), spare b (16 + 32 * i)).
-(** Registration owns the free lock, unfinished-exit flag, counter and initial block. *)
-Definition exit_funcs_inv (x : exit_objs) (ents : list (ptr * ptr * ptr)) (c : Z) : iProp Σ :=
-  ⌜(List.length ents <= 32)%nat /\ 0 <= c < 2 ^ 64⌝ ∗
-  live (xo_lock x) (xo_lock_reg x) ∗ bytes (xo_lock x) 0 [0; 0; 0; 0] ∗
-  live (xo_done x) (xo_done_reg x) ∗ ibyte (xo_done x) 0 0 ∗
-  live (xo_called x) (xo_called_reg x) ∗ icell (xo_called x) 0 c ∗
-  live (xo_funcs x) (xo_funcs_reg x) ∗ pcell (xo_funcs x) 0 (mkPtr (xo_init x) (Obj (xo_init x))) ∗
-  exit_block (xo_init x) (xo_init_reg x) ents.
-End resources.
-(** Writes within an exit object leave the world interpretation unchanged. *)
-Definition wi_ignores {world : Type} (wi : mem -> world -> gmap piece pval -> Prop) (b e : Z) : Prop :=
-  forall m wd h ps a n x c, b <= a -> a + n <= e -> (forall l, l ∈ ps.*1 -> piece_id l = b) -> wi m wd h ->
-    wi (store_bytes m a n x) wd (overwrite ps h) /\ wi (store_bytes (store_aux m a c) a n x) wd (overwrite ps h).
-End AtexitT.
-
-(** Signature checking verifies that these are exactly AtexitLogic.v's predicates. *)
-Module HelloGlibcAtexitOn : AtexitT.
-Include AtexitLogic.
-End HelloGlibcAtexitOn.
