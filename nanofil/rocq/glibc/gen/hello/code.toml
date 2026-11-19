@@ -45,6 +45,11 @@ HelloStrchrImage|||__GI_strchr __GI___strchrnul
 # The extracted decoder reads the whole image. Its typed definitions retain link order.
 [[batch]]
 layout = "linked_image"
+placement = [
+  "__gconv_transform_internal_ascii", "__libc_tsd_LOCALE", "_nl_global_locale", "_nl_C_LC_CTYPE",
+  "glibc_wcsmbsload#to_mb", "glibc_C_ctype#str.280", "glibc_C_ctype#translit_from_idx",
+  "glibc_C_ctype#translit_from_tbl", "glibc_C_ctype#translit_to_idx", "glibc_C_ctype#translit_to_tbl",
+]
 mode = "checked"
 ctors = true
 roots = "main,__libc_start_main"

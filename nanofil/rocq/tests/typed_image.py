@@ -128,7 +128,13 @@ From Glibc Require Import IRNotation SharedUnit.
                                       f'Example same : reparsed = {symbol} := eq_refl.\n')
     run('rocq', 'c', '-q', *flags, 'RoundTrip.v', cwd=root)
 
-    for invalid in ('module([bad]).', 'module([]). module([]).'):
-        failed = subprocess.run([model, '--gallina'], input=invalid, text=True, capture_output=True)
-        assert failed.returncode != 0 and not failed.stdout, failed
+    projected = run(model, '--placement', 'unit#f.test', 'alias', 'ascii', input=source, capture_output=True)
+    assert projected.stdout.splitlines() == ['("unit#f.test", 65536, 65536)', '("alias", 65536, 65536)',
+                                             '("ascii", 65600, 65608)']
+    missing = subprocess.run([model, '--placement', 'missing'], input=source, text=True, capture_output=True)
+    assert missing.returncode != 0 and 'missing symbol' in missing.stderr
+    for mode in ('--gallina', '--placement'):
+        for invalid in ('module([bad]).', 'module([]). module([]).'):
+            failed = subprocess.run([model, mode], input=invalid, text=True, capture_output=True)
+            assert failed.returncode != 0 and not failed.stdout, failed
 print('Rocq checked both typed views and the extracted decoder’s Gallina output.')

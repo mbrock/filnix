@@ -39,4 +39,16 @@ if python3 -I "$here/generate.py" "$capture" --tree "$work/staged" --directory h
 fi
 grep -E 'glibc: [0-9]+ files, 1 differ, 0 stale' "$work/rejected"
 grep -E 'hello: [0-9]+ files, 2 differ, 1 stale' "$work/rejected"
-echo 'code generator: byte parity and corrupt-fixture rejection passed'
+# Give the files a known old timestamp so this also works on coarse filesystems.
+touch -d @100 "$work/staged/CodePrelude.v" "$work/staged/hello/HelloImageCode.v" \
+  "$work/staged/glibc/Unit_string_strlen_os.v"
+python3 -I "$here/generate.py" "$capture" --tree "$work/staged" --directory hello --update >"$work/updated"
+test "$(stat -c %Y "$work/staged/CodePrelude.v")" = 100
+test "$(stat -c %Y "$work/staged/hello/HelloImageCode.v")" = 100
+test "$(stat -c %Y "$work/staged/glibc/Unit_string_strlen_os.v")" -gt 100
+cmp "$here/../../glibc/gen/glibc/Unit_string_strlen_os.v" "$work/staged/glibc/Unit_string_strlen_os.v"
+for part in 01 03; do
+  cmp "$here/../../glibc/gen/hello/HelloImageCodeItems$part.v" "$work/staged/hello/HelloImageCodeItems$part.v"
+done
+test ! -e "$work/staged/hello/HelloImageCode999.v"
+echo 'code generator: byte parity, corrupt-fixture rejection and incremental updates passed'

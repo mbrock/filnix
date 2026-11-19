@@ -5,7 +5,8 @@
    judges each verdict (judge_valid). Prints one judgment per line and a summary, and exits 1 if
    any line disagrees. With --module it judges only the module, the
    first term (judge_module below). With --gallina it requires one module
-   and emits its typed items and blocks for glibc-code/typed.py.
+   and emits its typed items and blocks for glibc-code/typed.py. With
+   --placement it prints the address and region end of each requested symbol.
 
    The terms are SWI-Prolog's write_canonical form (format's ~k):
    integers, atoms (bare or quoted), compounds f(A, ...) and proper
@@ -181,16 +182,36 @@ let judge_module md =
   print_endline (show verdict);
   match verdict with TApp ("invalid", _) -> exit 1 | _ -> ()
 
+(* Use the extracted loader for placement without constructing the byte memory. *)
+let print_placement md names =
+  let fail msg = prerr_endline ("nanofil-model: " ^ msg); exit 2 in
+  match List.fold_left layout (Some ((data_base, []), [])) md with
+  | None -> fail "layout failed"
+  | Some ((_, g0), regions) ->
+      match List.fold_left alias_global (Some g0) md with
+      | None -> fail "alias resolution failed"
+      | Some globals ->
+          List.iter (fun name ->
+            match lookup (TAtom name) globals with
+            | None -> fail ("missing symbol " ^ name)
+            | Some p ->
+                let end_ = match object_region p.ptr_addr regions with
+                  | Some r -> r.r_end | None -> p.ptr_addr in
+                Printf.printf "(%s, %s, %s)\n" (Gallina.string name)
+                  (Gallina.integer p.ptr_addr) (Gallina.integer end_)) names
+
 let () =
   let input = In_channel.input_all stdin in
   match parse input with
   | [] -> prerr_endline "nanofil-model: no input"; exit 2
-  | terms when Array.exists (( = ) "--gallina") Sys.argv ->
+  | terms when Array.length Sys.argv >= 2 &&
+               (Sys.argv.(1) = "--placement" || Sys.argv.(1) = "--gallina") ->
       (match terms with
        | [m] -> (match decode_module m with
-         | Some md -> List.iter Gallina.item md
+         | Some md when Sys.argv.(1) = "--gallina" -> List.iter Gallina.item md
+         | Some md -> print_placement md (Array.to_list (Array.sub Sys.argv 2 (Array.length Sys.argv - 2)))
          | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2)
-       | _ -> prerr_endline "nanofil-model: --gallina expects one module"; exit 2)
+       | _ -> Printf.eprintf "nanofil-model: %s expects one module\n" Sys.argv.(1); exit 2)
   | m :: _ when Array.exists (( = ) "--module") Sys.argv ->
       (match decode_module m with
        | None -> prerr_endline "nanofil-model: the module does not decode"; exit 2

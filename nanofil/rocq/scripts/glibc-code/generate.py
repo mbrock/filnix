@@ -316,6 +316,15 @@ class Generator:
                 provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, None)
 
             records = self.records(linked)
+            if views and cfg.get("placement"):
+                entries = run([self.model, "--placement", *cfg["placement"]], data=linked).splitlines()
+                (dest / (name + "Placement.v")).write_text(
+                    "(** The extracted loader places these symbols in the linked image. Each row gives\n"
+                    "    the symbol, its address and its region end. Functions occupy no data region.\n"
+                    "    The glibc code generator reproduces this file. Do not edit. *)\n\n"
+                    "From Stdlib Require Import String ZArith List.\nImport ListNotations.\n"
+                    "Open Scope string_scope.\nOpen Scope Z_scope.\n\n"
+                    "Definition placement : list (string * Z * Z) :=\n  [" + ";\n   ".join(entries) + "].\n")
             names = fns.split()
             defined = {r.symbol.decode() for r in records if r.is_function}
             missing = set(names) - defined if layout != "image" else set()
@@ -401,10 +410,13 @@ def main():
         source, destination = GLIBC / name, prelude_dir / name
         if source.resolve() == destination.resolve():
             continue
+        data = source.read_bytes()
+        if destination.is_file() and destination.read_bytes() == data:
+            continue
         if args.output or args.update:
             destination.parent.mkdir(parents=True, exist_ok=True)
-            destination.write_bytes(source.read_bytes())
-        elif not destination.is_file() or destination.read_bytes() != source.read_bytes():
+            destination.write_bytes(data)
+        else:
             print(f"shared prelude differs or is missing: {destination}")
             status = 1
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
@@ -423,11 +435,14 @@ def main():
             different = 0
             for name, path in sorted(generated.items()):
                 destination = target / name
+                data = path.read_bytes()
+                if destination.is_file() and destination.read_bytes() == data:
+                    continue
+                different += 1
                 if args.output or args.update:
                     destination.parent.mkdir(parents=True, exist_ok=True)
-                    destination.write_bytes(path.read_bytes())
-                elif not destination.exists() or destination.read_bytes() != path.read_bytes():
-                    different += 1
+                    destination.write_bytes(data)
+                else:
                     print("".join(difflib.unified_diff(
                         destination.read_text().splitlines(True) if destination.exists() else [],
                         path.read_text().splitlines(True), str(destination), "regenerated/" + str(rel / name))), end="")
@@ -435,7 +450,7 @@ def main():
                 print(f"stale fixture: {path}")
                 if args.update:
                     path.unlink()
-            if different or (stale and not args.update):
+            if (different and not (args.output or args.update)) or (stale and not args.update):
                 status = 1
             print(f"{rel}: {len(generated)} files, {different} differ, {len(stale)} stale", flush=True)
     raise SystemExit(status)
