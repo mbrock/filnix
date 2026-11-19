@@ -24,6 +24,6 @@
   <code>4dfe8757cdcb</code> compiled all 1,440 glibc sources against the pinned
   Nanofil model. With twelve jobs, <sh>build.sh</sh> took 17 minutes 26 seconds.
   The sampled sum of resident memory across its processes peaked at 30.7 GiB.
-  This measures ordinary full Rocq compilation with a prebuilt model. The
-  push and scheduled checks also run probes and assumption audits.</p>
+  This measures ordinary full Rocq compilation with a prebuilt model. At that revision, the
+  push and scheduled checks also ran probes and assumption audits.</p>
 </block>

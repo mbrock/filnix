@@ -41,20 +41,13 @@ test the primitive boundary, not G1 for glibc code.
 
 ## What the build checks
 
-Most glibc proofs should work with any runtime that meets the interface.
-They should not depend on the interpreter's choice to represent allocator
-states as integers. The default enforces this by hiding the interpreter's
-definitions behind the runtime signature. In `Fix.v`, the binding is
-`Module R : Runtime := InterpRuntime.`
+On each push, Rocq compiles the glibc tree with the interpreter sealed by
+`StartRuntime`. This signature exposes the interpreter’s state and readiness
+definitions so Hello can prove that it has a safe interpreter start.
 
-The abstract build supplies no implementation at all: it declares
-`R : Runtime` and compares Rocq's reported assumptions with an explicit
-allowlist for every top-level proof recorded in the compiled files.
-It also retains Hello's exact twelve-field comparison. These abstract
-checks run twice daily. On each push, the build checks the general files
-with the sealed runtime and requires genuine compiler errors for listed
-concrete files. It then compiles the concrete layer's whole import
-closure again with the interpreter's definitions visible.
+Twice daily, the abstract build replaces that binding with
+`Declare Module R : Runtime.` and compiles the runtime-general files.
+A proof that needs the interpreter’s allocator representation fails here.
 
 Each runtime promise needs an entry in the table below. An axiom's row
 must link to an existing native probe. A derived lemma can instead name
@@ -218,10 +211,9 @@ gates run `Driver InterpRuntime`.
 
 ## The glibc layer
 
-No glibc file needs the interpreter's runtime. `Fix.v` seals `R`, so a
-glibc proof sees only the `Runtime` signature, and the scheduled check
-`nanofil-glibc-abstract` compiles every glibc file again with `R` left
-abstract. The theorem `hi_atexit_never_panics` in
+The concrete Hello corollary uses the interpreter’s state and readiness
+definitions. The scheduled check compiles the rest of the tree against the
+abstract runtime. The theorem `hi_atexit_never_panics` in
 [StartSafeHiAtexit.v](../rocq/glibc/startup/StartSafeHiAtexit.v) takes
 the runtime state as a premise, `R.ready s m`, rather than fixing an
 allocator cursor.

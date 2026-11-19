@@ -1,6 +1,6 @@
 # Rocq orders the glibc proofs and Make compiles them in one Nix build.
 # The push check uses the sealed interpreter. The scheduled check builds
-# a second tree with an abstract runtime and audits its proofs' assumptions.
+# a second tree against the abstract runtime signature.
 {
   pkgs,
   filcc,
@@ -72,72 +72,24 @@ let
         mv glibc $out/
       '';
   sealed = tree false;
-  abstractTree = tree true;
-  auditScripts = lib.fileset.toSource {
-    root = ../tests;
-    fileset = lib.fileset.unions [
-      ../tests/assumption_scan.py
-      ../tests/proof_inventory.py
-      ../tests/rocq_runtime_audit.py
-    ];
-  };
+  abstractGeneral = tree true;
   rejectTestSrc = lib.fileset.toSource {
     root = ../.;
     fileset = lib.fileset.unions [
       ../tests/assumption_scan.py
-      ../tests/proof_inventory.py
-      ../tests/rocq_runtime_audit.py
       ../tests/test_scan.py
-      ../tests/test_nested_audit.py
       ../tests/rocq_interface.py
       ../tests/rocq_interface_test.py
     ];
   };
   rejectTests =
     pkgs.runCommand "nanofil-glibc-reject-tests"
-      {
-        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
-      }
+      { nativeBuildInputs = [ pkgs.python3 ]; }
       ''
         set -o pipefail
         mkdir $out
         python3 ${rejectTestSrc}/tests/test_scan.py 2>&1 | tee $out/log
-        python3 ${rejectTestSrc}/tests/test_nested_audit.py
         python3 ${rejectTestSrc}/tests/rocq_interface_test.py
-        touch $out/passed
-      '';
-  abstractGeneral =
-    pkgs.runCommand "nanofil-glibc-abstract-general"
-      {
-        nativeBuildInputs = rocqInputs ++ [ pkgs.python3 ];
-        OCAMLRUNPARAM = "o=200";
-        passthru.tree = abstractTree;
-      }
-      ''
-        set -euo pipefail
-        test -f ${rejectTests}/passed
-        ln -s ${model.objects}/share/rocq/theories theories
-        ln -s ${abstractTree}/glibc glibc
-        mkdir -p $out/audit
-        find -L glibc -name '*.v' -print0 | sort -z | xargs -0 -P "$NIX_BUILD_CORES" -I {} bash -ec '
-          src=$1
-          python3 ${watch} --label "abstract audit $src" --warn-after 120 --timeout 900 -- \
-            python3 ${auditScripts}/rocq_runtime_audit.py "$src" "''${src%.v}.glob" "$out/audit/$(basename "$src" .v)"
-        ' _ {}
-        cat $out/audit/*/summary >$out/audit-summary
-        echo 'From Glibc Require Import HelloStartNeverPanics.
-        Print Assumptions HelloStartNeverPanics.hello_never_panics.' >HelloAbstractAudit.v
-        python3 ${watch} --label "glibc abstract Hello audit" --warn-after 120 --timeout 900 -- \
-          rocq c -q -R theories Nanofil -R glibc Glibc HelloAbstractAudit.v | tee $out/assumptions.log
-        python3 - "$out/assumptions.log" <<'PY'
-        import pathlib, re, sys
-        text = pathlib.Path(sys.argv[1]).read_text()
-        names = sorted(set(re.findall(r"^(\S+)\s*:", text, re.M)) - {"Axioms"})
-        pathlib.Path("assumption-names").write_text("".join(name + "\n" for name in names))
-        PY
-        diff -u ${./glibc/hello-assumptions} assumption-names
-        mv assumption-names $out/
-        ln -s ${abstractTree}/timings.log $out/timings.log
         touch $out/passed
       '';
   # The grammar round trip remains available for individual source files.

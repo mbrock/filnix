@@ -54,7 +54,7 @@ FILCC=... rocq/glibc/code.sh /tmp/glibc-pp
 nix build -L .#checks.x86_64-linux.nanofil-glibc
 ```
 
-The push check compiles the glibc proofs against the model’s theories and runs the native probes. The scheduled check compiles the runtime-general proofs against an abstract runtime and audits their assumptions. The grammar round trip is available by file under `nanofil-glibc.reprint`. Run `code.sh` by hand to check the captured program fixtures.
+The push check compiles the glibc proofs against the model’s theories and runs the native probes. The scheduled check compiles the runtime-general proofs against an abstract runtime. The grammar round trip is available by file under `nanofil-glibc.reprint`. Run `code.sh` by hand to check the captured program fixtures.
 
 ## Assumption G1: the proofs are about nanofil's IR of glibc
 

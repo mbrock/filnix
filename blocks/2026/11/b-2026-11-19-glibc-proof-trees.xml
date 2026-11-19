@@ -10,6 +10,5 @@
   and each importer loads the full object of the file it depends on.</p>
   <p>Locally, <sh>rq verify DIR/FILE.v</sh> checks the saved file against the
   native interfaces of its imports. The scheduled build checks every
-  runtime-general proof against the abstract runtime and compares the Hello
-  theorem’s assumptions with its expected runtime fields.</p>
+  runtime-general proof against the abstract runtime.</p>
 </block>

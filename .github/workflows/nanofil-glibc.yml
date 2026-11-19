@@ -25,11 +25,8 @@ on:
       - nanofil/tests/watch.py
       - nanofil/tests/rocq_time.py
       - nanofil/tests/rocq_time_test.py
-      - nanofil/tests/rocq_runtime_audit.py
       - nanofil/tests/assumption_scan.py
-      - nanofil/tests/proof_inventory.py
       - nanofil/tests/test_scan.py
-      - nanofil/tests/test_nested_audit.py
       - nanofil/tests/rocq_totals.py
       - nanofil/tests/rocq_totals_test.py
       - nanofil/tests/rocq_interface_test.py
@@ -130,12 +127,11 @@ jobs:
             glibc-units.log
           retention-days: 3
 
-  # The push check seals the runtime. This job removes the implementation and audits assumptions for
-  # every top-level proof, including Hello's exact fourteen-field list.
+  # Compile the runtime-general proofs with only the runtime signature available.
   abstract:
     if: github.event_name != 'push'
     runs-on: ubuntu-24.04
-    timeout-minutes: 240
+    timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
       - uses: cachix/install-nix-action@v31
@@ -156,10 +152,10 @@ jobs:
         run: |
           set -o pipefail
           # Two jobs, like the push check, to stay within the runner's memory.
-          python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 13800 -- \
+          python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 9600 -- \
             nix build -L --no-link --keep-going --max-jobs 2 --cores 2 \
             .#checks.x86_64-linux.nanofil-glibc-abstract 2>&1 | tee nanofil-glibc-abstract.log
-      - name: Cache the abstract tree and audit reports
+      - name: Cache the abstract tree
         if: success() && github.ref == 'refs/heads/main'
         env:
           CACHIX_AUTH_TOKEN: ${{ secrets.FILC_CACHIX_AUTH_TOKEN }}

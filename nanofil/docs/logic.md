@@ -1011,19 +1011,10 @@ that satisfies the axioms of `Runtime`. `hello_never_panics` and
 the interpreter's allocator would break that claim, and an ordinary
 build with a transparent binding would still accept it.
 
-The glibc check catches such a proof by compiling files a second time
-with the runtime left abstract. For that compilation it replaces the
-binding in `Fix.v` by `Declare Module R : Runtime.`, so that a proof
-can use only what every runtime guarantees. On every push the check
-compiles the files that Hello's theorem imports in this way. It then
-requires `Print Assumptions` to list exactly fourteen fields of `R`
-for `hello_never_panics`. Two of them are the runtime's `free` and its
-promise `free_succeeds` that `free` releases heap objects, because Hello
-frees memory with `R.free`.
-
-Twice daily the check `nanofil-glibc-abstract` compiles every other
-glibc file in the same way, so no glibc proof depends on the
-interpreter's runtime.
+On push, `nanofil-glibc` compiles the whole tree with the sealed interpreter.
+Twice daily, `nanofil-glibc-abstract` replaces the binding in `Fix.v` with
+`Declare Module R : Runtime.` and compiles the runtime-general proofs again.
+The interpreter-specific Hello corollary belongs to the sealed build.
 
 **Main's start block.** [HelloMain.v](../rocq/theories/hello_contracts/HelloMain.v)
 applies every `…On` functor to one `Logic R`. Its world is libc's, and

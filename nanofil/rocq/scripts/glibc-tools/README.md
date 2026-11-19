@@ -77,7 +77,7 @@ The [generator guide](../glibc-code/README.md) describes captured code fixtures 
 
 ## Check the runtime boundary
 
-The push gate compiles every glibc proof with a sealed runtime. The abstract gate runs twice daily: it compiles every glibc proof with the runtime left abstract, compares Hello's assumptions exactly, and audits every top-level proof against an allowlist.
+The push check compiles every glibc proof with a sealed runtime. Twice daily, the abstract check compiles the same tree against the runtime signature, omitting Hello’s interpreter-specific corollary.
 
 `abstract-general.sh TREE OUT` checks an existing source copy with an abstract runtime. Its input has the sealed `Fix.v` binding, and every file must compile. `abstract-general-test.sh` exercises that script on small trees.
 

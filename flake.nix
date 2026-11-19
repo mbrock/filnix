@@ -365,8 +365,7 @@
               model = self.checks.${system}.nanofil-rocq.model;
             };
             # Every glibc proof file that does not need the interpreter's
-            # runtime compiles against an abstract one twice daily, with
-            # assumption audits. The push check uses a sealed runtime.
+            # runtime compiles against an abstract one twice daily.
             nanofil-glibc-abstract = self.checks.${system}.nanofil-glibc.abstractGeneral;
             nanofil-backend = import ./nanofil/nix/backend.nix {
               inherit pkgs;
