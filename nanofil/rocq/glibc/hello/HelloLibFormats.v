@@ -11,7 +11,7 @@
 
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax.
-From Glibc Require Import NarrowFormat HelloImageModule HelloStartKept.
+From Glibc Require Import ImageData NarrowFormat HelloImageModule.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.

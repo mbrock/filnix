@@ -1,10 +1,8 @@
-From Glibc Require Import GlibcProgram.
 (** Glibc's scanner inlines its exchange routine twice. This file proves
     the upper swap loop of the first copy, which moves the shorter upper
     block of options below the skipped nonoptions. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,8 +10,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -25,7 +23,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The exchange module supplies the swap scripts. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section exchange.

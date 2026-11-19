@@ -1,9 +1,8 @@
-From Glibc Require Import GlibcProgram.
 (** This file discharges Hello's allocation, deallocation and exit-handler
     registration calls. The proofs use the concrete OS world, so their
     interfaces require no separate world-preservation assumptions. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

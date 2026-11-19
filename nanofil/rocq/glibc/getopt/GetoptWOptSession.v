@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** glibc's scanner turns "-W foo" or "-Wfoo" into a call of its
     long-option parser on the word after the W. One file proves the
     scanner safe up to that call, and another proves the call and the
@@ -7,8 +5,8 @@ From Glibc Require Import GlibcProgram.
     reaches the W option receives either the parser's answer with a
     session at the new index or the missing-argument path. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,11 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange
+  GetoptDiag GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptWTail GetoptWOpt GetoptLongW.
 From Glibc Require Import Fix.
 
@@ -66,7 +64,7 @@ Proof. cbn. lia. Qed.
 
 (** The W option module proves the scanner up to the call. *)
 (** The W call module proves the call and restores the session. *)
-Import GetoptLongW GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongW GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** A key in the list keeps its value through the W option. *)
 Local Ltac wos_lk Hk :=

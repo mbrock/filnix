@@ -13,14 +13,14 @@
     proof builds those objects, so it can hand them to main directly.
     Startup supplies the library proofs for that same private state. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import HelloObjects GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic Language.
-From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts HelloGlibcMainLoop HelloGlibcMainFull.
+From Glibc Require Import IRFrames HelloBodies OsWorld OsRegistry HelloGlibcDebts HelloGlibcMainLoop
+  HelloGlibcMainFull.
 Import ListNotations.
 Open Scope Z_scope.
 

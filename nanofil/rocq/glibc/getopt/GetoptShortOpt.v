@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A short option that glibc's scanner finds in the option string may
     take an argument. One colon after the character means that it does,
     and two colons make the argument optional. "W;" in the option string
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     option string only up to two bytes past the character, which stay
     inside it, and it writes only the fields of its own state. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  ByteRead GetoptInitialize GetoptEntry GetoptExchange GetoptCursor GetoptOptArg.
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
+  ByteRead GetoptInitialize GetoptCursor GetoptOptArg.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -29,7 +27,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The optional-argument module supplies the argument vector, its tactics and its step. *)
-Import GetoptOptArg GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptOptArg GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 Import ProgramAbbreviations.
 Section opt.

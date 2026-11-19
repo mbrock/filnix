@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** Some arguments end one call of glibc's scanner before it parses an
     option. When no argument is left, the scanner points the public
     index at the first pending nonoption and returns -1. A nonoption at
@@ -8,8 +7,7 @@ From Glibc Require Import GlibcProgram.
     reads an argument pointer only below the argument count, and it
     writes only the fields of its own state. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptClamp.
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange GetoptClamp.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,7 +37,7 @@ Definition getopt_blk318 : block := Eval vm_compute in x_blk "L318".
 
 
 (** The exchange module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

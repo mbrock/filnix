@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram.
 (** getopt's two diagnostic rules, in GetoptDiag.v and GetoptLongDiag.v,
     are premises that a caller supplies for the calls that print a report:
     __GI___dcgettext translates a message, and __fxprintf_nocancel writes it
@@ -20,19 +18,20 @@ From Glibc Require Import GlibcProgram.
     of the format string's lifetime. The wrapper gives back the stream at
     the same flags2 word and lock state, and the formatter's result
     resource may record the stream's new orientation. *)
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import GetoptMessages OsExternals Unit_stdioZ2dcommon_fxprintf_os GlibcProgram
+  GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers WordString
+From Glibc Require Import OsWorld FileInv SysWrappers WordString
   FxprintfTidy FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv.
 
 Import ProgramAbbreviations.
 Section bridge.

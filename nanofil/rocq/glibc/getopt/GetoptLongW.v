@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** "-W foo" or "-Wfoo" stands for "--foo" when the option string holds
     "W;". glibc's scanner stores the word after the W as its private
     cursor and then calls the long-option parser with long-only mode
@@ -8,7 +6,8 @@ From Glibc Require Import GlibcProgram.
     the call with the restoration of the session, so the caller receives
     the answer together with a session at the new index. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,11 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptState GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule GetoptState GetoptArgv GetoptExchange
+    GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptLongJoinMiss GetoptLongCall GetoptLongSession GetoptWTail.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -54,7 +53,7 @@ Proof. cbn. lia. Qed.
 
 (** The call module supplies the rule for a call of the parser. *)
 (** The session module restores the session after a return. *)
-Import GetoptLongCall GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongCall GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
 Local Ltac w_vx :=

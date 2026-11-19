@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** A program that reports an option error may call getenv and glibc's
     allocation cutoff between two reports. Both calls need the thread's
     cancellation bookkeeping, which owns the whole thread object. A
@@ -15,23 +13,18 @@ From Glibc Require Import GlibcProgram.
     Between reports, the caller can lend the whole bookkeeping to getenv
     or the cutoff. Errno goes to the formatter as before, and the
     caller still supplies the thread's id. *)
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import LocalenameLogic.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextRoute.
-From Glibc Require Import DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink.
-From Glibc Require Import HelloGetoptDiagGettext.
-From Glibc Require Import RdlockLogic.
-From Glibc Require Import SysLayout.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString
+  SysWrappers AllocLogic AllocCall HelloGlibcLibsT LocalenameLogic GetoptDiag GetoptLongDiag
+  GetoptDiagFx DcigettextRoute DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink
+  HelloGetoptDiagGettext RdlockLogic SysLayout Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.

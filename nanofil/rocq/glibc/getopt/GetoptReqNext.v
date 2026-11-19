@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A short option with a required argument takes the rest of its
     cluster as the argument, or else the next argument of the vector
     when one is left. glibc's scanner
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     vector only below the argument count and writes only the fields of
     its own state. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptReqTail.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+    GetoptArgv GetoptExchange GetoptReqTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -29,7 +27,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
-Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section next.

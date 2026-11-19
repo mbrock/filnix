@@ -12,14 +12,14 @@
     Every address is read from the loader's symbols, so a relink of
     Hello changes no line here. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import HelloObjects ImageObjectPieces GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv HelloGlibcDebts StartImageUnique ImageErase ImageEraseMem
-  ImagePieces HelloImageModule HelloImageLoad HelloImageCtors HelloImageLayout.
+From Glibc Require Import FileInv StartImageUnique ImageErase ImageEraseMem
+  ImagePieces HelloImageModule HelloImageLoad HelloImageLayout.
 From Glibc Require AllocLogic AtexitLogic ExitRun.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
@@ -31,19 +31,19 @@ Open Scope Z_scope.
 Definition hello_alloc_kept_ps : list (piece * pval) :=
   List.concat [cell (img_a "glibc_malloc#mp_") 120 1041;
     [(PLive (img_a "tcache"), VLive (img_gd "tcache"))];
-    hello_pointer_ps (img_a "tcache") 0
+    ptr_ps (img_a "tcache") 0
       (mkPtr (img_a "glibc_malloc#__tcache_dummy") (Ro (img_a "glibc_malloc#__tcache_dummy")));
     [(PLive (img_a "glibc_malloc#__tcache_dummy"), VLive (img_gd "glibc_malloc#__tcache_dummy"))];
-    List.concat (map (fun i => hello_pointer_ps (img_a "glibc_malloc#__tcache_dummy") (152 + 8 * i) null)
+    List.concat (map (fun i => ptr_ps (img_a "glibc_malloc#__tcache_dummy") (152 + 8 * i) null)
       (seqZ 0 64))].
 
 (** Each unused handler slot starts with four zero words, and the last
     three have empty capabilities. *)
 Definition hello_exit_slot_ps (i : Z) : list (piece * pval) :=
   List.concat [cell (img_a "glibc_cxa_atexit#initial") (16 + 32 * i) 0;
-    hello_pointer_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 8) null;
-    hello_pointer_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 16) null;
-    hello_pointer_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 24) null].
+    ptr_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 8) null;
+    ptr_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 16) null;
+    ptr_ps (img_a "glibc_cxa_atexit#initial") (16 + 32 * i + 24) null].
 
 (** The handler array is empty, its lock is free, no exit has started,
     no handler was ever registered, and the recursive exit lock is free. *)
@@ -56,14 +56,14 @@ Definition hello_exit_kept_ps : list (piece * pval) :=
     [(PLive (img_a "__new_exitfn_called"), VLive (img_gd "__new_exitfn_called"))];
     cell (img_a "__new_exitfn_called") 0 0;
     [(PLive (img_a "__exit_funcs"), VLive (img_gd "__exit_funcs"))];
-    hello_pointer_ps (img_a "__exit_funcs") 0
+    ptr_ps (img_a "__exit_funcs") 0
       (mkPtr (img_a "glibc_cxa_atexit#initial") (Obj (img_a "glibc_cxa_atexit#initial")));
     [(PLive (img_a "glibc_cxa_atexit#initial"), VLive (img_gd "glibc_cxa_atexit#initial"))];
-    hello_pointer_ps (img_a "glibc_cxa_atexit#initial") 0 null; cell (img_a "glibc_cxa_atexit#initial") 8 0;
+    ptr_ps (img_a "glibc_cxa_atexit#initial") 0 null; cell (img_a "glibc_cxa_atexit#initial") 8 0;
     List.concat (map hello_exit_slot_ps (seqZ 0 32));
     [(PLive (img_a "glibc_exit#__exit_lock"), VLive (img_gd "glibc_exit#__exit_lock"))];
     byte_ps (img_a "glibc_exit#__exit_lock") 0 [0; 0; 0; 0]; byte_ps (img_a "glibc_exit#__exit_lock") 4 [0; 0; 0; 0];
-    hello_pointer_ps (img_a "glibc_exit#__exit_lock") 8 null].
+    ptr_ps (img_a "glibc_exit#__exit_lock") 8 null].
 
 (** ## The check on a smaller copy
 

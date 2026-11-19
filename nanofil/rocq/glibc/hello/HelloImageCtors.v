@@ -26,10 +26,10 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
+From Glibc Require Import ImageData ImageObjectPieces.
 From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry FileInv LibioStdfiles
   StartInitMiscSpec StartInitFirstSpec StartStdfilesInitSpec StartCtorVtablesSpec.
-From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad
-  HelloImageKept HelloImageStart.
+From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioStdfiles.
 Open Scope Z_scope.
 
@@ -51,10 +51,6 @@ Definition hello_ctor_names : list string :=
 
 Definition hello_ctor_keep (n : name) : bool := existsb (name_eqb n) (map TAtom hello_ctor_names).
 
-(** A pointer in memory is its capability slot and its address bytes. *)
-Definition hello_pointer_ps (b o : Z) (p : ptr) : list (piece * pval) :=
-  (PAux b o, VAux (ptr_cap p)) :: cell b o (ptr_addr p).
-
 (** Both names of the program start as pointers to this empty string,
     which is read-only data of the image. *)
 Definition hello_empty_name : ptr := mkPtr (img_a "glibc_init_misc#str.61") (Ro (img_a "glibc_init_misc#str.61")).
@@ -64,11 +60,11 @@ Definition hello_empty_name : ptr := mkPtr (img_a "glibc_init_misc#str.61") (Ro 
     argument pointers and of the two names. *)
 Definition hello_init_first_ps : list (piece * pval) :=
   List.concat [[(PLive (img_a "__libc_argc"), VLive (img_gd "__libc_argc"))]; byte_ps (img_a "__libc_argc") 0 (int_bytes 0);
-    [(PLive (img_a "__libc_argv"), VLive (img_gd "__libc_argv"))]; hello_pointer_ps (img_a "__libc_argv") 0 null;
-    [(PLive (img_a "__environ"), VLive (img_gd "__environ"))]; hello_pointer_ps (img_a "__environ") 0 null;
-    [(PLive (img_a "__progname"), VLive (img_gd "__progname"))]; hello_pointer_ps (img_a "__progname") 0 hello_empty_name;
+    [(PLive (img_a "__libc_argv"), VLive (img_gd "__libc_argv"))]; ptr_ps (img_a "__libc_argv") 0 null;
+    [(PLive (img_a "__environ"), VLive (img_gd "__environ"))]; ptr_ps (img_a "__environ") 0 null;
+    [(PLive (img_a "__progname"), VLive (img_gd "__progname"))]; ptr_ps (img_a "__progname") 0 hello_empty_name;
     [(PLive (img_a "__progname_full"), VLive (img_gd "__progname_full"))];
-    hello_pointer_ps (img_a "__progname_full") 0 hello_empty_name].
+    ptr_ps (img_a "__progname_full") 0 hello_empty_name].
 
 (** This list is the one above without `c: __environ`. The body of
     `c: __libc_start_main` stores the environment pointer there before
@@ -76,10 +72,10 @@ Definition hello_init_first_ps : list (piece * pval) :=
     body first. *)
 Definition hello_init_first_core_ps : list (piece * pval) :=
   List.concat [[(PLive (img_a "__libc_argc"), VLive (img_gd "__libc_argc"))]; byte_ps (img_a "__libc_argc") 0 (int_bytes 0);
-    [(PLive (img_a "__libc_argv"), VLive (img_gd "__libc_argv"))]; hello_pointer_ps (img_a "__libc_argv") 0 null;
-    [(PLive (img_a "__progname"), VLive (img_gd "__progname"))]; hello_pointer_ps (img_a "__progname") 0 hello_empty_name;
+    [(PLive (img_a "__libc_argv"), VLive (img_gd "__libc_argv"))]; ptr_ps (img_a "__libc_argv") 0 null;
+    [(PLive (img_a "__progname"), VLive (img_gd "__progname"))]; ptr_ps (img_a "__progname") 0 hello_empty_name;
     [(PLive (img_a "__progname_full"), VLive (img_gd "__progname_full"))];
-    hello_pointer_ps (img_a "__progname_full") 0 hello_empty_name].
+    ptr_ps (img_a "__progname_full") 0 hello_empty_name].
 
 (** The streams constructor reads this list. In it, stderr points at
     stdout, stdout points at stdin, and no stream points back. The head
@@ -90,16 +86,16 @@ Definition hello_initial_list_ps : list (piece * pval) :=
   let fe := img_a "_IO_2_1_stderr_" in let fo := img_a "_IO_2_1_stdout_" in let fi := img_a "_IO_2_1_stdin_" in
   List.concat [[(PLive fe, VLive (img_gd "_IO_2_1_stderr_"))];
     [(PLive fi, VLive (img_gd "_IO_2_1_stdin_"))];
-    hello_pointer_ps fe 184 null; hello_pointer_ps fe 104 (mkPtr fo (Obj fo));
-    hello_pointer_ps fo 184 null; hello_pointer_ps fo 104 (mkPtr fi (Obj fi));
-    hello_pointer_ps fi 184 null; hello_pointer_ps fi 104 null;
+    ptr_ps fe 184 null; ptr_ps fe 104 (mkPtr fo (Obj fo));
+    ptr_ps fo 184 null; ptr_ps fo 104 (mkPtr fi (Obj fi));
+    ptr_ps fi 184 null; ptr_ps fi 104 null;
     [(PLive (img_a "__GI__IO_list_all"), VLive (img_gd "__GI__IO_list_all"))];
-    hello_pointer_ps (img_a "__GI__IO_list_all") 0 (mkPtr fe (Obj fe));
+    ptr_ps (img_a "__GI__IO_list_all") 0 (mkPtr fe (Obj fe));
     [(PLive (img_a "glibc_genops#list_all_lock"), VLive (img_gd "glibc_genops#list_all_lock"))];
     byte_ps (img_a "glibc_genops#list_all_lock") 0 (int_bytes 0); byte_ps (img_a "glibc_genops#list_all_lock") 4 (int_bytes 0);
-    hello_pointer_ps (img_a "glibc_genops#list_all_lock") 8 null;
+    ptr_ps (img_a "glibc_genops#list_all_lock") 8 null;
     [(PLive (img_a "glibc_genops#run_fp"), VLive (img_gd "glibc_genops#run_fp"))];
-    hello_pointer_ps (img_a "glibc_genops#run_fp") 0 null].
+    ptr_ps (img_a "glibc_genops#run_fp") 0 null].
 
 (** The check of the stream tables reads the table pointer of each
     stream, which lands 336 bytes into the read-only array of tables, and

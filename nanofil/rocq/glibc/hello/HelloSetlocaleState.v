@@ -4,6 +4,7 @@
     setlocale can read the names, and shows that it returns the global
     locale and the character tables to Hello. *)
 
+From Glibc Require Import LiteralWords.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.program_logic Require Import language weakestpre.
 From iris.proofmode Require Import proofmode.
@@ -12,7 +13,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv StrlenLogic WordString HelloImageLoad
-  StartCtypeInitSpec StartEarlyInitSpec HelloImageEarly StartImageEarly HelloGetoptTable HelloImageLocaleObjs
+  StartCtypeInitSpec StartEarlyInitSpec HelloImageEarly StartImageEarly HelloImageLocaleObjs
   HelloImageModule HelloImageCLocaleObjs HelloGettextLocaleConst HelloStartGetopt HelloLocaleState HelloSetlocalePostload HelloSetlocaleAll.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.

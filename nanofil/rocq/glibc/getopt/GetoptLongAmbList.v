@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds several options whose names
     start with a word's name, it reports the word as ambiguous and lists
     the candidates on stderr. The set that the prefix search built marks
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     marked entry of the option table, and it writes them only through
     the report rule that its caller supplies. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics LongOptionTable GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,11 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongAmbItem.
+  GetoptModule
+    GetoptLongDiag
+     GetoptLongAmbItem.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,7 +30,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The step module supplies one step of the listing, the set, the option table and the tactics. *)
-Import GetoptLongAmbItem GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongAmbItem GetoptLongDiag Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 
 Import ProgramAbbreviations.

@@ -1,12 +1,11 @@
-From Glibc Require Import GlibcProgram.
 (** This file proves one step of glibc's search for long options whose
     names start with a word's name. The step handles an entry that
     matches after a first match was already found. The parser compares
     the two entries, records an ambiguity when they differ, and then
     stands ready to move on to the next entry. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall GetoptTactics LongOption LongOptionTable GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,10 +13,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptModule
+   GetoptReqTail GetoptLongScan
   GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -65,7 +64,7 @@ Proof. intros [H | (j & Hj & H)]; [left; exact H | right; exists j; split; [lia 
 
 
 (** The set module supplies the comparison, the set, the option table and the tactics. *)
-Import GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongScan GetoptReqTail Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** This tactic chains the kept names through assignments and the steps that keep them. *)
 Local Ltac ploop_kc := repeat (match goal with H : avoids _ ?Wl = true |- keeps _ _ (put _ _ _) =>

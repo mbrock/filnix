@@ -3,8 +3,8 @@
     glibc flushes it at the start of the report. The rest of the
     report uses stderr and the C locale before returning to its caller. *)
 
-From Glibc Require Import Unit_libio_iofflush_os Unit_libio_wfileops_os Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_libio_iofflush_os Unit_libio_wfileops_os Unit_misc_error_os
+  Unit_stdioZ2dcommon_fxprintf_os GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogi
   WordString NarrowArgs PrintfSpec LibioFputsSpec LibioCleanupExit FxprintfNormalCall
   ErrorEntry ErrorCall HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageEarly HelloStartFacts HelloGetoptDiagImage
-  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloWClosedStdout HelloImageCloseObjs HelloGetoptTable
+  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloWClosedStdout HelloImageCloseObjs
   HelloCloseReportImage HelloCloseReportText HelloCloseReportLocale HelloCloseReportBody HelloCloseReportPrint HelloCloseReportFinish Fix.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.

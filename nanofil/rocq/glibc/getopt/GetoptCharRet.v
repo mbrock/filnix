@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** One step of glibc's scanner reads a character from the current word
     of a cluster such as "-ab", looks it up in the short option string,
     and returns. The getopt wrapper then copies the private index, the
@@ -9,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     states every way the step can return in one relation, and it proves
     that the private object again makes up a session at the new index. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic Unit_string_strchr_os Unit_string_strchrnul_os GlibcProgram
+  GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
+  GetoptState ByteRead GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag
   GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap GetoptKnownRet
   GetoptLongSession.
 From Glibc Require Import Fix.
@@ -112,8 +110,8 @@ Lemma char_ret_ctl_unknown t i x i' oo' (a a' cur c' : ptr) :
     c' = ptr_add cur 1 -> i' <> i + 2.
 Proof. intros (_ & -> & _). destruct (_ =? _); lia. Qed.
 
-Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0
-  Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L
+  ByteRead GetoptArgv.
 
 (** The step must keep these names of the entry environment, because
     the option blocks after it read them. *)

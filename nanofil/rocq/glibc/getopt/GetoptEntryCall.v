@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** The getopt wrapper calls the reentrant parser with eight arguments.
     Its proof hands the parser a frame built by the machine's call rule,
     which starts by entering the first block. The proof of the parser's
@@ -7,14 +6,14 @@ From Glibc Require Import GlibcProgram.
     takes the real call frame into the first blocks, and it packages the
     result in the form that the wrapper's proof asks of the parser. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import OsMemLogic GetenvSpec LongOption GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead
+From Glibc Require Import OsWorld WordString GetoptModule GetoptState ByteRead
   GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -55,7 +54,7 @@ Lemma getopt_r_env_ctl : lookup (TAtom "v12") (getopt_r_env 3 64 null null null 
   lookup (TAtom "v14") (getopt_r_env 3 64 null null null 0 128 1) = Some (WInt 1).
 Proof. split; reflexivity. Qed.
 
-Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section entry_call.
@@ -108,7 +107,7 @@ Definition getopt_entry_exits (n av : Z) (ar : region) (p : ptr) (os : list Z) (
 Lemma wp_getopt_entry_call_at cf n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   Z.of_nat (length ps) = n ->
   getopt_entry_pre b r av ar ps j -∗ word_string DfracDiscarded p os -∗ G -∗
   getopt_entry_exits n av ar p os lo li lonly b r ps j G Φ -∗

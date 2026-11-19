@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** Hello calls getopt_long once per option, and glibc remembers its
     place between calls in a private object. Hello's main loop lets each
     call borrow that object while it matches argv and optind. This file
@@ -23,7 +21,9 @@ From Glibc Require Import GlibcProgram.
     free as premises, which the safety theorem discharges except for the
     two warning printers. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects.
+From Glibc Require Import GetenvSpec LongOptionTable Unit_string_strchr_os Unit_string_strchrnul_os
+  Unit_string_strcmp_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -32,7 +32,7 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
-  GetoptModule GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
+  GetoptModule GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongStr
   HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop.
 From Glibc Require Import Fix.
@@ -141,7 +141,7 @@ Definition hello_getopt_priv : iProp Σ :=
     together with a new matching state. While the parser searches for a
     long option, the alloca cutoff borrows G and returns it. *)
 Lemma hello_getopt_lend_with_at av ar ps a i :
-  GetenvCall.getenv_at_rule w0 glibc_os_registry ge G penv ->
+  GetenvSpec.getenv_at_rule w0 glibc_os_registry ge G penv ->
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   fn_triple w0 ge (TAtom "getopt_long")
     [WInt (Z.of_nat (length ps)); WPtr (mkPtr av (Obj av)); WPtr (sym_ptr ge "hello#str.69");
@@ -173,8 +173,8 @@ Proof using H138 H139 H140 H141 H142 H143 H144 H145 H146 H147 H148 H149 H150 Hch
     mid mid' pdd sdd M f138 f139 f140 f141 lmid mid3 mid4 (hello_los n1 n2 n3 n4) [] pfx7 pxs7 pfx0 pxs0 penv 103 Φ
     with "Hci Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Hos HG Hsel Hsec Havl Hcl Hps Hdd Ht H7 H0 [] HM [] [HQ]");
     try (assumption || reflexivity || lia).
-  - rewrite /GetoptLongStore.flags_own. iSplit; [iPureIntro; apply NoDup_nil_2 | done].
-  - rewrite /GetoptLongStore.longind_own. iLeft. done.
+  - rewrite /LongOptionTable.flags_own. iSplit; [iPureIntro; apply NoDup_nil_2 | done].
+  - rewrite /LongOptionTable.longind_own. iLeft. done.
   - iIntros (x i' c' a' ps' [Hp Hx]) "Hw Hoil Hoic Hoel Hoec Hoal Hoac Hool Hooc Havl Hcl _ HG _ HM _ _ Hstr".
     iDestruct (getopt_session_index with "Hw") as "[%Hi' Hw]".
     pose proof (Permutation_length Hp) as Hl.
@@ -233,7 +233,7 @@ Context (Hro_m : hello_ro ge o ⊢ M).
     everything it borrows. This supports both the environment name and
     the stack-size cell read by the cutoff. *)
 Lemma hello_getopt_ix_ro_sep_at (R : iProp Σ) av ar :
-  GetenvCall.getenv_at_rule w0 glibc_os_registry ge G penv ->
+  GetenvSpec.getenv_at_rule w0 glibc_os_registry ge G penv ->
   getopt_cutoff_rule_with w0 glibc_os_registry ge G ->
   (hello_stdio w0 ge o ∗ priv ∗ R ⊢ G ∗ (G -∗ hello_stdio w0 ge o ∗ priv ∗ R)) ->
   loop_getopt w0 ge o priv av ar (fun ps i => hello_getopt_state gb greg av ar ps i ∗ hello_getopt_globals ∗ R)%I.

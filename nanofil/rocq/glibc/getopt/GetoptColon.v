@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner first initializes its
     private object or resumes the previous call's state. A resumed call
     must still skip the ordering prefix of the option string. Every call
@@ -13,15 +12,15 @@ From Glibc Require Import GlibcProgram.
     argument, and a nonempty suffix sends it to the block that reads the
     next option character. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
   GetoptInitialize.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -63,7 +62,7 @@ Definition getopt_blk68 : block := Eval vm_compute in
 
 
 (** Initialization supplies the private-field and byte modules. *)
-Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 (** After the colon check, the scanner also reads the skipped option string. *)
 Definition colon_keys : list name := TAtom "pr.1" :: entry_keys.
@@ -104,9 +103,6 @@ Ltac unkeep Hk :=
   repeat match type of Hc with Forall _ (_ :: _) => let H := fresh "Hkk" in apply Forall_cons_1 in Hc as [H Hc] end;
   repeat match goal with H : lookup ?k ?e1 = lookup ?k ?e, H' : lookup ?k ?e = Some _ |- _ => rewrite H' in H end.
 
-(** A run of assignments to other names keeps the listed lookups. *)
-Local Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply keeps_refl | assumption].
-
 (** A resumed call skips the same ordering prefix as initialization,
     reading the option string through the caller's shared view. *)
 Lemma wp_getopt_resume e p os Φ :
@@ -134,11 +130,6 @@ Proof using Type.
   assert (Ep : ptr_add p (Z.of_nat 0) = p) by (destruct p; unfold ptr_add; cbn; f_equal; lia).
   iEval (rewrite Ep) in "HK". iApply ("HK" with "[%]"). keep.
 Qed.
-
-(** This tactic decides a branch whose condition has become closed. *)
-Ltac close_br :=
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
 
 (** The colon check reads the option character after the ordering
     prefix and records whether diagnostics are printed. The cursor check

@@ -6,14 +6,13 @@
     it. Argument storage, diagnostics and the parser transition remain
     separate obligations; this is not a complete program-entry theorem. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import OsMemLogic WordString LiteralWords ImageData GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import GetoptModule GetoptState.
 From stdpp Require Import list.
-From Glibc Require FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -126,7 +125,7 @@ Lemma getopt_flag_agrees : all_agree getopt_memory
 Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
 
 (** The session module supplies the private-field representation. *)
-Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.
@@ -178,3 +177,34 @@ Proof.
     [iExact "Hpts"|exact getopt_private_distinct].
 Qed.
 
+
+(** ## glibc's objects at startup
+
+    Before Hello's first call, glibc's parser has written nothing. Its
+    private object holds zeroes, opterr holds 1 and optopt holds the
+    question mark. The strings are constant. *)
+
+(** These are the fields of glibc's objects that the parser uses, at the
+    bases that the linked program chose. *)
+Definition getopt_start_ps (gb : Z) (greg : region) (oe : Z) (roe : region) (oo : Z) (roo : region)
+    (bdd : Z) (rdd : region) (b7 : Z) (r7 : region) (b0 : Z) (r0 : region) : list (piece * pval) :=
+  getopt_zero_ps gb greg ++ int_global_ps oe roe 1 ++ int_global_ps oo roo 63 ++
+  lit_ps bdd rdd (lit_words [45; 45]) ++ lit_ps b7 r7 (lit_words [45]) ++ lit_ps b0 r0 (lit_words [45; 87; 32]).
+
+(** This checks glibc's own pieces and nothing else. When the getopt
+    module is loaded on its own, its memory holds exactly these values,
+    each at its own key. It does not show that Hello's, the backends' and
+    startup's other assumptions can hold in the same memory, and the
+    linked program may put these objects elsewhere. *)
+Lemma getopt_start_fixture :
+  let ps := getopt_start_ps 65584 getopt_private_region 65696 (gd 65696 65704) 65760 (gd 65760 65768)
+    66176 (gd 66176 66184) 66208 (gd 66208 66216) 66352 (gd 66352 66360) in
+  all_agree getopt_memory ps /\ NoDup ps.*1.
+Proof.
+  cbn zeta. split.
+  - apply checked_pieces_all_agree. unfold getopt_memory. vm_compute. reflexivity.
+  - apply (NoDup_fmap_1 (fun p => match p with
+      | PLive b => 4 * 512 * b | PByte b o => 4 * (512 * b + o) + 1
+      | PAux b o => 4 * (512 * b + o) + 2 | _ => 3 end)).
+    apply (bool_decide_unpack _). vm_compute. exact I.
+Qed.

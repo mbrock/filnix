@@ -7,7 +7,7 @@
     [HelloVersionEtcCall](HelloVersionEtcCall.v) supplies those
     contracts. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
+From Glibc Require Import HelloObjects HelloLiterals GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

@@ -12,13 +12,13 @@
     prove the contract. A proof over the compiled function is the work
     of another module. *)
 
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
+From Glibc Require Import PrintfTables GlibcProgram GlibcSpec GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv PrintfSpec.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv.
 Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope string_scope.
 Open Scope list_scope.

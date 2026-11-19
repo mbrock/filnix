@@ -7,13 +7,12 @@
     the other, and it also keeps what is known about the saved position
     inside the current word. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import OsMemLogic GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
-From Glibc Require Import FileInv WordString ByteRead GetoptState GetoptEntry GetoptLongSession.
-From Glibc Require Import Fix.
+From Glibc Require Import WordString ByteRead GetoptState GetoptEntry GetoptLongSession Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -46,7 +45,7 @@ Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discrimi
 
 
 (** The session module supplies the state, the byte rules and the byte agreement of two views. *)
-Import GetoptLongSession GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptLongSession GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section bridge.
 Context `{!gen_heapGS piece pval Σ}.

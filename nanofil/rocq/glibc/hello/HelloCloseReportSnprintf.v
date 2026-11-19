@@ -4,8 +4,8 @@
     the array. The result is a string that error can pass to its next
     print, even if the formatter returned a negative count. *)
 
-From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os
+  GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

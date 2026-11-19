@@ -307,11 +307,21 @@ def analyze(tree, manifest):
         dir_depths[d] = (best_l, len(sub), best_p[-1])
 
     target_depths = {}
+    target_dependencies = {}
     lp_all = longest_path(direct_glibc)
     for tgt in manifest.get("critical_path_targets", ()):
         if tgt in files:
             l, path = lp_all(tgt)
             target_depths[tgt] = (l, path)
+            seen = {tgt}
+            pending = [tgt]
+            while pending:
+                node = pending.pop()
+                for dep in direct_glibc[node]:
+                    if dep not in seen:
+                        seen.add(dep)
+                        pending.append(dep)
+            target_dependencies[tgt] = len(seen) - 1
 
     return {
         "file_count": len(files),
@@ -328,6 +338,7 @@ def analyze(tree, manifest):
         "unused_total": sum(unused_by_dir.values()),
         "dir_depths": dir_depths,
         "target_depths": target_depths,
+        "target_dependencies": target_dependencies,
     }
 
 
@@ -414,7 +425,8 @@ def print_report(res, manifest):
         print(f"  {d:14s} depth {depth:2d} / {count:3d} files  (top: {top})")
 
     for tgt, (depth, path) in res["target_depths"].items():
-        print(f"\nCritical-path depth to {tgt}: {depth} files")
+        count = res["target_dependencies"][tgt]
+        print(f"\n{tgt} requires {count} glibc interfaces. Its longest chain spans {depth} files.")
 
 
 def main(argv=None):

@@ -1,13 +1,12 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** In long-only mode glibc's getopt also hands a word with one dash
     to its long-option parser. When the parser answers -1, getopt treats
     the word as a cluster of short options instead. This file proves
     that call safe, and it states the condition on the option table
     that makes the fallback safe. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic GetoptTactics LongOption LongOptionTable
+  Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,11 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule ByteRead GetoptArgv GetoptExchange GetoptCursor
+   GetoptLongScan GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptLongJoinMiss GetoptLongCall.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -39,10 +38,6 @@ Local Arguments Z.opp : simpl nomatch.
     then build a cursor from the next word, which may be the null
     sentinel or an empty word. The condition below rules such entries
     out. *)
-
-(** No entry of the table answers -1 through its value. *)
-Definition no_neg1_val (os : list lopt) : Prop :=
-  Forall (fun y => lo_flag y <> null \/ (lo_val y mod 2 ^ 32 <> 4294967295)%Z) os.
 
 (** The parser's return state carries this fact about the answer -1. *)
 Definition neg1_fact (os : list lopt) (x i i' : Z) (cur c' : ptr) : Prop :=
@@ -88,7 +83,7 @@ Qed.
 
 
 (** The call module supplies the rule for a call of the parser. *)
-Import GetoptLongCall GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongCall GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
 Local Ltac site_vx :=

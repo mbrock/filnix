@@ -13,11 +13,10 @@
     it before the error report runs. The write of the converted bytes
     is assumed here, because its own proof has not landed yet. *)
 
-From Glibc Require Import HelloWConvConsts.
-From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
-From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import Unit_posix__exit_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects HelloWConvConsts Unit_io_close_nocancel_os Unit_io_write_os
+  Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os Unit_libio_genops_os
+  Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os
+  Unit_posix__exit_os GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

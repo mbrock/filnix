@@ -1,12 +1,10 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser lists the candidates of an
     ambiguous word, it writes the name of each marked entry on stderr.
     This file proves one such write safe: the parser reads the stream
     pointer and the entry's name, and it writes them only through the
     report rule that its caller supplies. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics LongOptionTable GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,11 +12,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail.
+  GetoptModule GetoptExchange
+     GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -34,7 +31,7 @@ Definition aprint_names : list name := Eval vm_compute in
 
 
 (** The tail module supplies the set, the option table, the report rule and the tactics. *)
-Import GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 
 Import ProgramAbbreviations.

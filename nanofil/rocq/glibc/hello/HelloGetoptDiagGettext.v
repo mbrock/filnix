@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** Hello's getopt proofs take two diagnostic rules as premises. Each
     rule says what happens when getopt translates a message and then
     prints it to stderr. This module builds both rules from proofs of
@@ -19,21 +17,18 @@ From Glibc Require Import GlibcProgram.
     The rules cover only the two premises of getopt. How Hello's startup
     gives these resources, what the formatter does, the environment and
     the link of the whole program are left to the caller. *)
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import TfindEmpty LocalenameLogic.
-From Glibc Require Import FileIdle FileTidy FxprintfTidy.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextPreRules DcigettextRoute DcigettextSecure.
-From Glibc Require Import DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString
+  SysWrappers AllocLogic AllocCall HelloGlibcLibsT TfindEmpty LocalenameLogic FileIdle FileTidy
+  FxprintfTidy GetoptDiag GetoptLongDiag GetoptDiagFx DcigettextPreRules DcigettextRoute
+  DcigettextSecure DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.

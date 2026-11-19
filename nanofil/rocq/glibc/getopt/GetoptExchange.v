@@ -5,8 +5,7 @@
     argument vector: every swap reads and writes two distinct cells inside
     the vector, and the vector stays a permutation of the original. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+    GetoptArgv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -25,10 +24,6 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 Local Transparent glibc_getopt_internal_r.
-
-(** Sign extension keeps a nonnegative signed 32-bit value. *)
-Lemma sx_nonneg x : 0 <= x < 2 ^ 31 -> sign_extension (2 ^ 32) (2 ^ 31) x = x.
-Proof. intros H. unfold sign_extension. rewrite Z.mod_small; [|lia]. rewrite (proj2 (Z.leb_gt _ _)); lia. Qed.
 
 (** Glibc's scanner inlines the exchange twice, and the captured blocks
     carry the prefixes iw_2 and iw_3. This definition looks up a block
@@ -75,7 +70,7 @@ Definition x3_blk16 : block := Eval vm_compute in x_blk "iw_3.L16".
 
 (** Initialization supplies the private-field and byte modules. *)
 (** This module describes the argument vector cells. *)
-Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Section helpers.
 Context `{!gen_heapGS piece pval Σ}.
@@ -114,25 +109,6 @@ Proof using Type.
 Qed.
 
 End helpers.
-
-(** This tactic unfolds a precomputed block that the goal executes. *)
-Ltac unfold_blk := repeat match goal with |- context [b_insts ?B] => progress unfold B end.
-
-(** This tactic reduces an index computation of the form base plus offset, scaled by eight. *)
-Ltac idx x := norm; rewrite (sx_nonneg x); [|lia]; change (2 ^ (3 mod 64)) with 8; norm.
-
-(** A run of assignments to loop names keeps the lookups at names that avoid them. *)
-Ltac xkeep := repeat (match goal with H : avoids _ ?Wl = true |- _ => apply keeps_put_avoid with (W := Wl); [vm_compute; reflexivity | exact H |] end);
-  first [apply keeps_refl | assumption].
-
-(** This tactic computes a value whose arithmetic needs range facts. *)
-Ltac vxn :=
-  cbn -[put];
-  repeat match goal with
-    |- context [lookup ?k ?E] =>
-      let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
-    end;
-  unwrap; reflexivity.
 
 (** These scripts prove the lower swap loop of either exchange. Each
     iteration swaps the entry at bot plus i with the entry the same

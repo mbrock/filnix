@@ -9,9 +9,11 @@
 From Stdlib Require Import String ZArith List.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import ErrlistDataCode ErrlistFacts WordString HelloGetoptTable
+From Glibc Require Import LiteralWords.
+From Glibc Require Import ImageData.
+From Glibc Require Import ErrlistDataCode ErrlistFacts WordString
   HelloImageLoad HelloImageModule ImageErase ImageEraseMem ImagePieces
-  HelloStartKept ImageObjectPieces.
+   ImageObjectPieces.
 Import ListNotations.
 Open Scope Z_scope.
 

@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option whose name equals a
     word's name, it searches the table for names that start with it.
     The search ends with one match, with none, or with an ambiguity. One
@@ -7,8 +5,8 @@ From Glibc Require Import GlibcProgram.
     missing one. An ambiguity leads to its report. This file proves
     that path from the end of the exact search. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic GetoptTactics LongOption LongOptionTable
+  Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,10 +14,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPre
+  GetoptModule GetoptArgv GetoptExchange
+   GetoptReqTail GetoptLongDiag GetoptLongPre
   GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbItem
   GetoptLongAmbHead GetoptLongAmbRep.
 From Glibc Require Import Fix.
@@ -41,7 +39,7 @@ Definition pend_keys : list name := Eval vm_compute in
 
 
 (** The report module supplies the report, the search, the set and the tactics. *)
-Import GetoptLongAmbRep GetoptLongAmbHead GetoptLongAmbItem GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongAmbRep GetoptLongAmbHead GetoptLongAmbItem GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 
 (** This tactic takes a lookup through assignments and through the steps that keep the name. *)

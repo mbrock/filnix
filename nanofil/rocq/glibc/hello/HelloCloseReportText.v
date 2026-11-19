@@ -3,15 +3,14 @@
     array, which snprintf has just filled. Both paths leave a string
     that the next formatter can read. *)
 
-From Glibc Require Import Unit_string__strerror_os.
-From Glibc Require Import GlibcProgram GlibcTactics.
+From Glibc Require Import PrintfTables Unit_string__strerror_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine ExternalCalls Pieces Heap Language Logic MemLogic.
-From Glibc Require Import Fix FileInv OsWorld OsRegistry LibioLogic WordString PrintfOut PrintfSpec
-  HelloImageLoad HelloImageModule StartImageEarly HelloGetoptTable HelloGetoptDiagImage HelloGetoptDiagTcb
+From Glibc Require Import Fix FileInv OsWorld OsRegistry LibioLogic WordString PrintfOut
+  HelloImageLoad HelloImageModule StartImageEarly HelloGetoptDiagImage HelloGetoptDiagTcb
   HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale HelloCloseReportStrerror HelloCloseReportSnprintf.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.

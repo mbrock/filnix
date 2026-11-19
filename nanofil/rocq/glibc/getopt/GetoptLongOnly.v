@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** In long-only mode, the scanner tries a single-dash argument as a
     long option unless the argument is one character that the short
     option string names. This file proves that test safe: the scanner
@@ -9,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     run, the scanner first stores the private cursor one byte into the
     argument. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics Unit_string_strchr_os Unit_string_strchrnul_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor.
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule ByteRead
+    GetoptArgv GetoptExchange GetoptCursor.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +35,7 @@ Definition long_only_names : list name :=
 
 
 (** The cursor module stores the cursor before the long-option parser. *)
-Import GetoptCursor GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptCursor GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 (** The strchr module proves glibc's own strchr. *)
 
 (** This tactic enters a block and evaluates its phi assignments. *)

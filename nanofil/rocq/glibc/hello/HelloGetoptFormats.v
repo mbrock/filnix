@@ -10,6 +10,7 @@
     contract. Once the formatter is proved, getopt's prints need no
     more work here. *)
 
+From Glibc Require Import PrintfTables GetoptMessages ImageData.
 From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks FileInv WordString FileTidy FxprintfTidy FxprintfStream NarrowFormat NarrowArgs
-  PrintfSpec AllocRo LibioFputsSpec GetoptDiag GetoptLongDiag GetoptDiagFx HelloImageModule HelloStartKept.
+  PrintfSpec AllocRo LibioFputsSpec GetoptDiagFx HelloImageModule.
 Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 

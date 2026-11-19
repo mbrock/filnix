@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A short option ends glibc's scanner with a return. A known option
     answers with a byte that the option blocks chose, and an unknown
     option answers '?'. The getopt wrapper then copies the private index,
@@ -8,8 +7,7 @@ From Glibc Require Import GlibcProgram.
     known option's blocks and its return block up to the value returned,
     and it does the same for an unknown option. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptReqTail
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+    GetoptArgv GetoptExchange GetoptDiag GetoptReqTail
   GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -41,7 +39,7 @@ Proof. split; reflexivity. Qed.
 Lemma known_ret_ctl_high : chr_w 200 = 4294967240.
 Proof. reflexivity. Qed.
 
-Import GetoptShortCap GetoptKnownCap GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptReqTail GetoptDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section known_ret.

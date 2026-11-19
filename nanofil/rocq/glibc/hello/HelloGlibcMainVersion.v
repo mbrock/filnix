@@ -6,7 +6,7 @@
     Exit uses the concrete glibc proof and invokes the registered callback.
     Shared load rules also support the other exit branches. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

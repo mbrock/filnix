@@ -1,6 +1,3 @@
-From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
-From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_stpcpy_os.
-From Glibc Require Import GlibcProgram.
 (** When getopt reports an error in Hello, gettext translates the
     message. DcgettextReal.v proves that translation in any program that
     links glibc's own malloc, free and the gettext callees. This module
@@ -22,20 +19,21 @@ From Glibc Require Import GlibcProgram.
     Hello's own link, relying on checks that the producer makes. The caller also
     lends the memory that gettext reads, three locks and errno, and
     nothing here says how startup prepares them. *)
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects.
+From Glibc Require Import GetoptMessages Unit_intl_dcgettext_os Unit_intl_dcigettext_os
+  Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os
+  Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_stpcpy_os
+  GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
-From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextRoute.
-From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal GettextLinkCode.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode
+  WordString SysWrappers AllocLogic AllocCall HelloGlibcLibsT StpcpyCode TfindCode
+  TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode DcgettextCode DcigettextCode
+  DcigettextRoute DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal GettextLinkCode Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.

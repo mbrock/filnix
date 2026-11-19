@@ -15,6 +15,7 @@
     the image matches what the startup proof expects and passes the
     contracts along. *)
 
+From Glibc Require Import HelloObjects.
 From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.

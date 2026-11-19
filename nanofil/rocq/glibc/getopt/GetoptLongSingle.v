@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** In long-only mode, glibc's getopt sends a word with one dash to its
     long-option parser before it tries the short options. The parser
     answers -1 when no long option matches, and getopt then stores the
@@ -8,8 +6,8 @@ From Glibc Require Import GlibcProgram.
     caller receives either the answer with a session at the new index
     or the short-option state with the cursor past the dash. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,11 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange GetoptCursor
+    GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptLongSite GetoptLongSession.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -40,7 +38,7 @@ Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discrimi
 (** The site module proves the long-only call and its test of the answer. *)
 (** The session module restores the session after a return. *)
 (** The cursor module proves the store of the cursor before the short options. *)
-Import GetoptLongSite GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongSite GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** After the store of the cursor, the short options read these names, which keep their values through the store. *)
 Definition single_keys : list name := Eval vm_compute in

@@ -17,12 +17,13 @@
     Every address is read from the loader's symbols, and every string
     is read from the image, so a relink of Hello changes no line here. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import LiteralLogic.
+From Glibc Require Import HelloLiterals ImageData ImageObjectPieces GlibcTactics.
 From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap StringLogic MemLogic.
-From Glibc Require Import HelloVersionLits FileInv StrlenLogic WordString HelloGetoptTable HelloGetoptStart StartImageUnique
-  ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad HelloImageCtors
+From Glibc Require Import HelloVersionLits FileInv StrlenLogic WordString StartImageUnique
+  ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad
   HelloImageStart HelloStartKeptAlloc LibioWIdle.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,15 +40,15 @@ Open Scope Z_scope.
     flags are fl and its descriptor is fd. *)
 Definition hello_stream_kept_ps (fb fl fd lk : Z) (lkreg : region) (wd : Z) : list (piece * pval) :=
   List.concat [byte_ps fb 0 (int_bytes fl);
-    List.concat (map (fun i => hello_pointer_ps fb (8 + 8 * i) null) (seqZ 0 12));
+    List.concat (map (fun i => ptr_ps fb (8 + 8 * i) null) (seqZ 0 12));
     byte_ps fb 112 (int_bytes fd); byte_ps fb 116 (int_bytes 0);
     cell fb 120 (2 ^ 64 - 1); byte_ps fb 128 (repeat 0 8%nat);
-    hello_pointer_ps fb 136 (mkPtr lk (Obj lk)); cell fb 144 (2 ^ 64 - 1);
-    hello_pointer_ps fb 152 null; hello_pointer_ps fb 160 (mkPtr wd (Obj wd));
-    hello_pointer_ps fb 168 null; hello_pointer_ps fb 176 null;
+    ptr_ps fb 136 (mkPtr lk (Obj lk)); cell fb 144 (2 ^ 64 - 1);
+    ptr_ps fb 152 null; ptr_ps fb 160 (mkPtr wd (Obj wd));
+    ptr_ps fb 168 null; ptr_ps fb 176 null;
     byte_ps fb 192 (int_bytes 0); cell fb 200 0;
     [(PLive lk, VLive lkreg)]; byte_ps lk 0 (int_bytes 0); byte_ps lk 4 (int_bytes 0);
-    hello_pointer_ps lk 8 null].
+    ptr_ps lk 8 null].
 
 (** The wide data object wd of a stream, which `c: _IO_fwide` uses
     when it makes the stream wide, holds 224 zero bytes and then, at
@@ -55,19 +56,19 @@ Definition hello_stream_kept_ps (fb fl fd lk : Z) (lkreg : region) (wd : Z) : li
     `c: __io_vtables`. *)
 Definition hello_wide_kept_ps (wd : Z) (wreg : region) (vb : Z) : list (piece * pval) :=
   (PLive wd, VLive wreg) :: byte_ps wd 0 (replicate 224 0) ++ aux_ps wd 0 (replicate 224 CNone) ++
-  hello_pointer_ps wd 224 (mkPtr (vb + 840) (Ro vb)).
+  ptr_ps wd 224 (mkPtr (vb + 840) (Ro vb)).
 
 (** The jump table of narrow file streams lies 336 bytes into
     `c: __io_vtables`, and its slots point at glibc's file functions. *)
 Definition hello_jumps_kept_ps : list (piece * pval) := Eval vm_compute in
-  List.concat (map (fun sl => hello_pointer_ps (img_addr "__io_vtables") (vt_file + sl.1)
+  List.concat (map (fun sl => ptr_ps (img_addr "__io_vtables") (vt_file + sl.1)
     (mkPtr (img_addr sl.2) (Fn (TAtom sl.2)))) file_jumps).
 
 (** The jump table of wide streams lies [vt_wfile] bytes into the same
     object. A wide stream calls through its slots, so main keeps the
     slots that Hello's wide output and close read. *)
 Definition hello_wjumps_kept_ps : list (piece * pval) := Eval vm_compute in
-  List.concat (map (fun sl => hello_pointer_ps (img_addr "__io_vtables") (vt_wfile + sl.1)
+  List.concat (map (fun sl => ptr_ps (img_addr "__io_vtables") (vt_wfile + sl.1)
     (mkPtr (img_addr sl.2) (Fn (TAtom sl.2)))) wfile_jumps).
 
 (** This list holds the three streams' fields and the globals stdout
@@ -86,12 +87,12 @@ Definition hello_io_kept_ps : list (piece * pval) :=
     hello_stream_kept_ps (img_a "_IO_2_1_stdin_") 4222427272 0 (img_a "glibc_stdfiles#_IO_stdfile_0_lock")
       (img_gd "glibc_stdfiles#_IO_stdfile_0_lock") (img_a "glibc_stdfiles#_IO_wide_data_0");
     [(PLive (img_a "stdout"), VLive (img_gd "stdout"))];
-    hello_pointer_ps (img_a "stdout") 0 (mkPtr (img_a "_IO_2_1_stdout_") (Obj (img_a "_IO_2_1_stdout_")));
+    ptr_ps (img_a "stdout") 0 (mkPtr (img_a "_IO_2_1_stdout_") (Obj (img_a "_IO_2_1_stdout_")));
     [(PLive (img_a "stderr"), VLive (img_gd "stderr"))];
-    hello_pointer_ps (img_a "stderr") 0 (mkPtr (img_a "_IO_2_1_stderr_") (Obj (img_a "_IO_2_1_stderr_")));
+    ptr_ps (img_a "stderr") 0 (mkPtr (img_a "_IO_2_1_stderr_") (Obj (img_a "_IO_2_1_stderr_")));
     hello_jumps_kept_ps;
-    [(PLive (img_a "program_name"), VLive (img_gd "program_name"))]; hello_pointer_ps (img_a "program_name") 0 null;
-    [(PLive (img_a "optarg"), VLive (img_gd "optarg"))]; hello_pointer_ps (img_a "optarg") 0 null;
+    [(PLive (img_a "program_name"), VLive (img_gd "program_name"))]; ptr_ps (img_a "program_name") 0 null;
+    [(PLive (img_a "optarg"), VLive (img_gd "optarg"))]; ptr_ps (img_a "optarg") 0 null;
     [(PLive (img_a "optind"), VLive (img_gd "optind"))]; byte_ps (img_a "optind") 0 (int_bytes 1);
     hello_wide_kept_ps (img_a "glibc_stdfiles#_IO_wide_data_2") (img_gd "glibc_stdfiles#_IO_wide_data_2")
       (img_a "__io_vtables");
@@ -132,19 +133,6 @@ Proof.
   assert (E : kept_objects hello_kept_main_keep hello_image_module = hello_kept_main_kept) by (vm_compute; reflexivity).
   rewrite <- E. apply kept_objects_incl.
 Qed.
-
-(** These are the bytes that the image gives the object named n, in
-    order. A wide string stores four bytes for each character. *)
-Definition data_bytes (md : module) (n : string) : list Z :=
-  match find (fun it => match it with IData k _ _ _ => name_eqb k (TAtom n) | _ => false end) md with
-  | Some (IData _ _ _ its) => flat_map (fun it => match it with
-      | Str c => c | Item Wb x => [x] | Item Ww x => le_bytes x 4 | _ => [] end) its
-  | _ => []
-  end.
-
-(** The C string that starts the bytes xs ends at their first zero. *)
-Fixpoint upto_zero (xs : list Z) : list Z :=
-  match xs with [] => [] | x :: xs' => if x =? 0 then [] else x :: upto_zero xs' end.
 
 (** The bytes xs form little-endian 64-bit words, the last one padded
     with zeros, and the first k words are kept. *)

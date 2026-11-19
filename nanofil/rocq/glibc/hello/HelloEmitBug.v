@@ -11,7 +11,7 @@
     derives the contract of `c: printf` from the formatter's contract,
     and the libio proof will discharge the contract of `c: fputs`. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec.
+From Glibc Require Import HelloObjects GlibcProgram GlibcTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,8 +22,7 @@ From Glibc Require Import HelloBodies.
 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo HelloVersionLits HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require Import Fix.
+From Glibc Require Import HelloImageModule HelloImageLoad Fix.
 Import ListNotations.
 Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
   HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.

@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** A call of glibc's getopt either resumes a group of short options or
     scans for the next word, and the scan sends the word down one of
     several paths. Earlier files proved each path up to the point where
@@ -8,8 +6,9 @@ From Glibc Require Import GlibcProgram.
     still says what each kind of return means, because the getopt
     wrapper copies different fields after each. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic GetenvSpec LongOption LongOptionTable
+  Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,13 +16,13 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSite GetoptDashRet GetoptLongOnlyRet GetoptLongOnlyShort GetoptWExit GetoptWExitRet GetoptIdlePath GetoptScanEnd GetoptEntryScanRet GetoptEntryPre GetoptKnownCap GetoptShortCap GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
-Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSite GetoptDashRet GetoptLongOnlyRet GetoptLongOnlyShort GetoptWExit GetoptWExitRet GetoptIdlePath GetoptScanEnd GetoptEntryScanRet GetoptEntryPre GetoptKnownCap GetoptDiag GetoptShortCap GetoptEntry GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
+From Glibc Require OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSite GetoptDashRet GetoptLongOnlyRet GetoptLongOnlyShort GetoptWExit GetoptWExitRet GetoptIdlePath GetoptScanEnd GetoptEntryScanRet GetoptEntryPre GetoptKnownCap GetoptShortCap GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
+Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSite GetoptDashRet GetoptLongOnlyRet GetoptLongOnlyShort GetoptWExit GetoptWExitRet GetoptIdlePath GetoptScanEnd GetoptEntryScanRet GetoptEntryPre GetoptKnownCap GetoptDiag GetoptShortCap GetoptEntry GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongSite GetoptLongJoinMiss GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongSite GetoptLongJoinMiss GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** ## The names each block keeps
 
@@ -267,7 +266,7 @@ Lemma wp_getopt_call_parse_arg_with_at cf n av ar p os lo li lonly pc penv b r p
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->

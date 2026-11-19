@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word, it
     still has two ways out. In long-only mode a word such as "-x" may be
     a short option, so the parser returns -1 and lets the caller try the
@@ -10,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     the word, the option string and the vector only inside them, and it
     writes only the parser's own private fields. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics Unit_string_strchr_os Unit_string_strchrnul_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,10 +17,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag GetoptLongPre GetoptLongUnrec GetoptLongMissOnly.
+  GetoptModule ByteRead GetoptArgv GetoptExchange
+   GetoptReqTail GetoptLongDiag GetoptLongPre GetoptLongUnrec GetoptLongMissOnly.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -58,7 +56,7 @@ Proof. unfold sbyte. cbn. lia. Qed.
 
 
 (** The long-only module supplies the long-only test, the report, the option table and the tactics. *)
-Import GetoptLongMissOnly GetoptLongUnrec GetoptLongPre GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongMissOnly GetoptLongUnrec GetoptLongPre GetoptLongDiag GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section miss.

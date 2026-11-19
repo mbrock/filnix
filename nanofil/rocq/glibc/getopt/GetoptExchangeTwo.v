@@ -1,11 +1,9 @@
-From Glibc Require Import GlibcProgram.
 (** Glibc's scanner inlines its exchange routine twice. The outer loop
     of each copy alternates its two swap loops until one of the two
     blocks is empty. This file gives the proof script for that loop and
     proves the loop of the first copy. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,8 +11,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -32,7 +30,7 @@ Proof. unfold avoids. rewrite forallb_app. by intros -> ->. Qed.
 
 (** This module proves the lower swap loop of the first copy. *)
 (** This module proves the upper swap loop of the first copy. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

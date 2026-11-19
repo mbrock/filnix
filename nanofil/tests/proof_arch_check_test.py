@@ -56,7 +56,7 @@ class ProofArchCheckTest(unittest.TestCase):
                     "tactics/OsTactics.v": 'From Glibc Require Import Fix.\nLtac os_step := idtac.\nTactic Notation "load_w" := idtac.\nDefinition td := LG0.\n',
                     "string/Strlen.v": "From Glibc Require Import StrCode OsTactics.\nLocal Ltac priv := os_step.\nDefinition s := f.\n",
                     "libio/FileInv.v": "From Glibc Require Import Strlen.\nDefinition fi := s.\n",
-                    "hello/HelloMain.v": "From Glibc Require Import FileInv.\nDefinition hm := fi.\n",
+                    "hello/HelloMain.v": "From Glibc Require Import FileInv StrCode.\nDefinition hm := (fi, f).\n",
                     "hi_atexit/HiMain.v": "From Glibc Require Import FileInv.\nDefinition hi := fi.\n",
                 },
             )
@@ -64,6 +64,7 @@ class ProofArchCheckTest(unittest.TestCase):
             failures, _ = compare_against_baseline(res, {}, strict=True)
             self.assertEqual(failures, [])
             self.assertEqual(res["target_depths"]["HelloMain"][0], 5)
+            self.assertEqual(res["target_dependencies"]["HelloMain"], 6)
 
     def test_detects_layer_and_sibling_violations(self):
         with tempfile.TemporaryDirectory() as d:

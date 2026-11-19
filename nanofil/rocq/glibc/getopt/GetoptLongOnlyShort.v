@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** In long-only mode, glibc's getopt reads a single-dash word such as
     "-ab" as short options when the long-option parser rejects it. The
     parser may already have changed the bad-option field and chosen an
@@ -8,8 +6,8 @@ From Glibc Require Import GlibcProgram.
     byte into the word, runs one character of the cluster to its return,
     and restores the session. The form W; keeps its own exit. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import LongOptionTable OsMemLogic LongOption Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,13 +15,13 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptKnownCap GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptColon GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
-Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptKnownCap GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
+From Glibc Require OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptLongScan GetoptLongSite GetoptKnownCap GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptColon GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
+Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptLongScan GetoptLongSite GetoptKnownCap GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptCharRet GetoptEntryChar GetoptScanChar.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongSite GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongSite GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** One list of names can serve the whole path. The setup's names avoid
     the names that the long-only call and the short cursor assign, so a

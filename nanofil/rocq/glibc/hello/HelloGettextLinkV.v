@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** HelloGettextLink.v proves a getopt diagnostic's translation in
     Hello's link, but only for a privilege flag that reads 0. Hello's
     linked image starts the flag at 1. This module proves the same
@@ -11,21 +10,17 @@ From Glibc Require Import GlibcProgram.
     finds the two functions where the selection of HelloStrchrImage.v
     finds them. The producer checked this on the full image, but Rocq has
     not. A caller whose flag reads 0 needs no such premise. *)
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects GetoptMessages GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import TfindEmpty LocalenameLogic.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextRoute DcigettextSecure.
-From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextRealV.
-From Glibc Require Import HelloGettextLink HelloGettextImage HelloStrchrImageCode HelloStrchrImage.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString
+  SysWrappers AllocLogic AllocCall HelloGlibcLibsT TfindEmpty LocalenameLogic
+  DcigettextRoute DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextRealV
+  HelloGettextLink HelloGettextImage HelloStrchrImageCode HelloStrchrImage Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.

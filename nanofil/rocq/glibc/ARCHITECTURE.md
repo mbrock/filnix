@@ -30,6 +30,14 @@ Dependencies point downward through six layers (with sibling programs in `L5` is
 - **L4 — Generic startup** (`startup/`): reusable `__libc_start_main`, constructors, and initialization parameterized over an image, with no dependency on `hello/` or `hi_atexit/`.
 - **L5 — Whole-program proofs** (`hello/`, `hi_atexit/`): concrete images, wiring, and top-level safety theorems.
 
+## Option tables and image proofs
+
+Hello's option table can be checked as soon as its captured object and the table schema are available. `LongOption` describes the option fields and return codes. `LongOptionTable` describes the memory a caller lends to the parser. The exact-match loop, flag store and parser call proofs consume those definitions. The startup proof supplies the implementation of the getenv call through `GetenvSpec`.
+
+`GetoptMessageData` holds the nine format strings and their symbol names. `LiteralLogic` proves that literals at distinct bases occupy distinct heap pieces and turns those pieces into shared strings. Both the image check and the diagnostic call proofs use those facts. `ImageData` checks loader symbol addresses and reads global initializers for the constructor, diagnostic and stream image checks.
+
+`HelloObjects` gives startup and main the same description of the linked globals. `HelloNameOffsets` specifies which bytes of argv[0] name the program, and `PrintfTables` describes the formatter globals that main shares. A proof of the image layout can use these contracts without loading the code that runs main, chooses a program name or prints a string.
+
 ## Functor policy
 
 Rocq functor applications copy definitions and lemmas into the compiled `.vos` interface of every module that instantiates them. Instantiate each Nanofil functor once:
@@ -67,4 +75,4 @@ Each ordinary proof should keep a tactic local when all its callers are in that 
 
 The import check counts a direct import as a candidate for removal when its exported names do not occur in the file. An import can still supply a notation, a hint, a typeclass instance or a name through a re-export. Compile the dependent proofs when removing a candidate.
 
-For a cold-open measurement, give `rq` an empty interface cache, a prebuilt worker and a fixed `RQ_JOBS`, then open a named theorem. For a warm measurement, stop the worker and open the same theorem again with the same cache. The dependency graph gives a chain length in files. The elapsed time also depends on the cost of each file and when its compiler can start.
+For a cold-open measurement, give `rq` an empty interface cache, a prebuilt worker and a fixed `RQ_JOBS`, then open a named theorem. For a warm measurement, stop the worker and open the same theorem again with the same cache. The architecture report counts each reachable glibc interface once and gives the longest chain in files, including the target. The elapsed time also depends on the cost of each file and when its compiler can start.

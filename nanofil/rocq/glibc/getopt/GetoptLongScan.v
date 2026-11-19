@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A long option such as "--name=value" names its option before an
     equals sign, or before the end of the argument. glibc's long-option
     parser first measures that name. It walks a pointer from its private
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     file proves that walk safe: it reads the cursor's string only up to
     the byte where it stops, and it writes nothing. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptExchange GetoptDiag GetoptReqTail.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+    GetoptExchange.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -73,7 +71,7 @@ Definition plo_blk27 : block := Eval vm_compute in plo_blk "L27".
 
 
 (** The tail module supplies the string lemmas, a shared renewed read and the tactics. *)
-Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

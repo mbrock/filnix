@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_memcmp_os Unit_string_memrchr_os Unit_string_strncmp_os Unit_string_strrchr_os.
-From Glibc Require Import GlibcProgram.
 (** This file proves GNU Hello's `set_program_name` and `memeq` when
     they are linked with glibc's own memrchr and memcmp, with no
     premise about either function.
@@ -21,7 +19,8 @@ From Glibc Require Import GlibcProgram.
     compares: `set_program_name` compares the seven bytes of "/.libs/".
     From 16 bytes on, glibc's memcmp traps (MemcmpLogic.v's header). *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloNameOffsets Unit_string_memcmp_os Unit_string_memrchr_os
+  Unit_string_strncmp_os Unit_string_strrchr_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

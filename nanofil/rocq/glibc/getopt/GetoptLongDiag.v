@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser reports a bad long option on stderr when
     its caller lets it print errors. Most reports take two calls, as the
     short-option reports do: __GI___dcgettext translates the message,
@@ -12,8 +11,8 @@ From Glibc Require Import GlibcProgram.
     about locale translation and formatting. It is not part of the OS
     boundary. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOptionTable GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,10 +20,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact.
+  GetoptModule GetoptArgv GetoptExchange
+    GetoptLongScan.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -45,7 +44,7 @@ Definition ldiag_names : list name := Eval vm_compute in
 From Glibc Require Export GetoptMessages.
 
 (** The exact search module supplies the option table and the tactics. *)
-Import GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongScan GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section ldiag_values.

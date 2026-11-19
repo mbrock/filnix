@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips the nonoptions that follow
     the public index before it looks for an option. An argument is a
     nonoption when its first character is not a dash, or when it is the
@@ -6,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     the argument's terminated string, and the loop stores the index it
     stops at as the new end of the nonoption block. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange
   GetoptPermute GetoptExchangeTwo GetoptSkipTest.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -33,7 +31,7 @@ Definition skip_names : list name :=
 
 
 (** This module proves the nonoption test, and its exchange module supplies the argument vector. *)
-Import GetoptSkipTest GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptSkipTest GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section skip_values.

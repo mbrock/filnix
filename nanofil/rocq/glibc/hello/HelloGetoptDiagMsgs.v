@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When getopt reports a bad option, it passes one of nine format
     strings to gettext and then to the printer. The diagnostic rules in
     HelloGetoptDiagGettext.v, HelloGetoptDiagTcb.v and HelloGetoptDiagLock.v
@@ -10,148 +9,26 @@ From Glibc Require Import GlibcProgram.
 
     The file also checks the pieces against the loader image of the getopt
     module alone. They agree with that image, and their keys are distinct
-    from the keys of the parser's starting pieces in HelloGetoptStart.v.
+    from the keys of the parser's starting pieces in GetoptInitial.v.
     This does not show that a program linking Hello with glibc puts the
     strings at these addresses, and it does not show that startup hands
     the pieces over. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import GetoptMessages LiteralWords GetoptMessageData ImageData LiteralLogic
+  GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString GetoptInitial GetoptDiag GetoptLongDiag
-  HelloGetoptTable HelloGetoptStart HelloGetoptDiagGettext.
+From Glibc Require Import FileInv WordString GetoptInitial
+   HelloGetoptDiagGettext.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
 Import FileInv Fix.ML0 Fix.LG0.
-
-(** ## The nine messages
-
-    getopt prints a message when a user gives it an option it does not
-    know or leaves out a required argument. Short options use two
-    messages and long options use five, and an ambiguous long option also
-    prints each candidate and then a newline. The byte lists below spell
-    those nine strings without their terminators, as the getopt module's
-    data holds them. *)
-
-(** This is message 138, "%s: option '%s%s' is ambiguous\n". *)
-Definition t138 : list Z :=
-  [37; 115; 58; 32; 111; 112; 116; 105; 111; 110; 32; 39; 37; 115; 37; 115; 39; 32; 105; 115; 32;
-   97; 109; 98; 105; 103; 117; 111; 117; 115; 10].
-
-(** Message 139 is the heading that getopt prints before it lists the
-    candidates of an ambiguous option. *)
-Definition t139 : list Z :=
-  [37; 115; 58; 32; 111; 112; 116; 105; 111; 110; 32; 39; 37; 115; 37; 115; 39; 32; 105; 115; 32;
-   97; 109; 98; 105; 103; 117; 111; 117; 115; 59; 32; 112; 111; 115; 115; 105; 98; 105; 108; 105;
-   116; 105; 101; 115; 58].
-
-(** This is message 140, " '%s%s'". *)
-Definition t140 : list Z :=
-  [32; 39; 37; 115; 37; 115; 39].
-
-(** This is message 141, "\n". *)
-Definition t141 : list Z :=
-  [10].
-
-(** This is message 142, "%s: unrecognized option '%s%s'\n". *)
-Definition t142 : list Z :=
-  [37; 115; 58; 32; 117; 110; 114; 101; 99; 111; 103; 110; 105; 122; 101; 100; 32; 111; 112; 116;
-   105; 111; 110; 32; 39; 37; 115; 37; 115; 39; 10].
-
-(** This is message 143, "%s: option '%s%s' doesn't allow an argument\n". *)
-Definition t143 : list Z :=
-  [37; 115; 58; 32; 111; 112; 116; 105; 111; 110; 32; 39; 37; 115; 37; 115; 39; 32; 100; 111; 101;
-   115; 110; 39; 116; 32; 97; 108; 108; 111; 119; 32; 97; 110; 32; 97; 114; 103; 117; 109; 101;
-   110; 116; 10].
-
-(** This is message 144, "%s: option '%s%s' requires an argument\n". *)
-Definition t144 : list Z :=
-  [37; 115; 58; 32; 111; 112; 116; 105; 111; 110; 32; 39; 37; 115; 37; 115; 39; 32; 114; 101; 113;
-   117; 105; 114; 101; 115; 32; 97; 110; 32; 97; 114; 103; 117; 109; 101; 110; 116; 10].
-
-(** This is message 148, "%s: invalid option -- '%c'\n". *)
-Definition t148 : list Z :=
-  [37; 115; 58; 32; 105; 110; 118; 97; 108; 105; 100; 32; 111; 112; 116; 105; 111; 110; 32; 45; 45;
-   32; 39; 37; 99; 39; 10].
-
-(** This is message 149, "%s: option requires an argument -- '%c'\n". *)
-Definition t149 : list Z :=
-  [37; 115; 58; 32; 111; 112; 116; 105; 111; 110; 32; 114; 101; 113; 117; 105; 114; 101; 115; 32;
-   97; 110; 32; 97; 114; 103; 117; 109; 101; 110; 116; 32; 45; 45; 32; 39; 37; 99; 39; 10].
-
-(** These are the symbols of the nine strings, in the order of the texts
-    below. *)
-Definition dgx_msg_names : list string :=
-  ["glibc_getopt#str.138"; "glibc_getopt#str.139"; "glibc_getopt#str.140"; "glibc_getopt#str.141";
-   "glibc_getopt#str.142"; "glibc_getopt#str.143"; "glibc_getopt#str.144"; "glibc_getopt#str.148";
-   "glibc_getopt#str.149"]%string.
-
-(** These are the nine texts in the same order. *)
-Definition dgx_msg_texts : list (list Z) := [t138; t139; t140; t141; t142; t143; t144; t148; t149].
-
-(** Each text has checked words. *)
-Lemma dgx_msg_texts_ok : Forall (fun s => lit_ok s = true) dgx_msg_texts.
-Proof.
-  assert (H : forallb lit_ok dgx_msg_texts = true) by (vm_compute; reflexivity).
-  apply Forall_forall. intros s Hs. rewrite forallb_forall in H. apply H, list_elem_of_In, Hs.
-Qed.
-
-(** The loader writes each string into its own object. This function
-    lists the pieces that hold the texts ts in the objects bs, taking one
-    literal after another. *)
-Definition lits_ps (bs : list (Z * region)) (ts : list (list Z)) : list (piece * pval) :=
-  List.concat (zip_with (fun br s => lit_ps br.1 br.2 (lit_words s)) bs ts).
-
-(** These are the pieces of the nine messages at the objects bs. *)
-Definition dgx_msg_ps (bs : list (Z * region)) : list (piece * pval) := lits_ps bs dgx_msg_texts.
-
-(** A symbol table places the messages at bs when each symbol names the
-    read-only object at the matching base. *)
-Definition dgx_msg_at (gs : list (name * ptr)) (bs : list (Z * region)) : Prop :=
-  Forall2 (fun n br => Term.lookup (TAtom n) gs = Some (mkPtr br.1 (Ro br.1))) dgx_msg_names bs.
-
-(** A literal fits its object when the object starts at a positive 8-byte
-    boundary and holds all its words below the top of the address space. *)
-Definition lit_fit (br : Z * region) (s : list Z) : Prop :=
-  0 < br.1 /\ br.1 mod 8 = 0 /\ br.1 + 8 * Z.of_nat (List.length (lit_words s)) <= r_end br.2 /\
-  r_end br.2 <= 2 ^ 48.
-
-(** ## Distinct keys
-
-    The keys of a literal's pieces all belong to its base, so literals at
-    distinct bases have disjoint keys. This proof works on the structure of
-    the lists, so it never decides distinctness over all the bytes. *)
-
-(** Every key of a literal's pieces belongs to its base. *)
-Lemma lit_ps_ids b reg ws k : k ∈ (lit_ps b reg ws).*1 -> piece_id k = b.
-Proof.
-  cbn [lit_ps fmap list_fmap fst]. rewrite (words_ps_keys b 0 ws).
-  intros [->|Hk]%elem_of_cons; [done|]. apply list_elem_of_fmap in Hk as (o & -> & _). done.
-Qed.
-
-(** Literals at distinct bases have distinct keys, and each key belongs to
-    one of the bases. *)
-Lemma lits_ps_keys bs ts : NoDup bs.*1 ->
-  NoDup (lits_ps bs ts).*1 /\ forall k, k ∈ (lits_ps bs ts).*1 -> piece_id k ∈ bs.*1.
-Proof.
-  unfold lits_ps. revert ts. induction bs as [|[b reg] bs IH]; intros [|s ts] Hnd.
-  - split; [constructor | intros k Hk; inversion Hk].
-  - split; [constructor | intros k Hk; inversion Hk].
-  - split; [constructor | intros k Hk; inversion Hk].
-  - cbn [zip_with List.concat fmap list_fmap fst] in *. apply NoDup_cons in Hnd as [Hb Hnd].
-    destruct (IH ts Hnd) as [IHn IHk]. rewrite fmap_app. split.
-    + apply NoDup_app. split_and!; [apply lit_ps_nodup| |exact IHn].
-      intros k Hk1 Hk2. apply lit_ps_ids in Hk1. apply IHk in Hk2. rewrite Hk1 in Hk2. exact (Hb Hk2).
-    + intros k [Hk|Hk]%elem_of_app.
-      * apply lit_ps_ids in Hk. rewrite Hk. apply elem_of_cons. by left.
-      * apply elem_of_cons. right. exact (IHk k Hk).
-Qed.
 
 Section own.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -168,18 +45,6 @@ Definition dgx_msgs (bs : list (Z * region)) : iProp Σ :=
 
 #[global] Instance dgx_msgs_persistent bs : Persistent (dgx_msgs bs).
 Proof using Type. unfold dgx_msgs. apply _. Qed.
-
-(** The pieces of fitting literals with checked words freeze into their
-    strings. *)
-Lemma lits_own bs ts : Forall2 lit_fit bs ts -> Forall (fun s => lit_ok s = true) ts ->
-  pts (lits_ps bs ts) ==∗ [∗ list] br; s ∈ bs; ts, word_string DfracDiscarded (mkPtr br.1 (Ro br.1)) s.
-Proof using Type.
-  unfold lits_ps. induction 1 as [|[b reg] s bs ts Hf _ IH]; intros Hok; [by iIntros "_ !>"|].
-  apply Forall_cons in Hok as [Hs Hok]. destruct Hf as (H0 & H8 & He & Hr).
-  cbn [zip_with List.concat]. rewrite pts_app. iIntros "[H Hs]".
-  iMod (lit_own with "H") as "#H"; try assumption. iMod (IH Hok with "Hs") as "Hs".
-  iModIntro. rewrite big_sepL2_cons. iFrame "H Hs".
-Qed.
 
 (** Startup can hand over the raw pieces of the nine messages, and the
     rules want strings. When every object fits its message, the pieces

@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser reports an ambiguous word, it lists
     the candidates that its set marks. This file proves one step of that
     listing safe: the parser reads the byte of one entry in the set, and
@@ -6,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     table and writes it through the report rule that its caller
     supplies. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics LongOptionTable GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,11 +13,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongAmbPrint.
+  GetoptModule
+   GetoptReqTail GetoptLongScan GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongAmbPrint.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -53,7 +51,7 @@ Definition plo_blk273 : block := Eval vm_compute in plo_blk "L273".
 
 
 (** The write module supplies the write of one candidate, the set, the option table and the tactics. *)
-Import GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongAmbPrint GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongScan GetoptReqTail Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 
 Import ProgramAbbreviations.

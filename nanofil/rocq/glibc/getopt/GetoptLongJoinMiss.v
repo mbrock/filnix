@@ -1,13 +1,11 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word, it
     either reports the word as unrecognized and skips it, or, in
     long-only mode, leaves the word to the short options. Both ways end
     in a return. This file states what the parser holds after any of its
     returns, and it proves that the not-found returns reach that state. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import LongOptionTable OsMemLogic LongOption Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,11 +13,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail.
+  GetoptModule ByteRead GetoptArgv GetoptExchange
+   GetoptLongScan GetoptLongDiag GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
+  GetoptLongMiss.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -31,7 +29,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The entry module supplies the searches, the reports, the set and the tactics. *)
-Import GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 
 Section res.

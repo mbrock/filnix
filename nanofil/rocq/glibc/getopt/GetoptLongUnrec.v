@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no option for a word and
     may not leave the word to the short options, it reports the word as
     unrecognized on stderr when its caller lets it print errors. Then it
@@ -6,8 +5,8 @@ From Glibc Require Import GlibcProgram.
     bad option and answers '?'. This file proves that report and those
     stores safe. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptMessages OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,10 +14,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrcmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag.
+  GetoptModule GetoptArgv GetoptExchange
+    GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -35,7 +34,7 @@ Definition lunrec_names : list name := Eval vm_compute in
 
 
 (** The found-option module supplies the option table, the report rule and the tactics. *)
-Import GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic shows that the message of a report is one of the five. *)
 Local Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].

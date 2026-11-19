@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A long option written without an equals sign may still require an
     argument. glibc's long-option parser then takes the next element of
     the argument vector as the argument and steps the index past it.
@@ -9,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     the first byte of the option string, and it writes only the parser's
     own private fields. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption LongOptionTable GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,10 +17,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag GetoptLongTail.
+  GetoptModule ByteRead GetoptArgv GetoptExchange
+   GetoptReqTail GetoptLongDiag GetoptLongTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +36,7 @@ Definition lreq_keys : list name := Eval vm_compute in
 
 
 (** The tail module supplies both ends of the path, the option table, the report rule and the tactics. *)
-Import GetoptLongTail GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongTail GetoptLongDiag GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section req.

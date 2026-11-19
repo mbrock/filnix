@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** When the current word starts with two dashes, glibc's getopt
     stores a cursor past the dashes and calls its long-option parser,
     then returns the parser's answer. The next call of getopt relies on
@@ -7,7 +5,8 @@ From Glibc Require Import GlibcProgram.
     call with the restoration of the session, so the caller receives the
     answer together with a session at the new index. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,11 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange GetoptCursor
+    GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptLongJoinMiss GetoptLongCall GetoptDispatch GetoptLongSession.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -37,7 +36,7 @@ Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discrimi
 
 (** The call module supplies the rule for a call of the parser. *)
 (** The session module restores the session after a return. *)
-Import GetoptLongCall GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongCall GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
 Local Ltac dash_vx :=

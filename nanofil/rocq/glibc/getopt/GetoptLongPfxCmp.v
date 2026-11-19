@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds no entry whose name equals the
     word's name, it looks for entries whose names start with it. A
     second such entry makes the word ambiguous unless it means the same
@@ -9,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     a flag pointer only while it holds the flag target's lifetime, which
     the caller lends it from the targets that it owns. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption LongOptionTable GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,10 +17,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenLoop StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenLoop StrlenWord
   StrcmpLoop StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore.
+  GetoptModule
+    GetoptLongScan.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -46,7 +45,7 @@ Definition plo_blk155 : block := Eval vm_compute in plo_blk "L155".
 
 
 (** The not-found module supplies the option table, the targets and the tactics. *)
-Import GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongScan Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** This tactic hands the comparison's outcome to the caller. *)
 Local Ltac pcmp_fin := first

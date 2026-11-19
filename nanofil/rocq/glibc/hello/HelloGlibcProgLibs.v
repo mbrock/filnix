@@ -1,12 +1,10 @@
-From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** This file proves the "/.libs/" test in GNU Hello's `set_program_name`
     for the triple in HelloGlibcProgName.v. Once the function has found
     the base name, block L8 uses `memeq` to compare the seven preceding
     bytes with "/.libs/". It then goes to the "lt-" test or straight to
     the stores. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloNameOffsets Unit_string_strncmp_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

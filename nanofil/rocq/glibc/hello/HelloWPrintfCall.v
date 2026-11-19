@@ -5,9 +5,9 @@
     file shows that main can lend them to the call and still keep its
     own contract. *)
 
+From Glibc Require Import HelloObjects.
 From Glibc Require Fix.
-From Glibc Require Import Unit_string_memset_os.
-From Glibc Require Import GlibcProgram GlibcTactics.
+From Glibc Require Import Unit_string_memset_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

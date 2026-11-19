@@ -170,10 +170,8 @@
     "CodePrelude",
     "GlibcProgram",
     "StringSpecs",
-    "HelloGetoptTable",
     "HelloImageWConvObjs",
     "HiAtexitModule",
-    "GetoptInitialize",
     "LibioWConvTranslitRepl",
     "Mbrtowc",
     "StartImageCpu",
@@ -194,13 +192,16 @@
     "WPrintfFileFlush"
   ],
   "critical_path_targets": [
+    "HelloGetoptTable",
+    "HelloImageKept",
+    "HelloGlibcMainLibs",
     "HelloStartNeverPanics"
   ],
   "baseline": {
     "layer_edges": {},
     "functor_apps": 0,
-    "exported_tactics": 153,
+    "exported_tactics": 135,
     "duplicate_require_files": 0,
-    "unused_edges": 1946
+    "unused_edges": 1718
   }
 }

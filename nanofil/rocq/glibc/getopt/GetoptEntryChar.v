@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** A call of glibc's scanner that resumes inside a cluster such as
     "-ab" runs the entry blocks and then reads the next character of the
     cluster. The entry rule leaves that path at the block L75, with the
@@ -11,8 +9,8 @@ From Glibc Require Import GlibcProgram.
     returns. The path that scans for a new word and the form W; keep
     their own exits. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetenvSpec LongOption Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,7 +18,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
   GetoptState ByteRead GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptEntryCall GetoptArgv
   GetoptExchange GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap
   GetoptCharRet.
@@ -79,11 +77,8 @@ Proof using Type.
 Qed.
 End cursor.
 
-Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0
-  Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
-
-Import ProgramAbbreviations.
-Section entry_char.
+Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState Fix.ML0 Fix.LG0
+  Fix.LG0.L ByteRead GetoptArgv. Import ProgramAbbreviations. Section entry_char.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The OS interpretation survives the scanner's safepoints. *)
 Local Instance entrychar_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
@@ -139,7 +134,7 @@ Lemma wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r 
   avoids ks2 ret_names = true -> incl known_req_keys ks2 ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->

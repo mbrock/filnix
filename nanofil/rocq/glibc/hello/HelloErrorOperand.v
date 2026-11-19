@@ -10,8 +10,8 @@
     takes the object's lifetime out of that idle state for the read and
     puts it back before the call. *)
 
-From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os
+  Unit_stdioZ2dcommon_fxprintf_os GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

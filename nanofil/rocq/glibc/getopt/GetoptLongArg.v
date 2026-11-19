@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser has found the option that a word
     names in the caller's table, it steps the index past the word,
     clears its cursor and looks at the option's argument. The argument
@@ -9,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     the block that tests the found entry to each of the parser's
     returns. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption LongOptionTable GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,10 +17,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre.
+  GetoptModule ByteRead GetoptArgv GetoptExchange
+   GetoptReqTail GetoptLongScan GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -58,7 +57,7 @@ Definition long_arg (s : list Z) (has i n : Z) (cur a : ptr) (ps : list ptr) (i'
 
 
 (** The first-blocks module supplies the steps that this file composes. *)
-Import GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongScan GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section arg.

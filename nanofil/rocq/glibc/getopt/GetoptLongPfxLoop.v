@@ -1,12 +1,10 @@
-From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** glibc's long-option parser searches the whole table for options
     whose names start with a word's name. The module before this one
     proves one round of that search. This file proves the whole search
     safe by induction over the entries that are left. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall GetoptTactics LongOption LongOptionTable Unit_string_strncmp_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,10 +12,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptModule
+
   GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -30,7 +28,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The round module supplies one round of the search, the set, the option table and the tactics. *)
-Import GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section loop.

@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** "W;" in the option string lets "-W foo" stand for the long option
     "--foo". glibc's scanner takes the word after the W as a required
     argument and hands it to the long-option parser. This file proves the
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     With no word left, it records the bad option, reports it through the
     caller's rule, and answers ':' or '?'. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptReqTail.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+  GetoptInitialize GetoptArgv GetoptExchange GetoptDiag GetoptReqTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -42,7 +40,7 @@ Definition getopt_blk570 : block := Eval vm_compute in x_blk "L570".
 
 
 (** The tail module supplies the report rule, the argument vector and its tactics. *)
-Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section wtail.

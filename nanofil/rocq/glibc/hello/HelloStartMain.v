@@ -12,7 +12,7 @@
     are computed from the linked module, whatever memory the loader
     builds for it. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import HelloObjects GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

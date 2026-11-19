@@ -3,6 +3,7 @@
     It uses the built-in conversion tables because Hello has registered
     no handlers of its own. *)
 
+From Glibc Require Import PrintfTables.
 From Glibc Require FixVariadic.
 From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.

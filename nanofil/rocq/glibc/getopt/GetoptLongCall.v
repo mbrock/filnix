@@ -1,12 +1,11 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** glibc's getopt calls its long-option parser when the current word
     starts with two dashes, or with one dash in long-only mode. This
     file gives that caller a rule for the call: the parser returns a
     value, and the caller's frame resumes with the state that plo_res
     describes. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,11 +13,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule ByteRead GetoptArgv GetoptExchange
+    GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptLongJoinMiss GetoptLongJoin.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -31,7 +30,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The join module supplies the parser from its entry to its returns. *)
-Import GetoptLongJoin GetoptLongJoinMiss GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongJoin GetoptLongJoinMiss GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 
 Import ProgramAbbreviations.

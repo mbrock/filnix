@@ -10,8 +10,9 @@
     the contracts of those two calls. The module
     [HelloVersionEtcVa](HelloVersionEtcVa.v) proves the other two. *)
 
-From Glibc Require Import HelloImage_versionZ2detc.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
+From Glibc Require Import HelloObjects.
+From Glibc Require Import HelloLiterals HelloImage_versionZ2detc GlibcProgram GlibcTactics GlibcSpec
+  OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

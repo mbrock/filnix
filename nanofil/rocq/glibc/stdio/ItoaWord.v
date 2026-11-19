@@ -11,15 +11,15 @@
     rounds by induction and matches them with [dec_digits_from], which
     computes the same digits in the same order. *)
 
-From Glibc Require Import Unit_stdioZ2dcommon__fitoa_word_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_stdioZ2dcommon__fitoa_word_os GlibcProgram GlibcSpec
+  GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic PrintfSpec ItoaWordSpec.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic ItoaWordSpec.
 Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.

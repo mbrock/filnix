@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_nptl_alloca_cutoff_os.
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser meets an ambiguous word and its
     caller lets it print errors, it allocates a set with one byte per
     table entry. A small set lives in the parser's frame, and a large
@@ -10,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     leaves the set null, and the parser then only remembers that the
     word is ambiguous. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics Unit_nptl_alloca_cutoff_os GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,10 +17,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenLoop StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenLoop StrlenWord
   StrcmpLoop StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag
+  GetoptModule
+   GetoptReqTail GetoptLongScan
   GetoptLongPfxCmp GetoptLongPfxMark.
 From Glibc Require CutoffLogic.
 From Glibc Require Import Fix.
@@ -47,7 +45,7 @@ Definition plo_blk184 : block := Eval vm_compute in plo_blk "L184".
 
 
 (** The marking module supplies the set, the option table and the tactics. *)
-Import GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongPfxMark GetoptLongPfxCmp GetoptLongScan GetoptReqTail Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section fresh.
 Context `{!gen_heapGS piece pval Σ}.

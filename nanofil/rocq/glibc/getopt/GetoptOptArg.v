@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A short option with an optional argument takes the rest of its
     cluster as that argument. glibc's scanner reads the byte at its
     private cursor. When that byte is not the terminator, the private
@@ -8,8 +7,7 @@ From Glibc Require Import GlibcProgram.
     cursor becomes null. This file proves that step safe: the scanner
     reads only the cursor's string and writes only its own fields. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  ByteRead GetoptInitialize GetoptEntry GetoptExchange GetoptCursor.
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
+  ByteRead GetoptExchange GetoptCursor.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,16 +35,13 @@ Definition opt_names : list name := Eval vm_compute in
 
 
 (** The character module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
-
-(** This tactic closes a bound on a raw address inside a shared string. *)
-Ltac rawa := unfold raw_address, ptr_add; cbn [ptr_addr]; rewrite ?(Z.mod_small _ (2 ^ 64)); lia.
 
 Import ProgramAbbreviations.
 Section optarg.

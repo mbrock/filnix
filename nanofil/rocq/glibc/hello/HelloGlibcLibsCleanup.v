@@ -1,10 +1,8 @@
-From Glibc Require Import Unit_libio_genops_os.
-From Glibc Require Import GlibcProgram.
 (** This file discharges glibc's final stream cleanup after Hello's exit
     callback has closed stdout and stderr. The remaining stdin stream has
     nothing to flush, so the existing concrete cleanup proof suffices. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects Unit_libio_genops_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

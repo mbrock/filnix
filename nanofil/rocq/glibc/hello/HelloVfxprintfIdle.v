@@ -5,8 +5,8 @@
     runs the proof of [VfxprintfCall](../stdio/VfxprintfCall.v), and lets
     the formatter's proved contract do the printing. *)
 
-From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_stdioZ2dcommon_fxprintf_os GlibcProgram GlibcSpec
+  GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

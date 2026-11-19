@@ -5,15 +5,14 @@
     the conversion and write of the pending characters to the rule for
     `c: _IO_wdo_write`. *)
 
-From Glibc Require Import Unit_libio_fileops_os Unit_libio_wfiledoalloc_os.
-From Glibc Require Import GlibcProgram.
+From Glibc Require Import HelloObjects Unit_libio_fileops_os Unit_libio_wfiledoalloc_os GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls Pieces Heap.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioWIdle
-  HelloGlibcDebts HelloGlibcLibsT HelloImageModule HelloImageLoad HelloImageLayout AllocCall
+   HelloGlibcLibsT HelloImageModule HelloImageLoad HelloImageLayout AllocCall
   LibioWOverflowDispatch LibioWOverflowWrite LibioWOverflowAllocate LibioWOverflow LibioWXsputn WPrintfFileFlush.
 From Glibc Require LibioCleanupExit.
 Open Scope Z_scope.

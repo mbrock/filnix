@@ -7,7 +7,7 @@
     It also registers the close callback. The call proofs preserve the
     private state for the option loop. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects HelloNameOffsets GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic
-  HelloGlibcProgCells HelloGlibcDebts HelloGlibcMainSteps.
+   HelloGlibcDebts HelloGlibcMainSteps.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

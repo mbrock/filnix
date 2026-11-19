@@ -2,8 +2,7 @@
     close_stdout callback is the caller's premise, but registration, dispatch,
     TLS destructors and final stream cleanup use their concrete proofs. *)
 
-From Glibc Require Import Unit_stdlib_exit_os.
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects Unit_stdlib_exit_os GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

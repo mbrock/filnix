@@ -26,7 +26,7 @@ From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic.
 From Glibc Require Fix.
 From Glibc Require Import IRFrames.
-From Glibc Require Import LocaleEnv GlibcProgram GlibcLogic OsWorld OsRegistry OsStart OsCpuid FileInv GetoptDiag GetoptLongDiag
+From Glibc Require Import LocaleEnv GlibcProgram GlibcLogic OsWorld OsRegistry OsStart OsCpuid FileInv
   HelloGlibcDebts StartState StartJoin StartLibcStartMain HelloImageModule HelloImageLoad
   HelloImageEarly HelloStartAssembly HelloStartFacts HelloStartWp.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.

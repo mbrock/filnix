@@ -7,7 +7,8 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Pieces Heap Logic.
-From Glibc Require Import Fix WordString HelloGetoptTable StartImageEarly HelloImageLoad HelloImageMbsObjs HelloLocaleState.
+From Glibc Require Import LiteralWords.
+From Glibc Require Import Fix WordString StartImageEarly HelloImageLoad HelloImageMbsObjs HelloLocaleState.
 Import ListNotations LG0.
 Open Scope Z_scope.
 

@@ -12,8 +12,8 @@
     calls are hypotheses of this module, and each speaks of a buffer
     that prints to a stream. *)
 
-From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_stdioZ2dcommon_printf_buffer_to_file_os
+  Unit_stdioZ2dcommon_vfprintfZ2dinternal_os GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

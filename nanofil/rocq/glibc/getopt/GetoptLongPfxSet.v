@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** A word on the command line can name two long options at once, as
     "--ver" names both "--verbose" and "--version". glibc's parser then
     reports the word as ambiguous. Before the report it remembers which
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     parser may skip the step, mark the option in the set it has, or make
     the set first. It writes only bytes of a set that it owns. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,10 +14,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag
+  GetoptModule
+   GetoptReqTail GetoptLongScan
   GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -49,7 +47,7 @@ Definition plo_blk126 : block := Eval vm_compute in plo_blk "L126".
 
 
 (** The allocation module supplies the callee rules, the set, the option table and the tactics. *)
-Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongScan GetoptReqTail Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section set.

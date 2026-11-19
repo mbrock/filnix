@@ -182,12 +182,6 @@ Lemma set_program_name_entry p :
   mkFrame set_program_name_fn [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
 Proof. reflexivity. Qed.
 
-(** Its bytes. *)
-Definition libs_bytes : list Z := [47; 46; 108; 105; 98; 115; 47].
-
-(** Its bytes. *)
-Definition lt_bytes : list Z := [108; 116; 45].
-
 (** The proper-name helper looks up the translation of a name. *)
 Abbreviation proper_name_fn := HelloImage_propername.fn_proper_name.
 

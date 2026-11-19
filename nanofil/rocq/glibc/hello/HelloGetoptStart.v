@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When Hello starts, glibc's option parser has not run, so its objects
     still hold what the loader wrote: the zeroed parser object, the error
     flag holding 1, the option character holding 63, and the three
@@ -12,7 +11,9 @@ From Glibc Require Import GlibcProgram.
     glibc's parser keeps that promise on every call. The objects may sit
     at any addresses, and the caller says they do not overlap. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import LiteralWords.
+From Glibc Require Import HelloObjects HelloNameOffsets HelloLiterals LongOptionTable GlibcProgram
+  GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,8 +23,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioWIdle StrlenLogic
-  GetoptInitialize GetoptDiag GetoptLongExact GetoptLongDiag
-  GetoptLongPfxAlloc GetoptLongAmbTail GetoptInitial
+    GetoptLongExact
+    GetoptInitial
   AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop
   HelloGlibcMainFull HelloGetoptCall.
 From Glibc Require ExitRun HelloGlibcMainLibs.
@@ -32,37 +33,6 @@ Import ListNotations.
 Open Scope Z_scope.
 
 Import FileInv Fix.ML0 Fix.LG0 Fix.LG0.L HelloGlibcDebts.
-
-(** ## glibc's objects at startup
-
-    Before Hello's first call, glibc's parser has written nothing. Its
-    private object holds zeroes, opterr holds 1 and optopt holds the
-    question mark. The strings are constant. *)
-
-(** These are the fields of glibc's objects that the parser uses, at the
-    bases that the linked program chose. *)
-Definition getopt_start_ps (gb : Z) (greg : region) (oe : Z) (roe : region) (oo : Z) (roo : region)
-    (bdd : Z) (rdd : region) (b7 : Z) (r7 : region) (b0 : Z) (r0 : region) : list (piece * pval) :=
-  getopt_zero_ps gb greg ++ int_global_ps oe roe 1 ++ int_global_ps oo roo 63 ++
-  lit_ps bdd rdd (lit_words [45; 45]) ++ lit_ps b7 r7 (lit_words [45]) ++ lit_ps b0 r0 (lit_words [45; 87; 32]).
-
-(** This checks glibc's own pieces and nothing else. When the getopt
-    module is loaded on its own, its memory holds exactly these values,
-    each at its own key. It does not show that Hello's, the backends' and
-    startup's other assumptions can hold in the same memory, and the
-    linked program may put these objects elsewhere. *)
-Lemma getopt_start_fixture :
-  let ps := getopt_start_ps 65584 getopt_private_region 65696 (gd 65696 65704) 65760 (gd 65760 65768)
-    66176 (gd 66176 66184) 66208 (gd 66208 66216) 66352 (gd 66352 66360) in
-  all_agree getopt_memory ps /\ NoDup ps.*1.
-Proof.
-  cbn zeta. split.
-  - apply checked_pieces_all_agree. unfold getopt_memory. vm_compute. reflexivity.
-  - apply (NoDup_fmap_1 (fun p => match p with
-      | PLive b => 4 * 512 * b | PByte b o => 4 * (512 * b + o) + 1
-      | PAux b o => 4 * (512 * b + o) + 2 | _ => 3 end)).
-    apply (bool_decide_unpack _). vm_compute. exact I.
-Qed.
 
 (** ## The startup argument
 
@@ -147,14 +117,6 @@ Qed.
     the table, its names and the option string from the starting memory.
     It freezes those bytes once and derives the table and both strings
     from them, so the rest of memory supplies only the other literals. *)
-
-(** These are Hello's literals other than its option string and its table. *)
-Definition hello_lits_rest : list string :=
-  ["hello#str.54"; "hello#str.55"; "hello#str.56"; "hello#str.57"; "hello#str.58"; "hello#str.59";
-   "hello#str.60"; "hello#str.61"; "hello#str.62"; "hello#str.63";
-   "hello#str.70"; "hello#str.71"; "hello#str.72"; "hello#str.73"; "hello#str.74"; "hello#str.75";
-   "hello#str.76"; "hello#str.77"; "hello#str.78"; "hello#str.79"; "hello#str.80"; "hello#str.81";
-   "hello#str.82"; "hello#str.83"]%string.
 
 Section rest.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

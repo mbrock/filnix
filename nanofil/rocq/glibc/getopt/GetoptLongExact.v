@@ -1,16 +1,13 @@
-From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** A caller of glibc's getopt_long passes a table of long options. Each
     entry is 32 bytes long and holds the option's name, whether it takes
     an argument, a flag pointer and a value, and an entry whose name is
     null ends the table. glibc's long-option parser first looks for an
-    entry whose name equals the name it has measured. This file states
-    what a caller shares of the table, and it proves that search safe:
-    the parser reads each entry's name only through glibc's own strncmp
-    and strlen, and it never reads past the table's last entry. *)
+    entry whose name equals the name it has measured. The caller lends the
+    cells and names described by LongOptionTable. The search uses glibc's
+    strncmp and strlen and stops at the first match or the null name. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption LongOptionTable Unit_string_strncmp_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,10 +15,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan.
+  GetoptModule ByteRead GetoptExchange
+   GetoptReqTail GetoptLongScan.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -30,11 +27,6 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
-
-(** An entry of the table names its option by the pointer lo_name to
-    the bytes lo_str. It also records whether the option takes an
-    argument, the flag pointer and the value. *)
-Record lopt := mkLopt { lo_name : ptr; lo_str : list Z; lo_has : Z; lo_flag : ptr; lo_val : Z }.
 
 (** The exact search assigns these names. *)
 Definition exact_names : list name := Eval vm_compute in
@@ -46,47 +38,9 @@ Definition plo_blk50 : block := Eval vm_compute in plo_blk "L50".
 
 
 (** The scan module supplies the string lemmas and the tactics. *)
-Import GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptLongScan GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 (** The strncmp module proves glibc's own strncmp. *)
 (** The strlen module proves glibc's own strlen. *)
-
-(** This tactic shows that an address inside the table keeps its eight-byte alignment. *)
-Ltac al8 := unfold raw_address, ptr_add; cbn [ptr_addr]; repeat (rewrite (Z.mod_small _ (2 ^ 64)); [|lia]); Z.div_mod_to_equations; lia.
-
-(** This tactic computes call arguments whose last one is the count c. *)
-Ltac vxc c := cbn -[put];
-  repeat match goal with |- context [lookup ?k ?E] =>
-    let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H end;
-  cbn; rewrite (Z.mod_small c); [reflexivity | lia].
-
-Section table.
-Context `{!gen_heapGS piece pval Σ}.
-
-(** The entry x lies at offset o of the table object tb. The caller
-    shares its name pointer and name, the argument field, the flag
-    pointer and the value. *)
-Definition opt_entry (tb o : Z) (x : lopt) : iProp Σ :=
-  pcellq DfracDiscarded tb o (lo_name x) ∗ word_string DfracDiscarded (lo_name x) (lo_str x) ∗
-  int_cellq DfracDiscarded tb (o + 8) (lo_has x) ∗ pcellq DfracDiscarded tb (o + 16) (lo_flag x) ∗
-  int_cellq DfracDiscarded tb (o + 24) (lo_val x).
-
-(** The table at lo holds the entries os and then a null name. The
-    table starts at an eight-byte boundary of the object tb, which may be
-    read-only, and every entry and the null name lie inside that object
-    below 2^48. *)
-Definition opt_table (lo : ptr) (os : list lopt) : iProp Σ :=
-  ∃ tb treg, ⌜(ptr_cap lo = Obj tb \/ ptr_cap lo = Ro tb) /\ 0 < tb /\ tb <= ptr_addr lo /\
-     ptr_addr lo mod 8 = 0 /\ ptr_addr lo + 32 * Z.of_nat (List.length os) + 8 <= r_end treg /\
-     r_end treg <= 2 ^ 48⌝ ∗
-   liveq DfracDiscarded tb treg ∗
-   ([∗ list] k ↦ x ∈ os, opt_entry tb (ptr_addr lo - tb + 32 * Z.of_nat k) x) ∗
-   pcellq DfracDiscarded tb (ptr_addr lo - tb + 32 * Z.of_nat (List.length os)) null.
-
-(** A shared table stays shared. *)
-Global Instance opt_table_persistent lo os : Persistent (opt_table lo os).
-Proof using Type. rewrite /opt_table /opt_entry /int_cellq /pcellq /liveq. apply _. Qed.
-
-End table.
 
 Import ProgramAbbreviations.
 Section exact.

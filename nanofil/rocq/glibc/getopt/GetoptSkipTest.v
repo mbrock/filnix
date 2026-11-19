@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips the nonoptions that follow
     the public index before it looks for an option. An argument is a
     nonoption when its first character is not a dash, or when it is the
@@ -6,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     argument's terminated string, and its second byte only after the
     first byte showed that the string is not empty. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+  GetoptInitialize GetoptArgv GetoptExchange.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,16 +35,13 @@ Proof. destruct s; [discriminate | cbn; lia]. Qed.
 
 
 (** The exchange module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptExchange GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
-
-(** This tactic rebuilds an integer field from its rewritten bytes. *)
-Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
 Import ProgramAbbreviations.
 Section test.

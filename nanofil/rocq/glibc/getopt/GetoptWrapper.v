@@ -1,5 +1,3 @@
-From Glibc Require Import GetoptState.
-From Glibc Require Import GlibcProgram.
 (** Programs call glibc's getopt through global cells: optind holds the
     index of the next argument, opterr says whether to print errors,
     optarg returns an option's argument, and optopt returns the option
@@ -11,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     the public cells. This file proves those copies. The parser's own
     behaviour stays a premise, because its proof is not finished. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import GetoptState OsMemLogic GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,8 +17,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry.
+From Glibc Require Import OsWorld WordString GetoptModule
+   GetoptEntry.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -65,7 +63,7 @@ Proof. split; [left; reflexivity | reflexivity]. Qed.
 
 
 (** The setup module supplies the private fields and the step tactics. *)
-Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

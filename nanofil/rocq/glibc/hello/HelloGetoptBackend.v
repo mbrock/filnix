@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_memset_os.
-From Glibc Require Import GlibcProgram.
 (** The parser in glibc's getopt_long calls free, malloc and memset when
     it collects the candidates for an ambiguous long option. The parser's
     proof takes a rule for each of those calls as an assumption. Hello
@@ -11,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     that Hello already shares. Malloc only reads a cache that Hello holds
     a read-only share of, so that share comes from Hello itself. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_string_memset_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,9 +19,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
   MemFwdLogic AllocLogic
-  GetoptInitialize GetoptDiag GetoptLongExact GetoptLongDiag
+
   GetoptLongPfxAlloc GetoptLongAmbTail
-  HelloGlibcLibsT HelloGetoptTable HelloGlibcDebts.
+  HelloGlibcLibsT HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

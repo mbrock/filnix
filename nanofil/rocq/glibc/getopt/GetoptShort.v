@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** A cluster of short options such as "-ab" names one option per
     character. Each call of glibc's scanner takes the character at the
     private cursor, steps the cursor past it, and looks the character up
@@ -9,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     string only up to its terminator and writes only the fields of its
     own state. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics Unit_string_strchr_os Unit_string_strchrnul_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  ByteRead GetoptInitialize GetoptEntry GetoptExchange GetoptCursor.
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
+  ByteRead GetoptInitialize GetoptExchange GetoptCursor.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -48,7 +46,7 @@ Qed.
 
 
 (** The exchange module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptExchange GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 (** The strchr module proves glibc's own strchr. *)
 
 (** This tactic enters a block and evaluates its phi assignments. *)

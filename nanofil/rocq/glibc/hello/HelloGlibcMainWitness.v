@@ -6,13 +6,12 @@
     This witness checks that the resources coexist. The safety proof
     constructs them from Hello's start state. *)
 
-From Glibc Require Import AtexitLogic.
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects AtexitLogic GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld FileInv AllocLogic HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require Import OsBlocks OsWorld FileInv AllocLogic HelloGlibcLibsT.
 From stdpp Require Import list.
 From Glibc Require Import Fix.
 Import ListNotations.

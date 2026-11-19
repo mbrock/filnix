@@ -4,14 +4,14 @@
     the resources that gettext borrows. The report can then translate
     any error message while keeping the disabled flag for the restore. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram.
+From Glibc Require Import HelloObjects GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle StartCtypeInitSpec StartImageEarly
-  HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLocaleConst
+   HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLocaleConst
   HelloGettextDomain HelloGetoptDiagImage HelloStartGetoptRules HelloStartHdGetopt HelloStartHdRules
   HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly LibioCleanupExit DcgettextRealV DcgettextRwlock.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.

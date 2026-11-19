@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram.
 (** Before it looks for an option, glibc's permuting scanner tidies the
     argument vector. It clamps the ends of the pending nonoption block to
     the public index, moves pending nonoptions behind the options that
@@ -7,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     This file joins the proofs of those steps into one lemma for the
     whole path, from the clamp to the end-of-scan test. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString
+  GetoptModule GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptIdle GetoptIdleThree GetoptPermute GetoptClamp
   GetoptSkip GetoptDash GetoptDashTest.
 From Glibc Require Import Fix.
@@ -35,7 +32,7 @@ Definition clamp_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; 
 (** The clamp module proves the clamp and the first exchange. *)
 (** The skip module proves the nonoption skip loop. *)
 (** The "--" test module proves the test and the second exchange. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section path.

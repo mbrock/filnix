@@ -1,12 +1,10 @@
-From Glibc Require Import GlibcProgram.
 (** When no short-option cluster is pending, glibc's scanner first clamps
     its two nonoption endpoints to the public index i. In permuting mode
     it then either exchanges the skipped nonoptions with the options that
     followed them, or restarts the nonoption block at i. This file proves
     those blocks safe and tracks the endpoints they leave. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,8 +12,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange
   GetoptIdle GetoptPermute.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -32,7 +30,7 @@ Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. by rewrite !(Z.mod_sma
 
 
 (** The permuting branch. *)
-Import GetoptPermute GetoptIdle GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptPermute GetoptIdle GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section clamp.

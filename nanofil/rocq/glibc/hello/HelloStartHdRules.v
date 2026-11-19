@@ -3,7 +3,7 @@
     it gives back what it borrowed. This module proves those facts for
     the objects that Hello's image holds. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import HelloObjects GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +11,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv PrintfSpec GetoptDiag GetoptLongDiag DcgettextLocale
-  StartCtypeInitSpec HelloGlibcDebts HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
+  StartCtypeInitSpec HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloGetoptDiagImage HelloStartGetoptRules HelloStartHdGetopt.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.

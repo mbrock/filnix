@@ -4,9 +4,10 @@
     then initializes its private staging array, prints the greeting and
     flushes the array before returning an integer result. *)
 
+From Glibc Require Import PrintfTables.
 From Glibc Require FixVariadic.
-From Glibc Require Import Unit_libio_iofwide_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
+From Glibc Require Import Unit_libio_iofwide_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os GlibcProgram
+  GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.

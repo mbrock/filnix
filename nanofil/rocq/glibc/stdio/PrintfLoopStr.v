@@ -6,9 +6,10 @@
     text. This module proves the rows of the two blocks in the table
     of [PrintfLoopState](PrintfLoopState.v). *)
 
+From Glibc Require Import PrintfTables.
 From Glibc Require FixVariadic.
-From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os GlibcProgram GlibcSpec GlibcTactics
+  OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

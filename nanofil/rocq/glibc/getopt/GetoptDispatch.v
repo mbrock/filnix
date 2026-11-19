@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** An argument that starts with a dash and has a second character is
     an option. glibc's scanner first decides how to parse it. With a long
     option table, an argument that starts with two dashes is a long
@@ -9,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     options. Each choice stores the private cursor, which points into the
     argument just after its dashes. This file proves the choice safe. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics Unit_string_strchr_os Unit_string_strchrnul_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptLongOnly.
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule ByteRead
+  GetoptInitialize GetoptArgv GetoptExchange GetoptCursor GetoptLongOnly.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -42,7 +40,7 @@ Definition long_jump : jump := Eval vm_compute in b_jump (x_blk "L342").
 
 
 (** The long-only module proves the long-only test and both cursor stores. *)
-Import GetoptLongOnly GetoptCursor GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongOnly GetoptCursor GetoptExchange GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

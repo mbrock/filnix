@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** The getopt wrapper copies the public optind and opterr into the
     private object before it calls the parser. A session describes the
     object as the previous call left it, so it no longer fits once the
@@ -7,14 +6,14 @@ From Glibc Require Import GlibcProgram.
     the parser's first blocks need right after the copy, builds that from
     a session or from fresh storage, and runs the first blocks from it. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import OsMemLogic GetenvSpec LongOption GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead
+From Glibc Require Import OsWorld WordString GetoptModule GetoptState ByteRead
   GetoptInitialize GetoptColon GetoptEntry GetoptEntryBridge.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -54,7 +53,7 @@ Lemma entry_pre_ctl_resume : let s := mkGetoptState 3 1 0 null 1 null 1 1 2 in
 Proof. cbn. unfold getopt_bounds, needs_init. cbn. lia. Qed.
 
 (** The session module supplies the state and the cursor relation. *)
-Import GetoptEntryBridge GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptEntryBridge GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section entry_pre.
 Context `{!gen_heapGS piece pval Σ}.
@@ -190,7 +189,7 @@ Proof using Type. unfold getopt_cursor. apply _. Qed.
     the saved position lies in the current word. A call that starts over
     reads the environment, so the program supplies a rule for that. *)
 Lemma wp_getopt_entry_pre_at e n av ar p os lo li lonly pc penv b r ps j (G : iProp Σ) Φ :
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   lookup (TAtom "v0") e = Some (WInt n) -> lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
   lookup (TAtom "v4") e = Some (WPtr p) -> lookup (TAtom "v6") e = Some (WPtr lo) ->
   lookup (TAtom "v8") e = Some (WPtr li) -> lookup (TAtom "v10") e = Some (WInt lonly) ->

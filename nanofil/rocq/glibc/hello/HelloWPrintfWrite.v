@@ -4,15 +4,14 @@
     errno with its streams. This proof lends both at once and returns
     the new value of errno to the streams. *)
 
-From Glibc Require Import HelloWConvConsts.
-From Glibc Require Import GlibcProgram GlibcTactics.
+From Glibc Require Import HelloObjects HelloWConvConsts GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String List ZArith.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic.
 From Glibc Require Import Fix OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioWIdle
-  LibioWConvAscii LibioWOverflowWrite HelloGlibcDebts HelloStartHdGetopt
+  LibioWConvAscii LibioWOverflowWrite HelloStartHdGetopt
   HelloImageModule HelloImageLoad HelloImageLayout HelloLocaleState HelloCloseStdoutWideCall
   HelloWDoWriteImage HelloWPrintfCall.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.

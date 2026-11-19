@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram.
 (** A diagnostic takes three read locks while it translates a message.
     Each lock word holds a reader count, a writer, a shared flag and
     other flags, and earlier calls such as setlocale may leave them in
@@ -21,21 +19,18 @@ From Glibc Require Import GlibcProgram.
 
     This module only packages resources. It does not show that
     setlocale or startup leaves the locks idle. *)
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os
+  Unit_string_strchrnul_os GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import LocalenameLogic.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextRoute.
-From Glibc Require Import DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink.
-From Glibc Require Import HelloGetoptDiagGettext HelloGetoptDiagTcb.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString
+  SysWrappers AllocLogic AllocCall HelloGlibcLibsT LocalenameLogic GetoptDiag GetoptLongDiag
+  GetoptDiagFx DcigettextRoute DcgettextLocale DcgettextRwlock DcgettextRealV HelloGettextLink
+  HelloGetoptDiagGettext HelloGetoptDiagTcb Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.

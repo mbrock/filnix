@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** A program calls getopt through the wrapper _getopt_internal. The
     wrapper copies optind and opterr into a private object and runs the
     parser on it. Then it copies the new index, argument and option back
@@ -7,8 +5,9 @@ From Glibc Require Import GlibcProgram.
     a premise. This file fills that premise with the proved parser call,
     so the program assumes nothing about the parser. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,13 +15,13 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptShortCap GetoptCharRet.
-Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptEntryPre GetoptDiag GetoptShortCap GetoptEntry GetoptCharRet.
+From Glibc Require OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptArgv GetoptExchange GetoptDiag GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptShortCap GetoptCharRet.
+Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptArgv GetoptExchange GetoptDiag GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptEntryPre GetoptDiag GetoptShortCap GetoptCharRet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongSite GetoptShortCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptShortCap GetoptDiag GetoptExchange GetoptInitialize GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** ## The answer is a 32-bit value
 

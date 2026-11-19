@@ -3,9 +3,8 @@
     This module checks how the loaded image writes the resulting bytes
     to the file descriptor for stdout. *)
 
-From Glibc Require Import HelloWConvConsts.
-From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics.
+From Glibc Require Import HelloObjects HelloWConvConsts Unit_io_write_os Unit_libio_fileops_os
+  GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.
@@ -14,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap.
 From Glibc Require Import Fix OsWorld OsBlocks OsRegistry FileInv LibioLogic
   LibioWIdle LibioCleanupExit LibioWCloseIt
   LibioWConvAscii LibioWDoWriteLoop LibioWDoWriteUse LibioWOverflowWrite
-  HelloImageModule HelloImageLoad HelloImageLayout HelloGlibcDebts HelloGlibcLibsT HelloStartFacts.
+  HelloImageModule HelloImageLoad HelloImageLayout HelloGlibcLibsT HelloStartFacts.
 From Glibc Require HelloWConvImage.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.

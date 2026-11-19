@@ -4,6 +4,7 @@
     permissions from Hello's initial error table, using the same
     index for the pointer and its target. *)
 
+From Glibc Require Import LiteralWords.
 From Glibc Require Import Unit_stdioZ2dcommon_errlist_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Machine Pieces Heap Logic Language.
-From Glibc Require Import FileInv WordString HelloGetoptTable StartImageEarly HelloImageLoad
+From Glibc Require Import FileInv WordString StartImageEarly HelloImageLoad
   HelloCloseReportImage HelloCloseReportLookup Fix.
 Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.

@@ -1,12 +1,10 @@
-From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has searched the table for names
     that start with a word's name, it decides what to do next. A set of
     matching options, or a known ambiguity without a set, makes it report
     the word as ambiguous. Otherwise it goes on with the first match it
     found, or with no option at all. This file proves that decision. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,11 +12,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongPre
-  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc.
+  GetoptModule
+     GetoptLongPre
+  GetoptLongPfxCmp GetoptLongPfxMark.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -34,7 +32,7 @@ Definition pend_names : list name := Eval vm_compute in
 
 
 (** The search module supplies the search, the set, the option table and the tactics. *)
-Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptLongPfxMark GetoptLongPfxCmp Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section decide.

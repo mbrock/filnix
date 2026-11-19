@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has accepted an option and its
     argument, it reports which option it found. It stores the option's
     index through the caller's longind pointer when that pointer is not
@@ -8,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     targets and proves the final stores safe: every store goes to an
     integer cell that the caller owns, inside its object. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOption LongOptionTable GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,10 +16,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag.
+  GetoptModule
+    GetoptLongScan.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,28 +36,7 @@ Definition lstore_names : list name := Eval vm_compute in
 
 
 (** The report module supplies the option table and the tactics. *)
-Import GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
-
-Section targets.
-Context `{!gen_heapGS piece pval Σ}.
-
-(** The caller owns the integer v at p. The four bytes at p lie inside
-    the object of p's capability, at a four-byte boundary below 2^48,
-    and the caller owns that object's whole lifetime, so it may store
-    there. *)
-Definition int_at (p : ptr) (v : Z) : iProp Σ :=
-  ∃ tb treg, ⌜ptr_cap p = Obj tb /\ 0 < tb <= ptr_addr p /\ ptr_addr p mod 4 = 0 /\
-     ptr_addr p + 4 <= r_end treg /\ r_end treg <= 2 ^ 48⌝ ∗
-   live tb treg ∗ int_cell tb (ptr_addr p - tb) v.
-
-(** The flag targets F are distinct integers that the caller owns. *)
-Definition flags_own (F : list ptr) : iProp Σ := ⌜NoDup F⌝ ∗ [∗ list] f ∈ F, ∃ v, int_at f v.
-
-(** The caller's longind pointer li is null or points at an integer that
-    the caller owns. *)
-Definition longind_own (li : ptr) : iProp Σ := ⌜li = null⌝ ∨ ∃ v, int_at li v.
-
-End targets.
+Import GetoptLongScan Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section store.

@@ -1,28 +1,22 @@
-From Glibc Require Import GlibcProgram.
 (** When gettext looks for a message catalog, it builds a file name from
     the directory, the locale, the category and the domain. It joins them
     with the string "/" and ends the name with ".mo". The translation
     route in DcigettextRoute.v reads both strings through the resource
     dci_reads, which asks for them as read-only strings at the objects
-    that the symbols str.276 and str.277 name. Nothing has built those
-    strings so far.
+    that the symbols str.276 and str.277 name.
 
-    This file freezes the loader pieces of the two strings into exactly
-    those read-only strings, with the literal machinery of
-    HelloGetoptTable.v and HelloGetoptDiagMsgs.v. It also checks the
-    pieces against the loader image of the dcigettext module alone. That
-    image is laid out on its own, so it does not show where a program
-    linking Hello with glibc puts the strings, and it does not show that
-    startup hands the pieces over. *)
+    The literal ownership rules turn the loader pieces for these strings
+    into the shares that gettext reads. A separate check loads the
+    dcigettext module alone and compares its initialized bytes with
+    both suffixes. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import LiteralWords ImageData LiteralLogic GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString DcigettextCode HelloGetoptTable HelloGetoptDiagMsgs.
-From Glibc Require Import Fix.
+From Glibc Require Import FileInv WordString DcigettextCode Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -51,22 +45,6 @@ Definition dci_suffix_ps (bs : list (Z * region)) : list (piece * pval) := lits_
     read-only object at the matching base. *)
 Definition dci_suffix_at (gs : list (name * ptr)) (bs : list (Z * region)) : Prop :=
   Forall2 (fun n br => Term.lookup (TAtom n) gs = Some (mkPtr br.1 (Ro br.1))) dci_suffix_names bs.
-
-(** ## Keeping other pieces apart
-
-    A caller who owns these pieces next to other startup pieces must show
-    that no key repeats. The keys of a literal belong to its base, so
-    other pieces only have to stay off those bases. *)
-
-(** Pieces whose keys avoid the bases of some literals stay distinct
-    from the literals' keys. *)
-Lemma lits_ps_sep ps bs ts : NoDup ps.*1 -> NoDup bs.*1 ->
-  (forall k, k ∈ ps.*1 -> piece_id k ∉ bs.*1) -> NoDup (ps ++ lits_ps bs ts).*1.
-Proof.
-  intros Hp Hb Hsep. destruct (lits_ps_keys bs ts Hb) as [Hn Hk].
-  rewrite fmap_app. apply NoDup_app. split_and!; [exact Hp| |exact Hn].
-  intros k Hk1 Hk2. exact (Hsep k Hk1 (Hk k Hk2)).
-Qed.
 
 Section own.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

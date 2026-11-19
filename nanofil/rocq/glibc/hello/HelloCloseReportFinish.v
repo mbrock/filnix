@@ -3,8 +3,8 @@
     These operations borrow the thread lifetime, errno and stderr from
     the same state that strerror used to translate its message. *)
 
-From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os
+  Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

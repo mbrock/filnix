@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When no short-option cluster is pending, glibc's scanner first clamps
     its two nonoption endpoints to the public index. In permuting mode it
     then moves the nonoptions it skipped behind the options that followed
@@ -6,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     that load the endpoints before the outer loop and update them after
     it. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange
   GetoptExchangeTwo.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,13 +33,10 @@ Definition x2_edges : list name := Eval vm_compute in
 
 
 (** This module proves the first exchange's outer loop. *)
-Import GetoptExchangeTwo GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchangeTwo GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
-
-(** This tactic rebuilds an integer field from its rewritten bytes. *)
-Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
 Import ProgramAbbreviations.
 Section idle_values.

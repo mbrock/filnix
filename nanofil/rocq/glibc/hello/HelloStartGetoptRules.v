@@ -9,6 +9,7 @@
     proof of glibc's formatter is not finished yet, so this module
     assumes its contract for now. *)
 
+From Glibc Require Import HelloObjects PrintfTables GetoptMessageData.
 From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.

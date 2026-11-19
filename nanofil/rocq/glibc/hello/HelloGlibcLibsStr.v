@@ -1,10 +1,8 @@
-From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** This file connects Hello's small memory calls to their proved glibc
     implementations. It proves zeroing, string length, bounded comparison
     and errno lookup over the concrete resources used by main. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects Unit_string_strncmp_os GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

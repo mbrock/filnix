@@ -6,7 +6,7 @@
     always succeeds, so the run reaches the printing branch, which the
     tail proof supplies. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloObjects GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** A program that calls getopt_long reads optarg after each option. For
     an option that requires an argument, it treats optarg as a string.
     The safety rule for the call only says that optarg is live, which is
@@ -8,8 +6,9 @@ From Glibc Require Import GlibcProgram.
     requires an argument. The code must name such an option both in the
     option string and in the table of long options. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic GetenvSpec LongOption LongOptionTable
+  Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os
+  GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,34 +16,18 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
-  GetoptLongJoinMiss GetoptLongSite GetoptWExit GetoptCallParse GetoptLongWrapper GetoptWrapParse
+  GetoptModule GetoptState ByteRead GetoptInitialize GetoptArgv GetoptExchange GetoptCursor
+  GetoptDiag GetoptLongScan GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptLongJoinMiss GetoptWExit GetoptCallParse GetoptLongWrapper GetoptWrapParse
   GetoptShortCap GetoptCharRet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongSite GetoptLongJoinMiss GetoptShortCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
-
-(** ## Codes that carry a string
-
-    Some return values always come with an argument. A value c is such
-    a code when three facts hold. No error, fallback or nonoption return
-    uses c. Every letter of the option string with code c is followed by
-    exactly one colon. Every table entry with value c and no flag has
-    the argument kind 1. The definition below states these facts about
-    the option string so and the table los. *)
-
-(** The code c of a getopt return always comes with a readable argument. *)
-Definition str_code (so : list Z) (los : list lopt) (c : Z) : Prop :=
-  c <> 4294967295 /\ c <> 63 /\ c <> 58 /\ c <> 0 /\ c <> 1 /\
-  (forall k, (k < List.length so)%nat -> sbyte so k <> 58 -> sbyte so k <> 59 -> chr_w (sbyte so k) = c ->
-     sbyte so (S k) = 58 /\ sbyte so (S (S k)) <> 58) /\
-  (forall y, y ∈ los -> lo_flag y = null -> lo_val y mod 2 ^ 32 = c -> lo_has y = 1).
+Import GetoptLongJoinMiss GetoptShortCap GetoptDiag GetoptExchange GetoptInitialize GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** A short option with that code takes its argument from the rest of
     the word, which is not empty, or from the next word, which exists. *)
@@ -79,23 +62,6 @@ Proof.
   - left. split; assumption.
   - congruence.
   - right. split; assumption.
-Qed.
-
-(** The option string "g:t" and the table of hello's options make 103,
-    the code of 'g', such a code. The table has four entries, and only
-    the first one, with value 103, takes an argument. *)
-Lemma str_code_g los :
-  List.map (fun y => (lo_has y, lo_flag y, lo_val y)) los =
-    [(1, null, 103); (0, null, 116); (0, null, 128); (0, null, 129)] ->
-  str_code (drop (opt_skip [103; 58; 116]) [103; 58; 116]) los 103.
-Proof.
-  intros Hm. cbn. split_and!; try discriminate.
-  - intros k Hk H58 H59 Hc. destruct k as [|[|[|k]]]; cbn in *; try lia; try (split; congruence).
-    vm_compute in Hc. discriminate.
-  - intros y Hy Hf Hv. apply list_elem_of_In in Hy.
-    apply (in_map (fun y => (lo_has y, lo_flag y, lo_val y))) in Hy. rewrite Hm in Hy. cbn in Hy.
-    destruct Hy as [Hy | [Hy | [Hy | [Hy | []]]]]; injection Hy as Hh _ Hval; try (symmetry; exact Hh);
-      rewrite <- Hval in Hv; vm_compute in Hv; discriminate.
 Qed.
 
 Import ProgramAbbreviations.
@@ -317,7 +283,7 @@ Lemma wp_getopt_long_str_with_at e n av ar p os lo li b r ps i err oi roi oe roe
   0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
@@ -514,7 +480,7 @@ Lemma wp_getopt_long_str_call_with_at cf av ar p os lo li b r ps i err oi roi oe
   0 < oo -> oo + 4 <= r_end roo -> r_end roo <= 2 ^ 48 ->
   find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->

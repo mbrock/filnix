@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram.
 (** The scanner of glibc's getopt either returns early or reaches the
     option parser. This file joins the scanner's proof with the
     sessions that its early returns leave behind. A caller that starts
@@ -8,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     index over the permuted argument vector. At the option parser it
     gets the scanner's facts together with the untouched fields. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,10 +14,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString
+From Glibc Require Import OsWorld WordString
   GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange GetoptIdlePath GetoptScanEnd
   GetoptScan GetoptScanSession.
-From Glibc Require GetoptInitialize.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -28,7 +24,7 @@ Open Scope Z_scope.
 
 (** The scan module proves the scanner. *)
 (** The session module packs the fields after an early return. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
+Import GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan_join.

@@ -22,7 +22,7 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import WordString HelloGetoptTable HelloGetoptStart.
+From Glibc Require Import GetoptInitial ImageData WordString HelloGetoptTable.
 From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad
   HelloImageKept.
 Import ListNotations.
@@ -61,20 +61,6 @@ Definition hello_image_tab_ps : list (piece * pval) :=
 (** HelloGetoptStart.v's table theorem reads exactly this list, table
     first, followed by any extra pieces. *)
 Definition hello_start_ps : list (piece * pval) := hello_image_tab_ps ++ hello_image_getopt_ps.
-
-(** A symbol names the writable object at b. *)
-Definition lookup_obj (g : list (name * ptr)) (n : string) (b : Z) : bool :=
-  match Term.lookup (TAtom n) g with
-  | Some p => (ptr_addr p =? b) && match ptr_cap p with Obj c => c =? b | _ => false end
-  | None => false
-  end.
-
-Lemma lookup_obj_ok g n b : lookup_obj g n b = true -> Term.lookup (TAtom n) g = Some (mkPtr b (Obj b)).
-Proof.
-  unfold lookup_obj. destruct (Term.lookup (TAtom n) g) as [[a c]|]; [|discriminate]. cbn [ptr_addr ptr_cap].
-  destruct c; try (rewrite andb_false_r; discriminate). intros H. apply andb_true_iff in H as [Ha Hc].
-  apply Z.eqb_eq in Ha, Hc. subst. reflexivity.
-Qed.
 
 (** These are the nine read-only objects with their bases. *)
 Definition hello_start_ro : list (string * Z) :=

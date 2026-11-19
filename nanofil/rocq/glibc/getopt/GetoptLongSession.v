@@ -8,13 +8,12 @@
     and the facts that the parser's return state gives about the new
     index and the new cursor. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import OsMemLogic GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic.
-From Glibc Require Import FileInv WordString ByteRead GetoptState.
-From Glibc Require Import Fix.
+From Glibc Require Import WordString ByteRead GetoptState Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -67,7 +66,7 @@ Proof. cbn. lia. Qed.
 
 
 (** The state module supplies the private fields, the cursor and the session. *)
-Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 (** The byte module reads one byte of a shared string. *)
 
 Section session.

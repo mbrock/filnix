@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner first checks whether
     its private object needs initialization. It initializes when the
     object is fresh or when the caller reset the public index to zero.
@@ -15,17 +14,15 @@ From Glibc Require Import GlibcProgram.
     preserves the caller's own resource. Every path then joins at the
     block that checks for a leading colon. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptState OsMemLogic GetoptTactics LongOption GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead.
-From Glibc Require Export GetenvCall.
-From Glibc Require Import Fix.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead GetenvSpec Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -40,24 +37,6 @@ Local Transparent glibc_getopt_internal_r.
     The option string may begin with a character that selects argument
     ordering. The scanner skips that character before it looks for
     the colon that silences diagnostics. *)
-
-(** A leading minus or plus sign selects an ordering and is skipped. *)
-Definition opt_skip (os : list Z) : nat :=
-  if (sbyte os 0 =? 45) || (sbyte os 0 =? 43) then 1%nat else 0%nat.
-
-(** A leading minus sign is skipped. *)
-Lemma opt_skip_minus os : sbyte os 0 = 45 -> opt_skip os = 1%nat.
-Proof. unfold opt_skip. intros ->. reflexivity. Qed.
-
-(** A leading plus sign is skipped. *)
-Lemma opt_skip_plus os : sbyte os 0 = 43 -> opt_skip os = 1%nat.
-Proof. unfold opt_skip. intros ->. reflexivity. Qed.
-
-(** Any other first character remains part of the option list. *)
-Lemma opt_skip_other os : sbyte os 0 <> 45 -> sbyte os 0 <> 43 -> opt_skip os = 0%nat.
-Proof.
-  unfold opt_skip. intros H1 H2. rewrite (proj2 (Z.eqb_neq _ _) H1) (proj2 (Z.eqb_neq _ _) H2). reflexivity.
-Qed.
 
 (** A loaded character equals a small constant exactly when the byte does. *)
 Lemma chr_cmp x k : 0 <= x < 256 -> 0 <= k < 128 ->
@@ -85,7 +64,7 @@ Definition getopt_blk_init : block := Eval vm_compute in
 (** Byte access supplies shared string reads. *)
 (** The step tactics evaluate symbolic instructions. *)
 (** The OS interpretation survives safepoints. *)
-Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 Import ProgramAbbreviations.
 Section initialize_values.
@@ -154,9 +133,6 @@ Ltac rdchr H q s k :=
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | arith |];
   iNext; iIntros "_ _".
 
-(** This tactic rebuilds an integer field from its rewritten bytes. *)
-Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
-
 (** The scanner reads these names after initialization. *)
 
 (** Each kept lookup of a known value becomes a fact about the new
@@ -167,9 +143,6 @@ Ltac unkeep Hk :=
   unfold keeps, entry_keys in Hc; cbn [List.map] in Hc;
   repeat match type of Hc with Forall _ (_ :: _) => let H := fresh "Hkk" in apply Forall_cons_1 in Hc as [H Hc] end;
   repeat match goal with H : lookup ?k ?e1 = lookup ?k ?e, H' : lookup ?k ?e = Some _ |- _ => rewrite H' in H end.
-
-(** A run of assignments to other names keeps the listed lookups. *)
-Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply keeps_refl | assumption].
 
 (** Initialization writes each private field it owns: the public index,
     both nonoption endpoints, the saved cursor, the ordering mode and the

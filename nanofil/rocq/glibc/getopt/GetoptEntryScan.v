@@ -8,13 +8,12 @@
     scanner leaves the setup's facts about the environment intact, so the
     option parser can still use them after the scan. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic.
-From Glibc Require Import FileInv GetoptState GetoptInitialize
+From Glibc Require Import GetoptState
   GetoptIdlePath GetoptScanEnd GetoptEntry.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -111,7 +110,7 @@ Proof. lia. Qed.
 
 
 (** The exchange module supplies the private fields and the kept-name relation. *)
-Import GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
+Import GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** The scanner hands back a later environment that agrees with the old
     one on every kept name. When the kept names include the setup's

@@ -7,7 +7,7 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import GetoptInitial HelloGetoptTable ImagePieces HelloImageStart HelloImageLoad.
+From Glibc Require Import ImageData GetoptInitial ImagePieces HelloImageStart HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

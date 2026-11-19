@@ -4,8 +4,8 @@
     between calls. This module derives that statement from the proof of
     the image's code in [HelloErrorOperand](HelloErrorOperand.v). *)
 
-From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
+From Glibc Require Import HelloObjects Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os
+  Unit_stdioZ2dcommon_fxprintf_os GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +16,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdl
   LibioFflushSpec PrintfSpec NarrowArgs AllocRo
   ErrorCall LibioCleanupExit HelloVersionLits HelloGlibcDebts HelloGlibcLibsT HelloEmitBug HelloVersionEtc
   HelloErrorOperand.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout.
-From Glibc Require Import Fix.
+From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout Fix.
 Import ListNotations.
 Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.

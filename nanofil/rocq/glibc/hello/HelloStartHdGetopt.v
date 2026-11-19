@@ -6,6 +6,7 @@
     shares. This module says which objects the warnings keep between
     calls, and how they borrow the shared ones for one warning. *)
 
+From Glibc Require Import HelloObjects.
 From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -16,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString RdlockLogic
   DcgettextRwlock DcgettextRealV PrintfSpec
-  GetoptDiag GetoptLongDiag StartCtypeInitSpec
+    StartCtypeInitSpec
   HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGetoptDiagMsgs
   HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloStartGetopt HelloStartGetoptRules.

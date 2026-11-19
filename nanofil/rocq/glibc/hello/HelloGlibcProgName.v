@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strncmp_os Unit_string_strrchr_os.
-From Glibc Require Import GlibcProgram.
 (** This file proves a triple for GNU Hello's `set_program_name` linked
     with glibc. The triple uses the [os_world] of
     [OsWorld](../zsys/OsWorld.v) without a separate world premise.
@@ -22,7 +20,8 @@ From Glibc Require Import GlibcProgram.
     the caller has `argc >= 1`, so `argv[0]` points to a string.
     The literals are read-only [word_string]s. *)
 
-From Glibc Require Import GlibcTactics.
+From Glibc Require Import HelloNameOffsets Unit_string_strncmp_os Unit_string_strrchr_os GlibcProgram
+  GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

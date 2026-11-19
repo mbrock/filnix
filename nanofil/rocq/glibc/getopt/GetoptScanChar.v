@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram.
 (** When glibc's scanner finds a word that starts with a dash, it decides
     whether the word is a long option or a cluster of short options. A
     cluster such as "-ab" goes straight to the character step, with the
@@ -9,8 +7,8 @@ From Glibc Require Import GlibcProgram.
     vector. The two calls of the long-option parser and the form W; keep
     their own exits. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetenvSpec LongOption Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,7 +16,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld WordString StrchrnulLogic GetoptModule
   GetoptState ByteRead GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptArgv
   GetoptExchange GetoptCursor GetoptIdlePath GetoptScanEnd GetoptEntryScan GetoptScanChoice
   GetoptDispatch GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap
@@ -76,7 +74,7 @@ Proof using Type.
 Qed.
 End cursor.
 
-Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan_char.
@@ -371,7 +369,7 @@ Lemma wp_getopt_entry_dispatch_ws_at ks ks2 ks3 ks4 cf n av ar p os lo li lonly 
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
-  GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
+  GetenvSpec.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
   find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
   find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->

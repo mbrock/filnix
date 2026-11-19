@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** After glibc's long-option parser has reported an ambiguous word, it
     gives back the set of matching options when malloc made it. Then it
     steps the index past the word, moves its cursor to the end of the
@@ -6,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     last steps safe. The parser frees only the set that malloc made, and
     it writes only its own private fields. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,11 +13,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenBits StrlenLogic StrlenWord
   StrcmpLoop StrncmpWords StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc.
+  GetoptModule ByteRead GetoptExchange
+
+   GetoptLongPfxMark.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,7 +34,7 @@ Definition atail_names : list name := Eval vm_compute in
 
 
 (** The decision module supplies the set, the option table and the tactics. *)
-Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptLongPfxMark GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 Import ProgramAbbreviations.
 Section tail_values.

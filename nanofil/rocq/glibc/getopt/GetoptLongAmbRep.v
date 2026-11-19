@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds several options whose names
     start with a word's name, it reports the word as ambiguous when its
     caller lets it print errors. It names the word and, when it built a
@@ -7,8 +6,8 @@ From Glibc Require Import GlibcProgram.
     writes the report only through the rule that its caller supplies,
     and it frees only the set that malloc made. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics LongOptionTable GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,11 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongAmbItem GetoptLongAmbList
+  GetoptModule GetoptArgv GetoptExchange
+   GetoptReqTail GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongAmbTail GetoptLongAmbItem GetoptLongAmbList
   GetoptLongAmbHead GetoptLongAmbPoss.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -37,7 +36,7 @@ Definition arep_keys : list name := Eval vm_compute in
 
 
 (** The heading modules supply the report's first line, the listing, the last steps and the set. *)
-Import GetoptLongAmbPoss GetoptLongAmbHead GetoptLongAmbList GetoptLongAmbItem GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongAmbPoss GetoptLongAmbHead GetoptLongAmbList GetoptLongAmbItem GetoptLongAmbTail GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptReqTail GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section rep.

@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips nonoptions and then asks
     whether the argument at the public index is "--", which ends the
     options. It compares the argument with glibc's own strcmp. This file
@@ -7,8 +5,8 @@ From Glibc Require Import GlibcProgram.
     count, and it compares two terminated strings that the scanner may
     read. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics Unit_string_strcmp_os GlibcProgram GlibcTactics
+  OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpBits StrcmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString StrcmpBits StrcmpLogic
+  GetoptModule GetoptArgv GetoptExchange
   GetoptPermute GetoptExchangeTwo GetoptIdleThree GetoptDash.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,7 +33,7 @@ Definition dash_test_names : list name := Eval vm_compute in
 
 
 (** When the argument is "--", the scanner runs the blocks that GetoptDash.v proves. *)
-Import GetoptDash GetoptIdleThree GetoptExchangeTwo GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptDash GetoptIdleThree GetoptExchangeTwo GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 (** The strcmp module proves glibc's own strcmp. *)
 
 (** This tactic enters a block and evaluates its phi assignments. *)

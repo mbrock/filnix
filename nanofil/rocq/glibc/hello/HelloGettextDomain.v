@@ -6,13 +6,13 @@
     The checks load only the captured strerror module, without Hello or
     the rest of glibc. They neither locate the string in a complete program
     nor show that startup gives a caller permission to read it. *)
-From Glibc Require Import GlibcProgram.
+From Glibc Require Import LiteralWords ImageData LiteralLogic GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic MemLogic.
-From Glibc Require Import FileInv WordString StrerrorCode HelloGetoptTable HelloGetoptDiagMsgs.
+From Glibc Require Import FileInv WordString StrerrorCode.
 Import ListNotations FileInv Fix.ML0 Fix.LG0.
 Open Scope Z_scope.
 

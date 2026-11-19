@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser finds a word ambiguous without a set
     of the candidates, and its caller lets it print errors, its report
     is a single line that names the word. This file proves that line
@@ -7,8 +6,8 @@ From Glibc Require Import GlibcProgram.
     The tactic that writes the line also serves the line that announces
     a listing. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import GetoptMessages OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics
+  GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,11 +15,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrncmpLogic
-  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptDiag GetoptLongExact GetoptLongDiag
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail.
+  GetoptModule GetoptArgv GetoptExchange
+    GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +35,7 @@ Definition arep_names : list name := Eval vm_compute in
 
 
 (** The listing module supplies the listing, the last steps, the set and the tactics. *)
-Import GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptLongDiag GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic shows that the message of a report is one of the five. *)
 Local Ltac arep_msg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].

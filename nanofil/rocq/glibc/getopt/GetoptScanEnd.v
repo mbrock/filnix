@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** After it tidies the argument vector, glibc's scanner decides what the
     argument at the public index is. It may find no argument left, a
     nonoption, or an option. An argument is a nonoption when it does not
@@ -8,8 +7,7 @@ From Glibc Require Import GlibcProgram.
     a dash. The decision then reaches the returns that GetoptReturn.v
     proves, or the option parser. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptSkipTest GetoptDash GetoptReturn.
+From Glibc Require Import OsWorld WordString GetoptModule ByteRead
+  GetoptInitialize GetoptArgv GetoptExchange GetoptSkipTest GetoptDash GetoptReturn.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,7 +37,7 @@ Definition scan_end_names : list name := scan_names ++ return_names.
 
 
 (** The return module proves the returns that end the call early. *)
-Import GetoptReturn GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptReturn GetoptExchange GetoptInitialize Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

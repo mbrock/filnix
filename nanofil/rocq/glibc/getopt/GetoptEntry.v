@@ -1,5 +1,3 @@
-From Glibc Require Export GetoptTactics.
-From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner begins with the same
     fixed sequence of blocks. The call reads the private diagnostic flag,
     clears the returned argument, and decides whether to initialize the
@@ -14,15 +12,16 @@ From Glibc Require Import GlibcProgram.
     to option reading. Only a resumed call can have an active cursor,
     because initialization clears the cursor. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetenvSpec LongOption.
+From Glibc Require Export GetoptTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState
+From Glibc Require Import OsWorld WordString GetoptModule GetoptState
   GetoptInitialize GetoptColon.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -82,7 +81,7 @@ Definition getopt_blk_start : block := Eval vm_compute in
 
 
 (** The colon module supplies initialization, resume and the colon check. *)
-Import GetoptColon GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
+Import GetoptColon GetoptInitialize GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section entry_values.
@@ -105,16 +104,6 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
-
-(** This tactic rebuilds an integer field from its rewritten bytes. *)
-Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
-
-(** This tactic proves a lookup through assignments and kept lookups. *)
-Ltac lk :=
-  first [ apply Symbolic.lookup_after_put_same
-        | eapply lookup_put_miss; [vm_compute; reflexivity | lk]
-        | eassumption
-        | match goal with H : lookup ?k ?E = lookup ?k ?E1 |- lookup ?k ?E = _ => rewrite H; lk end ].
 
 (** Each kept lookup becomes an equation about the new environment. *)
 Local Ltac unkeep Hk :=

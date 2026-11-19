@@ -2,8 +2,8 @@
     read-only tables. This rule follows the actual loads for the byte s.
     The caller supplies their linked addresses and readable ownership;
     this rule does not obtain those resources from startup. *)
-From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os GlibcProgram GlibcTactics
+  OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -63,42 +63,3 @@ Proof using Type.
   iApply ("HK" with "Hjl Hjb Htl Htb").
 Qed.
 End table.
-
-(** These declarations come from the existing complete formatter capture.
-    Selecting them does not manufacture their bytes or change a function. *)
-Definition formatter_string_tables : module := Eval vm_compute in
-  filter (fun i => match i with IData n _ _ _ =>
-    orb (term_eqb n (TAtom "glibc_vfprintf_internal#jump_table"))
-      (term_eqb n (TAtom "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277"))
-    | _ => false end) formatter_module.
-
-(** Loading the two tables alone provides a small check of their contents.
-    Its addresses are not the addresses of a complete Hello image. *)
-Definition formatter_tables_loaded :=
-  match initial_memory formatter_string_tables with Some p => p | None => ([],empty_mem) end.
-
-(** The loader succeeds, so the default empty memory cannot satisfy the
-    following checks by accident. *)
-Lemma formatter_tables_load :
-  initial_memory formatter_string_tables = Some formatter_tables_loaded.
-Proof.
-  assert (H : option_map fst (initial_memory formatter_string_tables) =
-    Some (fst formatter_tables_loaded)) by (vm_compute; reflexivity).
-  unfold formatter_tables_loaded.
-  destruct (initial_memory formatter_string_tables) as [[g m]|]; inversion H; reflexivity.
-Qed.
-
-(** The selected declarations retain their captured read-only names. *)
-Lemma formatter_tables_at :
-  lookup (TAtom "glibc_vfprintf_internal#jump_table") (fst formatter_tables_loaded) =
-    Some (mkPtr 65680 (Ro 65680)) /\
-  lookup (TAtom "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277") (fst formatter_tables_loaded) =
-    Some (mkPtr 65536 (Ro 65536)).
-Proof. vm_compute. split; reflexivity. Qed.
-
-(** The genuine initializers contain precisely the bytes lent to the
-    operational rule. This check supplies no ownership in a running program. *)
-Lemma formatter_string_entries :
-  load_bytes (snd formatter_tables_loaded) (65680 + 83) 1 = 21 /\
-  load_bytes (snd formatter_tables_loaded) (65536 + 84) 4 = 21.
-Proof. vm_compute. split; reflexivity. Qed.

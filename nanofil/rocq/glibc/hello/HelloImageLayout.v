@@ -22,8 +22,9 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap.
-From Glibc Require Import FileInv AtexitLogic HelloGlibcDebts.
-From Glibc Require Import HelloGetoptTable ImageEraseMem HelloImageModule HelloImageKept HelloImageStart HelloImageLoad.
+From Glibc Require Import HelloObjects.
+From Glibc Require Import HelloLiterals ImageData FileInv AtexitLogic ImageEraseMem
+  HelloImageModule HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

@@ -4,8 +4,8 @@
     mode. Hello's idle stderr is never wide, so all three paths reach
     the report counter without a second print. *)
 
-From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import PrintfTables Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os GlibcProgram
+  GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.

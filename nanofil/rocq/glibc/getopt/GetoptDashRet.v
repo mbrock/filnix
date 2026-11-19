@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** A word that starts with two dashes, such as "--name=x", goes to
     glibc's long-option parser with the cursor past the dashes. The
     getopt wrapper then copies the private index, the bad-option field
@@ -10,8 +8,8 @@ From Glibc Require Import GlibcProgram.
     gives the caller a wand that restores the session. It then proves
     the exit for such a word after the scan. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,8 +17,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongCap GetoptShortCap GetoptColon GetoptEntryScan GetoptEntryChar GetoptScanChar.
-Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongCap GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptEntryChar GetoptScanChar.
+From Glibc Require OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptLongScan GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongCap GetoptShortCap GetoptColon GetoptEntryScan GetoptEntryChar GetoptScanChar.
+Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptLongScan GetoptLongDiag GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongCap GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptEntryChar GetoptScanChar.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -47,7 +45,7 @@ Definition plo_ret_case (ps : list ptr) (i n : Z) (cur : ptr) (s : list Z) (a : 
 Lemma dash_ret_ctl_empty : drop 2 [45; 45] = [] /\ Z.of_nat (List.length (take 2 [45; 45])) = 2.
 Proof. split; reflexivity. Qed.
 
-Import GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongCap GetoptShortCap GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptLongJoinMiss GetoptLongCap GetoptShortCap GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section dash_ret.

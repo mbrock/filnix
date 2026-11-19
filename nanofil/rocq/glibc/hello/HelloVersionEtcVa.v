@@ -5,6 +5,7 @@
     [HelloVersionEtc](HelloVersionEtc.v) proves the last of the three.
     This module proves the other two for Hello's four authors. *)
 
+From Glibc Require Import HelloObjects.
 From Glibc Require FixVariadic.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.

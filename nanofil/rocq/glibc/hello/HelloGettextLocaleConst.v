@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When gettext builds the file name of a message catalog, it needs the
     name of the category. It looks up byte 5 of _nl_category_name_idxs,
     which holds the offset of "LC_MESSAGES" inside the table
@@ -22,14 +21,13 @@ From Glibc Require Import GlibcProgram.
     alone, which shows neither where a program linking Hello with glibc
     puts the constants nor that startup hands their pieces over. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import LiteralWords ImageData LiteralLogic GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv StrlenLogic WordString LocaleConstCode HelloGetoptTable HelloGetoptDiagMsgs.
-From Glibc Require Import Fix.
+From Glibc Require Import FileInv StrlenLogic WordString LocaleConstCode Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

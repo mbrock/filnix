@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram.
 (** Each call of glibc's scanner first tidies the argument vector, which
     only the permuting order rearranges, and then decides what the
     argument at the public index is. This file joins the two proofs. The call either returns
@@ -7,8 +5,7 @@ From Glibc Require Import GlibcProgram.
     it reaches the option parser with an argument that starts with a
     dash and has a second character. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +13,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+From Glibc Require Import OsWorld WordString
+  GetoptModule ByteRead GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptIdlePath GetoptReturn GetoptScanEnd.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -29,7 +26,7 @@ Definition scan_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "
 
 (** The path module proves the tidying of the argument vector. *)
 (** The decision module proves the decision and the early returns. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan.

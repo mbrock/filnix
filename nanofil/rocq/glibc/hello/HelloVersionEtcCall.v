@@ -4,8 +4,9 @@
     call in that form and checks that the Hello image runs the code
     that the other version proofs read. *)
 
-From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
+From Glibc Require Import HelloObjects Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os
+  Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os GlibcProgram GlibcTactics GlibcSpec
+  OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +19,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdl
   PrintfWrap HelloImageLayout LibioFflushIdle HelloErrorOperandCall
   HelloPrintSites.
 From Glibc Require LibioCleanupExit.
-From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require Import Fix.
+From Glibc Require Import HelloImageModule HelloImageLoad Fix.
 Import ListNotations.
 Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.

@@ -17,7 +17,8 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
-From Glibc Require Import WordString HelloGetoptTable HelloGetoptDiagMsgs HelloGettextSuffix
+From Glibc Require Import GetoptMessageData ImageData LiteralLogic.
+From Glibc Require Import WordString HelloGettextSuffix
   HelloGettextLocaleConst HelloGettextDomain.
 From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
 Import ListNotations.
@@ -61,28 +62,6 @@ Definition hello_aux_ps : list (piece * pval) :=
     (img_ob "_nl_C_name"); hello_domain_base] ++ hello_msg_bases ++ hello_suffix_bases)).
 
 (** ## Placement *)
-
-(** A symbol names the read-only object at b. *)
-Definition lookup_ro (g : list (name * ptr)) (n : string) (b : Z) : bool :=
-  match Term.lookup (TAtom n) g with
-  | Some p => (ptr_addr p =? b) && match ptr_cap p with Ro c => c =? b | _ => false end
-  | None => false
-  end.
-
-Lemma lookup_ro_ok g n b : lookup_ro g n b = true -> Term.lookup (TAtom n) g = Some (mkPtr b (Ro b)).
-Proof.
-  unfold lookup_ro. destruct (Term.lookup (TAtom n) g) as [[a c]|]; [|discriminate]. cbn [ptr_addr ptr_cap].
-  destruct c; try (rewrite andb_false_r; discriminate). intros H. apply andb_true_iff in H as [Ha Hc].
-  apply Z.eqb_eq in Ha, Hc. subst. reflexivity.
-Qed.
-
-Lemma places_ok g (ns : list string) (bs : list (Z * region)) : List.length ns = List.length bs ->
-  forallb (fun nb : string * (Z * region) => lookup_ro g nb.1 nb.2.1) (combine ns bs) = true ->
-  Forall2 (fun n br => Term.lookup (TAtom n) g = Some (mkPtr br.1 (Ro br.1))) ns bs.
-Proof.
-  revert bs. induction ns as [|n ns IH]; intros [|br bs] Hl H; try discriminate Hl; [constructor|].
-  cbn in H. apply andb_true_iff in H as [H1 H2]. constructor; [exact (lookup_ro_ok _ _ _ H1) | apply IH; auto].
-Qed.
 
 (** The symbols of the image place all fifteen constants. *)
 Definition hello_places (g : list (name * ptr)) : bool :=

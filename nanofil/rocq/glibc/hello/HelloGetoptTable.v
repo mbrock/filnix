@@ -1,5 +1,3 @@
-From Glibc Require Export LiteralWords LiteralLogic.
-From Glibc Require Import GlibcProgram.
 (** Hello passes getopt_long the option string "g:t" and a table of four
     long options. The rule for the call needs read-only ownership of that
     table and of the option names, laid out the way glibc reads them. The
@@ -10,14 +8,16 @@ From Glibc Require Import GlibcProgram.
     the option table and the strings. It does not say that startup hands
     those pieces over. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import ImageData LongOption LongOptionTable.
+From Glibc Require Import LiteralWords LiteralLogic.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString StrlenLogic GetoptLongExact GetoptLongSite
-  GetoptLongStr GetoptInitial GetoptInitialize HelloImage_hello.
+From Glibc Require Import FileInv WordString StrlenLogic
+   GetoptInitial HelloImage_hello.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -74,6 +74,23 @@ Definition hello_los (n1 n2 n3 n4 : ptr) : list lopt :=
   [mkLopt n1 s_greeting 1 null 103; mkLopt n2 s_traditional 0 null 116;
    mkLopt n3 s_help 0 null 128; mkLopt n4 s_version 0 null 129].
 
+(** The option string "g:t" and the table of hello's options make 103,
+    the code of 'g', such a code. The table has four entries, and only
+    the first one, with value 103, takes an argument. *)
+Lemma str_code_g los :
+  List.map (fun y => (lo_has y, lo_flag y, lo_val y)) los =
+    [(1, null, 103); (0, null, 116); (0, null, 128); (0, null, 129)] ->
+  str_code (drop (opt_skip [103; 58; 116]) [103; 58; 116]) los 103.
+Proof.
+  intros Hm. cbn. split_and!; try discriminate.
+  - intros k Hk H58 H59 Hc. destruct k as [|[|[|k]]]; cbn in *; try lia; try (split; congruence).
+    vm_compute in Hc. discriminate.
+  - intros y Hy Hf Hv. apply list_elem_of_In in Hy.
+    apply (in_map (fun y => (lo_has y, lo_flag y, lo_val y))) in Hy. rewrite Hm in Hy. cbn in Hy.
+    destruct Hy as [Hy | [Hy | [Hy | [Hy | []]]]]; injection Hy as Hh _ Hval; try (symmetry; exact Hh);
+      rewrite <- Hval in Hv; vm_compute in Hv; discriminate.
+Qed.
+
 (** The getopt_long rule asks four things of a table, and Hello's table
     meets them. Its entries store no flag, it is short, and no value is
     -1. The option code 103 always comes back with a string. *)
@@ -103,9 +120,6 @@ Local Definition hello_image : mem :=
     item_hello'23str'2e68; item_hello'23str'2e69] with
   | Some (_, m) => m | None => empty_mem
   end.
-
-(** A data object of the image starting at b lives in region reg. *)
-Definition gd (b e : Z) : region := mkRegion b e GlobalData Live.
 
 (** This is Hello's table with its names at the loader's addresses. *)
 Definition hello_fixture_los : list lopt :=

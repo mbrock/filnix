@@ -22,15 +22,15 @@
     contracts may keep memory of their own. This module does not build
     that memory, because those contracts are still assumptions. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
+From Glibc Require Import HelloObjects HelloNameOffsets HelloLiterals ImageObjectPieces GlibcTactics
+  GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld FileInv FileIdle LibioWIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
-  HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
+  HelloGetoptStart HelloImageModule HelloImageLoad HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
 From Glibc Require AllocLogic AtexitLogic ExitRun.
 Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
@@ -283,7 +283,7 @@ Qed.
 
 (** The jump table of the frame holds ge's file functions. *)
 Lemma hello_jumps_syms : hello_jumps_kept_ps =
-  List.concat ((fun sl : Z * string => hello_pointer_ps (ho_vb o) (vt_file + sl.1) (sym_ptr ge sl.2)) <$> file_jumps).
+  List.concat ((fun sl : Z * string => ptr_ps (ho_vb o) (vt_file + sl.1) (sym_ptr ge sl.2)) <$> file_jumps).
 Proof using Hi.
   destruct (hello_loaded_tables g m Hi) as [Eg _]. unfold sym_ptr. cbn [ge_globals]. rewrite Eg.
   vm_compute. reflexivity.
@@ -291,7 +291,7 @@ Qed.
 
 (** The wide jump table of the frame holds ge's wide file functions. *)
 Lemma hello_wjumps_syms : hello_wjumps_kept_ps =
-  List.concat ((fun sl : Z * string => hello_pointer_ps (ho_vb o) (vt_wfile + sl.1) (sym_ptr ge sl.2)) <$> wfile_jumps).
+  List.concat ((fun sl : Z * string => ptr_ps (ho_vb o) (vt_wfile + sl.1) (sym_ptr ge sl.2)) <$> wfile_jumps).
 Proof using Hi.
   destruct (hello_loaded_tables g m Hi) as [Eg _]. unfold sym_ptr. cbn [ge_globals]. rewrite Eg.
   vm_compute. reflexivity.

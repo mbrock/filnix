@@ -3,9 +3,9 @@
     call to its compiled implementation and leaves OS calls external.
     The proof fixes no symbol addresses. *)
 
-From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
-From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os
+  Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os Unit_string_memrchr_os
+  Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import base list fin_maps.
@@ -14,8 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import HelloBodies.
 
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic
-  AllocLogic LeavesLogic AtexitLogic
-  HelloGlibcDebts.
+  AllocLogic LeavesLogic AtexitLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

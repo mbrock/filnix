@@ -1,5 +1,3 @@
-From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram.
 (** glibc's getopt decides how to parse an argument that starts with a
     dash. A word with two dashes goes to the long-option parser, and in
     long-only mode a word with one dash may go there too; every other
@@ -8,8 +6,8 @@ From Glibc Require Import GlibcProgram.
     choice receives either a session after that call or the state for
     one of the other two ways. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import AllocCall OsMemLogic LongOption LongOptionTable Unit_string_strchr_os
+  Unit_string_strchrnul_os Unit_string_strncmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,11 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrchrnulLogic StrlenLogic StrlenWord
   StrcmpBits StrncmpLogic
-  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
-  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange GetoptCursor
+    GetoptLongDiag
+   GetoptLongPfxAlloc GetoptLongAmbTail
   GetoptDispatch GetoptLongDash.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,7 +33,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The dispatch module proves the choice between short and long options. *)
 (** The two-dash module proves the call for a word with two dashes and restores the session. *)
-Import GetoptLongDash GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
+Import GetoptLongDash GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongDiag GetoptExchange GetoptState Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead GetoptArgv.
 
 (** The two-dash call and the short options read these names, which keep their values through the choice. *)
 Definition choice_keys : list name := Eval vm_compute in

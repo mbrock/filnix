@@ -3,8 +3,8 @@
     for strerror and prints the returned string to stderr. Neither
     path needs stdout or restores the cancellation flag yet. *)
 
-From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os GlibcProgram
+  GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

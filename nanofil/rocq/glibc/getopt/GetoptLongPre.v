@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser has found the option that a word
     names in the caller's table, it first tests the found entry, steps
     the index past the word and clears its cursor. Then it reads the
@@ -7,8 +6,7 @@ From Glibc Require Import GlibcProgram.
     parser's own index and cursor, and they read the word only inside
     its string. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,10 +14,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+From Glibc Require Import OsWorld WordString StrlenLogic StrlenWord
   StrcmpBits StrcmpLoop StrncmpWords StrncmpLogic
-  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptExchange
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag.
+  GetoptModule ByteRead
+   GetoptReqTail GetoptLongScan.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -38,7 +36,7 @@ Definition plo_blk87 : block := Eval vm_compute in plo_blk "L87".
 
 
 (** The equals-sign module supplies the option table and the tactics. *)
-Import GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
+Import GetoptLongScan GetoptReqTail Fix.ML0 Fix.LG0 Fix.LG0.L ByteRead.
 
 Import ProgramAbbreviations.
 Section pre.

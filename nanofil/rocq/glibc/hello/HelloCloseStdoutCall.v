@@ -7,9 +7,10 @@
     the private state, so the contract holds for every private state
     that has the shape startup builds. *)
 
-From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
-From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os Unit_posix__exit_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
+From Glibc Require Import HelloObjects Unit_io_close_nocancel_os Unit_io_write_os
+  Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os Unit_libio_genops_os
+  Unit_libio_iofclose_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os Unit_posix__exit_os GlibcProgram
+  GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

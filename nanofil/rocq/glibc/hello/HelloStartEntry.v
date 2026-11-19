@@ -23,9 +23,10 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic StringLogic
   MemLogic.
+From Glibc Require Import HelloObjects GetenvSpec.
 From Glibc Require Fix.
-From Glibc Require Import Unit_nptl_alloca_cutoff_os Unit_stdlib_getenv_os Unit_string_memset_os Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import Unit_string_strcmp_os Unit_string_strncmp_os.
+From Glibc Require Import Unit_nptl_alloca_cutoff_os Unit_stdlib_getenv_os Unit_string_memset_os
+  Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry WordString FileInv
   GetoptModule GetoptDiag GetoptLongDiag GetoptLongPfxAlloc GetoptInitial
   HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop HelloGetoptCall

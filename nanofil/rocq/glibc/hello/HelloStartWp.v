@@ -15,6 +15,7 @@
     again when main starts. Startup builds main's private state from
     the objects that `c: getenv` reads and the image's private list. *)
 
+From Glibc Require Import HelloObjects.
 From Glibc Require Fix.
 From Glibc Require Import ImageObjectPieces GlibcTactics GlibcProgram GlibcSpec PrintfSpec.
 From iris.proofmode Require Import proofmode.
@@ -27,7 +28,7 @@ From Glibc Require Import LocaleEnv.
 From Glibc Require Import FileInv OsWorld OsRegistry OsStart OsCpuid StartCtors StartState StartOwn
   StartJoin StartGetenv StartLibcStartMain StartLsmImage StartLsmHello StartEarlyInitSpec StartCtorRunnerSpec
   StartCallMainSpec StartPtmallocInitSpec StartInitFirstSpec StartInitMiscSpec StartCtorChain StartImageEarly StartTunablesEarly CpuInitSpec
-  WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloImageModule
+  WordString GetenvScan GetenvEntry GetenvStatic HelloGlibcDebts HelloImageModule
   HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageEnviron HelloImageCtors
   HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
   HelloStartEntry HelloStartFacts OsMemLogic HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale

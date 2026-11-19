@@ -1,4 +1,3 @@
-From Glibc Require Import GlibcProgram.
 (** glibc's scanner reports a bad option on stderr when the caller lets
     it print errors. The report takes two calls. __GI___dcgettext
     translates the message through the C library's message domain, and
@@ -9,8 +8,7 @@ From Glibc Require Import GlibcProgram.
     of the stderr pointer, the read of the program name from the
     argument vector, and the arguments that it passes. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
-From Glibc Require Import GlibcEnv.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
+From Glibc Require Import OsWorld WordString GetoptModule
+    GetoptArgv GetoptExchange.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -41,7 +39,7 @@ Definition diag_names : list name := Eval vm_compute in
 From Glibc Require Export GetoptMessages.
 
 (** The exchange module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
+Import GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
@@ -111,12 +109,6 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     translation. Output then gives back G. Proving the rule for the real
     callees remains an open proof obligation of the caller about locale
     translation and formatting. It is not part of the OS boundary. *)
-
-(** This tactic computes call arguments whose last one is the option character c. *)
-Ltac vxc c := cbn -[put];
-  repeat match goal with |- context [lookup ?k ?E] =>
-    let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H end;
-  cbn; rewrite (Z.mod_small c); [reflexivity | lia].
 
 (** This tactic shows that the message of a report is one of the two. *)
 Local Ltac msg := unfold diag_msg; first [left; eassumption | right; eassumption].
