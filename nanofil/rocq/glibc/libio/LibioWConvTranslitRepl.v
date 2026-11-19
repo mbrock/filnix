@@ -9,7 +9,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld FileInv LibioLogic
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv LibioLogic
   LibioDefaultXsputnBuf CBlocks Fix LibioWConvAscii LibioWConvConsts LibioWConvTranslitCmp LibioWConvTranslitTry.
 From Glibc Require Export LibioWConvTranslitCall.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -19,10 +19,10 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
-Local Abbreviation tia := (img_a "glibc_C_ctype#translit_to_idx").
-Local Abbreviation tta := (img_a "glibc_C_ctype#translit_to_tbl").
-Local Abbreviation fp := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
+Local Abbreviation tmb := (conv_addr "glibc_wcsmbsload#to_mb").
+Local Abbreviation tia := (conv_addr "glibc_C_ctype#translit_to_idx").
+Local Abbreviation tta := (conv_addr "glibc_C_ctype#translit_to_tbl").
+Local Abbreviation fp := (mkPtr (conv_addr "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** Each replacement index names a list in the table. Its words, including
     the extra zero at the end of the image object, fit in unsigned integers. *)

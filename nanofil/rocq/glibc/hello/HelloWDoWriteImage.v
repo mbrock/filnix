@@ -3,6 +3,7 @@
     This module checks how the loaded image writes the resulting bytes
     to the file descriptor for stdout. *)
 
+From Glibc Require Import HelloWConvConsts.
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.

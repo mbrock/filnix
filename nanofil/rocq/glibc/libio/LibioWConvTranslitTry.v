@@ -9,7 +9,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld FileInv LibioLogic
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv LibioLogic
   LibioDefaultXsputnBuf CBlocks Fix LibioWConvAscii LibioWConvTranslitCmp LibioWConvTranslitLen LibioWConvTranslitCall.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
@@ -18,7 +18,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation fp := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
+Local Abbreviation fp := (mkPtr (conv_addr "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** The scan assigns only temporaries that belong to the replacement loop. *)
 Lemma len_same_repl (e e' : list (name * word)) : same_out len_names e e' -> same_out repl_names e e'.

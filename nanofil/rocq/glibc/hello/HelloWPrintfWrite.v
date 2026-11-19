@@ -4,6 +4,7 @@
     errno with its streams. This proof lends both at once and returns
     the new value of errno to the streams. *)
 
+From Glibc Require Import HelloWConvConsts.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.

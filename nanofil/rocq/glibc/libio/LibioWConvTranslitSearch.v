@@ -18,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables
   OsWorld FileInv LibioLogic LibioDefaultXsputnBuf CBlocks Fix LibioWConvAscii LibioWConvConsts
   LibioWConvTranslitCmp LibioWConvTranslitCall.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -28,8 +28,8 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation fia := (img_a "glibc_C_ctype#translit_from_idx").
-Local Abbreviation fta := (img_a "glibc_C_ctype#translit_from_tbl").
+Local Abbreviation fia := (conv_addr "glibc_C_ctype#translit_from_idx").
+Local Abbreviation fta := (conv_addr "glibc_C_ctype#translit_from_tbl").
 
 (** ## Strings in a table of words
 

@@ -18,7 +18,8 @@ export FILCC=/tmp/filcc/bin/clang SWIPL=/tmp/swipl/bin/swipl
 ```
 
 The default command checks the generated files and reports any changes,
-missing files or stale files.
+missing files or stale files. Both write modes preserve the timestamps of files
+whose bytes already match. An update also removes stale fixtures.
 
 ```sh
 nanofil/rocq/glibc/code.sh /tmp/glibc-pp
@@ -37,6 +38,15 @@ The generator uses `/tmp/glibc-pp` when no capture is supplied. It builds
 `survey/glibc/capture.nix` if that directory is absent. It uses Python 3.11 or
 newer, SWI-Prolog and the staging compiler. Set `MODEL` to an existing
 `nanofil-model` executable to skip the Nix build for the extracted model.
+
+## Image placement
+
+The Hello manifest lists the symbols that wide-character conversion reads.
+The generator runs the extracted loader’s placement and alias passes to write
+their addresses and region ends to `HelloImagePlacement.v`. The conversion
+proof imports that table and the C locale object that supplies the words.
+`HelloWConvConsts.v` checks the addresses against the linked image, and
+`HelloImageWConvObjs.v` proves that the loaded memory contains those words.
 
 ## Source hints
 

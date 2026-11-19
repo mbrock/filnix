@@ -18,8 +18,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs
-  OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle Mbrtowc CBlocks Fix LibioWConvAscii
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables
+  OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle CBlocks Fix LibioWConvAscii
   LibioWConvConsts LibioWConvTranslitCmp LibioWConvTranslitSearch LibioWConvTranslitFallback
   LibioWConvTranslitRepl LibioWConvLast.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -30,8 +30,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
-Local Abbreviation fct := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
+Local Abbreviation tmb := (conv_addr "glibc_wcsmbsload#to_mb").
+Local Abbreviation fct := (mkPtr (conv_addr "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** ## The entry
 
@@ -46,7 +46,7 @@ Local Ltac tr_alloc b H L C :=
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]; iNext; iIntros (b H) "Hob";
   change (0 < b /\ b mod 16 = 0 /\ b + 16 <= 2^48) in H;
   iDestruct (obj_zero_block with "Hob") as "(Hobl & Hobb & Hoba)"; [vm_compute; congruence|];
-  iDestruct (Mbrtowc.MbVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
+  iDestruct (WConvVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
   iAssert (live b (mkRegion b (b + 16) Heap Live)) with "Hobl" as L;
   iAssert (∃ x, pcell b 0 x)%I with "[Hobc]" as C; [by iExists _|].
 
@@ -68,7 +68,7 @@ Section translit.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hascii : !Defines ge "__gconv_transform_internal_ascii" glibc_internal_ascii}
   (Hfp : function_check_res ge fct = Some ok)
-  (Hts : lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp (img_a "__libc_tsd_LOCALE"))).
+  (Hts : lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp (conv_addr "__libc_tsd_LOCALE"))).
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The entry reads the step's fields through a read-only pointer, so
@@ -196,10 +196,10 @@ Proof using Type*.
   assert (V212 : lookup (TAtom "v212") e0 = Some (WPtr (objp b212))) by lk0.
   assert (V481 : lookup (TAtom "v481") e0 = Some (WPtr (objp b481))) by lk0.
   assert (V494 : lookup (TAtom "v494") e0 = Some (WPtr (objp b494))) by lk0.
-  assert (V65 : lookup (TAtom "v65") e0 = Some (WPtr (rop (img_a "glibc_C_ctype#translit_from_idx")))) by lk0.
-  assert (V75 : lookup (TAtom "v75") e0 = Some (WPtr (rop (img_a "glibc_C_ctype#translit_from_tbl")))) by lk0.
-  assert (V85 : lookup (TAtom "v85") e0 = Some (WPtr (rop (img_a "glibc_C_ctype#translit_to_idx")))) by lk0.
-  assert (V95 : lookup (TAtom "v95") e0 = Some (WPtr (rop (img_a "glibc_C_ctype#translit_to_tbl")))) by lk0.
+  assert (V65 : lookup (TAtom "v65") e0 = Some (WPtr (rop (conv_addr "glibc_C_ctype#translit_from_idx")))) by lk0.
+  assert (V75 : lookup (TAtom "v75") e0 = Some (WPtr (rop (conv_addr "glibc_C_ctype#translit_from_tbl")))) by lk0.
+  assert (V85 : lookup (TAtom "v85") e0 = Some (WPtr (rop (conv_addr "glibc_C_ctype#translit_to_idx")))) by lk0.
+  assert (V95 : lookup (TAtom "v95") e0 = Some (WPtr (rop (conv_addr "glibc_C_ctype#translit_to_tbl")))) by lk0.
   assert (V103 : lookup (TAtom "v103") e0 = Some (WInt (ib + io + 4 * n))) by lk0.
   assert (V48 : lookup (TAtom "v48") e0 = Some (WInt 1659)) by lk0.
   clearbody e0.

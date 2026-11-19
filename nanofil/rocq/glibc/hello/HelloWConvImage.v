@@ -2,6 +2,7 @@
     tables. Printing and closing stdout lend different shares of the
     locale cells, but both run the same conversion code. *)
 
+From Glibc Require Import HelloWConvConsts.
 From Glibc Require Import GlibcProgram.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.

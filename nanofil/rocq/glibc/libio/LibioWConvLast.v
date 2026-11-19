@@ -10,8 +10,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld FileInv LibioLogic
-  LibioDefaultXsputnBuf LibioWIdle Mbrtowc CBlocks Fix LibioWConvAscii LibioWConvConsts LibioWConvOut.
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv LibioLogic
+  LibioDefaultXsputnBuf LibioWIdle CBlocks Fix LibioWConvAscii LibioWConvConsts LibioWConvOut.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -20,7 +20,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
+Local Abbreviation tmb := (conv_addr "glibc_wcsmbsload#to_mb").
 Local Abbreviation localreg b := (mkRegion b (b + 16) Heap Live).
 
 Section last.
@@ -159,8 +159,8 @@ Lemma wp_ia_last dl : ia_last_rule dl.
 Proof using Type*.
   intros fr wd wreg ib ireg dq ic io ws tb treg to xs fl cnt pi pireg lb lbreg c0 Φ n m Hfr Hfl
     Hwd Hw8 Hwe Hwr Hic Hib Hio Hie Hir Halias Hws Htb Hto Hte Htr Hxs Hpi Hpi8 Hpie Hpir Hlb Hlb8 Hlbe Hlbr.
-  iIntros "Hro Hloc Hwl Hob Hoe [%Hfl32 Hfl] [%Hcnt32 Hcnt] His Hin Htl Hzs Hpil Hpi Hbl Hb HK".
-  iPoseProof (wconv_ro_consts with "Hro") as "#Hconst". injection Hfr as <-.
+  iIntros "#Hconst Hloc Hwl Hob Hoe [%Hfl32 Hfl] [%Hcnt32 Hcnt] His Hin Htl Hzs Hpil Hpi Hbl Hb HK".
+  injection Hfr as <-.
   destruct (wflags_bits fl Hfl) as (Hfl31 & Hb1 & _ & _).
   assert (Hcap : forall q, live_capq q ic ireg = liveq q ib ireg) by (intros; destruct Hic as [-> | ->]; reflexivity).
   Local Ltac cell8 b H L C :=
@@ -168,7 +168,7 @@ Proof using Type*.
       intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]; iNext; iIntros (b H) "Hob0";
     change (0 < b /\ b mod 16 = 0 /\ b + 16 <= 2^48) in H;
     iDestruct (obj_zero_block with "Hob0") as "(Hobl & Hobb & Hoba)"; [vm_compute; congruence|];
-    iDestruct (Mbrtowc.MbVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
+    iDestruct (WConvVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
     iAssert (live b (localreg b)) with "Hobl" as L; iRename "Hobc" into C.
   step. cell8 lp Hlp "Hll" "Hl". destruct Hlp as (Hlp & Hlp16 & Hlpe).
   iAssert (icell lp 0 0) with "[Hl]" as "Hl".

@@ -13,6 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloLeaf.
 From Glibc Require Import CodePrelude HelloImageModule HelloImageLoad OsWorld OsBlocks FileInv LibioLogic
   AsciiConvert StartInitMisc DcigettextExit Fix.
+From Glibc Require Export CLocaleCells.
 Module MbVL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic MbVL.
 Open Scope Z_scope.
@@ -36,13 +37,6 @@ Local Abbreviation fp := (mkPtr (img_a "__gconv_transform_ascii_internal") (Fn (
 
 Section objects.
 Context `{!gen_heapGS piece pval Σ}.
-
-(** The thread's locale pointer names the global locale, and its
-    character category names the C data. The caller takes both cells
-    back after each character. *)
-Definition mbr_locale dq : iProp Σ :=
-  live ts (img_gd "__libc_tsd_LOCALE") ∗ pcell ts 0 (objp gl) ∗ live gl (img_gd "_nl_global_locale") ∗
-  pcellq dq gl 0 (rop cc).
 
 (** The four pointer loads that follow the character category find
     the last conversion step. Its library handle is null and its

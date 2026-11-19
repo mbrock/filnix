@@ -1,0 +1,17 @@
+<block id="b-2026-11-19-translit-imports" kind="bench" actor="T-01a1f1c6-7ae1-7151-8606-6b86fa38368d" created="2026-11-19T04:06:29Z">
+  <title>The transliteration proof opens in 19 seconds</title>
+  <about path="nanofil/rocq/glibc/libio/LibioWConvTranslit.v"/>
+  <about path="nanofil/rocq/glibc/locale/CtypeTranslitTables.v"/>
+  <about path="nanofil/rocq/glibc/hello/HelloWConvConsts.v"/>
+  <tag name="rocq"/>
+  <p>Glibc’s conversion proof now reads the four transliteration arrays from
+  the compiled C locale object. It gets ten symbol addresses and region ends
+  from the extracted loader. Hello’s startup proofs check those addresses
+  and show that its loaded memory contains the table bytes.</p>
+  <p>Rocq reports 75 transitive glibc imports for the conversion, down from
+  436. On swa, <sh>rq open libio/LibioWConvTranslit.v --theorem flags_step</sh>
+  reached its first goal in 19.4 seconds. The previous run took 124 seconds.
+  Both used an empty interface cache, a compiled Nanofil model and eight make
+  jobs. Other builds shared the host. The earlier measurement is in
+  <ref block="b-2026-11-19-rocq-cold-proof"/>.</p>
+</block>

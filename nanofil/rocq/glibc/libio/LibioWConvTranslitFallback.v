@@ -10,8 +10,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld
-  FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle Mbrtowc CBlocks Fix LibioWConvAscii LibioWConvConsts.
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld
+  FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle CBlocks Fix LibioWConvAscii LibioWConvConsts.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -20,15 +20,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
-Local Abbreviation s280 := (img_a "glibc_C_ctype#str.280").
-Local Abbreviation fct := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
+Local Abbreviation tmb := (conv_addr "glibc_wcsmbsload#to_mb").
+Local Abbreviation s280 := (conv_addr "glibc_C_ctype#str.280").
+Local Abbreviation fct := (mkPtr (conv_addr "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 Section fallback.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hascii : !Defines ge "__gconv_transform_internal_ascii" glibc_internal_ascii}
   (Hfp : function_check_res ge fct = Some ok)
-  (Hts : lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp (img_a "__libc_tsd_LOCALE"))).
+  (Hts : lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp (conv_addr "__libc_tsd_LOCALE"))).
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The fallback reads the current thread's character category before each lookup. *)

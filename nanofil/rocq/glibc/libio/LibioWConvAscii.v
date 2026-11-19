@@ -20,9 +20,10 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageMbsObjs
-  HelloImageWFwideObjs HelloImageWConvObjs OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle Mbrtowc CBlocks Fix.
+  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer VariadicLogic.
+From Glibc Require Import CodePrelude CLocaleCells
+  CtypeTranslitTables OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle CBlocks Fix.
+Module WConvVL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -56,18 +57,6 @@ Definition ia_loop_names : list name := Eval vm_compute in
 
 Section objects.
 Context `{!gen_heapGS piece pval Σ}.
-
-(** The conversion reads these read-only objects. They include the
-    converter path that `c: mbrtowc` reads and the output step's
-    handle. They also include the transliteration tables, the zero
-    word after each table of strings, and the words that lead to the
-    tables. *)
-Definition wconv_ro : iProp Σ :=
-  mbr_tables ∗ ptsq DfracDiscarded hello_wfwide_ps ∗ ptsq DfracDiscarded hello_wc_tables_ps ∗
-  ptsq DfracDiscarded hello_wc_words_ps ∗ ptsq DfracDiscarded hello_wc_tails_ps.
-
-Global Instance wconv_ro_persistent : Persistent wconv_ro.
-Proof using Type. unfold wconv_ro, mbr_tables, liveq, pcellq. apply _. Qed.
 
 (** Transliteration finds the C locale through the thread's locale
     pointer, as `c: mbrtowc` does, so it borrows the same cells. *)
@@ -104,7 +93,7 @@ Local Ltac ia_cell b H L C :=
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]; iNext; iIntros (b H) "Hob";
   change (0 < b /\ b mod 16 = 0 /\ b + 16 <= 2^48) in H;
   iDestruct (obj_zero_block with "Hob") as "(Hobl & Hobb & Hoba)"; [vm_compute; congruence|];
-  iDestruct (Mbrtowc.MbVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
+  iDestruct (WConvVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
   iAssert (live b (mkRegion b (b + 16) Heap Live)) with "Hobl" as L; iRename "Hobc" into C.
 
 (** The step takes a pointer to its count of irreversible

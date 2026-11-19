@@ -41,8 +41,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
-From Glibc Require Import CodePrelude HelloImageLoad HelloImageWConvObjs OsWorld FileInv
-  LibioLogic LibioCloseSteps LibioWIdle Mbrtowc CBlocks Fix LibioWConvAscii LibioWConvConsts.
+From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv
+  LibioLogic LibioCloseSteps LibioWIdle CBlocks Fix LibioWConvAscii LibioWConvConsts.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
@@ -51,8 +51,8 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
-Local Abbreviation fct := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
+Local Abbreviation tmb := (conv_addr "glibc_wcsmbsload#to_mb").
+Local Abbreviation fct := (mkPtr (conv_addr "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** This definition is the conversion function as Hello's image holds it. *)
 Definition glibc_codecvt_out := Unit_libio_iofwide_os.fn___libio_codecvt_out.
@@ -85,7 +85,7 @@ Definition ia_last_rule (dl : dfrac) : Prop :=
   0 < tb -> 0 <= to -> tb + to + m <= r_end treg -> r_end treg <= 2 ^ 63 -> Forall (fun x => 0 <= x < 256) xs ->
   0 < pi -> pi mod 8 = 0 -> pi + 8 <= r_end pireg -> r_end pireg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 8 <= r_end lbreg -> r_end lbreg <= 2 ^ 63 ->
-  ⊢ wconv_ro -∗ wlocale dl -∗ live wd wreg -∗
+  ⊢ wconv_consts -∗ wlocale dl -∗ live wd wreg -∗
     pcell wd 168 (mkPtr (tb + to) (Obj tb)) -∗ pcell wd 176 (mkPtr (tb + to + m) (Obj tb)) -∗
     int_cell wd 184 fl -∗ int_cell wd 188 cnt -∗
     (if decide (sb = wd) then True else liveq dq sb sreg) -∗ bytesq dq sb so (le_words ws) -∗
@@ -137,7 +137,7 @@ Local Ltac co_alloc b H L C :=
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |]; iNext; iIntros (b H) "Hob";
   change (0 < b /\ b mod 16 = 0 /\ b + 16 <= 2^48) in H;
   iDestruct (obj_zero_block with "Hob") as "(Hobl & Hobb & Hoba)"; [vm_compute; congruence|];
-  iDestruct (Mbrtowc.MbVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
+  iDestruct (WConvVL.zero_cell_prefix b 0 8 with "Hobb Hoba") as "(Hobc & _ & _)";
   iAssert (live b (mkRegion b (b + 16) Heap Live)) with "Hobl" as L; iRename "Hobc" into C.
 
 (** The flush calls the conversion with a source of n wide characters
@@ -157,7 +157,7 @@ Lemma wp_codecvt_out fr tm wd wreg ob oe fl cnt sb sreg dq sc so ws tb treg to x
   0 < tb -> 0 <= to -> tb + to + m <= r_end treg -> r_end treg <= 2 ^ 63 -> Forall (fun x => 0 <= x < 256) xs ->
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 < tpb -> tpb mod 8 = 0 -> tpb + 8 <= r_end tpreg -> r_end tpreg <= 2 ^ 63 ->
-  wconv_ro -∗ wlocale dl -∗ live wd wreg -∗ iconv_cell wd woff_cd_out tm ob oe fl cnt -∗
+  wconv_consts -∗ wlocale dl -∗ live wd wreg -∗ iconv_cell wd woff_cd_out tm ob oe fl cnt -∗
   bytes wd woff_state (replicate 16 0) -∗ (if decide (sb = wd) then True else liveq dq sb sreg) -∗
   bytesq dq sb so (flat_map (fun c => le_bytes c 4) ws) -∗ live tb treg -∗ bytes tb to xs -∗
   live nb nreg -∗ pcell nb 0 n0 -∗ live tpb tpreg -∗ pcell tpb 0 t0 -∗
@@ -174,7 +174,7 @@ Proof using Type*.
   intros n m Hfr Htm Hfl Hwd Hwa Hwe Hwr Hsc Hsb Hso Hse Hsr Hsw Hws Htb Hto Hte Htr Hxs Hnb Hna Hne Hnr Htp Hta Htpe Htpr.
   rewrite Htmb in Htm. injection Htm as <-. injection Hfr as <-.
   iIntros "#Hro Hloc Hwl Hcd Hst Hsl Hsrc Htl Htx Hnl Hnc Htpl Htpc HK".
-  iPoseProof (wconv_ro_consts with "Hro") as "(#Html & #Htm0 & #Htm40 & _)".
+  iPoseProof "Hro" as "(#Html & #Htm0 & #Htm40 & _)".
   iDestruct "Hcd" as (sd Hsd) "(C160 & C168 & C176 & C184 & C188 & C192 & C196 & C200 & C208)".
   unfold woff_cd_out, woff_state, woff_cd_in in *.
   step. co_alloc lb Hlb "Hlbl" "Hlbc". co_alloc pi Hpi "Hpil" "Hpic". step. check "Hwl".

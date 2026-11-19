@@ -13,6 +13,7 @@
     proofs here take the tables out, lend the locale to the function,
     and give the resources back when it returns. *)
 
+From Glibc Require Import HelloWConvConsts.
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -90,7 +91,8 @@ Lemma codecvt_out_ok `{!Defines ge "__gconv_transform_internal_ascii" glibc_inte
   codecvt_out_rule wconv_ro (wlocale dl).
 Proof using Type.
   intros Hlast Hfct Htmb. unfold codecvt_out_rule. intros.
-  eapply (wp_codecvt_out dl Hlast Hfct Htmb); eassumption.
+  iIntros "Hro". iPoseProof (wconv_ro_consts with "Hro") as "Hc".
+  iApply (wp_codecvt_out dl Hlast Hfct Htmb with "Hc"); eassumption.
 Qed.
 
 (** Printing can use this write if its frame keeps the stream tables
