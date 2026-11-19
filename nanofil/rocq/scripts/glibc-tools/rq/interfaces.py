@@ -8,6 +8,7 @@ import shlex
 import shutil
 import subprocess
 import sys
+import time
 
 
 def prepare(tree, file, model):
@@ -31,7 +32,11 @@ def prepare(tree, file, model):
     worker_flags = ["-q"]
     sources = []
     with (work / "build.lock").open("a") as lock:
-        fcntl.flock(lock, fcntl.LOCK_EX)
+        try:
+            fcntl.flock(lock, fcntl.LOCK_EX | fcntl.LOCK_NB)
+        except BlockingIOError:
+            print(f"rq: waiting for the interface build in {work}", file=sys.stderr)
+            fcntl.flock(lock, fcntl.LOCK_EX)
         for name, root in roots.items():
             if root.is_relative_to("/nix/store"):
                 build_flags.extend(["-R", str(root), name])
@@ -63,7 +68,20 @@ def prepare(tree, file, model):
         compile_vos = shlex.join(["rocq", "c", "-q", "-vos", *build_flags])
         recipe = f'\t@{compile_vos} "$<" > "$@.log" 2>&1 || {{ cat "$@.log" >&2; exit 1; }}'
         makefile = "\n".join([".DELETE_ON_ERROR:", "%.vos: %.v", recipe, *rules, ""])
-        subprocess.run(["make", "--no-print-directory", "-s", "-j", os.getenv("RQ_JOBS", "8"),
-                        "-f", "-", str(target)], input=makefile, text=True, cwd=work,
-                       stdout=sys.stderr, check=True)
+        (work / "Makefile").write_text(makefile)
+        command = ["make", "--no-print-directory", "-s", "-j", os.getenv("RQ_JOBS", "8"), str(target)]
+        start = time.monotonic()
+        with subprocess.Popen(command, cwd=work, stdout=sys.stderr) as build:
+            while True:
+                try:
+                    status = build.wait(timeout=15)
+                    break
+                except subprocess.TimeoutExpired:
+                    logs = work.rglob("*.vos.log")
+                    latest = max(logs, key=lambda p: p.stat().st_mtime_ns, default=None)
+                    detail = f"; latest compiler log {latest.relative_to(work)}" if latest else ""
+                    print(f"rq: building imports for {file.name} ({time.monotonic() - start:.0f}s){detail}",
+                          file=sys.stderr, flush=True)
+        if status:
+            raise subprocess.CalledProcessError(status, command)
     return worker_flags
