@@ -60,6 +60,7 @@ $rq goals R1 --conclusion         # the conclusion without the Iris context
 $rq try R1 -e 'iFrame.' -e 'iFrame "H".'   # each from the same state; the session stays put
 $rq check R1                      # Qed in a throwaway state
 $rq reload R1                     # replay the edited file from its first changed byte
+$rq verify hello/HelloSetlocaleAll.v  # check every saved proof with rocq c -vok
 $rq ls; $rq stop R1
 ```
 

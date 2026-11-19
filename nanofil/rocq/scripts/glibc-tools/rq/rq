@@ -13,6 +13,7 @@ the same Rocq and load path as one.sh.
     rq try R1 -e 'tac1.' -e 'tac2.' [--commit] try each candidate from the same state
     rq check R1                                try Qed in a throwaway state
     rq back R1 [N]                             drop the last N committed sentences
+    rq verify FILE [--tree TREE]           check every proof in the saved file against its imports
     rq reload R1 [--theorem NAME | --line N]   replay the edited file from the first change
     rq ls | status R1 | log R1 | wait R1 [JOB] | cancel R1 | stop R1
 
@@ -47,7 +48,7 @@ rq.slice, so rq ls reports the memory of the whole worker tree and
 one, the worker is a detached process group and rq reports its RSS; a
 requested cap is then refused, since it could not be enforced.
 """
-import argparse, json, os, re, signal, socket, subprocess, sys, time
+import argparse, json, os, re, signal, socket, subprocess, sys, tempfile, time
 
 import interfaces
 
@@ -398,6 +399,21 @@ def prepare_interfaces(tree, file, model):
         die("could not prepare imports for %s: %s" % (file, exc), 1)
 
 
+def cmd_verify(args):
+    tree, file, _ = tree_and_flags(args.file, args.tree)
+    if os.path.commonpath([tree, file]) != tree:
+        die("the file must be inside the selected tree")
+    flags = prepare_interfaces(tree, file, os.environ["PE_MODEL"])
+    source = os.path.join(flags[-2], os.path.relpath(file, tree))
+    with tempfile.TemporaryDirectory() as output:
+        marker = os.path.join(output, os.path.splitext(os.path.basename(file))[0] + ".vok")
+        result = subprocess.run(["rocq", "c", "-vok", *flags, "-o", marker, source],
+                                cwd=tree, stdout=sys.stderr)
+    if args.json:
+        print(json.dumps({"file": file, "ok": result.returncode == 0}))
+    return result.returncode
+
+
 def cmd_open(args):
     tree, file, flags = tree_and_flags(args.file, args.tree)
     t0 = time.time()
@@ -681,6 +697,9 @@ def main():
         q.add_argument("--theorem", help="stop after the statement and Proof of this lemma")
         q.add_argument("--line", type=int, help="stop at the last sentence ending on or before this line")
 
+    q = add("verify", cmd_verify, session=False)
+    q.add_argument("file")
+    q.add_argument("--tree", help="the proof tree (default nanofil/rocq/glibc)")
     q = add("open", cmd_open, session=False)
     q.add_argument("file")
     q.add_argument("--tree", help="the proof tree (default nanofil/rocq/glibc; $PE_MODEL for theories)")

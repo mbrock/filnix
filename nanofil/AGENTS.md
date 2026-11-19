@@ -123,22 +123,16 @@ see the next goal costs a minute or more per try in the large startup
 and hi_atexit files, and a whole gate costs ten minutes or more, so use
 these steps in this order and keep the slow ones out of the loop:
 
-1. Once per orb, and again after you rebase onto a newer main, put the
-   tools on the path and the cached objects beside the sources. The orb
-   setup has already fetched the tools, and each step takes about 20 s.
-   `PE_REFRESH=1` relinks the compiled model at your commit; without it
-   a model from an older main fails with "Unable to locate library":
+1. Once per orb, and again after you rebase onto a newer main, put Rocq
+   on the path and link the compiled Nanofil model for your checkout:
 
    ```sh
    PE_REFRESH=1 . nanofil/rocq/scripts/glibc-tools/env.sh
-   nanofil/rocq/scripts/glibc-tools/warm.sh
    ```
 
-   `warm.sh` prints how many files had cached objects. When main has
-   moved past the last finished glibc CI run, many miss; build only the
-   imports of the file you work on, not the whole tree:
-   `glibc-tools/imports.sh startup/StartEarlyInit.v` compiles just the
-   files it imports, in dependency order and in parallel.
+   `rq open` builds the imported interfaces that your file needs.
+   `warm.sh` is available when you want the push check's objects beside
+   the sources for `one.sh` or a session opened with `rq open --vo`.
 2. While you write a proof, keep an rq session open. A session is one
    worker that holds Rocq with your file loaded up to the lemma or line
    you are working on, and keeps the state after every sentence, so each
@@ -166,10 +160,9 @@ these steps in this order and keep the slow ones out of the loop:
    is not a passing `one.sh`. `rq --help` and `glibc-tools/README.md`
    describe the rest. Copy a proof that works back into the file and
    keep going.
-3. When a file is done, compile it alone against the objects beside it:
-   `nanofil/rocq/scripts/glibc-tools/one.sh nanofil/rocq/glibc DIR/FILE.v`.
-   After an edit to a file that others import, compile that file the
-   same way first, so that its importers load the new object.
+3. When a file is done, check every saved proof with
+   `$rq verify DIR/FILE.v`. This runs Rocq in `-vok` mode against the
+   current interfaces of that file's imports.
 4. Before pushing, run `affected.sh` as described below, then push with
    `scripts/ship` and start the next task. Do not wait on CI or poll it:
    no push waits on it, your subscription reports a red run, and you fix

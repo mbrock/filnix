@@ -21,6 +21,8 @@ echo 'From Glibc Require Import Base. Definition seen := value.' > "$work/src/Mi
 echo 'From Glibc Require Import Mid. Goal seen = 1. Proof. reflexivity. Qed.' > "$work/src/Leaf.v"
 echo 'Definition broken := true + 1.' > "$work/src/Unrelated.v"
 
+"$rq" verify --tree "$work/src" Leaf.v
+if "$rq" verify --tree "$work/src" Base.v; then echo "verify skipped the target proof" >&2; exit 1; fi
 "$rq" open --tree "$work/src" Leaf.v
 reply=$("$rq" reload R1 --json)
 python3 -c 'import json,sys; r=json.loads(sys.argv[1]); assert r["reused"] > 0 and not r["committed"] and "restarted_for" not in r, r' "$reply"

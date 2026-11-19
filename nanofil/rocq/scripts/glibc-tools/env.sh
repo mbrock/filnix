@@ -15,7 +15,7 @@ PE_CACHE=${PE_CACHE:-$pe_repo/.amp/in/scratchpad/glibc-tools}
 mkdir -p "$PE_CACHE"
 if [ ! -e "$PE_CACHE/tools" ]; then
   nix build --impure -o "$PE_CACHE/tools" --expr "
-    let flake = builtins.getFlake \"$pe_repo\";
+    let flake = builtins.getFlake \"git+file://$pe_repo\";
         pkgs = import flake.inputs.nixpkgs { system = \"x86_64-linux\"; };
         rocq = import $pe_repo/nanofil/nix/rocq-packages.nix { inherit pkgs; };
     in pkgs.buildEnv {
