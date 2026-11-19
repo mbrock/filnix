@@ -8,6 +8,7 @@ trap 'rm -rf "$work"' EXIT
 python3 -I "$here/test-blocks.py"
 python3 -I "$here/test-source.py"
 python3 -I "$here/test-block-facts.py"
+python3 -I "$here/test-layouts.py"
 python3 -I "$here/test-image.py"
 python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
   --rocq-function Unit_string_strcmp_os.fn___GI_strcmp >"$work/strcmp-skeleton"

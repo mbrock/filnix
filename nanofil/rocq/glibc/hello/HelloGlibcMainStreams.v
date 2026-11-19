@@ -44,8 +44,9 @@ Definition exit_stream (done : bool) (g : ptr) : iProp Σ :=
       else (md = 0 \/ md = 2 ^ 32 - 1) /\ (Z.land fl io_unbuffered <> 0 \/ md = 0))⌝ ∗
     int_cell fb off_flags fl ∗ int_cell fb off_flags2 f2 ∗ int_cell fb off_fileno fd ∗ int_cell fb off_mode md ∗
     pcell fb off_lock (mkPtr lb (Obj lb)) ∗ lock_state lb lbreg 0 0 null ∗
-    pcell fb 8 (mkPtr arp c) ∗ pcell fb 16 (mkPtr are c) ∗ pcell fb 32 (mkPtr awb c) ∗
-    pcell fb 40 (mkPtr awp c) ∗ live_cap c breg ∗ pcell fb 80 null.
+    pcell fb off_read_ptr (mkPtr arp c) ∗ pcell fb off_read_end (mkPtr are c) ∗
+    pcell fb off_write_base (mkPtr awb c) ∗ pcell fb off_write_ptr (mkPtr awp c) ∗
+    live_cap c breg ∗ pcell fb off_backup_base null.
 End resources.
 End HelloStreamsSig.
 

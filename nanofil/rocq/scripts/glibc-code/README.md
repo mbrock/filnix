@@ -34,6 +34,11 @@ different definitions in the same object. Use `--directory glibc` to check or
 write only the shared objects. Use `--tree` to choose the comparison or
 update destination.
 
+Selecting a directory that produces layouts refreshes all layout tables
+together, since fixtures in different directories can share a record.
+Use `--layouts-only` to regenerate those tables without compiling or
+linking the checked IR.
+
 The generator uses `/tmp/glibc-pp` when no capture is supplied. It builds
 `survey/glibc/capture.nix` if that directory is absent. It uses Python 3.11 or
 newer, SWI-Prolog and the staging compiler. Set `MODEL` to an existing
@@ -271,6 +276,11 @@ without changing `cc-ir`, checked terms or assembly output. The generator
 uses this command for manifests with `layouts = true`; libio enables it first.
 A stdio batch enables it with `layouts = true` on the batch.
 Each fixture receives a `<Name>Layout.v` beside its source tables.
+Fixtures that receive the same record name, size, alignment and ordered
+fields share one Rocq definition in `gen/layouts`. Each shared file holds
+records used by the same set of fixtures. Each fixture assembles its own
+ordered view, including any records that only it uses. Different layouts
+for the same name can appear in different fixtures.
 
 The command prints `layouts(Records, Uses)` as a Prolog term. A record is
 `record(Id, Names, def(Kind, Members, Size, Align), Fields)`. Its definition

@@ -51,20 +51,13 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap StringLogic Logic MemLogic.
-From Glibc Require Import Fix LibioReadLayout LibioStdfilesLayout SysLayout.
+From Glibc Require Import Fix LayoutTables LibioReadLayout LibioStdfilesLayout SysLayout.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** ## Offsets and flags *)
 
-(** The captured C layouts supply these offsets, but callers still unfold them to numerals.
-    Extraction happens while the definitions elaborate and rejects missing entries instead of inventing a fallback. *)
-Local Ltac layout_constant entry :=
-  let value := eval vm_compute in entry in
-  lazymatch value with
-  | Some ?offset => exact offset
-  | None => fail "Missing captured C layout entry:" entry
-  end.
+(** The captured C layouts supply these offsets. Each definition elaborates to a numeral. *)
 
 (** `c: struct _IO_FILE`'s fields, and the jump table field of
     `c: struct _IO_FILE_plus`. *)
@@ -72,6 +65,8 @@ Definition off_flags : Z := ltac:(layout_constant (LibioReadLayout.field_offset 
 #[export] Hint Unfold off_flags : offs.
 Definition off_read_ptr : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_read_ptr")).
 #[export] Hint Unfold off_read_ptr : offs.
+Definition off_read_end : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_read_end")).
+#[export] Hint Unfold off_read_end : offs.
 Definition off_write_base : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_write_base")).
 #[export] Hint Unfold off_write_base : offs.
 Definition off_write_ptr : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_write_ptr")).
@@ -82,6 +77,8 @@ Definition off_buf_base : Z := ltac:(layout_constant (LibioReadLayout.field_offs
 #[export] Hint Unfold off_buf_base : offs.
 Definition off_buf_end : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_buf_end")).
 #[export] Hint Unfold off_buf_end : offs.
+Definition off_backup_base : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_backup_base")).
+#[export] Hint Unfold off_backup_base : offs.
 Definition off_chain : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_chain")).
 #[export] Hint Unfold off_chain : offs.
 Definition off_fileno : Z := ltac:(layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_fileno")).
@@ -138,9 +135,8 @@ Definition file_size : Z := ltac:(layout_constant
 (** The offset of the i-th of the twelve pointers from `c: _IO_read_ptr`. *)
 Definition off_ptr (i : nat) : Z := ltac:(
   refine (_ + _ * Z.of_nat i);
-  [ layout_constant (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_read_ptr")
-  | layout_constant (option_map (fun next => next - off_read_ptr)
-      (LibioReadLayout.field_offset "struct _IO_FILE" "_IO_read_end")) ]).
+  [ layout_constant (Some off_read_ptr)
+  | layout_constant (Some (off_read_end - off_read_ptr)) ]).
 #[export] Hint Unfold off_ptr : offs.
 
 (** `c: _IO_MAGIC`, in the high half of `c: _flags`, and the bits

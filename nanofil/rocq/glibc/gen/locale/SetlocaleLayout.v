@@ -1,32 +1,34 @@
 (** These tables record the C layouts used by this fixture's functions.
     The compiler supplies field offsets, sizes and type alignments from its completed layouts.
-    Offset checks compare hand-written constants against these tables without changing existing proofs.
-    Layouts remain advisory data, not premises of soundness theorems.
-    The code generator reproduces this file from the capture; do not edit it. *)
+    The code generator reproduces this file from the capture. Do not edit. *)
 
 From Stdlib Require Import String ZArith List.
+From Glibc Require Import LayoutTables.
+From Glibc Require CapturedLayouts_59b4016e4aa9f3ae CapturedLayouts_7a0c7292ed5a352b.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
 Module SetlocaleLayout.
 
+Local Definition layouts : list record_layout :=
+  [CapturedLayouts_59b4016e4aa9f3ae.layout_structZ20__locale_data;
+   CapturedLayouts_59b4016e4aa9f3ae.layout_structZ20__locale_struct;
+   CapturedLayouts_7a0c7292ed5a352b.layout_structZ20__pthread_rwlock_arch_t;
+   CapturedLayouts_7a0c7292ed5a352b.layout_typedefZ20__libc_rwlock_t;
+   CapturedLayouts_7a0c7292ed5a352b.layout_typedefZ20pthread_rwlock_t;
+   CapturedLayouts_59b4016e4aa9f3ae.layout_unionZ20locale_data_value].
+
 (** Each named record has its complete size and record alignment in bytes. *)
-Definition records : list (string * (Z * Z)) :=
-  [("struct __locale_data", (56, 8)); ("struct __locale_struct", (232, 8)); ("struct __pthread_rwlock_arch_t", (56, 8)); ("typedef __libc_rwlock_t", (56, 8)); ("typedef pthread_rwlock_t", (56, 8)); ("union locale_data_value", (8, 8))].
+Definition records := layout_records layouts.
 
 (** These used tags have only forward declarations in the captured units. *)
 Definition unavailable : list string := [].
 
-(** Each field has a tag, name, byte offset, type size and type alignment.
-    Flexible arrays have zero size; bit-fields retain their declared type's size and alignment. *)
-Definition fields : list (string * string * Z * Z * Z) :=
-  [("struct __locale_data", "name", 0, 8, 8); ("struct __locale_data", "filedata", 8, 8, 8); ("struct __locale_data", "filesize", 16, 8, 8); ("struct __locale_data", "alloc", 24, 4, 4); ("struct __locale_data", "private", 32, 8, 8); ("struct __locale_data", "usage_count", 40, 4, 4); ("struct __locale_data", "use_translit", 44, 4, 4); ("struct __locale_data", "nstrings", 48, 4, 4); ("struct __locale_data", "values", 56, 0, 8); ("struct __locale_struct", "__locales", 0, 104, 8); ("struct __locale_struct", "__ctype_b", 104, 8, 8); ("struct __locale_struct", "__ctype_tolower", 112, 8, 8); ("struct __locale_struct", "__ctype_toupper", 120, 8, 8); ("struct __locale_struct", "__names", 128, 104, 8); ("struct __pthread_rwlock_arch_t", "__readers", 0, 4, 4); ("struct __pthread_rwlock_arch_t", "__writers", 4, 4, 4); ("struct __pthread_rwlock_arch_t", "__wrphase_futex", 8, 4, 4); ("struct __pthread_rwlock_arch_t", "__writers_futex", 12, 4, 4); ("struct __pthread_rwlock_arch_t", "__pad3", 16, 4, 4); ("struct __pthread_rwlock_arch_t", "__pad4", 20, 4, 4); ("struct __pthread_rwlock_arch_t", "__cur_writer", 24, 4, 4); ("struct __pthread_rwlock_arch_t", "__shared", 28, 4, 4); ("struct __pthread_rwlock_arch_t", "__pad1", 32, 8, 8); ("struct __pthread_rwlock_arch_t", "__pad2", 40, 8, 8); ("struct __pthread_rwlock_arch_t", "__flags", 48, 4, 4); ("typedef __libc_rwlock_t", "__data", 0, 56, 8); ("typedef __libc_rwlock_t", "__size", 0, 56, 1); ("typedef __libc_rwlock_t", "__align", 0, 8, 8); ("typedef pthread_rwlock_t", "__data", 0, 56, 8); ("typedef pthread_rwlock_t", "__size", 0, 56, 1); ("typedef pthread_rwlock_t", "__align", 0, 8, 8); ("union locale_data_value", "wstr", 0, 8, 8); ("union locale_data_value", "string", 0, 8, 8); ("union locale_data_value", "word", 0, 4, 4)].
+(** Each field has a tag, name, byte offset, type size and type alignment. *)
+Definition fields := layout_fields layouts.
 
-(** Missing fields return [None], so an offset check cannot accept an invented entry. *)
-Definition field_offset (tag field : string) : option Z :=
-  option_map (fun entry => let '(_, _, offset, _, _) := entry in offset)
-    (find (fun entry => let '(t, f, _, _, _) := entry in
-      andb (String.eqb t tag) (String.eqb f field)) fields).
+(** The lookup returns [None] if the fixture has no matching field. *)
+Definition field_offset := layout_field_offset fields.
 
 End SetlocaleLayout.

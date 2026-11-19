@@ -35,21 +35,13 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic.
-From Glibc Require Import OsWorld OsThread WordString FileInv CutoffLayout.
+From Glibc Require Import OsWorld OsThread WordString FileInv LayoutTables CutoffLayout.
 From Glibc Require OsThread WordString FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 Import OsWorld OsWorld.L OsWorld.LG.
-
-(** The offset comes from the compiler's own layout of the captured unit. *)
-Local Ltac layout_constant entry :=
-  let value := eval vm_compute in entry in
-  lazymatch value with
-  | Some ?offset => exact offset
-  | None => fail "Missing captured C layout entry:" entry
-  end.
 
 (** ## The answer
 

@@ -19,11 +19,11 @@ NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
 GEN = GLIBC / "gen"
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
-layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
+captured_layouts = runpy.run_path(str(HERE / "layout.py"))
 block_definitions = runpy.run_path(str(HERE / "block-facts.py"))["block_definitions"]
 name_tables = runpy.run_path(str(HERE / "names.py"))["name_tables"]
 typed = runpy.run_path(str(HERE / "typed.py"))
-PRELUDES = ("CodePrelude.v", "IRNotation.v", "IRBytes.v")
+PRELUDES = ("CodePrelude.v", "IRNotation.v", "IRBytes.v", "LayoutTables.v")
 IMAGE_LAYOUTS = ("image", "linked_image", "hi_atexit")
 
 
@@ -63,6 +63,12 @@ def manifest_units(cfg, root=NF):
     return ("- " + " ".join(listed) + "\n" if listed else "") + cfg.get("units", "")
 
 
+def manifest_configs(manifest):
+    cfg = tomllib.loads(manifest.read_text())
+    yield from cfg.pop("batch", [])
+    yield cfg
+
+
 def check_units(capture, where, unit_rows):
     """Refuse a repeated or uncaptured unit before compiling any of them."""
     names = [unit for _, unit in units(unit_rows)]
@@ -95,6 +101,7 @@ class Generator:
         self.compiled = {}
         self.unit_names = {}
         self.layout_files = {}
+        self.layout_views = {}
         self.built = {}
         self.linked = {}
         self.printed = {}
@@ -262,11 +269,9 @@ class Generator:
             self.printed[linked] = list(typed['records'](run([self.model, "--gallina"], data=linked)))
         return self.printed[linked]
 
-    def generate(self, manifest, output, views, cfg=None):
-        if cfg is None:
-            cfg = tomllib.loads(manifest.read_text())
-            for batch in cfg.pop("batch", []):
-                self.generate(manifest, output, views, batch)
+    def generate(self, manifest, cfg, output, views, capture_layouts, layouts_only):
+        if layouts_only and not cfg.get('layouts', False):
+            return
         layout = cfg["layout"]
         rel = manifest.parent.relative_to(GEN)
         dest = output / rel
@@ -287,12 +292,13 @@ class Generator:
             unit_rows = "- " + paths if paths else manifest_units(cfg)
             lower = fixture_prefix(name)
             source = program[0] if program else ""
-            if views and cfg.get('layouts', False):
+            if capture_layouts and cfg.get('layouts', False):
                 layouts = self.layouts(unit_rows, fns.split())
-                (dest / (name + 'Layout.v')).write_text(layout_tables(name, layouts))
-                tags = {r['tag'] for r in layouts if not r.get('missing', False)}
-                missing = sorted({r['tag'] for r in layouts if r.get('missing', False)} - tags)
-                print(f'{name}Layout: {len(tags)} record entries; unavailable {missing}', flush=True)
+                records, missing = captured_layouts['fixture_layout'](name, layouts)
+                self.layout_views[rel / (name + 'Layout.v')] = records, missing
+                print(f'{name}Layout: {len(records)} record entries; unavailable {missing}', flush=True)
+            if layouts_only:
+                continue
             entry = fixture_entry(layout, roots, lower, source)
             cache_key = (entry, roots, unit_rows, source, cfg.get("objects"), cfg.get("object_prefix"),
                          cfg.get("mode", "checked"), cfg.get("ctors", False))
@@ -391,22 +397,32 @@ def main():
     parser.add_argument("--tree", type=Path, default=GEN, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
+    parser.add_argument("--layouts-only", action="store_true", help="check or write all layout fixtures only")
     args = parser.parse_args()
     if args.output and args.update:
         parser.error("choose --output or --update")
+    if args.layouts_only and args.directory:
+        parser.error("--layouts-only selects all layout fixtures")
     if args.capture is None:
         args.capture = Path("/tmp/glibc-pp")
         if not args.capture.is_dir():
             args.capture = Path(run(["nix", "build", "--no-link", "--print-out-paths", "-f",
                                      NF / "survey/glibc/capture.nix"]).strip())
     manifests = sorted(GEN.rglob("code.toml"))
+    configs = [(manifest, cfg) for manifest in manifests for cfg in manifest_configs(manifest)]
     directories = {m.parent.relative_to(GEN) for m in manifests}
     selected = set(map(Path, args.directory)) if args.directory else directories
     if not selected <= directories | {Path("glibc")}:
         parser.error("unknown directory")
+    capture_layouts = args.layouts_only or any(
+        cfg.get('layouts', False) and manifest.parent.relative_to(GEN) in selected
+        for manifest, cfg in configs)
+    code_dirs = set() if args.layouts_only else selected | {Path("glibc")}
+    shared_layout_dir = captured_layouts['SHARED']
+    layout_dirs = directories | {shared_layout_dir} if capture_layouts else set()
     status = 0
     prelude_dir = args.output or (GLIBC if args.tree.resolve() == GEN.resolve() else args.tree)
-    for name in PRELUDES:
+    for name in ("LayoutTables.v",) if args.layouts_only else PRELUDES:
         source, destination = GLIBC / name, prelude_dir / name
         if source.resolve() == destination.resolve():
             continue
@@ -423,15 +439,27 @@ def main():
         work = Path(tmp)
         generator = Generator(args.capture.resolve(), work, sources=True)
         out = work / "output"
-        for manifest in manifests:
-            generator.generate(manifest, out, manifest.parent.relative_to(GEN) in selected)
+        for manifest, cfg in configs:
+            generator.generate(manifest, cfg, out,
+                               manifest.parent.relative_to(GEN) in code_dirs,
+                               capture_layouts, args.layouts_only)
         for file in sorted(generator.code.units):
-            if file.parent == Path("glibc") or file.parent in selected:
+            if file.parent in code_dirs:
                 generator.code.write_unit(out, file)
-        for rel in sorted(selected | {Path("glibc")}):
+        if capture_layouts:
+            for file, source in captured_layouts['layout_tables'](generator.layout_views).items():
+                path = out / file
+                path.parent.mkdir(parents=True, exist_ok=True)
+                path.write_text(source)
+        stale_files = []
+        for rel in sorted(code_dirs | layout_dirs, key=lambda p: (p != shared_layout_dir, p)):
             target = (args.output or args.tree) / rel
             generated = {p.name: p for p in (out / rel).glob("*.v")}
-            stale = sorted(p for p in target.glob("*.v") if p.name not in generated)
+            pattern = "*.v" if rel in code_dirs or rel == shared_layout_dir else "*Layout.v"
+            stale = sorted(p for p in target.glob(pattern) if p.name not in generated
+                           and (capture_layouts or not p.name.endswith("Layout.v")))
+            if not generated and not stale and rel not in code_dirs:
+                continue
             different = 0
             for name, path in sorted(generated.items()):
                 destination = target / name
@@ -448,11 +476,13 @@ def main():
                         path.read_text().splitlines(True), str(destination), "regenerated/" + str(rel / name))), end="")
             for path in stale:
                 print(f"stale fixture: {path}")
-                if args.update:
-                    path.unlink()
+            stale_files.extend(stale)
             if (different and not (args.output or args.update)) or (stale and not args.update):
                 status = 1
             print(f"{rel}: {len(generated)} files, {different} differ, {len(stale)} stale", flush=True)
+        if args.update:
+            for path in stale_files:
+                path.unlink()
     raise SystemExit(status)
 
 

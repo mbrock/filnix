@@ -37,10 +37,10 @@ Lemma wp_printf_overflow_switch_null e from bb breg fb freg oldbase oldptr olden
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
   live bb breg -∗ live fb freg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗
-  pcell fb 40 null -∗ pcell fb 48 null -∗
+  pcell fb off_write_ptr null -∗ pcell fb off_write_end null -∗
   pcell bb 0 oldbase -∗ pcell bb 8 oldptr -∗ pcell bb 16 oldend -∗
   ▷ (live bb breg -∗ live fb freg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗
-     pcell fb 40 null -∗ pcell fb 48 null -∗
+     pcell fb off_write_ptr null -∗ pcell fb off_write_end null -∗
      pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ Φ RetVoid) -∗
@@ -72,11 +72,11 @@ Lemma wp_printf_overflow_switch_owned e from bb breg fb freg db dreg bo eo dqf d
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
   live bb breg -∗ liveq dqf fb freg -∗ liveq dqd db dreg -∗
   pcell bb 40 (mkPtr fb (Obj fb)) -∗
-  pcell fb 40 (mkPtr (db + bo) (Obj db)) -∗ pcell fb 48 (mkPtr (db + eo) (Obj db)) -∗
+  pcell fb off_write_ptr (mkPtr (db + bo) (Obj db)) -∗ pcell fb off_write_end (mkPtr (db + eo) (Obj db)) -∗
   pcell bb 0 oldbase -∗ pcell bb 8 oldptr -∗ pcell bb 16 oldend -∗
   ▷ (live bb breg -∗ liveq dqf fb freg -∗ liveq dqd db dreg -∗
      pcell bb 40 (mkPtr fb (Obj fb)) -∗
-     pcell fb 40 (mkPtr (db + bo) (Obj db)) -∗ pcell fb 48 (mkPtr (db + eo) (Obj db)) -∗
+     pcell fb off_write_ptr (mkPtr (db + bo) (Obj db)) -∗ pcell fb off_write_end (mkPtr (db + eo) (Obj db)) -∗
      pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
   WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L88") from)) : sexpr) {{ Φ }}.
