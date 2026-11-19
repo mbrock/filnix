@@ -1,18 +1,96 @@
 """Build just the interfaces imported by an rq session, using Rocq's dependency rules."""
+from concurrent.futures import FIRST_COMPLETED, ThreadPoolExecutor, wait
 import fcntl
+import heapq
 import hashlib
 import os
 import re
 from pathlib import Path
-import shlex
 import shutil
 import subprocess
 import sys
+import tempfile
 import time
 
 
 # The in-process worker needs the same warning policy as the Nanofil Rocq CLI.
 SESSION_FLAGS = ("-q", "-w", "-rewrite-rw")
+
+
+def build_imports(work, rules, target, flags, lock):
+    # Make decides freshness, including loaded source files and external objects.
+    # Each dry-run recipe lists one stale interface and its direct interfaces.
+    makefile = "\n".join(["%.vos: %.v", "\t@$@ : $(filter %.vos,$^)", *rules, ""])
+    plan = subprocess.run(["make", "-ns", "-j1", "--no-print-directory", "-f", "-", str(target)],
+                          cwd=work, input=makefile, check=True,
+                          stdout=subprocess.PIPE, text=True)
+    graph = {}
+    for line in plan.stdout.splitlines():
+        name, _, inputs = line.partition(" :")
+        graph[name] = inputs.split()
+    if not graph:
+        return
+
+    # Make prints prerequisites before dependents. Walking its plan backwards
+    # gives each job the length of the longest unfinished chain it can unblock.
+    users = {name: [] for name in graph}
+    remaining = dict.fromkeys(graph, 0)
+    depth = dict.fromkeys(graph, 1)
+    for name in reversed(graph):
+        for dep in graph[name]:
+            if dep in graph:
+                users[dep].append(name)
+                remaining[name] += 1
+                depth[dep] = max(depth[dep], depth[name] + 1)
+
+    def compile_one(name):
+        dest = work / name
+        log = work / (name + ".log")
+        # Publish only complete objects. Inherit the build lock in case rq
+        # exits while a compiler is still using this mirror.
+        with tempfile.TemporaryDirectory(dir=work) as tmp:
+            staged = Path(tmp) / dest.name
+            logical_parent = ".".join(Path(name).parent.parts)
+            args = ["rocq", "c", "-q", "-vos", *flags, "-Q", tmp, logical_parent, "-o", str(staged),
+                    str(Path(name).with_suffix(".v"))]
+            with log.open("wb") as stream:
+                result = subprocess.run(args, cwd=work, stdout=stream, stderr=subprocess.STDOUT,
+                                        pass_fds=(lock.fileno(),))
+            if result.returncode:
+                sys.stderr.write(log.read_text(errors="replace"))
+                result.check_returncode()
+            staged.replace(dest)
+
+    try:
+        jobs = int(os.getenv("RQ_JOBS", "8"))
+        if jobs < 1:
+            raise ValueError()
+    except ValueError:
+        raise OSError("RQ_JOBS must be a positive integer") from None
+    ready = [(-depth[name], name) for name in graph if not remaining[name]]
+    heapq.heapify(ready)
+    active = {}
+    start = time.monotonic()
+    report = start + 15
+    with ThreadPoolExecutor(max_workers=min(jobs, len(graph))) as pool:
+        while ready or active:
+            while ready and len(active) < jobs:
+                _, name = heapq.heappop(ready)
+                active[pool.submit(compile_one, name)] = name
+            done, _ = wait(active, timeout=max(0, report - time.monotonic()),
+                           return_when=FIRST_COMPLETED)
+            for task in done:
+                name = active.pop(task)
+                task.result()
+                for user in users[name]:
+                    remaining[user] -= 1
+                    if not remaining[user]:
+                        heapq.heappush(ready, (-depth[user], user))
+            now = time.monotonic()
+            if now >= report and active:
+                print(f"rq: building imports for {target.stem}.v ({now - start:.0f}s); "
+                      f"compiling {next(iter(active.values()))}", file=sys.stderr, flush=True)
+                report = now + 15
 
 
 def prepare(tree, file, model):
@@ -69,23 +147,5 @@ def prepare(tree, file, model):
         rules = [re.sub(r"(/nix/store/[^ ]+)\.vos(?= |$)", r"\1.vo", line)
                  for line in deps.stdout.splitlines() if line.split(" ", 1)[0].endswith(".vos")]
         target = Path(namespace) / file.relative_to(tree).with_suffix(".required_vos")
-        compile_vos = shlex.join(["rocq", "c", "-q", "-vos", *build_flags])
-        recipe = f'\t@{compile_vos} "$<" > "$@.log" 2>&1 || {{ cat "$@.log" >&2; exit 1; }}'
-        makefile = "\n".join([".DELETE_ON_ERROR:", "%.vos: %.v", recipe, *rules, ""])
-        (work / "Makefile").write_text(makefile)
-        command = ["make", "--no-print-directory", "-s", "-j", os.getenv("RQ_JOBS", "8"), str(target)]
-        start = time.monotonic()
-        with subprocess.Popen(command, cwd=work, stdout=sys.stderr) as build:
-            while True:
-                try:
-                    status = build.wait(timeout=15)
-                    break
-                except subprocess.TimeoutExpired:
-                    logs = work.rglob("*.vos.log")
-                    latest = max(logs, key=lambda p: p.stat().st_mtime_ns, default=None)
-                    detail = f"; latest compiler log {latest.relative_to(work)}" if latest else ""
-                    print(f"rq: building imports for {file.name} ({time.monotonic() - start:.0f}s){detail}",
-                          file=sys.stderr, flush=True)
-        if status:
-            raise subprocess.CalledProcessError(status, command)
+        build_imports(work, rules, target, build_flags, lock)
     return worker_flags

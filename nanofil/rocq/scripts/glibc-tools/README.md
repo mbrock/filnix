@@ -24,7 +24,7 @@ CI builds the glibc sources together against full objects. To reproduce the seal
 
 ## Work in a proof session
 
-Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. On open and reload, Rocq lists the file’s imports and make builds their missing or stale `.vos` interfaces. The worker checks the sentences in the file you open. Interfaces live under `$PE_CACHE/rq-interfaces`. Set `RQ_JOBS` to choose the number of compiler processes (the default is eight). Use `rq open --vo` to load the existing objects beside the sources.
+Recompiling a large proof file to see its next goal costs a minute or more. `rq/rq` keeps a Rocq session open between shell commands instead. Each session is one `rq-worker` process, which links Rocq's own parser and interpreter and keeps the state after every sentence it ran. On open and reload, Rocq lists the file’s imports and Make identifies their missing or stale `.vos` interfaces. When a build slot opens, `rq` chooses the ready interface with the longest chain of waiting dependents. The worker checks the sentences in the file you open. Interfaces live under `$PE_CACHE/rq-interfaces`. Set `RQ_JOBS` to choose the number of compiler processes (the default is eight). Use `rq open --vo` to load the existing objects beside the sources.
 
 The first `rq open` builds the worker with `nanofil/nix/rq-worker.nix` from the same Rocq as `one.sh`.
 
