@@ -66,7 +66,7 @@ env:
 jobs:
   glibc:
     if: github.event_name != 'schedule'
-    runs-on: ubuntu-24.04
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
@@ -82,18 +82,12 @@ jobs:
       # it prints is the Hello proof's progress measure.
       - name: Count the open premises of hello_never_panics
         run: python3 nanofil/tests/hello_premises.py
-      - name: Add swap for overlapping heavy compiles
-        run: |
-          sudo fallocate -l 12G /mnt/nanofil.swap && sudo chmod 600 /mnt/nanofil.swap &&
-            sudo mkswap /mnt/nanofil.swap >/dev/null && sudo swapon /mnt/nanofil.swap ||
-            echo "::warning::could not add swap"
-          free -m
-      # Limit Make to two concurrent compilers on the 16 GB runner.
-      - name: Compile and probe glibc contracts
+      # Eight proof compilers leave room for the heavy modules on the 32 GB runner.
+      - name: Compile glibc contracts
         run: |
           set -o pipefail
           python3 nanofil/tests/watch.py --label nanofil-glibc --warn-after 300 --timeout 9600 -- \
-            nix build -L --no-link --keep-going --max-jobs 2 --cores 2 \
+            nix build -L --no-link --keep-going --max-jobs 2 --cores 8 \
             .#checks.x86_64-linux.nanofil-glibc \
             .#checks.x86_64-linux.nanofil-rocq.kernelFlags 2>&1 | tee nanofil-glibc.log
       # The Fil-C glibc source fixes (survey/glibc/patches): the stock
@@ -130,7 +124,7 @@ jobs:
   # Compile the runtime-general proofs with only the runtime signature available.
   abstract:
     if: github.event_name != 'push'
-    runs-on: ubuntu-24.04
+    runs-on: nscloud-ubuntu-22.04-amd64-16x32
     timeout-minutes: 180
     steps:
       - uses: actions/checkout@v4
@@ -142,18 +136,11 @@ jobs:
           skipPush: true
       - name: Require the cached staging toolchain
         run: python3 scripts/ci-cache-check.py packages.x86_64-linux.filcc-staging
-      - name: Add swap for overlapping heavy compiles
-        run: |
-          sudo fallocate -l 12G /mnt/nanofil.swap && sudo chmod 600 /mnt/nanofil.swap &&
-            sudo mkswap /mnt/nanofil.swap >/dev/null && sudo swapon /mnt/nanofil.swap ||
-            echo "::warning::could not add swap"
-          free -m
       - name: Compile every general file against an abstract runtime
         run: |
           set -o pipefail
-          # Two jobs, like the push check, to stay within the runner's memory.
           python3 nanofil/tests/watch.py --label nanofil-glibc-abstract --warn-after 300 --timeout 9600 -- \
-            nix build -L --no-link --keep-going --max-jobs 2 --cores 2 \
+            nix build -L --no-link --keep-going --max-jobs 2 --cores 8 \
             .#checks.x86_64-linux.nanofil-glibc-abstract 2>&1 | tee nanofil-glibc-abstract.log
       - name: Cache the abstract tree
         if: success() && github.ref == 'refs/heads/main'
