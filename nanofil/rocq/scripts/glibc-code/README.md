@@ -42,7 +42,27 @@ generated sources and the shared prelude and notation modules; it never reads th
 If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
 builds `survey/glibc/capture.nix`.
 
-## Use source hints
+## Source hints
+
+Source hints are what the glibc proofs learn about the C source of a
+compiled function. Nanofil's C front end keeps context records beside each
+checked function body (`src/provenance.pl`) and can print the completed C
+layouts (`src/c_layouts.pl`). The generator reads both, together with the
+compiler's control-flow and liveness analyses, and writes Rocq tables beside
+each code fixture. The proofs use these tables to name temporaries, fields,
+lines and cut points.
+
+The proofs never trust a source hint. Only the checked IR in the code fixture
+is proved about, and a soundness theorem must not take a hint as a premise.
+Compilation checks that every label a hint cites belongs to the decoded
+function, but it does not check that a name, path or location is accurate.
+
+The generator writes four kinds of source hint, described in the sections
+below. Source tables give locations, C names and loop headers. Names give
+notations for temporaries. Block facts give liveness and memory footprints.
+Layouts give the fields of C records.
+
+## Use source tables
 
 The shared-prelude form also emits `<Name>Src.v` beside each code fixture.
 Each sidecar imports its fixture and groups its tables under
@@ -171,7 +191,7 @@ so they have no names. For each function the generator prints how many names
 come from a hint, how many are derived, how many carry a suffix and how many
 temporaries stay unnamed.
 
-## Use block hints
+## Use block facts
 
 An executor can forget a temporary once no later block can read it.
 Doing so only weakens its claim about the symbolic environment.

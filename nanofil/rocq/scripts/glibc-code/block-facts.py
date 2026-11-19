@@ -1,4 +1,4 @@
-"""Print advisory block facts without adding executable IR or proof premises."""
+"""Print block facts, a kind of source hint, without adding executable IR or proof premises."""
 from pathlib import Path
 import runpy
 

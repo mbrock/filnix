@@ -1,7 +1,7 @@
 /* This command describes the explicit memory accesses and live temporaries of each block.
    The compiler's phi-aware liveness and flight analysis supply the data.
    Typed origins and completed C layouts name field accesses when possible.
-   These hints can guide symbolic execution, but they supply no safety evidence. */
+   These source hints can guide symbolic execution, but they supply no safety evidence. */
 :- use_module('../../../src/cfg').
 :- use_module('../../../src/ir', [single_definitions/3, guard_chain/3, access_size_align/3]).
 :- use_module('../../../src/provenance', [site_index/2, site_origins/3]).

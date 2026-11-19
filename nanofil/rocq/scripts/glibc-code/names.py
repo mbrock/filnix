@@ -1,4 +1,4 @@
-"""Print two-way notations that name temporaries after the C expression they hold."""
+"""Print source hints as two-way notations that name temporaries after the C expression they hold."""
 from pathlib import Path
 import re
 import runpy

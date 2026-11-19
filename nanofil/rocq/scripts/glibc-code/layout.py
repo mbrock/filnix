@@ -1,4 +1,4 @@
-"""Print completed record layouts as advisory Gallina tables."""
+"""Print completed record layouts as Gallina source hints."""
 import runpy
 from pathlib import Path
 

@@ -1,4 +1,5 @@
-/* This command selects completed layouts used by the fixture's functions.
+/* This command selects completed layouts used by the fixture's functions
+   and prints them as source hints.
    Translation-unit identities stay separate until their named layouts agree. */
 :- use_module(library(http/json)).
 :- initialization(main, main).

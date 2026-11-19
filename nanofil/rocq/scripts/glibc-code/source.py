@@ -1,4 +1,4 @@
-"""Print advisory source tables and closed label-membership witnesses."""
+"""Print source tables, a kind of source hint, and closed label-membership witnesses."""
 import re
 
 

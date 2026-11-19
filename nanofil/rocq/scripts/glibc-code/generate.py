@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Regenerate glibc code fixtures from the per-directory code.toml manifests."""
+"""Regenerate glibc code fixtures and their source hints from the per-directory code.toml manifests."""
 import argparse
 import difflib
 import hashlib

@@ -1,7 +1,8 @@
 /* This module exposes the completed C record layouts without changing the IR.
    Each record retains its original definition and adds member sizes and alignments.
    Function uses include records reached through the types in source contexts.
-   These tables support diagnostics and offset checks, not safety premises. */
+   The glibc proofs read these tables as source hints for diagnostics and
+   offset checks, not as safety premises. */
 :- module(c_layouts, [module_layouts/3]).
 :- use_module(c_types, [member_layout/6, type_size_align/4]).
 :- use_module(library(assoc)).

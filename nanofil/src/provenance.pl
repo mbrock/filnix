@@ -1,4 +1,9 @@
-/*  Explanatory context, separate from executable IR and safety evidence.
+/*  This module keeps explanatory context separate from executable IR and
+    safety evidence.
+
+    These records are the compiler's side of the source hints that the
+    glibc proofs read (rocq/scripts/glibc-code/README.md). A hint names
+    or locates code for a reader and never justifies a safety claim.
 
     A context(Function, Records) item accompanies a func/5. Bindings and
     origins have function-local identities. Origins are shallow typed
