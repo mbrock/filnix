@@ -3,7 +3,7 @@
     byte is NUL. A high byte stops conversion without moving either
     cursor, so gnulib can recover the byte from the input. *)
 
-From Glibc Require Import HelloImageTypedGC.
+From Glibc Require Import Unit_iconv_gconv_simple_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +18,7 @@ Open Scope Z_scope.
 (** This is the function stored in the conversion table of Hello's
     linked image. The captured block list includes the paths for other
     callers as well as the final-step path used here. *)
-Definition glibc_ascii_internal := hello_image_fn___gconv_transform_ascii_internal.
+Definition glibc_ascii_internal := Unit_iconv_gconv_simple_os.fn___gconv_transform_ascii_internal.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

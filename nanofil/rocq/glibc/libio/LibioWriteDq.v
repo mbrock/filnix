@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** A file write may consume only part of its input or fail. This file
     proves that the captured glibc write loop safely retries the remaining
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit LibioWriteCallDq LibioWriteJoinDq.
 From Glibc Require FileInv LibioLogic LibioWriteCallDq LibioWriteExit LibioWriteJoinDq OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -37,7 +38,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
 
 
 (** Expressions of the language. *)
@@ -51,7 +52,7 @@ Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb {src keep} Φ :
   write_source_life fb freg dq b reg src keep ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> c = Obj b \/ c = Ro b ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
@@ -67,7 +68,7 @@ Lemma wp_file_write_loop_dq fb freg fl f2 fd dq b reg c o xs eb {src keep} Φ :
        live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
        icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ src -∗ bytesq dq b o xs -∗ errno_any eb -∗
        Φ (Ret (WInt r))) -∗
-    WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
+    WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
           : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hloan Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hc Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
@@ -111,11 +112,11 @@ Qed.
     captured noncanceling wrapper. The result allows short writes and
     failure, as described by [fw_post]. *)
 Lemma wp_glibc__IO_new_file_write_dq fr fb freg fl f2 fd tw off dq b reg c o xs eb Φ :
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) c); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> c = Obj b \/ c = Ro b ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
@@ -141,11 +142,11 @@ Qed.
     function. Its lifetime covers both the field accesses and the syscall
     source. Even an error returns the byte and the same stream lifetime. *)
 Lemma wp_file_write_short fr fb freg fl f2 fd tw off ch eb Φ :
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (fb + off_shortbuf) (Obj fb)); WInt 1] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> 0 <= ch < 256 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗

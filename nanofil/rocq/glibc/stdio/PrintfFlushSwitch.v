@@ -4,6 +4,7 @@
     after the call. It uses the stream's buffer only if there is room;
     otherwise it uses its own staging array. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv LibioLogic CFrame CBlocks PrintfLayout PrintfOut PrintfSpec
-  PrintfFileInit PrintfBufferFileCode PrintfBufferFileSrc PrintfBufferFileNames.
+  PrintfFileInit PrintfBufferFileSrc PrintfBufferFileNames.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -22,7 +23,7 @@ Import PrintfBufferFileNames.fn___printf_buffer_flush_to_file.
 
 Section selection.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{!Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{!Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 
 (** Both choices give the next append an empty window with room for at
     least one byte. A stream whose pointers are equal selects the staging
@@ -49,7 +50,7 @@ Definition select_block (l : string) : bspec :=
     (fs_pre switch_spec) (fs_post switch_spec).
 
 Lemma flush_switch_block l : l = "L40" \/ l = "L88" ->
-  ⊢ block_triple glibc___printf_buffer_flush_to_file (select_block l).
+  ⊢ block_triple Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file (select_block l).
 Proof using Type*.
   intros Hl. iModIntro. iIntros (i e from Φ) "_ %He H HK".
   assert (Hswitch : HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_switch") switch_spec)

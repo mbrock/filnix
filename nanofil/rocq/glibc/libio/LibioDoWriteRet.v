@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** The end of block `c: iw_1.iw_2.join` of `c: _IO_new_do_write`
     (LibioDoWrite.v describes it), after the jump table's write returned
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -27,7 +28,7 @@ Local Arguments Z.opp : simpl nomatch.
     instructions validate and call the jump table's write
     (LibioDoWriteCall.v). *)
 Definition dw_join : block := Eval vm_compute in
-  match find_block (TAtom "iw_1.iw_2.join") (fn_blocks glibc__IO_new_do_write) with
+  match find_block (TAtom "iw_1.iw_2.join") (fn_blocks Unit_libio_fileops_os.fn__IO_new_do_write) with
   | Some b => b | None => mkBlock (TAtom "iw_1.iw_2.join") [] [] JRetVoid end.
 
 
@@ -56,7 +57,7 @@ Context (Htail_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e from 
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : sexpr) {{ Φ }}).
 
 
 (** The rest of block `c: iw_1.iw_2.join` once the write returned r of
@@ -78,7 +79,7 @@ Lemma wp_do_write_ret fb freg fl bb breg rp re rb wb wp we be n r e mode Φ :
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗ bytes fb off_column [0; 0] -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.iw_2.join") (skipn 5 (b_insts dw_join)) (b_jump dw_join))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.

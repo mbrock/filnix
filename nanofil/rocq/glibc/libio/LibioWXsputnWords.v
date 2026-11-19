@@ -3,7 +3,7 @@
     register and the default writer uses a 64-bit register. In both loops
     a zero count exits before the next load or store. *)
 
-From Glibc Require Import HelloImageTypedIO.
+From Glibc Require Import Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -20,7 +20,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation size cs := (Z.of_nat (length cs)).
 Local Abbreviation at_off b o := (mkPtr (b+o) (Obj b)).
 
-Definition wdefault_xsputn_fn := hello_image_fn___GI__IO_wdefault_xsputn.
+Definition wdefault_xsputn_fn := Unit_libio_wgenops_os.fn___GI__IO_wdefault_xsputn.
 
 Definition wcopy_names (file : bool) := map TAtom (if file then
   ["pr.16"; "pr.15"; "pr.3"; "v155"; "v156"; "v158"; "v160"; "chk21"; "v161"; "chk22"] else

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** After the cache search misses, glibc's `c: __dcigettext` looks for
     the directory of the message domain and the name of the message
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic WordString GetoptBytes DcigettextCode DcigettextPreRules.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic WordString GetoptBytes DcigettextPreRules.
 From Glibc Require MemchrLast.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -88,8 +89,8 @@ Lemma wp_dci_dom e xs rl sb dom msgid cv s db dqb dbreg dd nb nc ib ic dqi ireg 
   ▷ (∀ e', ⌜dci_pre_env e' xs rl sb dom msgid cv s /\ lookup (TAtom "iw_3.v7") e' = Some (WPtr cv) /\
          lookup (TAtom "iw_2.v9") e' = Some (WPtr (mkPtr (nb + k) nc))⌝ -∗
       liveq dqb db dbreg -∗ pcellq dqb db 0 null -∗ liveq dqi ib ireg -∗ bytesq dqi ib 5 [k] -∗ C -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Henv Hloc Hdb Hdb0 Hdb8 Hdbend Hdbr Hdd Hcn Hci Hic Hib0 Hibend Hibr Hk Hnb Hnbk.
   pose proof Henv as (Hv17 & Hc0 & Hv21 & Hv23 & Hpr1 & Hv2 & Hv6 & Hv10 & Hv32 & Hv69 & Hv90).

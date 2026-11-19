@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf can hold one character while waiting for room in the stream.
     Flushing that character first updates the count and checks which buffer
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+  LibioCloseSteps LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -39,7 +40,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The full single-byte area reaches L74 with its checked header address.
     The continuation receives the updated count even when adding one wraps to zero. *)
 Lemma wp_printf_overflow_entry fr bb breg written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 <= written < 2 ^ 64 ->
   live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
@@ -50,7 +51,7 @@ Lemma wp_printf_overflow_entry fr bb breg written Φ :
     live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
     pcell bb 8 (mkPtr (bb + 49) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 49) (Obj bb)) -∗ icell bb 24 ((written + 1) mod 2 ^ 64) -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
       (Enter (TAtom "L74") (Some (TAtom "L62")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.

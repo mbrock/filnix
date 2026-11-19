@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_rdlock_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: pthread_rwlock_rdlock` takes a read lock on a rwlock.
     The gettext lookup takes three such locks around its search, so a
@@ -64,7 +65,7 @@ Proof using Type*.
 Qed.
 
 Lemma wp_glibc_rdlock_free fr lb lreg r cw fl tb treg dqt dqi tid Φ :
-  call_frame glibc_pthread_rwlock_rdlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
+  call_frame Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + 724 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 56 <= r_end lreg -> r_end lreg <= 2 ^ 63 ->
   r mod 8 = 0 -> r + 8 < 2 ^ 31 -> cw <> tid ->
@@ -139,7 +140,7 @@ Definition rw_place (lk : ptr) (lb : Z) (lreg : region) (tb : Z) (treg : region)
 
 (** A call of a name bound to the captured function with a free lock
     adds one reader and resumes the caller with 0. *)
-Lemma wp_call_glibc_rdlock `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock}
+Lemma wp_call_glibc_rdlock `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock}
     f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   r mod 8 = 0 -> r + 8 < 2 ^ 31 -> cw <> tid ->
@@ -183,23 +184,23 @@ Definition rd_route : list string :=
   ["start"; "iw_1.L14"; "iw_1.L9"; "iw_1.L35"; "iw_1.L46"; "iw_1.L55"; "iw_1.L61"; "iw_1.L62"; "iw_1.L69";
    "iw_1.L48"; "iw_1.L119"; "iw_1.L127"; "iw_1.L129"; "iw_1.join"].
 Example rdlock_route_calls :
-  flat_map (fun l => blk_callees (rw_blk glibc_pthread_rwlock_rdlock l)) rd_route = [TAtom "zthread_self_cookie"].
+  flat_map (fun l => blk_callees (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock l)) rd_route = [TAtom "zthread_self_cookie"].
 Proof. vm_compute. reflexivity. Qed.
 (** The blocks that wait for a writer and wake waiters call the futex. *)
 Example rdlock_wait_calls :
-  blk_callees (rw_blk glibc_pthread_rwlock_rdlock "iw_1.iw_3.L4") = [TAtom "__GI___futex_abstimed_wait64"] /\
-  blk_callees (rw_blk glibc_pthread_rwlock_rdlock "iw_1.iw_5.L30") = [TAtom "zsys_futex_wake"].
+  blk_callees (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.iw_3.L4") = [TAtom "__GI___futex_abstimed_wait64"] /\
+  blk_callees (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.iw_5.L30") = [TAtom "zsys_futex_wake"].
 Proof. vm_compute. split; reflexivity. Qed.
 (** The function returns 35 when the thread holds the write lock, 11
     when the count overflows, and 0 from the route's last test. *)
 Example rdlock_results :
-  phi_from (rw_blk glibc_pthread_rwlock_rdlock "iw_1.join") "iw_1.L9" = Some (Const 35) /\
-  phi_from (rw_blk glibc_pthread_rwlock_rdlock "iw_1.join") "iw_1.L148" = Some (Const 11) /\
-  phi_from (rw_blk glibc_pthread_rwlock_rdlock "iw_1.join") "iw_1.L129" = Some (Const 0).
+  phi_from (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.join") "iw_1.L9" = Some (Const 35) /\
+  phi_from (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.join") "iw_1.L148" = Some (Const 11) /\
+  phi_from (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.join") "iw_1.L129" = Some (Const 0).
 Proof. vm_compute. repeat split. Qed.
 (** The overflow test compares the new count with 2^31 without sign. *)
 Example rdlock_overflow_test :
-  b_insts (rw_blk glibc_pthread_rwlock_rdlock "iw_1.L127") =
+  b_insts (rw_blk Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock "iw_1.L127") =
     [Let (TAtom "iw_1.v134") W (Cmp Uge W) [Tmp (TAtom "iw_1.pr.1"); Const 2147483648]].
 Proof. vm_compute. reflexivity. Qed.
 (** The name that gettext calls is an alias of the captured body. *)

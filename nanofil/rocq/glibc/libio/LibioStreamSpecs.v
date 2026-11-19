@@ -2,7 +2,8 @@
     buffer state. These contracts use the stream invariants without importing
     their execution proofs, so callers can share the same named contract. *)
 
-From Glibc Require Import GlibcProgram GlibcSpec FileInv LibioLogic LibioDoWriteCode
+From Glibc Require Import Unit_libio_fileops_os.
+From Glibc Require Import GlibcProgram GlibcSpec FileInv LibioLogic
   LibioDefaultXsputnBuf.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,7 +24,7 @@ Definition default_xsputn_spec : fspec Σ :=
     (fun '(_, fb, _, _, _, _, _, _, _, b, _, so, c, ys) =>
       [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + so) c); WInt (Z.of_nat (length ys))])
     (fun '(os, fb, freg, vb, vreg, nb, wp, we, dq, b, reg, so, c, ys) =>
-      ⌜overflow_spec w0 registry ge os /\ ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow /\
+      ⌜overflow_spec w0 registry ge os /\ ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow /\
         0 < fb /\ fb mod 8 = 0 /\ fb + file_size <= r_end freg /\ r_end freg <= 2 ^ 63 /\
         (c = Obj b \/ c = Ro b) /\ b mod 8 = 0 /\ 0 <= so /\
         b + so + Z.of_nat (length ys) <= r_end reg /\ r_end reg <= 2 ^ 63 /\

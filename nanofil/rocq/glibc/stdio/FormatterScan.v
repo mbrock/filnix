@@ -5,19 +5,19 @@
     The word-at-a-time search needs ownership of the padded words that it
     reads. Owning only the format bytes through NUL does not supply that
     padding. This rule scans a format; it does not interpret its directives. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import FormatterCode StrchrnulLogic StrchrCode WordString Fix.
+From Glibc Require Import FormatterCode StrchrnulLogic WordString Fix.
 Import ListNotations ProgramAbbreviations StrchrnulLogic.L StrchrnulLogic.LG WordString.
 Open Scope Z_scope.
 
 (** The complete captured module supplies the local scanning helper. *)
-Definition glibc_find_specmb : func := Eval vm_compute in
-  formatter_fn "glibc_vfprintf_internal#__find_specmb.gnu_inline".
+Definition glibc_find_specmb : func := Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__find_specmb'2egnu_inline.
 (** Lookup finds the actual definition rather than the selector's fallback. *)
 Lemma glibc_find_specmb_found :
   find_direct (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") formatter_module =
@@ -31,7 +31,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** The real strchrnul call returns the first percent sign or terminating
     NUL, preserving the same string share and pointer capability. *)
 Lemma wp_find_specmb dq p s Φ :
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   word_string dq p s -∗
   (word_string dq p s -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx 37 s)))))) -∗
   WP (ERun (mkFrame glibc_find_specmb [(TAtom "v0", WPtr p)] [] None

@@ -4,7 +4,7 @@
     the array. The result is a string that error can pass to its next
     print, even if the formatter returned a negative count. *)
 
-From Glibc Require Import HelloImageTypedVS.
+From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,12 +13,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces Heap Language Logic MemLogic VariadicLogic HelloLeaf.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks OsRegistry LibioLogic WordString NarrowFormat NarrowArgs
-  FxprintfStream PrintfLayout PrintfOut PrintfSpec PrintfWrap PrintfStateCode CodePrelude StartImageEarly HelloImageLoad HelloImageModule
+  FxprintfStream PrintfLayout PrintfOut PrintfSpec PrintfWrap CodePrelude StartImageEarly HelloImageLoad HelloImageModule
   HelloCloseReportStrerror HelloCloseReportFormat HelloCloseReportFlush HelloCloseReportInit HelloCloseReportDone.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_vsnprintf := hello_image_fn___vsnprintf_internal.
+Definition report_vsnprintf := Unit_libio_vsnprintf_os.fn___vsnprintf_internal.
 
 Section snprintf.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w : os_world).
@@ -44,7 +44,7 @@ Proof using Herr.
   intros Hd Hal Hfit Hspace Hk dp Hcf. injection Hcf as <-.
   assert (Hi : Defines hge "__printf_buffer_snprintf_init" report_init) by (vm_compute; reflexivity).
   assert (Hdone : Defines hge "__printf_buffer_snprintf_done" report_done) by (vm_compute; reflexivity).
-  assert (Hcnt : Defines hge "__printf_buffer_done" glibc___printf_buffer_done) by (vm_compute; reflexivity).
+  assert (Hcnt : Defines hge "__printf_buffer_done" Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done) by (vm_compute; reflexivity).
   assert (Hg : lookup (TAtom "__libc_errno") img_globals = Some (mkPtr eb (Obj eb))) by (vm_compute; reflexivity).
   iIntros "#Hro #Hfmt Hprefix Hva Hd Hwin He HK". step.
   iApply wp_alloc; [vm_compute; reflexivity|vm_compute; discriminate|vm_compute; discriminate|

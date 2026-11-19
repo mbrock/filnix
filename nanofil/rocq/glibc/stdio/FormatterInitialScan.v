@@ -2,26 +2,27 @@
     For a format beginning with percent, the initial literal write has
     length zero. These rules follow that scan and the subsequent byte
     read without deriving caller memory or registration values from startup. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString FormatterScan StrchrCode StrchrnulLogic MemFwdLogic
-  FormatterLiteral FormatterSuffixReturn PrintfBufferIoCode FormatterRegistration.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
+  Fix WordString FormatterScan StrchrnulLogic MemFwdLogic
+  FormatterLiteral FormatterSuffixReturn FormatterRegistration.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** The formatter needs temporary memory before it can scan the format.
     This proof starts after that memory is allocated and the position
     in the argument list is copied. *)
 Definition initial_scan_block := Eval vm_compute in
-  match find_block (TAtom "start") (fn_blocks glibc_printf_buffer) with
+  match find_block (TAtom "start") (fn_blocks Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer) with
   | Some b => b | None => mkBlock (TAtom "absent") [] [] JRetVoid end.
 (** The selector retains the actual entry block. *)
 Lemma initial_scan_block_found :
-  find_block (TAtom "start") (fn_blocks glibc_printf_buffer) = Some initial_scan_block.
+  find_block (TAtom "start") (fn_blocks Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer) = Some initial_scan_block.
 Proof. vm_compute. reflexivity. Qed.
 (** The byte test leaves the saved format pointer unchanged. Its
     environment records the actual loads before registration is checked. *)
@@ -49,9 +50,9 @@ Lemma wp_formatter_initial_percent e ls cb cr p dq Φ :
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
   ▷ (live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
-    WP (ERun (mkFrame glibc_printf_buffer (initial_percent_env e cb p) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (initial_percent_env e cb p) ls None
       (Enter (TAtom "L44") (Some (TAtom "L37")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L37") (Some (TAtom "start")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hchk Hcb Hca Hce Hcr. iIntros "Hl Hcell Hs HK".
@@ -84,9 +85,9 @@ Lemma wp_formatter_initial_scan e ls cb cr old bb br p dq Φ :
   lookup (TAtom "v10") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "v2") e = Some (WPtr p) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") = Some (Defined glibc_format_failed) ->
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end br -> r_end br <= 2^63 ->
@@ -94,10 +95,10 @@ Lemma wp_formatter_initial_scan e ls cb cr old bb br p dq Φ :
   live bb br -∗ int_cell bb 32 4 -∗
   ▷ (live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
     live bb br -∗ int_cell bb 32 4 -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (initial_percent_env (initial_scan_env e cb p) cb p) ls None
       (Enter (TAtom "L44") (Some (TAtom "L37")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hp Hb Hchr Hscan Hwrite Hfailed Hcb Hca Hce Hcr Hbb Hba Hbe Hbr.
@@ -150,9 +151,9 @@ Lemma wp_formatter_initial_registered e ls cb cr old bb br p dq rb rr mb mr ab a
   lookup (TAtom "v10") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "v2") e = Some (WPtr p) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") = Some (Defined glibc_format_failed) ->
   lookup (TAtom "__printf_function_table") (ge_globals ge) = Some (mkPtr rb (Obj rb)) ->
   lookup (TAtom "__printf_modifier_table") (ge_globals ge) = Some (mkPtr mb (Obj mb)) ->
@@ -168,10 +169,10 @@ Lemma wp_formatter_initial_registered e ls cb cr old bb br p dq rb rr mb mr ab a
   ▷ (live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
     live bb br -∗ int_cell bb 32 4 -∗
     live rb rr -∗ pcell rb 0 null -∗ live mb mr -∗ pcell mb 0 null -∗ live ab ar -∗ pcell ab 0 null -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (registration_env (initial_percent_env (initial_scan_env e cb p) cb p) rb mb ab) ls None
       (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hp Hb Hchr Hscan Hwrite Hfailed Hrf Hmf Haf

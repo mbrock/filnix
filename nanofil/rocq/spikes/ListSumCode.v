@@ -4,7 +4,6 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
-From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -15,44 +14,50 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition listsum_term : term :=
   TApp "module" [TList [
-    cap_fn{ "export" "sum" [param "p" %"v0"] -> "l"
-      {
-        @"start":
-          => goto "L3";
-        @"L3" [phi %"pr.2" : "l" = ("L4" => %"v13", "start" => #0); phi %"pr.1" : "p" = ("L4" => %"v15", "start" => %"v0")]:
-          %"v7" : "l" = "ptoi" %"pr.1";
-          %"v8" : "w" = op "cmp"("ne", "l") %"v7", #0
-          => br %"v8" ? "L4" : "L5";
-        @"L4":
-          %"v11" = %"pr.1" +p #8;
-          %"chk0" : "a" = op "check"(int 0, int 8, "read", int 1) %"v11";
-          %"v12" : "l" = op "raw_load"("l", int 0) %"chk0";
-          %"v13" : "l" = "add" %"pr.2", %"v12";
-          %"chk1" : "a" = op "half_check"("lower", int 0, int 8, "read", int 8) %"chk0", %"pr.1";
-          %"v15" : "p" = op "raw_load_pointer"(int 0, ["aux_read"; "lower_resolve"; "address_read"]) %"chk1"
-          => goto poll "L3";
-        @"L5":
-          => ret %"pr.2"
-      } };
-    cap_fn{ "export" "listsum" [param "w" %"v0"] -> "l"
-      {
-        @"start":
-          => goto "L4";
-        @"L4" [phi %"pr.2" : "w" = ("L5" => %"v21", "start" => #0); phi %"pr.1" : "p" = ("L5" => %"v12", "start" => #0)]:
-          %"v10" : "w" = op "cmp"("slt", "w") %"pr.2", %"v0"
-          => br %"v10" ? "L5" : "L7";
-        @"L5":
-          %"v12" : "p" = op "alloc"(int 16) #16;
-          %"chk0" : "a" = op "check"(int 0, int 8, "write", int 8) %"v12";
-          store.ptr [%"chk0" + 0] <- %"pr.1";
-          %"v16" = %"v12" +p #8;
-          %"v18" : "l" = op "ext"("sw") %"pr.2";
-          %"chk1" : "a" = op "half_check"("upper", int 0, int 8, "write", int 1) %"chk0", %"v16";
-          store "l" [%"chk1" + 0] <- %"v18";
-          %"v21" : "w" = "add" %"pr.2", #1
-          => goto poll "L4";
-        @"L7":
-          call %"v23" : "l" = $"sum"("p" %"pr.1")
-          => ret %"v23"
-      } }
+    TApp "func" [TAtom "sum"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "p"; TApp "tmp" [TAtom "v0"]]];
+      TList [
+        TApp "block" [TAtom "start"; TList [];
+          TList [];
+          TApp "goto" [TAtom "L3"]];
+        TApp "block" [TAtom "L3"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.2"]; TAtom "l"; TList [TApp "-" [TAtom "L4"; TApp "tmp" [TAtom "v13"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]; TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "p"; TList [TApp "-" [TAtom "L4"; TApp "tmp" [TAtom "v15"]]; TApp "-" [TAtom "start"; TApp "tmp" [TAtom "v0"]]]]];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v7"]; TAtom "l"; TAtom "ptoi"; TList [TApp "tmp" [TAtom "pr.1"]]];
+            TApp "let" [TApp "tmp" [TAtom "v8"]; TAtom "w"; TApp "cmp" [TAtom "ne"; TAtom "l"]; TList [TApp "tmp" [TAtom "v7"]; TApp "const" [TInt 0]]]];
+          TApp "branch" [TApp "tmp" [TAtom "v8"]; TAtom "L4"; TAtom "L5"]];
+        TApp "block" [TAtom "L4"; TList [];
+          TList [
+            TApp "flight" [TApp "tmp" [TAtom "v11"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "pr.1"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "pr.1"]]];
+            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v11"]]];
+            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk0"]]];
+            TApp "let" [TApp "tmp" [TAtom "v13"]; TAtom "l"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.2"]; TApp "tmp" [TAtom "v12"]]];
+            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "half_check" [TAtom "lower"; TInt 0; TInt 8; TAtom "read"; TInt 8]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "pr.1"]]];
+            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "p"; TApp "raw_load_pointer" [TInt 0; TList [TAtom "aux_read"; TAtom "lower_resolve"; TAtom "address_read"]]; TList [TApp "tmp" [TAtom "chk1"]]]];
+          TApp "goto" [TApp "poll" [TAtom "L3"]]];
+        TApp "block" [TAtom "L5"; TList [];
+          TList [];
+          TApp "ret" [TApp "tmp" [TAtom "pr.2"]]]]];
+    TApp "func" [TAtom "listsum"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
+      TList [
+        TApp "block" [TAtom "start"; TList [];
+          TList [];
+          TApp "goto" [TAtom "L4"]];
+        TApp "block" [TAtom "L4"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.2"]; TAtom "w"; TList [TApp "-" [TAtom "L5"; TApp "tmp" [TAtom "v21"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]; TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "p"; TList [TApp "-" [TAtom "L5"; TApp "tmp" [TAtom "v12"]]; TApp "-" [TAtom "start"; TApp "const" [TInt 0]]]]];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v10"]; TAtom "w"; TApp "cmp" [TAtom "slt"; TAtom "w"]; TList [TApp "tmp" [TAtom "pr.2"]; TApp "tmp" [TAtom "v0"]]]];
+          TApp "branch" [TApp "tmp" [TAtom "v10"]; TAtom "L5"; TAtom "L7"]];
+        TApp "block" [TAtom "L5"; TList [];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v12"]; TAtom "p"; TApp "alloc" [TInt 16]; TList [TApp "const" [TInt 16]]];
+            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 8]; TList [TApp "tmp" [TAtom "v12"]]];
+            TApp "raw_store_pointer" [TInt 0; TApp "tmp" [TAtom "pr.1"]; TApp "tmp" [TAtom "chk0"]; TList [TAtom "aux_ensure"; TAtom "lower_barrier"; TAtom "rooted_reload"; TAtom "lower_write"; TAtom "address_write"]];
+            TApp "flight" [TApp "tmp" [TAtom "v16"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v12"]]; TApp "const" [TInt 8]]; TApp "lower" [TApp "tmp" [TAtom "v12"]]];
+            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "pr.2"]]];
+            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "half_check" [TAtom "upper"; TInt 0; TInt 8; TAtom "write"; TInt 1]; TList [TApp "tmp" [TAtom "chk0"]; TApp "tmp" [TAtom "v16"]]];
+            TApp "raw_store" [TAtom "l"; TInt 0; TApp "tmp" [TAtom "v18"]; TApp "tmp" [TAtom "chk1"]];
+            TApp "let" [TApp "tmp" [TAtom "v21"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.2"]; TApp "const" [TInt 1]]]];
+          TApp "goto" [TApp "poll" [TAtom "L4"]]];
+        TApp "block" [TAtom "L7"; TList [];
+          TList [
+            TApp "call" [TApp "result" [TApp "tmp" [TAtom "v23"]; TAtom "l"]; TApp "global" [TAtom "sum"]; TList [TApp "arg" [TAtom "p"; TApp "tmp" [TAtom "pr.1"]]]]];
+          TApp "ret" [TApp "tmp" [TAtom "v23"]]]]]
   ]].

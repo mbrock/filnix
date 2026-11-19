@@ -6,12 +6,13 @@
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap.
-From Glibc Require Import HelloImageModule SetlocaleCode FindlocaleCode PostloadCtypeCode.
+From Glibc Require Import Unit_locale_findlocale_os Unit_locale_lcZ2dctype_os Unit_locale_setlocale_os.
+From Glibc Require Import HelloImageModule.
 
 (** Hello's call of `c: setlocale` finds the body of the setlocale
     fixture. *)
 Lemma hello_image_setlocale g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "setlocale") = Some (Defined glibc_setlocale).
+  find_fn (mkGenv hello_image_module g fr) (TAtom "setlocale") = Some (Defined Unit_locale_setlocale_os.fn___GI_setlocale).
 Proof. vm_compute. reflexivity. Qed.
 
 (** The single-category route of `c: setlocale` calls its static helper
@@ -19,16 +20,16 @@ Proof. vm_compute. reflexivity. Qed.
     prefix. *)
 Lemma hello_image_new_composite_name g fr :
   find_fn (mkGenv hello_image_module g fr) (TAtom "glibc_setlocale#new_composite_name") =
-    Some (Defined glibc_new_composite_name).
+    Some (Defined Unit_locale_setlocale_os.fn_glibc_setlocale'23new_composite_name).
 Proof. vm_compute. reflexivity. Qed.
 
 (** The search for each category's data calls `c: _nl_find_locale`. *)
 Lemma hello_image_find_locale g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "_nl_find_locale") = Some (Defined glibc_nl_find_locale).
+  find_fn (mkGenv hello_image_module g fr) (TAtom "_nl_find_locale") = Some (Defined Unit_locale_findlocale_os.fn__nl_find_locale).
 Proof. vm_compute. reflexivity. Qed.
 
 (** Installing the character type data calls `c: _nl_postload_ctype`
     through glibc's table of postload functions. *)
 Lemma hello_image_postload_ctype g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "_nl_postload_ctype") = Some (Defined glibc_nl_postload_ctype).
+  find_fn (mkGenv hello_image_module g fr) (TAtom "_nl_postload_ctype") = Some (Defined Unit_locale_lcZ2dctype_os.fn__nl_postload_ctype).
 Proof. vm_compute. reflexivity. Qed.

@@ -350,6 +350,7 @@ let
       ../rocq/tests
       ../rocq/scripts/programs.sh
       ../rocq/scripts/gallina.pl
+      ../rocq/scripts/link.pl
       ../rocq/glibc/IRNotation.v
       ../rocq/glibc/IRBytes.v
       ../rocq/scripts/glibc-code/typed.py
@@ -395,7 +396,6 @@ let
           (mkdir typed-test && cd typed-test
            cp -r ../rocq/theories .
            ${link "Extract"}
-           ln -s ${vo.CaptureNotation}/CaptureNotation.vo theories/core/CaptureNotation.vo
            python3 ../tests/watch.py --label "Typed image printer" -- python3 ../rocq/tests/typed_image.py theories)
           mark typed-image
         ''

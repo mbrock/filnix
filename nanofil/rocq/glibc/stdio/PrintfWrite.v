@@ -32,6 +32,7 @@
     contracts for the two functions that the loop calls,
     `c: __printf_buffer_flush` and `c: memcpy`. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -39,8 +40,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic WordString MemFwdCode MemFwdLogic
-  PrintfBufferIoCode PrintfBufferIoSrc CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic WordString MemFwdLogic
+  PrintfBufferIoSrc CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec
   PrintfCopy PrintfBufferIoNames.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
@@ -67,9 +68,9 @@ Definition write_cuts : list (string * cut_sig) :=
     list of temporaries for each way in. The function reaches the
     start of the loop from its entry and from the block that copies. *)
 Definition loop_from_start : cut_sig :=
-  Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L15" "start".
+  Eval vm_compute in cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L15" "start".
 Definition loop_from_copy : cut_sig :=
-  Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L15" "L68".
+  Eval vm_compute in cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L15" "L68".
 
 (** Each round of the loop starts with phi nodes, which copy `c: s`
     and `c: count` into two fixed temporaries. So the rest of the block
@@ -78,7 +79,7 @@ Definition loop_from_copy : cut_sig :=
     block reads. The proof below treats that rest once and uses it for
     both rows of the block. *)
 Definition loop_body : cut_sig :=
-  Eval vm_compute in cut_body S.temp_keys S.live_in glibc___printf_buffer_write "L15" "start".
+  Eval vm_compute in cut_body S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L15" "start".
 
 (** The function also reaches the block that copies the bytes from
     two blocks. It comes from the block `L43` when the window has room
@@ -86,9 +87,9 @@ Definition loop_body : cut_sig :=
     window has less room. The next two definitions list the
     temporaries for these two cases. *)
 Definition copy_from_count : cut_sig :=
-  Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L43".
+  Eval vm_compute in cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L68" "L43".
 Definition copy_from_room : cut_sig :=
-  Eval vm_compute in cut_edge S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
+  Eval vm_compute in cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L68" "L67".
 
 (** The block that copies starts with a phi node as well. The node
     copies the number of bytes to copy into one fixed temporary, so
@@ -96,7 +97,7 @@ Definition copy_from_room : cut_sig :=
     definition [copy_body] lists the temporaries that the rest of the
     block reads. *)
 Definition copy_body : cut_sig :=
-  Eval vm_compute in cut_body S.temp_keys S.live_in glibc___printf_buffer_write "L68" "L67".
+  Eval vm_compute in cut_body S.temp_keys S.live_in Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L68" "L67".
 
 Section write.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -185,16 +186,16 @@ Local Ltac row_simpl :=
        ptr_addr ptr_cap] in *.
 
 (** Every block of the function meets its row. *)
-Lemma write_table : ⊢ blocks_hold glibc___printf_buffer_write write_blocks.
+Lemma write_table : ⊢ blocks_hold Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write write_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH".
   (* L15: a round of the loop returns when no byte is left. Otherwise it looks for a free byte in the
      window, and it calls the flushing function when the window is full. The two rows for this block
      share this proof of the block's body. *)
-  iAssert (body_triple glibc___printf_buffer_write "L15" loop_body wr_in wr_vals wr_pre wr_post) as "#Hloop".
+  iAssert (body_triple Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L15" loop_body wr_in wr_vals wr_pre wr_post) as "#Hloop".
   { iModIntro;
   iIntros ([bb dq [pa pc] sb sreg str d cnt] e Φ) "%He H HK"; row_simpl; c_env_open He;
-  iDestruct "H" as "[%Hok [Hout Hstr]]"; body_start glibc___printf_buffer_write "L15"; step; branch_eqn E;
+  iDestruct "H" as "[%Hok [Hout Hstr]]"; body_start Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L15"; step; branch_eqn E;
   [step; iApply wp_ret_void; iNext; iApply "HK"; iFrame "Hstr Hout"; done|];
   step; iDestruct "Hout" as (breg w written mode) "(%Hmd & Hbuf & HR)"; buf_open "Hbuf";
   step; check "Hl"; load_window "Hl" "Hptr" "Hwl"; step; check "Hl"; load_window "Hl" "Hend" "Hwl";
@@ -214,12 +215,12 @@ Proof using Type*.
   (* L68: the round copies the bytes, advances the buffer's write pointer and the pointer into the
      run, and goes back to the start of the loop. The run lends the bytes to memcpy, and the
      buffer lends its window. The two rows for this block share this proof of the block's body. *)
-  iAssert (body_triple glibc___printf_buffer_write "L68" copy_body wr_room copy_vals
+  iAssert (body_triple Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L68" copy_body wr_room copy_vals
     (fun y => ⌜copy_ok y⌝ ∗ room_pre y)%I (fun y => wr_post (wm_in y))) as "#Hcopy".
   { iModIntro;
   iIntros ([[bb dq [pa pc] sb sreg str d cnt] breg w written mode m] e Φ) "%He H HK"; row_simpl; c_env_open He;
   iDestruct "H" as "(%Hcp & (%Hok & %Hcnt & %Hroom & %Hmd) & Hbuf & HR & Hstr)"; destruct Hcp as [Hcp Hm0]; destruct Hm0;
-  buf_open "Hbuf"; unfold pwin_ok in Hw; body_start glibc___printf_buffer_write "L68"; step; load_window "Hl" "Hptr" "Hwl";
+  buf_open "Hbuf"; unfold pwin_ok in Hw; body_start Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write "L68"; step; load_window "Hl" "Hptr" "Hwl";
   iDestruct (byte_run_lend dq (mkPtr pa pc) sb sreg str d m with "Hstr")
     as (ys) "((%Hlen & %Hc & %Hsb8 & %Hsa & %Hsend & %Hsp & %Hy) & Hsl & Hys & Hback)"; [lia..|];
   cbn [ptr_addr ptr_cap] in *; destruct Hlen;
@@ -288,7 +289,7 @@ Qed.
 (** A caller that appends a run of bytes uses this lemma. It says that
     the compiled function meets [write_bytes_spec] in every program
     that defines the function. *)
-Lemma write_bytes_has_spec `{!Defines ge "__printf_buffer_write" glibc___printf_buffer_write} :
+Lemma write_bytes_has_spec `{!Defines ge "__printf_buffer_write" Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_write") (write_bytes_spec k R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ write_blocks); [exact defines | reflexivity | reflexivity | | exact write_table].
@@ -324,7 +325,7 @@ Qed.
 (** A caller that appends the first bytes of a string uses this lemma.
     It says that the compiled function meets [write_spec], because a
     string lends those bytes as a run. *)
-Lemma write_has_spec `{!Defines ge "__printf_buffer_write" glibc___printf_buffer_write} :
+Lemma write_has_spec `{!Defines ge "__printf_buffer_write" Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_write") (write_spec k R).
 Proof using Type*.
   eapply (has_spec_open _ (write_bytes_spec k R)); [exact write_bytes_has_spec|].

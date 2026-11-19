@@ -8,6 +8,7 @@
     establish those resources from startup. Conversion directives, empty
     formats and writes needing a flush remain outside this rule.
     The surrounding FILE wrapper and wide fallback are not proved here. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +16,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  LibioPutsInv PrintfBufferIoCode MemFwdCode MemFwdLogic WordString Fix FormatterCode FormatterScan
-  StrchrCode StrchrnulLogic PrintfStagingCopy PrintfBufferWriteWindow FormatterLiteralWrite.
+  LibioPutsInv MemFwdLogic WordString Fix FormatterCode FormatterScan
+  StrchrnulLogic PrintfStagingCopy PrintfBufferWriteWindow FormatterLiteralWrite.
 (** The variadic memory rules provide cells for the local cursor copy. *)
 Module LiteralVL := VariadicLogicOn R LG0.
 Import LiteralVL.
@@ -29,8 +30,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 (** This selector retains the captured helper that checks the buffer mode. *)
-Definition glibc_format_failed : func := Eval vm_compute in
-  formatter_fn "glibc_vfprintf_internal#__printf_buffer_has_failed".
+Definition glibc_format_failed : func := Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_has_failed.
 (** Lookup finds the actual helper rather than the selector's fallback. *)
 Lemma glibc_format_failed_found :
   find_direct (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") formatter_module =
@@ -68,12 +68,12 @@ Qed.
     fields and locks stay in the frame, and no output success is claimed. *)
 Lemma wp_printf_buffer_literal fr bb reg off xs cs dq p s ab areg vb vreg cur
     eb ereg err flags Φ :
-  call_frame glibc_printf_buffer
+  call_frame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     [WPtr (mkPtr bb (Obj bb)); WPtr p; WPtr (mkPtr ab (Obj ab)); WInt flags] = Some fr ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") = Some (Defined glibc_format_failed) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end reg -> r_end reg <= 2 ^ 63 ->

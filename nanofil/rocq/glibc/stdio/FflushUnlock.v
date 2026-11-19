@@ -2,6 +2,7 @@
     This rule executes the single-threaded release with recursion count zero.
     It does not read cancellation state, so disabled cancellation can remain
     in the caller's frame. *)
+From Glibc Require Import Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -9,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FflushCode Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
@@ -30,7 +31,7 @@ Lemma wp_fflush_unlock e from k fb freg fl lb lbreg sb sreg (E : iProp Σ) Φ :
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗ E -∗
   ▷ (live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
     lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt k))) -∗
-  WP (ERun (mkFrame glibc__IO_fflush e [] None (Enter (TAtom "L110") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None (Enter (TAtom "L110") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv0 Hc0 Hfrom Hfb Hal Hend Hreg Huser.
   assert (Hkr : 0 <= k < 2 ^ 32) by (destruct Hfrom as [[_ ->] | [_ ->]]; lia).

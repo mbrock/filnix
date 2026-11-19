@@ -4,6 +4,7 @@
     more. The resulting window always includes the first byte and
     never extends past the string's terminator. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic HelloLeaf HelloConvDefs.
-From Glibc Require Import FileInv LibioLogic WordString GetoptBytes StrchrCode MemchrLast HelloGlibcLeaf Fix.
+From Glibc Require Import FileInv LibioLogic WordString GetoptBytes MemchrLast HelloGlibcLeaf Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -27,7 +28,7 @@ Definition conv_regs (e : env) (q : ptr) (out count state src check base : word)
 
 Section scan.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{HM : !Defines ge "memchr" glibc_memchr}.
+Context `{HM : !Defines ge "memchr" Unit_string_memchr_os.fn___memchr}.
 Context (Hstrn : find_fn ge (TAtom "strnlen1") = Some (Defined strnlen1_fn)).
 Local Instance scan_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).

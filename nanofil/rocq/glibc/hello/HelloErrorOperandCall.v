@@ -4,6 +4,7 @@
     between calls. This module derives that statement from the proof of
     the image's code in [HelloErrorOperand](HelloErrorOperand.v). *)
 
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   LibioFflushSpec PrintfSpec NarrowFormat NarrowArgs AllocRo FxprintfStream FxprintfNormalCall VfxprintfSelect
-  PrintfStateCode FxprintfNormalCode ErrorCode ErrorCall LibioCleanupExit HelloVersionLits HelloGlibcDebts HelloGlibcLibsT HelloEmitBug HelloVersionEtc
+  ErrorCall LibioCleanupExit HelloVersionLits HelloGlibcDebts HelloGlibcLibsT HelloEmitBug HelloVersionEtc
   HelloErrorOperand.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout.
 From Glibc Require HelloGlibcDebts LibioLogic.
@@ -43,11 +44,11 @@ Qed.
     These facts are about the linked image alone; the image's proof
     checks them by computation. *)
 Record error_link (ge : genv) (o : hello_objs) : Prop := mkErrorLink {
-  erl_error : find_fn ge (TAtom "error") = Some (Defined glibc_error);
-  erl_internal : find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal);
-  erl_cancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate);
-  erl_fx : find_fn ge (TAtom "__fxprintf") = Some (Defined glibc_fxprintf);
-  erl_vfx : find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf);
+  erl_error : find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error);
+  erl_internal : find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal);
+  erl_cancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate);
+  erl_fx : find_fn ge (TAtom "__fxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf);
+  erl_vfx : find_fn ge (TAtom "__vfxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf);
   erl_wide : exists wide widefn wideframe, lookup (TAtom "glibc_error#str.253") (ge_globals ge) = Some wide /\
     find_fn ge (TAtom "__GI_fputws_unlocked") = Some (Defined widefn) /\
     call_frame widefn [WPtr wide; WPtr (ho_err o)] = Some wideframe;
@@ -78,7 +79,7 @@ Lemma error_operand_hello (P : iProp Σ) q :
 Proof using Type*.
   destruct El as [Hfe1 Hfi Hfc Hfx Hfv (wide & widefn & wideframe & Hw1 & Hw2 & Hw3) Hpre Hnew (Hso0 & Hse0 & Hnb0)
     Hpbpos Hcbpos].
-  exists glibc_error. split; [exact Hfe1|]. split; [eexists; apply error_call_frame|].
+  exists Unit_misc_error_os.fn___error. split; [exact Hfe1|]. split; [eexists; apply error_call_frame|].
   intros fr Φ Hfr. rewrite error_call_frame in Hfr. injection Hfr as <-.
   iIntros "(#Hro & (Hout & Herr & Hin & Hio & Htcb & He & Hec) & HP & Hnames & #Hq) HK".
   iDestruct "Hnames" as (x y z) "((Hpl & Hpp & Hnl & Hnp & Hsl & Hsp) & Hx & #Hy & Hz)".

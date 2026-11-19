@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** One step of glibc's scanner reads a character from the current word
     of a cluster such as "-ab", looks it up in the short option string,
@@ -17,7 +18,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag
   GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap GetoptKnownRet
   GetoptLongSession.
@@ -189,8 +190,8 @@ Lemma wp_getopt_char_ret ks ks2 e fr i n pe cur t po so oo a lo li lonly b r av 
   avoids ks char_names = true -> incl char_ret_keys ks ->
   avoids ks2 opt_names = true -> avoids ks2 req_names = true -> avoids ks2 diag_names = true ->
   avoids ks2 ret_names = true -> incl known_req_keys ks2 ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
@@ -291,8 +292,8 @@ Lemma wp_getopt_char_session ks ks2 e fr s pe t po so lo li lonly b r av ar ps (
   avoids ks char_names = true -> incl char_ret_keys ks ->
   avoids ks2 opt_names = true -> avoids ks2 req_names = true -> avoids ks2 diag_names = true ->
   avoids ks2 ret_names = true -> incl known_req_keys ks2 ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->

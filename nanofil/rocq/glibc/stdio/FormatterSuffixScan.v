@@ -6,23 +6,24 @@
     The caller must own the saved pointer cell and enough padded memory
     to read the suffix. The scan does not write output. This rule does
     not cover the later suffix write or the formatter's return. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString FormatterScan StrchrCode StrchrnulLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
+  Fix WordString FormatterScan StrchrnulLogic.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** This block resumes formatting after the string write. *)
 Definition suffix_block := Eval vm_compute in
-  match find_block (TAtom "L1150") (fn_blocks glibc_printf_buffer) with
+  match find_block (TAtom "L1150") (fn_blocks Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer) with
   | Some b => b | None => mkBlock (TAtom "absent") [] [] JRetVoid end.
 (** The selector finds the captured block rather than its fallback. *)
 Lemma suffix_block_found :
-  find_block (TAtom "L1150") (fn_blocks glibc_printf_buffer) = Some suffix_block.
+  find_block (TAtom "L1150") (fn_blocks Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer) = Some suffix_block.
 Proof. vm_compute. reflexivity. Qed.
 (** Scanning advances the conversion counter with machine-word wrapping
     and records both the suffix pointer and the scan result. *)
@@ -45,16 +46,16 @@ Lemma wp_formatter_suffix_scan e ls cb cr p dq s n count Φ :
   lookup (TAtom "pr.11") e = Some (WInt count) ->
   lookup (TAtom "v10") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "chk3") e = Some (WPtr (mkPtr cb (Obj cb))) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   0 < ptr_addr p < 2^63 ->
   live cb cr -∗ pcell cb 0 (mkPtr (ptr_addr p - 1) (ptr_cap p)) -∗ word_string dq p s -∗
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (chr_idx 37 s))) -∗ word_string dq p s -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (suffix_scan_env e cb p n count (Z.of_nat (chr_idx 37 s))) ls None
       (Exec (TAtom "L1150") (skipn 9 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hn Hcount Hv Hchk Hchr Hscan Hb Ha He Hr Hp.

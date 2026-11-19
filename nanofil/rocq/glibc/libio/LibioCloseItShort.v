@@ -9,9 +9,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Import Unit_io_close_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  SysCode SysWrappers LibioReadCode LibioRead LibioDoWriteCode LibioDoWrite LibioCloseItCode
-  LibioGenCode LibioGenLeaves FileInv LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
+  SysWrappers LibioRead LibioDoWrite
+  LibioGenLeaves FileInv LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
   LibioSetbShort LibioPutsInv.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld
   FileInv LibioLogic LibioCloseSteps.
@@ -20,11 +21,11 @@ Open Scope Z_scope.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
-  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+Context `{Hcn : !Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The buffer resource is a pure description of an in-object pointer.
@@ -53,7 +54,7 @@ Qed.
 Lemma wp_glibc__IO_file_close_short_empty fr fb freg fl f2 fd off md rp re rb we be vb vreg eb
     (E : iProp Σ) Φ :
   let sb := mkPtr (fb + off_shortbuf) (Obj fb) in
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= f2 < 2 ^ 32 -> Z.land f2 32 = 0 -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_no_writes = 0 ->
@@ -102,7 +103,7 @@ Proof using Type*.
   iApply wp_call_bind; [vx | exact Hdwf | reflexivity |]. iNext.
   iApply LibioDoWrite.wp_glibc__IO_new_do_write_zero; [reflexivity |]. iNext. resume. step.
   iApply (LibioCloseItMid.wp_close_it_L18_with Hfc short_close_spec short_base short_setb_spec
-    glibc__IO_unsave_markers LibioGenLeaves.unsave_spec_holds
+    Unit_libio_genops_os.fn___GI__IO_unsave_markers LibioGenLeaves.unsave_spec_holds
     with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [] H80 H96");
     first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
   { iPureIntro. split; [reflexivity | exact Hub]. }

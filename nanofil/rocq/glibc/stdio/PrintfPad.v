@@ -2,6 +2,7 @@
     Each round writes the smaller of the remaining count and the free
     space. A full window needs a flush first. If that flush fails, the
     function returns without writing to the window. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_pad_1_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -9,7 +10,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic CFrame CStruct CBlocks
-  PrintfLayout PrintfOut PrintfSpec PrintfFill PrintfPadOneCode PrintfPadOneSrc FormatterCode.
+  PrintfLayout PrintfOut PrintfSpec PrintfFill PrintfPadOneSrc.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope. Open Scope list_scope. Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -18,7 +19,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 Module S := PrintfPadOneSrc.fn___printf_buffer_pad_1.
-Local Notation fn := glibc_printf_buffer_pad_1.
+Local Notation fn := Unit_stdioZ2dcommon_printf_buffer_pad_1_os.fn___printf_buffer_pad_1.
 Local Definition cuts := Eval vm_compute in cut_table S.temp_keys S.live_in.
 Local Definition head_start := Eval vm_compute in cut_edge S.temp_keys S.live_in fn "L15" "start".
 Local Definition head_again := Eval vm_compute in cut_edge S.temp_keys S.live_in fn "L15" "L66".
@@ -126,11 +127,11 @@ Qed.
 
 (** The inline wrapper skips nonpositive signed widths. For a positive
     width it passes the sign-extended character to the out-of-line writer. *)
-Lemma pad_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_pad" glibc_printf_buffer_pad}
+Lemma pad_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_pad" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_pad}
     `{!Defines ge "__printf_buffer_pad_1" fn} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_pad") (pad_spec k R).
 Proof using Type*.
-  pose proof pad_one_has_spec as Hslow. intros [[bb c] n]. exists glibc_printf_buffer_pad.
+  pose proof pad_one_has_spec as Hslow. intros [[bb c] n]. exists Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_pad.
   split; [exact defines|]. split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
   cbn [fs_pre fs_post pad_spec]. iIntros "[(%Hc & %Hn) Hout] HK". step. step. branch_eqn E.
   - step. iApply wp_ret_void. iNext. iApply "HK". by iFrame.

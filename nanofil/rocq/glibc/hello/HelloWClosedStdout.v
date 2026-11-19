@@ -11,6 +11,7 @@
     reads no descriptor, narrow cursor, errno or cancellation state.
     [HelloClosedStdout](HelloClosedStdout.v) proves the same flush for a
     narrow stream. *)
+From Glibc Require Import Unit_libio_iofflush_os Unit_libio_wfileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +20,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
-  LibioWIdle FflushCode FileSyncCode WFileSyncCode WFileSyncClosed FflushClosed Fix.
+  LibioWIdle WFileSyncClosed FflushClosed Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -47,9 +48,9 @@ Definition closed_wide fb freg vb lb lbreg (tw tm : ptr) wd : iProp Σ :=
     [wp_wfile_sync_closed]. It returns the stream's lifetime, its fields
     and the caller's other resources unchanged. *)
 Lemma wp_closed_wide_fflush (Hreg : holds_os registry) (Hext : sys_external ge)
-    (Hsync : ge_fn ge "__GI__IO_wfile_sync" glibc__IO_wfile_sync)
+    (Hsync : ge_fn ge "__GI__IO_wfile_sync" Unit_libio_wfileops_os.fn___GI__IO_wfile_sync)
     fr fb freg vb lb lbreg tw tm wd sb sreg vreg (E : iProp Σ) :
-  call_frame glibc__IO_fflush [WPtr (objp fb)] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (objp fb)] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ wvtables_ro ge vb -∗ single_ro ge sb sreg -∗ live fb freg -∗

@@ -16,7 +16,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptShort GetoptOptArg.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptOptArg GetoptShort GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.

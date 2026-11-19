@@ -4,13 +4,14 @@
     number beyond the end, and a null slot inside the table, both leave
     strerror to format an unknown error. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_errlist_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic ErrlistCode StrcmpBits Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic StrcmpBits Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -26,7 +27,7 @@ Local Abbreviation rop b := (mkPtr b (Ro b)).
     returns the pointer in that slot, which may itself be null. The
     length, table and target remain readable for later reports. *)
 Lemma wp_close_get_errlist fr k lb lr tb tr mid mr Φ :
-  call_frame glibc_get_errlist [WInt k] = Some fr -> 0 <= k < 2^32 ->
+  call_frame Unit_stdioZ2dcommon_errlist_os.fn___get_errlist [WInt k] = Some fr -> 0 <= k < 2^32 ->
   lookup (TAtom "_sys_errlist_internal_len") (ge_globals ge) = Some (rop lb) ->
   lookup (TAtom "_sys_errlist_internal") (ge_globals ge) = Some (rop tb) ->
   0 < lb -> lb+8 <= r_end lr -> r_end lr <= 2^48 ->

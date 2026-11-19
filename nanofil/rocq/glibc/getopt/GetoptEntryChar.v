@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** A call of glibc's scanner that resumes inside a cluster such as
     "-ab" runs the entry blocks and then reads the next character of the
@@ -19,7 +20,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptEntryCall GetoptArgv
   GetoptExchange GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap
   GetoptCharRet.
@@ -141,8 +142,8 @@ Lemma wp_getopt_entry_char_ws_at ks ks2 cf n av ar p os lo li lonly pc penv b r 
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
   GetenvCall.getenv_at_rule w0 registry ge G penv -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->
@@ -231,8 +232,8 @@ Lemma wp_getopt_entry_char ks ks2 cf n av ar p os lo li lonly pc penv b r ps j (
   call_frame glibc_getopt_internal_r
     [WInt n; WPtr (mkPtr av (Obj av)); WPtr p; WPtr lo; WPtr li; WInt lonly; WPtr (mkPtr b (Obj b)); WInt pc] = Some cf ->
   GetoptInitialize.getenv_rule w0 registry ge G -> lookup (TAtom "glibc_getopt#str.145") (ge_globals ge) = Some penv ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   getopt_diag_rule w0 registry ge G T fp dom ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr se (Obj se)) ->
   lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid' ->

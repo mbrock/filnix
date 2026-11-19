@@ -3,8 +3,8 @@
     targets. A proof about all of Hello needs the record for the whole
     linked image instead, because another unit of that image could define
     one of those names, and the selection alone cannot rule that out.
-    HelloImageCode.v now decodes the whole image, so this file checks
-    every lookup that gettext makes against the whole decoded module and
+    HelloImageCode.v assembles the whole image, so this file checks
+    every lookup that gettext makes against the whole linked module and
     derives the record for it, with the symbols that the loader computes.
 
     The record says which function each call finds. It does not say that
@@ -13,7 +13,7 @@
 
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Values Memory Run Semantics.
-From Glibc Require Import GettextLinkCode HelloGettextImageCode HelloGettextLink HelloGettextImage.
+From Glibc Require Import HelloGettextImageCode HelloGettextLink HelloGettextImage.
 From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageLoad.
 Import ListNotations.
 
@@ -23,7 +23,7 @@ Import ListNotations.
     whole image answers a direct lookup and an alias lookup exactly as
     the selection does. *)
 Lemma hello_image_lookups : Forall (lookup_agrees hello_image_module hellogettextimage_module) HelloGettextImage.hello_image_names.
-Proof. repeat constructor; vm_compute; reflexivity. Qed.
+Proof. repeat constructor; reflexivity. Qed.
 
 (** No function, outside function, data object or alias of the whole
     image is named memmove. *)

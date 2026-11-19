@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_alloca_cutoff_os.
 From Glibc Require Import GlibcProgram.
 (** When glibc's long-option parser meets an ambiguous word and its
     caller lets it print errors, it allocates a set with one byte per
@@ -18,13 +19,13 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
+  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongPfxMark GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
-From Glibc Require CutoffCode CutoffLogic.
+From Glibc Require CutoffLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -155,7 +156,7 @@ Lemma getopt_cutoff_rule_with_loan (G : iProp Σ) dq :
   registry (TAtom "zthread_self_cookie") = Some OsThread.os_self_contract ->
   find_fn ge (TAtom "zthread_self_cookie") = None ->
   Term.lookup (TAtom "zthread_self_cookie") (ge_globals ge) = None ->
-  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined CutoffCode.glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff) ->
   (G ⊢ CutoffLogic.cutoff_loan dq ∗ (CutoffLogic.cutoff_loan dq -∗ G)) ->
   getopt_cutoff_rule_with w0 registry ge G.
 Proof using Type.

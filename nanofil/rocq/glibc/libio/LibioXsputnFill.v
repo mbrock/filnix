@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** The file stream writer copies bytes into its buffer before handling
     any pending flush. This module verifies that copy and its byte count:
@@ -20,8 +21,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags
   LibioXsputnReset LibioXsputnCall LibioXsputnDo
@@ -40,12 +41,12 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** This block begins the fill after the writer has measured the available space. *)
 Definition xs_L20b : block := Eval vm_compute in
-  match find_block (TAtom "L20") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "L20") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L20") [] [] JRetVoid end.
 
 (** This block copies the chosen count and advances the write pointer. *)
 Definition xs_L101 : block := Eval vm_compute in
-  match find_block (TAtom "L101") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "L101") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L101") [] [] JRetVoid end.
 
 
@@ -59,12 +60,12 @@ Context `{XF : !XsFlags}.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
-  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
-  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
+  `{Hcpy : !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" Unit_libio_genops_os.fn___GI__IO_default_xsputn}.
 (** The jump table's write is glibc's `c: _IO_new_file_write`, which
     writes bytes at a share ([fwq_spec]). *)
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
   (Hfwq : xs_fwq_spec w0 registry ge).
 
 
@@ -78,7 +79,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
 (** The writer copies c source bytes into available buffer space and advances its write pointer. *)
 Lemma wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf c e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
@@ -92,7 +93,7 @@ Lemma wp_xs_L101 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf c e Φ :
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L101") (b_insts xs_L101) (b_jump xs_L101)))
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Exec (TAtom "L101") (b_insts xs_L101) (b_jump xs_L101)))
         : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hc Hroom Hmf Hv0 Hc0 Hv2 Hv4 Hp6 Hp9.
@@ -128,7 +129,7 @@ Qed.
     If the buffer is full, it proceeds directly to the flush decision. *)
 Lemma wp_xs_L20 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf cnt e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
@@ -142,7 +143,7 @@ Lemma wp_xs_L20 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys mf cnt e Φ :
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L20") (b_insts xs_L20b) (b_jump xs_L20b)))
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Exec (TAtom "L20") (b_insts xs_L20b) (b_jump xs_L20b)))
         : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hov Hfo Heb Hfb Hfal Hfend Hfreg Hc' Hb'0 Hb8' Hso Hyend Hyreg Hy Hn0 Hcnt Hroom Hend Hmf Hv0 Hc0 Hv2 Hv4 Hp6 Hp10.

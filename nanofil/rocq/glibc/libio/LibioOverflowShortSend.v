@@ -3,6 +3,7 @@
     send. A character occupies the short byte until the write returns.
     In both cases the stream must again have no room and nothing pending. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,8 +11,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode FileInv LibioLogic LibioPutsInv
-  LibioReadCode LibioDoWriteCode LibioDoWrite LibioOverflowBase LibioOverflowShortWrite SysWrappers.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioPutsInv
+  LibioDoWrite LibioOverflowBase LibioOverflowShortWrite SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -21,9 +22,9 @@ Local Arguments Z.sub : simpl nomatch.
 Section send.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context `{Hdw : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context `{Hdw : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The overflow function updates the flags and write counters as well
@@ -40,7 +41,7 @@ Lemma wp_short_send fb freg ch f2 fd eb mode vb vreg rb fl tw off byte from e Φ
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   (0 <= ch < 256 \/ ch = 2^32 - 1) ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2^32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 -> Z.land fl io_unbuffered <> 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2^32 - 1) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) -> lookup (TAtom "v2") e = Some (WInt ch) ->
@@ -49,7 +50,7 @@ Lemma wp_short_send fb freg ch f2 fd eb mode vb vreg rb fl tw off byte from e Φ
   ▷ (∀ r fl' tw' off' rb' byte', ⌜ovf_ret ch r /\ (ch = 2^32 - 1 -> r = 0) /\
        (fl' = fl \/ fl' = Z.lor fl io_err_seen) /\ (rb' = rb \/ rb' = short_ptr fb)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ short_state fb rb' fl' tw' off' byte' -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hrend Hch Hready Hf2 Hin Happ Hub He Hmd Hv0 Hv2 Hc0.
   iIntros "#Hvt Hl Hfixed ((Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend) & Hfl & Htw & Hoff & Hbyte) HK".

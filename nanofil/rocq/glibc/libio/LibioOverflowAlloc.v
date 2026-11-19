@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** The first overflow of a stream allocates its buffer, switches it to
     writing, and sends the requested byte. This file proves the whole
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioSetb LibioOverflowBase LibioOverflowAllocSetg.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -56,13 +57,13 @@ Context (HL33 : forall fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 w
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}).
 
 (** `c: _IO_new_file_overflow(fp, ch)` on a stream with no buffer that
     is not putting: the stream gets a buffer of 1 to 8192 bytes, puts
     into it, and takes ch. *)
 Lemma wp_glibc__IO_new_file_overflow_alloc fr fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->

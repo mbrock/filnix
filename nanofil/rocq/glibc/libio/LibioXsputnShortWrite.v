@@ -3,14 +3,15 @@
     when the source is read-only. The syscall returns the caller's share
     of the input, and the stream keeps its own short byte. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers SysCode FileInv LibioLogic LibioPutsInv
-  LibioReadCode LibioXsputnCode LibioWriteDq LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortSend LibioXsputnShortReset.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioPutsInv
+  LibioWriteDq LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortSend LibioXsputnShortReset.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -19,8 +20,8 @@ Local Arguments Z.sub : simpl nomatch.
 Section write.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** After flushing the empty stream, xsputn sees the short buffer. It
@@ -30,7 +31,7 @@ Lemma wp_xs_short_write fb freg rb fl f2 fd tw off byte mode vb vr dq b reg o c 
   let n := Z.of_nat (length ys) in
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   Z.land fl io_is_appending = 0 -> Z.land fl 514 <> 0 -> (mode = 0 \/ mode = 2^32-1) ->
-  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   In fd (ow_fds w0) -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   (c = Obj b \/ c = Ro b) -> 0 < b -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 < n ->
@@ -42,7 +43,7 @@ Lemma wp_xs_short_write fb freg rb fl f2 fd tw off byte mode vb vr dq b reg o c 
   liveq dq b reg -∗ bytesq dq b o ys -∗
   ▷ (∀ r fl' tw' off', ⌜fw_post n fl r fl'⌝ -∗ live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗
       short_state fb (short_ptr fb) fl' tw' off' byte -∗ liveq dq b reg -∗ bytesq dq b o ys -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L132") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Enter (TAtom "L132") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hfb Hal Hend Hrend Happ Hub Hmd Hready Hin He Hc Hb Ho Hen Hr Hy Hn Hv0 Hc0 Hc11 Hv4 Hp5 Hp1.
   iIntros "#Hvt Hl ([%Hf2 Hf2] & Hfd & Herr & Hcol & Hmode & Hvtp) ((Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend) & [%Hfl Hflags] & Htw & Hoff & Hbyte) Hbl Hys HK".

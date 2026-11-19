@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** Buffered string output owns the stream's buffer pointers and the memory they describe.
     Before allocation, all eight pointers are null.
@@ -17,8 +18,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDoWriteCode LibioDefaultXsputnCopy.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 
@@ -181,7 +182,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition ovf_ret (ch r : Z) : Prop := r = 2 ^ 32 - 1 \/ r = (if ch =? 2 ^ 32 - 1 then 0 else ch).
 Definition overflow_spec (os : Z -> option (Z * Z) -> iProp Σ) : Prop :=
   forall fr fb freg nb wp we ch vb vreg Φ,
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ⊢ vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗

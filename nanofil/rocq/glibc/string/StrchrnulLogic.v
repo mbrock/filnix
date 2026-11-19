@@ -13,6 +13,7 @@
     first matching byte. Once a word contains a match, a population count
     recovers the byte offset within the word. *)
 
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,8 +21,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLogic
-  StrcmpCode StrcmpBits StrcmpLoop.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLogic
+  StrcmpBits StrcmpLoop.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
@@ -319,9 +320,9 @@ Ltac pop m Htl :=
 Ltac xrep x := rewrite rep_mod; rewrite (Z.mod_small x);
   [first [reflexivity | rewrite Z.mod_small; [reflexivity | apply lxor_range; [lia | apply rep_range]]] | lia].
 
-(** Block `L37` is the main word-scanning loop of [glibc_strchrnul]. *)
+(** Block `L37` is the main word-scanning loop of [Unit_string_strchrnul_os.fn___GI___strchrnul]. *)
 Definition blk37 : block := Eval vm_compute in
-  match find_block (TAtom "L37") (fn_blocks glibc_strchrnul) with
+  match find_block (TAtom "L37") (fn_blocks Unit_string_strchrnul_os.fn___GI___strchrnul) with
   | Some b => b | None => mkBlock (TAtom "L37") [] [] JUnreachable end.
 (** Entering `L37` at word index Q after no earlier byte stopped the
     scan, `nul_loop` steps word by word until it hits the stopping byte
@@ -333,7 +334,7 @@ Lemma nul_loop dq p b reg ws s c t Q A e Φ :
   lookup (TAtom "iw_1.v7") e = Some (WInt (rep c)) ->
   wwin dq b reg (wstart p - b) ws -∗
   (wwin dq b reg (wstart p - b) ws -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat t))))) -∗
-  WP (ERun (mkFrame glibc_strchrnul (put (TAtom "pr.1") (WPtr (mkPtr A (ptr_cap p))) e) [] None
+  WP (ERun (mkFrame Unit_string_strchrnul_os.fn___GI___strchrnul (put (TAtom "pr.1") (WPtr (mkPtr A (ptr_cap p))) e) [] None
          (Exec (TAtom "L37") (b_insts blk37) (b_jump blk37))) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B1 & S1 & M1 & P1 & K1 & E1 & R1 & N1 & C1).
@@ -374,13 +375,13 @@ Proof using SafepointStable0.
     rewrite Hz. close_if. step.
     iApply (IH (Q + 1) with "W HK"); [lia | cbn; lia | lia | lia | exact Ht | exact Hat | exact Hlow | look H7].
 Qed.
-(** Executing a call [[frame]] of [glibc_strchrnul] on a [word_string]
+(** Executing a call [[frame]] of [Unit_string_strchrnul_os.fn___GI___strchrnul] on a [word_string]
     at any share returns the pointer to the first stopping byte at
     [chr_idx] and restores the string. *)
 Lemma wp_glibc_strchrnul_ws dq p s c Φ :
   0 <= c < 2 ^ 32 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s)))))) -∗
-  WP (ERun (mkFrame glibc_strchrnul [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
+  WP (ERun (mkFrame Unit_string_strchrnul_os.fn___GI___strchrnul [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hc. iIntros "(%b & %reg & %ws & %Hs & W) HK".
@@ -445,10 +446,10 @@ Definition strchrnul_spec : fspec Σ :=
       ⌜v = Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s))))⌝ ∗ word_string dq p s)%I.
 
 (** The search frame establishes the contract for any matching function name. *)
-Lemma strchrnul_spec_valid g : find_fn ge g = Some (Defined glibc_strchrnul) ->
+Lemma strchrnul_spec_valid g : find_fn ge g = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   HasSpec registry wi ge g strchrnul_spec.
 Proof using SafepointStable0.
-  intros Hg [[[dq p] s] c]. exists glibc_strchrnul. split; [exact Hg|].
+  intros Hg [[[dq p] s] c]. exists Unit_string_strchrnul_os.fn___GI___strchrnul. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchrnul_spec].
   iIntros "[%Hc Hs] HK". iApply (wp_glibc_strchrnul_ws with "Hs"); [exact Hc|].
@@ -456,16 +457,16 @@ Proof using SafepointStable0.
 Qed.
 
 (** Linked callers supply strchrnul's definition through the program context. *)
-#[global] Instance strchrnul_has_spec n `{!Defines ge n glibc_strchrnul} :
+#[global] Instance strchrnul_has_spec n `{!Defines ge n Unit_string_strchrnul_os.fn___GI___strchrnul} :
   HasSpec registry wi ge (TAtom n) strchrnul_spec.
 Proof using SafepointStable0. apply strchrnul_spec_valid. apply defines. Qed.
 
-(** Calling a global function g bound to [glibc_strchrnul] on a
+(** Calling a global function g bound to [Unit_string_strchrnul_os.fn___GI___strchrnul] on a
     [word_string] at any share resumes the caller with the pointer to
     the first `c mod 256` or to NUL, and restores the string. *)
 Lemma wp_call_glibc_strchrnul f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
-  find_fn ge g = Some (Defined glibc_strchrnul) ->
+  find_fn ge g = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None)
     (Ret (WPtr (ptr_add p (Z.of_nat (chr_idx (c mod 256) s))))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
@@ -513,13 +514,13 @@ Proof using SafepointStable0.
   - iNext. iIntros "[Hl Hw]". iApply ("HK" with "[$Hl $Hw]").
 Qed.
 
-(** Executing a call [[frame]] of [glibc_strchr] on a [word_string] at
+(** Executing a call [[frame]] of [Unit_string_strchr_os.fn___GI_strchr] on a [word_string] at
     any share returns the [strchr_ptr] result and restores the
     string. *)
 Lemma wp_glibc_strchr_ws dq p s c Φ :
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) -> 0 <= c < 2 ^ 32 ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) -> 0 <= c < 2 ^ 32 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (strchr_ptr p (c mod 256) s)))) -∗
-  WP (ERun (mkFrame glibc_strchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
+  WP (ERun (mkFrame Unit_string_strchr_os.fn___GI_strchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hg Hc. iIntros "Hs HK".
@@ -555,11 +556,11 @@ Definition strchr_spec : fspec Σ :=
       ⌜v = Ret (WPtr (strchr_ptr p (c mod 256) s))⌝ ∗ word_string dq p s)%I.
 
 (** The strchr frame uses the linked strchrnul implementation to establish its result. *)
-Lemma strchr_spec_valid g : find_fn ge g = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+Lemma strchr_spec_valid g : find_fn ge g = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   HasSpec registry wi ge g strchr_spec.
 Proof using SafepointStable0.
-  intros Hg Hnul [[[dq p] s] c]. exists glibc_strchr. split; [exact Hg|].
+  intros Hg Hnul [[[dq p] s] c]. exists Unit_string_strchr_os.fn___GI_strchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strchr_spec].
   iIntros "[%Hc Hs] HK". iApply (wp_glibc_strchr_ws with "Hs"); [exact Hnul | exact Hc|].
@@ -567,19 +568,19 @@ Proof using SafepointStable0.
 Qed.
 
 (** Linked callers supply definitions of strchr and its strchrnul dependency. *)
-#[global] Instance strchr_has_spec n `{!Defines ge n glibc_strchr,
-    !Defines ge "__GI___strchrnul" glibc_strchrnul} :
+#[global] Instance strchr_has_spec n `{!Defines ge n Unit_string_strchr_os.fn___GI_strchr,
+    !Defines ge "__GI___strchrnul" Unit_string_strchrnul_os.fn___GI___strchrnul} :
   HasSpec registry wi ge (TAtom n) strchr_spec.
 Proof using SafepointStable0. apply strchr_spec_valid; apply defines. Qed.
 
 (** When a caller invokes `c: strchr` in a module that links
-    `__GI___strchrnul` to [glibc_strchrnul], [wp_call_glibc_strchr]
+    `__GI___strchrnul` to [Unit_string_strchrnul_os.fn___GI___strchrnul], [wp_call_glibc_strchr]
     resumes the caller with the matching byte pointer or null and
     restores the string. *)
 Lemma wp_call_glibc_strchr f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
-  find_fn ge g = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge g = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WPtr (strchr_ptr p (c mod 256) s))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.

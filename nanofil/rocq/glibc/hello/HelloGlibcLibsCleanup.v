@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** This file discharges glibc's final stream cleanup after Hello's exit
     callback has closed stdout and stderr. The remaining stdin stream has
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import OsWorld OsRegistry LibioCleanupCode LibioCleanupExit
+From Glibc Require Import OsWorld OsRegistry LibioCleanupExit
   HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require LibioCleanupExit LibioFlushBody.
 From Glibc Require Import Fix.
@@ -42,7 +43,7 @@ Local Instance cleanup_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry g
 Lemma libs_cleanup : hello_link ge o ->
   D.fn_triple w0 ge (TAtom "_IO_cleanup") [] (D.exit_io w0 ge o) (D.ret_int True)%I.
 Proof using Type.
-  intros Hk. exists glibc__IO_cleanup. split; [exact (hk_cleanup _ _ Hk)|].
+  intros Hk. exists Unit_libio_genops_os.fn__IO_cleanup. split; [exact (hk_cleanup _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   iIntros "(Hs & Htc & Hls & Hfs) HK".
   iApply (LibioCleanupExit.wp_glibc__IO_cleanup_exit (glibc_program := program_of w0 glibc_os_registry ge) (fun n c H => H) (hk_sys _ _ Hk) fr

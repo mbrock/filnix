@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf reads its output stream, passes the staged character to overflow,
     and checks the result. EOF marks the printf buffer failed. Any other
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowPrelude
+  LibioCloseSteps PrintfBufferOverflowPrelude
   PrintfBufferOverflowCall PrintfBufferOverflowReturn.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowPrelude PrintfBufferOverflowReturn SysWrappers.
 From Glibc Require Import Fix.
@@ -30,7 +31,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ)
   (E : iProp Σ).
-Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
+Context `{Hoverflow : !Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** The stream lends its lifetime for the pointer read without losing any
@@ -49,9 +50,9 @@ Lemma wp_printf_overflow_caller e from bb breg fb ch mode Φ :
   (∀ e', ⌜lookup (TAtom "v0") e' = Some (WPtr (mkPtr bb (Obj bb)))⌝ -∗
     live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗
     int_cell bb 32 mode -∗ F (mkPtr fb (Obj fb)) -∗ E -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk Hborrow.

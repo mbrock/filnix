@@ -1,6 +1,5 @@
 -R theories Nanofil
 theories/core/Term.v
-theories/core/CaptureNotation.v
 theories/programs/SumCode.v
 theories/programs/HiCode.v
 theories/programs/CycleCode.v

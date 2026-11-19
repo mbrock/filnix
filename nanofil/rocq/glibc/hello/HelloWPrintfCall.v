@@ -5,6 +5,7 @@
     file shows that main can lend them to the call and still keep its
     own contract. *)
 
+From Glibc Require Import Unit_string_memset_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioWIdle PrintfSpec HelloImageModule
   HelloImageLoad HelloImageLayout HelloGlibcDebts HelloGlibcLibsT HelloStartHdGetopt HelloLocaleState
   HelloWideState HelloImageWFwideObjs HelloImageWReleaseObjs HelloImageWConvObjs HelloImageWideObjs HelloImageWPrintfObjs HiAtexitAlloc LibioWOverflowWrite WPrintfScan WPrintfParse WPrintfInternal WPrintfFileFlush
-  WPrintfWrap WPrintfStreamImage MemFwdCode LibioWFwide.
+  WPrintfWrap WPrintfStreamImage LibioWFwide.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -96,7 +97,7 @@ Proof using Type*.
   destruct (hk_zmemset _ _ Hlink) as [Hzf Hzs].
   assert (Hset : glibc_os_registry (TAtom "zmemset") = Some (void_only (ExternalCalls.memset_contract os_world))) by reflexivity.
   assert (Dcl : Defines hge "__wcsmbs_clone_conv" glibc_clone_conv) by (vm_compute; reflexivity).
-  assert (Dms : Defines hge "__GI_memset" glibc_memset) by (vm_compute; reflexivity).
+  assert (Dms : Defines hge "__GI_memset" Unit_string_memset_os.fn___GI_memset) by (vm_compute; reflexivity).
   assert (Hidle : wprintf_fwide_idle_spec (ho_vb o) (ow_self w) W).
   { refine (@wprintf_fwide_idle _ _ call_program _ _ _ _ Hset Hzf Hzs Dcl Dms _ _ _); vm_compute; reflexivity. }
   pose proof (@wprintf_fwide_wide _ _ call_program (ho_vb o) (ow_self w) (DfracOwn (1/2))) as Hwide.

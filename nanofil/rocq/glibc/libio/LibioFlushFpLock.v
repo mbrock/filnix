@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The start of one pass of `c: _IO_flush_all`'s loop over
     `c: _IO_list_all` (LibioFlushCode.v), from block `c: L83`: the
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -68,9 +69,9 @@ Lemma wp_flush_L83 e fb freg fl lb lbreg rf rfreg sb sreg x r cb Φ :
             lookup (TAtom "pr.4") e' = Some (WInt r) /\ lookup (TAtom "v3") e' = Some (WPtr cb)⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 1 0 (ow_self w0) -∗ live rf rfreg -∗ pcell rf 0 fp -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L94") (Some (TAtom "L104")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L94") (Some (TAtom "L104")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L83") (Some (TAtom "L82")))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L83") (Some (TAtom "L82")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros fp Hgrf Hp5 Hp4 Hv3 Hv88 Hsz Hfb Hfal Hfend Hfreg Hfl Hul Hral Hrend. subst fp.
   unfold file_size in Hfend. assert (0 <= Z.land fl 32768 < 2 ^ 32) by (rewrite Hul; lia).

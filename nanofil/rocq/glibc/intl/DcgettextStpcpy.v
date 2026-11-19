@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** A getopt diagnostic is translated before it is printed, and in the C
     locale the translation copies strings with stpcpy. The earlier proof
@@ -27,10 +28,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString.
-From Glibc Require Import LibioDefaultXsputnCopy StpcpyCode StpcpyBytes StpcpyLogic.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString.
+From Glibc Require Import LibioDefaultXsputnCopy StpcpyBytes StpcpyLogic.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextCopy DcigettextRoute DcgettextC.
+From Glibc Require Import DcigettextCopy DcigettextRoute DcgettextC.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -57,7 +58,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
     its name for stpcpy is bound to the captured body, a copy into valid
     bytes does so, because the string's bytes lie between 1 and 255. The
     copy does not touch the buffer's auxiliary bytes. *)
-Lemma dci_stpcpy_rule_r_proved `{!Defines ge "__GI_stpcpy" glibc_stpcpy} : dci_stpcpy_rule_r.
+Lemma dci_stpcpy_rule_r_proved `{!Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} : dci_stpcpy_rule_r.
 Proof using Type.
   intros f e ls l d args rest j a b reg xs cs dq q s Φ Hargs Hba Hfit Hend Hcs Hxs.
   iIntros "Hl Hb Ha Hs HK".
@@ -81,9 +82,9 @@ Qed.
     the captured stpcpy instead of a rule for it. *)
 Lemma wp_dcgettext_c_stpf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -101,9 +102,9 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_stp f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -120,9 +121,9 @@ Proof using Type*. intros Ho. eapply wp_dcgettext_c_stpf; first [exact (dci_othe
     captured stpcpy. *)
 Lemma dcg_diag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -138,9 +139,9 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -154,9 +155,9 @@ Proof using Type*. intros Ho. eapply dcg_diag_translate_stpf; first [exact (dci_
 (** This lemma builds the long-option translation premise in the same way. *)
 Lemma dcg_ldiag_translate_stpf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -172,9 +173,9 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_stp dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy} :
   dci_others lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->

@@ -3,7 +3,7 @@
     which can represent a positive signed int. The padding loop fills only the free part of its array.
     If more padding remains, it flushes the full array and tries again. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +15,8 @@ From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_pad_fn := hello_image_fn___wprintf_buffer_pad_1.
-Definition wprintf_pad_inline_fn := hello_image_fn_glibc_vfwprintf_internal'23__wprintf_buffer_pad.
+Definition wprintf_pad_fn := Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os.fn___wprintf_buffer_pad_1.
+Definition wprintf_pad_inline_fn := Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.fn_glibc_vfwprintf_internal'23__wprintf_buffer_pad.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

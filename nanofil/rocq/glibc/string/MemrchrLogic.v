@@ -10,6 +10,7 @@
     scan. The theorems below cover a word window, a [word_string], and
     the contract needed by `c: strrchr`. *)
 
+From Glibc Require Import Unit_string_memrchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
-  MemchrLast MemchrLogic MemrchrCode MemrchrBits MemrchrLoop MemrchrMask.
+  MemchrLast MemchrLogic MemrchrBits MemrchrLoop MemrchrMask.
 From Glibc Require MemrchrMask StrcmpLoop StrrchrLogic WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -92,7 +93,7 @@ Ltac normt v tac :=
 Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
-(** Executing [glibc_memrchr] on n bytes starting at offset k in a
+(** Executing [Unit_string_memrchr_os.fn___GI___memrchr] on n bytes starting at offset k in a
     shared word window `ws` returns [hit_ptr] for [last_hit] and
     restores the window [wwin]. *)
 Lemma memrchr_win dq b reg ws a cp c (k n : nat) e r Φ :
@@ -105,7 +106,7 @@ Lemma memrchr_win dq b reg ws a cp c (k n : nat) e r Φ :
   lookup (TAtom "v4") e = Some (WInt (Z.of_nat n)) ->
   wwin dq b reg (a - Z.of_nat k - b) ws -∗
   (wwin dq b reg (a - Z.of_nat k - b) ws -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a cp) r)))) -∗
-  WP (ERun (mkFrame glibc_memrchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memrchr_os.fn___GI___memrchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hb0 Hc Hb8 Hba Hk Hend Hreg Hr Hcr Hlen Hhit H0 H2 H4. iIntros "Hw HK".
   assert (Han : Z.of_nat k + Z.of_nat n <= 8 * Z.of_nat (List.length ws)) by (Z.div_mod_to_equations; lia).
@@ -155,11 +156,11 @@ Proof using SafepointStable0.
     destruct (_ <? _); reflexivity.
 Qed.
 
-(** Executing a call [[frame]] of [glibc_memrchr] over a [word_string]
+(** Executing a call [[frame]] of [Unit_string_memrchr_os.fn___GI___memrchr] over a [word_string]
     and its NUL terminator at any share returns a pointer to the last
     byte matching `c mod 256`, or null, and restores the string. *)
 Lemma wp_glibc_memrchr_ws fr dq p s c Φ : 0 <= c < 2 ^ 32 ->
-  call_frame glibc_memrchr [WPtr p; WInt c; WInt (Z.of_nat (List.length s) + 1)] = Some fr ->
+  call_frame Unit_string_memrchr_os.fn___GI___memrchr [WPtr p; WInt c; WInt (Z.of_nat (List.length s) + 1)] = Some fr ->
   word_string dq p s -∗
   (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
@@ -183,9 +184,9 @@ Qed.
     [glibc_memrchr_spec] packages the frame specification above into the
     [StrrchrLogic.memrchr_spec] contract. *)
 Lemma glibc_memrchr_spec :
-  find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr) -> StrrchrLogic.memrchr_spec registry wi ge.
+  find_fn ge (TAtom "__GI___memrchr") = Some (Defined Unit_string_memrchr_os.fn___GI___memrchr) -> StrrchrLogic.memrchr_spec registry wi ge.
 Proof using SafepointStable0.
-  intros Hf. exists glibc_memrchr. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
+  intros Hf. exists Unit_string_memrchr_os.fn___GI___memrchr. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
   intros fr dq p s c Φ Hc Hfr. iIntros "Hs HK". iApply (wp_glibc_memrchr_ws with "Hs HK"); [exact Hc | exact Hfr].
 Qed.
 

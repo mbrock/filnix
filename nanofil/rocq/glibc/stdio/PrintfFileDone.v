@@ -6,6 +6,7 @@
     still reads both pointers, so the caller lends their allocation lifetime
     and recovers the exact shares afterward. Failure and count overflow
     remain separate outcomes; neither path promises successful output. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  PrintfBufferFileCode PrintfStateCode PrintfBufferDone PrintfBufferCount PrintfBufferOverflow Fix.
+  PrintfBufferDone PrintfBufferCount PrintfBufferOverflow Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Section completion.
@@ -23,7 +24,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** A buffer already marked as failed returns without calling flush or count.
     The caller retains its other fields and stream ownership in the frame. *)
 Lemma wp_printf_file_done_failed fr bb br Φ :
-  call_frame glibc___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end br -> r_end br <= 2^63 ->
   live bb br -∗ int_cell bb 32 0 -∗
   ▷ (live bb br -∗ int_cell bb 32 0 -∗ Φ (Ret (WInt 4294967295))) -∗
@@ -44,14 +45,14 @@ Qed.
     it cannot manufacture a second lifetime for inline storage. *)
 Lemma wp_printf_file_done_flush fr bb br eb er mode
     (P : iProp Σ) (R : Z -> ptr -> ptr -> ptr -> Z -> iProp Σ) Φ :
-  call_frame glibc___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
-  find_fn ge (TAtom "__printf_buffer_flush_to_file") = Some (Defined glibc___printf_buffer_flush_to_file) ->
-  find_fn ge (TAtom "__printf_buffer_done") = Some (Defined glibc___printf_buffer_done) ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  find_fn ge (TAtom "__printf_buffer_flush_to_file") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file) ->
+  find_fn ge (TAtom "__printf_buffer_done") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end br -> r_end br <= 2^63 -> mode <> 0 ->
   0 < eb -> eb + 4 <= r_end er -> r_end er <= 2^63 ->
   (forall fr' Ψ,
-    call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr' ->
+    call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr' ->
     live bb br -∗ int_cell bb 32 mode -∗ P -∗
     (∀ m base cur stop written prior, ⌜0 <= written < 2^64⌝ -∗
       live bb br -∗ int_cell bb 32 m -∗ pcell bb 0 base -∗ pcell bb 8 cur -∗

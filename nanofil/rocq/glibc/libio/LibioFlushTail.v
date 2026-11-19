@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The end of `c: _IO_flush_all` (LibioFlushCode.v), from block
     `c: L414`, after the loop has passed every stream: the function
@@ -14,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart.
 From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioFlushStart LibioLogic OsWorld SysWrappers.
@@ -45,7 +46,7 @@ Local Instance flush_tail_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ 
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition pop_spec : Prop := forall fr cb creg Φ,
-  call_frame glibc___libc_cleanup_pop_restore [WPtr (mkPtr cb (Obj cb))] = Some fr ->
+  call_frame Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore [WPtr (mkPtr cb (Obj cb))] = Some fr ->
   0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 ->
   ⊢ tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
     ▷ (tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗ Φ RetVoid) -∗
@@ -53,7 +54,7 @@ Definition pop_spec : Prop := forall fr cb creg Φ,
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 
 (** Expressions of the language. *)
@@ -79,7 +80,7 @@ Lemma wp_flush_L414 e r cb creg lk lkreg sb sreg Φ :
   single_ro ge sb sreg -∗ lock_state lk lkreg 1 0 (ow_self w0) -∗
   tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
   ▷ (lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
     {{ Φ }}.
 Proof using Type*.
   intros Hglk Hv3 Hp4 Hr Hcb Hcal Hcend Hcreg.

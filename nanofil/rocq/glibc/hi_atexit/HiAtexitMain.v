@@ -4,7 +4,7 @@
     Establishing that entry state is separate from this execution proof;
     in particular, the loader image alone is not its precondition. *)
 
-From Glibc Require Import HiAtexitTypedMA.
+From Glibc Require Import HiAtexit_hi_atexit.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv WordString AtexitLogic LibioPutsCode ExitRun LibioCloseSteps
+From Glibc Require Import OsWorld OsRegistry FileInv WordString AtexitLogic ExitRun LibioCloseSteps
   HiAtexitModule HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitStdout
   HiAtexitAlloc HiAtexitInitial HiAtexitExitEnv HiAtexitCleanup HiAtexitPuts HiAtexitExit.
 From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv OsWorld.
@@ -21,7 +21,7 @@ Open Scope Z_scope.
 Import ExitRun ExitRunTail AtexitLogic OsWorld HLG HLG.L LibioFlushInv FileInv.
 
 (** This is main's body in the actual linked module. *)
-Definition hi_main_fn : func := hi_fn_main.
+Definition hi_main_fn : func := HiAtexit_hi_atexit.fn_main.
 
 (** Main has no parameters in this fixture. *)
 Definition hi_main_frame : frame := mkFrame hi_main_fn [] [] None (Enter (TAtom "start") None).

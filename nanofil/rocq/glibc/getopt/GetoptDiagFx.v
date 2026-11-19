@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
 (** getopt's two diagnostic rules, in GetoptDiag.v and GetoptLongDiag.v,
     are premises that a caller supplies for the calls that print a report:
@@ -27,7 +28,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers WordString PrintfStreamInv
-  FxprintfCode FxprintfTidy FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
+  FxprintfTidy FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -84,7 +85,7 @@ Definition fx_format (vb : Z) (fp fmt : ptr) (ys : list word) (R : iProp Σ) (Q 
     resources X of its other arguments. The caller then continues with G
     and the result reduced to a C int. *)
 Lemma wp_call_fx_loan S G vb sb sreg fp fmt ys R X Q f e ls l d args rest j Φ :
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) ->
   ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) -> forallb snapshot_word ys = true ->
   fx_loan S vb sb sreg fp fmt R Q G -> fx_format vb fp fmt ys (R ∗ X) Q ->
@@ -149,7 +150,7 @@ Definition diag_fx_format (vb : Z) (fp : ptr) (R : ptr -> ptr -> iProp Σ) (Q : 
     print call itself. The wrapper's proof supplies that part of the
     short-option rule, and the caller supplies the rest. *)
 Lemma getopt_diag_rule_fx G T vb sb sreg fp dom R Q :
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) ->
   ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom -> 0 <= ptr_addr fp < 2 ^ 64 ->
   (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) ->
@@ -200,7 +201,7 @@ Definition ldiag_fx_format (vb : Z) (fp : ptr) (R : ptr -> ptr -> iProp Σ) (Q :
     premise for each kind of print, and loans for the translated prints and
     for the two untranslated formats. *)
 Lemma getopt_ldiag_rule_fx G T vb sb sreg fp dom f140 f141 R Q R140 Q140 R141 Q141 :
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) ->
   ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom -> 0 <= ptr_addr fp < 2 ^ 64 ->
   (⊢ G -∗ ∃ dq reg, live_capq dq (ptr_cap fp) reg ∗ (live_capq dq (ptr_cap fp) reg -∗ G)) ->

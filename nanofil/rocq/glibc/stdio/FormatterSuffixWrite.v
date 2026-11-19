@@ -6,15 +6,16 @@
     and does not meet the final-return rule's scan premise.
     FILE flushing, registration initialization and startup remain outside
     these contracts. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString PrintfBufferIoCode MemFwdCode MemFwdLogic PrintfStagingCopy FormatterLiteralWrite
-  StrchrCode StrchrnulLogic FormatterScan.
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+  Fix WordString MemFwdLogic PrintfStagingCopy FormatterLiteralWrite
+  StrchrnulLogic FormatterScan.
 From Glibc Require Import FormatterSuffixScan FormatterSuffixReturn.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -29,16 +30,16 @@ Lemma wp_formatter_suffix_call e cb cr bb dq p s (P Q : iProp Σ) Φ :
   lookup (TAtom "chk3") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "v2115") e = Some (WPtr p) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
-  (forall fr Ψ, call_frame glibc___printf_buffer_write
+  (forall fr Ψ, call_frame Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write
     [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
     P -∗ word_string dq p s -∗ ▷ (Q -∗ word_string dq p s -∗ Ψ RetVoid) -∗
     WP (ERun fr : gexpr) {{ Ψ }}) ->
   live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (length s))) -∗ word_string dq p s -∗ P -∗
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (length s))) -∗
     word_string dq p s -∗ Q -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None
     (Exec (TAtom "L1150") (skipn 9 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hchk Hp Hb Hwrite Hcb Hca Hce Hcr Hcall. iIntros "Hl Hcell Hs HP HK".
@@ -78,9 +79,9 @@ Lemma wp_formatter_suffix_empty e cb cr bb br dq p n count Φ :
   lookup (TAtom "v10") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "chk3") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end br -> r_end br <= 2^63 ->
   0 < ptr_addr p < 2^63 ->
@@ -88,7 +89,7 @@ Lemma wp_formatter_suffix_empty e cb cr bb br dq p n count Φ :
   live bb br -∗ int_cell bb 32 4 -∗
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p 0) -∗ word_string dq p [] -∗
     live bb br -∗ int_cell bb 32 4 -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hn Hcount Hv Hchk Hb Hchr Hscan Hwrite Hcb Hca Hce Hcr Hbb Hba Hbe Hbr Hp.
@@ -121,10 +122,10 @@ Lemma wp_formatter_suffix_literal e cb cr bb br off xs cs dq p s n count Φ :
   lookup (TAtom "v10") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "chk3") e = Some (WPtr (mkPtr cb (Obj cb))) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end br -> r_end br <= 2^63 ->
   0 < ptr_addr p < 2^63 -> chr_idx 37 s = length s ->
@@ -136,7 +137,7 @@ Lemma wp_formatter_suffix_literal e cb cr bb br off xs cs dq p s n count Φ :
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (length s))) -∗ word_string dq p s -∗
     live bb br -∗ int_cell bb 32 4 -∗ pcell bb 8 (mkPtr (bb + off + Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs off s -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None
     (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hmove Hmf Hms Hn Hcount Hv Hchk Hb Hchr Hscan Hwrite Hcpy

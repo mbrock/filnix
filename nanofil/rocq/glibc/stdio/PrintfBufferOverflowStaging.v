@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Flushing a staged character updates printf's count before calling the
     stream's overflow routine. EOF marks failure; any other result proceeds
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowEntry
+  LibioCloseSteps PrintfBufferOverflowEntry
   PrintfBufferOverflowCaller.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowCaller PrintfBufferOverflowEntry SysWrappers.
 From Glibc Require Import Fix.
@@ -30,14 +31,14 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ)
   (E : iProp Σ).
-Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
+Context `{Hoverflow : !Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge F E).
 
 (** Both outcomes preserve the original buffer cells and updated unsigned count.
     EOF clears the printf mode; any other result reaches L88 with the original
     mode and the stream resources returned by the call. *)
 Lemma wp_printf_overflow_staging fr bb breg fb ch mode written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb < 2 ^ 64 -> 0 <= ch < 256 -> 0 <= written < 2 ^ 64 ->
   (F (mkPtr fb (Obj fb)) ⊢ ∃ freg dqf, liveq dqf fb freg ∗
@@ -58,7 +59,7 @@ Lemma wp_printf_overflow_staging fr bb breg fb ch mode written Φ :
     pcell bb 16 (mkPtr (bb + 49) (Obj bb)) -∗ icell bb 24 ((written + 1) mod 2 ^ 64) -∗
     pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗ int_cell bb 32 mode -∗
     F (mkPtr fb (Obj fb)) -∗ E -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.

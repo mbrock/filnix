@@ -3,6 +3,7 @@
     character and to the flush that precedes a string write. The public
     overflow wrapper may also change an unoriented stream to narrow mode. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy PrintfStreamInv LibioFputsSpec
-  LibioLogic LibioReadCode LibioDoWriteCode LibioGenCode LibioOverflowBase LibioOverflowGen DcigettextExit.
+  LibioLogic LibioOverflowBase LibioOverflowGen DcigettextExit.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -21,7 +22,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** The error path returns EOF independently of the character. It sets
     the error bit on the stream and writes EBADF to the thread's errno. *)
 Lemma wp_file_overflow_nowrite fr fb freg ch fl eb Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb+file_size <= r_end freg -> r_end freg <= 2^63 ->
   has fl io_no_writes = true -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
@@ -73,14 +74,14 @@ Proof using Type.
   iIntros (mode) "Hflags Hmode Hvt". unfold file_fields, nowrite_after. cbn. iFrame. done.
 Qed.
 
-Context (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
+Context (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow).
 
 (** On a stream that forbids writes, the public overflow wrapper returns
     EOF and leaves every idle-stream fact in force. It may orient the
     stream even though no byte was written. *)
 Lemma wp_overflow_nowrite fr vb self fb freg st nb flags2 held ch eb Φ :
   let fp := mkPtr fb (Obj fb) in let fd := fs_fileno st in
-  call_frame glibc___overflow [WPtr fp; WInt ch] = Some fr -> 0 <= ch < 256 ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt ch] = Some fr -> 0 <= ch < 256 ->
   fb mod 8 = 0 -> 0 < fb -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> flags_ok st ->
   idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 -> fs_vtable st = mkPtr (vb+vt_file) (Ro vb) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st -> has (fs_flags st) io_no_writes = true ->

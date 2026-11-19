@@ -9,6 +9,7 @@
     verify `c: strrchr` on any shared string independently of how
     `c: memrchr` is implemented. *)
 
+From Glibc Require Import Unit_string_strrchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWord StrchrCode MemchrLast.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWord MemchrLast.
 From Glibc Require StrlenWord WordString.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
@@ -64,14 +65,14 @@ Definition memrchr_spec : Prop :=
       (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
       WP (ERun fr : gexpr) {{ Φ }}.
 
-(** Executing a call [[frame]] of [glibc_strrchr] on a [word_string] at
+(** Executing a call [[frame]] of [Unit_string_strrchr_os.fn___GI_strrchr] on a [word_string] at
     any share returns a pointer to the last matching byte from
     [last_byte], or null, and restores the string. *)
 Lemma wp_glibc_strrchr_ws (Hm : memrchr_spec) dq p s c Φ :
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) -> 0 <= c < 2 ^ 32 ->
   word_string dq p s -∗
   (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
-  WP (ERun (mkFrame glibc_strrchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
+  WP (ERun (mkFrame Unit_string_strrchr_os.fn___GI_strrchr [(TAtom "v2", WInt c); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   destruct Hm as (F & HF & Hfr & Hspec). intros Hsl Hc. iIntros "Hs HK".
@@ -106,11 +107,11 @@ Definition strrchr_spec : fspec Σ :=
 
 (** Strrchr first measures the string and then searches backwards, preserving the caller's ownership. *)
 Lemma strrchr_spec_valid (Hm : memrchr_spec) g :
-  find_fn ge g = Some (Defined glibc_strrchr) ->
+  find_fn ge g = Some (Defined Unit_string_strrchr_os.fn___GI_strrchr) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   HasSpec registry wi ge g strrchr_spec.
 Proof using SafepointStable0.
-  intros Hg Hsl [[[dq p] s] c]. exists glibc_strrchr. split; [exact Hg|].
+  intros Hg Hsl [[[dq p] s] c]. exists Unit_string_strrchr_os.fn___GI_strrchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strrchr_spec].
   iIntros "[%Hc Hs] HK". iApply (wp_glibc_strrchr_ws Hm with "Hs"); [exact Hsl | exact Hc|].
@@ -118,7 +119,7 @@ Proof using SafepointStable0.
 Qed.
 
 (** A linked program must provide both helper functions before a caller can search backwards. *)
-#[global] Instance strrchr_has_spec n `{!Defines ge n glibc_strrchr,
+#[global] Instance strrchr_has_spec n `{!Defines ge n Unit_string_strrchr_os.fn___GI_strrchr,
     !Defines ge "__GI_strlen" glibc_strlen} (Hm : memrchr_spec) :
   HasSpec registry wi ge (TAtom n) strrchr_spec.
 Proof using SafepointStable0. apply (strrchr_spec_valid Hm); apply defines. Qed.
@@ -129,7 +130,7 @@ Proof using SafepointStable0. apply (strrchr_spec_valid Hm); apply defines. Qed.
     string. *)
 Lemma wp_call_glibc_strrchr (Hm : memrchr_spec) f e ls l r g args rest j dq p s c cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt c] -> 0 <= c < 2 ^ 32 ->
-  find_fn ge g = Some (Defined glibc_strrchr) ->
+  find_fn ge g = Some (Defined Unit_string_strrchr_os.fn___GI_strrchr) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None)
     (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0]))))) = Some cf' ->

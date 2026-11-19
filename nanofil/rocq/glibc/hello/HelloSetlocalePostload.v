@@ -9,6 +9,7 @@
     at its C value and gives it back at the same value, together with
     the constants that the update reads. *)
 
+From Glibc Require Import Unit_locale_lcZ2dctype_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,7 +18,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageEarly OsWorld OsRegistry FileInv LibioLogic WordString
-  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs PostloadCtypeCode GetoptShortOpt Fix.
+  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -72,7 +73,7 @@ Local Ltac rd H I := check_read_dq H by a2; iNext; iIntros I.
 Local Ltac ld H I := load_pointer_dq H by a2; iNext; iIntros I.
 
 Lemma wp_postload_ctype_c fr0 dqt Φ :
-  call_frame glibc_nl_postload_ctype [] = Some fr0 ->
+  call_frame Unit_locale_lcZ2dctype_os.fn__nl_postload_ctype [] = Some fr0 ->
   liveq dqt lt ltreg -∗ pcellq dqt lt 0 glp -∗ live gl glreg -∗ pcell gl 0 ccp -∗ pl_ro -∗ pl_cells -∗
   ▷ (liveq dqt lt ltreg -∗ pcellq dqt lt 0 glp -∗ live gl glreg -∗ pcell gl 0 ccp -∗ pl_cells -∗ Φ RetVoid) -∗
   WP (ERun fr0 : sexpr) {{ Φ }}.
@@ -95,6 +96,7 @@ Proof.
   step. step.
   (* The six old globals are read through the thread's locale. *)
   Local Ltac via_thread := step; rd "Hlt" "Hlt"; ld "Hlt Hlc Hgl" "Hlt Hlc Hgl"; check "Hgl"; ld "Hgl Hg0 Hcc" "Hgl Hg0 _".
+  cbn [app].
   step. via_thread. step. rd "Hcc" "_". ld "Hcc Hv0 Hxc" "_ _ _". step. check "Lb". store "Lb" "Cb".
   step. via_thread. step. step. rd "Hcc" "_". ld "Hcc Hv1 Hxu" "_ _ _". step. check "Lu". store "Lu" "Cu".
   step. via_thread. step. step. rd "Hcc" "_". ld "Hcc Hv2 Hxl" "_ _ _". step. check "Ll". store "Ll" "Cl".

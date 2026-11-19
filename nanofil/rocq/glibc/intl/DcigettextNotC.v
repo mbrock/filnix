@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** The C-locale rule in DcigettextC.v depends on the test that sends a
     locale name starting with 'C' to the untranslated return. This module
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes DcigettextCode.
+From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes.
 From Glibc Require Import DcigettextPreRules.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -34,8 +35,8 @@ Lemma wp_dci_not_c e sl sreg x p9 Φ :
   0 < sl -> sl + 2 <= r_end sreg -> r_end sreg <= 2 ^ 48 -> 0 <= x < 256 -> x <> 67 ->
   live sl sreg -∗ ibyte sl 0 x -∗
   ▷ (∀ e', live sl sreg -∗ ibyte sl 0 x -∗
-     WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L355") (Some (TAtom "L340")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L285") (Some (TAtom "L323")))) : gexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L355") (Some (TAtom "L340")))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L285") (Some (TAtom "L323")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hsl Hp9 Hsl0 Hslend Hslr Hx Hx67. iIntros "Hl Hb HK".
   assert (Ex : extended Sb W x = Some (WInt (chr_w x))).
@@ -62,7 +63,7 @@ Proof using Type*. repeat split. Qed.
 Lemma wp_dci_null_msgid e Φ :
   lookup (TAtom "v2") e = Some (WPtr null) ->
   ▷ Φ (Ret (WPtr null)) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv2. iIntros "HK".
   step.

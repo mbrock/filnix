@@ -4,6 +4,7 @@
     call in that form and checks that the Hello image runs the code
     that the other version proofs read. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,10 +15,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc HelloVersionEtcVa
-  PrintfWrap FprintfCode PrintfCode HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall
+  PrintfWrap HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall
   HelloPrintSites.
 From Glibc Require LibioCleanupExit.
-From Glibc Require Import SysCode LibioReadCode LibioDoWriteCode FileSyncCode FflushCode.
 From Glibc Require Import HelloImageModule HelloImageLoad.
 From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
@@ -144,19 +144,19 @@ Lemma hello_prints_image `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} w0 fr (
 Proof.
   intros Hy Hk Herr Hfd Hfd2 Hos Hvf Hfputs.
   set (ge := mkGenv hello_image_module img_globals fr) in *.
-  assert (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync)
+  assert (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync)
     by (exists (img_addr "_IO_new_file_sync"); split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
-  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+  assert (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
     by (exists (img_addr "_IO_new_file_write"); split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
-  assert (Dw : Defines ge "__GI___write" glibc___libc_write) by (unfold Defines; vm_compute; reflexivity).
-  assert (Dd : Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by (unfold Defines; vm_compute; reflexivity).
-  assert (Dff : Defines ge "__GI__IO_fflush" glibc__IO_fflush) by (unfold Defines; vm_compute; reflexivity).
+  assert (Dw : Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by (unfold Defines; vm_compute; reflexivity).
+  assert (Dd : Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by (unfold Defines; vm_compute; reflexivity).
+  assert (Dff : Defines ge "__GI__IO_fflush" Unit_libio_iofflush_os.fn___GI__IO_fflush) by (unfold Defines; vm_compute; reflexivity).
   assert (Hself : ptr_addr (ow_self w0) <> 0) by (destruct Hos as [? _]; lia).
   pose proof (fflush_has_spec (glibc_program := program_of w0 glibc_os_registry ge)
     LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hsync Hfw Hself) as Hff.
-  assert (Df : Defines (mkGenv hello_image_module img_globals fr) "fprintf" glibc_fprintf)
+  assert (Df : Defines (mkGenv hello_image_module img_globals fr) "fprintf" Unit_stdioZ2dcommon_fprintf_os.fn___fprintf)
     by (unfold Defines; vm_compute; reflexivity).
-  assert (Dp : Defines (mkGenv hello_image_module img_globals fr) "printf" glibc_printf)
+  assert (Dp : Defines (mkGenv hello_image_module img_globals fr) "printf" Unit_stdioZ2dcommon_printf_os.fn___printf)
     by (unfold Defines; vm_compute; reflexivity).
   pose proof (fprintf_has_spec (glibc_program := program_of w0 glibc_os_registry _) "fprintf") as Hfp.
   pose proof (printf_has_spec (glibc_program := program_of w0 glibc_os_registry _) "printf") as Hpp.

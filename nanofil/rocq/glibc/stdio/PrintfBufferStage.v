@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** A printf buffer uses its own staging array when the stream has no write
     buffer or its write pointer has reached the end. These rules follow the
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+  LibioCloseSteps LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -37,7 +38,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** A stream with null write pointers selects the full 128-byte staging array.
     The caller keeps the array bytes and every field outside this footprint. *)
 Lemma wp_printf_buffer_switch_null fr bb breg fb freg oldbase oldptr oldend Φ :
-  call_frame glibc___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   live bb breg -∗ live fb freg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗
@@ -74,7 +75,7 @@ Qed.
     Both original pointers remain owned, including their interior offsets. *)
 Lemma wp_printf_buffer_switch_staging fr bb breg fb freg db dreg bo eo dqf dqd
     oldbase oldptr oldend Φ :
-  call_frame glibc___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < db -> 0 <= eo -> eo <= bo -> db + bo <= r_end dreg -> r_end dreg <= 2 ^ 63 ->

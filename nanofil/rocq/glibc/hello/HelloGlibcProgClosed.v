@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_memcmp_os Unit_string_memrchr_os Unit_string_strncmp_os Unit_string_strrchr_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves GNU Hello's `set_program_name` and `memeq` when
     they are linked with glibc's own memrchr and memcmp, with no
@@ -27,9 +28,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrchrCode MemchrLast StrlenWord
-  StrrchrLogic StrncmpCode HelloGlibcLeaf HelloGlibcProgCells HelloGlibcProgLibs HelloGlibcProgName MemcmpCode MemcmpLogic
-  MemrchrCode MemrchrLogic.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld MemchrLast StrlenWord
+  StrrchrLogic HelloGlibcLeaf HelloGlibcProgCells HelloGlibcProgLibs HelloGlibcProgName MemcmpLogic
+  MemrchrLogic.
 From Glibc Require HelloGlibcLeaf HelloGlibcProgCells HelloGlibcProgName MemcmpLogic MemrchrLogic OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -57,24 +58,24 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** glibc's own memcmp at `memcmp` meets HelloGlibcLeaf.v's
     [memcmp_spec], so its [memeq_glibc] needs no premise about it. *)
-Lemma leaf_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> HelloGlibcLeaf.memcmp_spec w0 registry ge.
+Lemma leaf_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined Unit_string_memcmp_os.fn___GI_memcmp) -> HelloGlibcLeaf.memcmp_spec w0 registry ge.
 Proof using Type. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** glibc's own memcmp at `memcmp` meets HelloGlibcProgCells.v's
     [memcmp_spec]. *)
-Lemma cells_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) ->
+Lemma cells_memcmp_spec : find_fn ge (TAtom "memcmp") = Some (Defined Unit_string_memcmp_os.fn___GI_memcmp) ->
   HelloGlibcProgCells.memcmp_spec w0 registry ge.
 Proof using Type. intros Hf. exact (MemcmpLogic.glibc_memcmp_small registry (os_wi w0) ge Hf). Qed.
 
 (** Hello's callees: glibc's strrchr, which calls glibc's strlen and
     memrchr, Hello's memeq, which calls glibc's memcmp, and glibc's
     strncmp. *)
-Context `{Hstrrchr : !Defines ge "strrchr" glibc_strrchr}
+Context `{Hstrrchr : !Defines ge "strrchr" Unit_string_strrchr_os.fn___GI_strrchr}
   `{Hstrlen : !Defines ge "__GI_strlen" glibc_strlen}
-  `{Hmemrchr : !Defines ge "__GI___memrchr" glibc_memrchr}
-  `{Hmemcmp : !Defines ge "memcmp" glibc_memcmp}
+  `{Hmemrchr : !Defines ge "__GI___memrchr" Unit_string_memrchr_os.fn___GI___memrchr}
+  `{Hmemcmp : !Defines ge "memcmp" Unit_string_memcmp_os.fn___GI_memcmp}
   `{Hmemeq : !Defines ge "memeq" memeq_fn}
-  `{Hstrncmp : !Defines ge "strncmp" glibc_strncmp}.
+  `{Hstrncmp : !Defines ge "strncmp" Unit_string_strncmp_os.fn___GI_strncmp}.
 (** The globals, as HelloGlibcProgName.v has them. *)
 Context (pb nb sb : Z)
   (preg nreg sreg : region)

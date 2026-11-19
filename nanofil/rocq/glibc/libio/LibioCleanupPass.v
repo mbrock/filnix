@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves one pass of the loop of `c: _IO_unbuffer_all`,
     which is inlined in `c: _IO_cleanup` (LibioCleanupCode.v), over a
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioCleanupCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart LibioCleanupLock.
@@ -63,9 +64,9 @@ Lemma cleanup_pass e fb freg rf rfreg sb sreg r cb nx nreg Φ :
           lookup (TAtom "iw_1.v2") e' = Some (WPtr cb)⌝ -∗
      live fb freg -∗ exit_stream true fp -∗ live rf rfreg -∗ pcell rf 0 null -∗ pcell fb off_chain nx -∗
      live_cap (ptr_cap nx) nreg -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L301"))))
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L301"))))
           : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81")))) : sexpr)
     {{ Φ }}.
 Proof using Type*.
   intros fp Hgrf Hp1 Hv1 Hv2 Hsz Hnx Hfb Hfal Hfend Hfreg Hral Hrend.

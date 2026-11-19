@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** Puts adds a newline only after the string write succeeds.
     The newline either fits in stdout's buffer or calls overflow.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioGenCode LibioPutsCode LibioPutsNl AllocLogic HiAtexitBase HiAtexitGe HiAtexitFns
+  LibioPutsNl AllocLogic HiAtexitBase HiAtexitGe HiAtexitFns
   HiAtexitAlloc HiAtexitOutputState HiAtexitStdout HiAtexitPutsBuf.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
 Import ListNotations.
@@ -47,7 +48,7 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
     Keeping that large dependency outside this block proof bounds
     its compilation time without assuming an unproved call rule. *)
 Context (Hov : forall s fr fp eb vb vreg Φ,
-  call_frame glibc___overflow [WPtr fp; WInt 10] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt 10] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro hge vb vreg -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
   hi_malloc_state dq mp tc dummy mpr tcr dr -∗
@@ -68,8 +69,8 @@ Lemma hi_puts_L180 s e so soreg fb eb vb vreg Φ :
      live so soreg -∗ pcell so 0 (mkPtr fb (Obj fb)) -∗
      hi_stdout_after w0 eb vb s (mkPtr fb (Obj fb)) (Some 0) -∗
      (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
-     WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
 Proof using Hov.
   intros Hgso Hsoal Hsoend Heb.
   assert (Hsofixed : so = 73408) by (vm_compute in Hgso; congruence). subst so.

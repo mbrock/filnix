@@ -2,6 +2,7 @@
     close_stdout callback is the caller's premise, but registration, dispatch,
     TLS destructors and final stream cleanup use their concrete proofs. *)
 
+From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic MemLogic HelloLeaf.
 From Nanofil Require HelloClose.
-From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunCode ExitRunTail ExitRun LibioGenCode
+From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunTail ExitRun
   HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsSys HelloGlibcLibsCleanup.
 From Glibc Require ExitRun ExitRunTail.
 From Glibc Require Import Fix.
@@ -105,8 +106,8 @@ Lemma libs_exit (priv : iProp Σ) c n (S : iProp Σ) :
     (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o ∗
       (AX.exit_funcs_inv (ho_x o) [(ho_cp o, null, null)] c ∗ hello_exit_lock o)) (fun _ => False)%I.
 Proof using Hk Hos.
-  intros Hclose. exists glibc_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
-  change (Some (mkFrame glibc_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
+  intros Hclose. exists Unit_stdlib_exit_os.fn___GI_exit. split; [exact (hk_exit _ _ Hk)|]. split; [eexists; reflexivity|]. intros fr Φ Hfr.
+  change (Some (mkFrame Unit_stdlib_exit_os.fn___GI_exit [(TAtom "v0", WInt n)] [] None (Enter (TAtom "start") None)) = Some fr)
     in Hfr. injection Hfr as <-.
   set (P := (D.hello_ro ge o ∗ S ∗ priv ∗ D.names o)%I).
   set (Q := fun i : nat => if Nat.eqb i 0 then D.exit_io w0 ge o else P).

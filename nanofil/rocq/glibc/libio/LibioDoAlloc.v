@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_file_doallocate` (LibioDoAllocBase.v
     describes the function), from its entry: the 144-byte stat buffer
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -54,7 +55,7 @@ Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 (** The genv defines `c: _IO_file_stat` at the symbol the jump
     table's stat slot holds. *)
-Context (Hstatf : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat).
+Context (Hstatf : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat).
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -73,7 +74,7 @@ Context (HL5 : forall fb freg fl fd eb oe sb sreg bs1 bs2 bs3 e Φ,
   pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗ Mres -∗
   live sb sreg -∗ bytes sb 24 bs1 -∗ bytes sb 40 bs2 -∗ bytes sb 56 bs3 -∗
   ▷ doalloc_k Mres fb freg fl fd eb Φ -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L5") (Some (TAtom "L13")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L5") (Some (TAtom "L13")))) : sexpr)
     {{ Φ }}).
 
 (** Block `c: L7`, as LibioDoAllocTail.v proves it ([wp_doalloc_L7]). *)
@@ -87,12 +88,12 @@ Context (HL7 : forall fb freg fl oe sz from e Φ,
      live fb freg -∗ int_cell fb off_flags (setb_flags fl 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}).
 
 (** `c: _IO_file_stat`, as LibioRead.v's [wp_glibc__IO_file_stat]
     proves it. *)
 Context (Hstat_spec : forall fr fb freg fd b reg o eb Φ,
-  call_frame glibc__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn___GI__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   0 <= o -> b + o + stat_size <= r_end reg ->
@@ -107,7 +108,7 @@ Context (Hstat_spec : forall fr fb freg fd b reg o eb Φ,
 (** `c: _IO_file_doallocate(fp)` on a stream with no buffer installs a
     fresh one and returns 1, as [doalloc_k] states. *)
 Lemma wp_glibc__IO_file_doallocate fr fb freg fl fd eb oe vb vreg Φ :
-  call_frame glibc__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   vtables_ro ge vb vreg -∗

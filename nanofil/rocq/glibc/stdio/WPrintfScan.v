@@ -3,7 +3,7 @@
     after the conversion and stops at the terminating wide zero. Neither
     search reads beyond the five wide characters in the literal. *)
 
-From Glibc Require Import HelloImageTypedFI HelloImageTypedWC.
+From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_wcsmbs_wcschrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +15,8 @@ From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_chr_fn := hello_image_fn___wcschrnul.
-Definition wprintf_scan_fn := hello_image_fn_glibc_vfwprintf_internal'23__find_specwc'2egnu_inline.
+Definition wprintf_chr_fn := Unit_wcsmbs_wcschrnul_os.fn___wcschrnul.
+Definition wprintf_scan_fn := Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.fn_glibc_vfwprintf_internal'23__find_specwc'2egnu_inline.
 Definition wprintf_format := [37;108;115;10;0].
 Local Abbreviation fmtp b o := (mkPtr (b+o) (Ro b)).
 

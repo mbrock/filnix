@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** The flags' test of `c: new_do_write` inlined in
     `c: _IO_new_file_xsputn` (LibioXsputnBase.v describes the
@@ -15,8 +16,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
@@ -31,7 +32,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** Block `c: iw_2.L122`: the flags' test. *)
 Definition xs_L122 : block := Eval vm_compute in
-  match find_block (TAtom "iw_2.L122") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "iw_2.L122") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L122") [] [] JRetVoid end.
 
 
@@ -62,9 +63,9 @@ Context `{XF : !XsFlags}.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
-  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
-  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
+  `{Hcpy : !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" Unit_libio_genops_os.fn___GI__IO_default_xsputn}.
 
 
 (** Expressions of the language. *)
@@ -85,7 +86,7 @@ Ltac to117 fb nb :=
     or the end ([wroom_reset]), and [wp_xs_L117] goes on. *)
 Lemma wp_xs_L122 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r fl f2 fd tw off m e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= r <= d -> 0 < d <= T -> T <= n ->
@@ -107,7 +108,7 @@ Lemma wp_xs_L122 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys T d r fl f2 f
   icell fb off_total_written tw -∗ icell fb off_offset off -∗ bytes fb off_column [0; 0] -∗
   int_cell fb off_mode m -∗ errno_any eb -∗ X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ xs_post w0 registry ge eb X fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L122") (Some (TAtom "iw_2.L70"))))
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L122") (Some (TAtom "iw_2.L70"))))
         : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Hr Hd HT Happ Hf2 Hfd Hm Hflags Hfd31

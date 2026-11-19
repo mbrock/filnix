@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_done_os.
 From Glibc Require Import GlibcProgram.
 (** A live printf buffer returns its accumulated count when that count fits
     a nonnegative C int. This proof follows the checked completion body;
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers MemchrLast PrintfStateCode.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers MemchrLast.
 From Glibc Require FileInv LibioLogic MemchrLast OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,7 +36,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** Adding the buffered characters to the previous count produces a nonnegative C int.
     Shared ownership keeps their allocation alive while both pointers are loaded. *)
 Lemma wp_printf_buffer_done_count fr bb breg db dreg bo used written mode dq1 dq2 Φ :
-  call_frame glibc___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < db -> 0 <= bo -> 0 <= used -> db + bo + used <= r_end dreg -> r_end dreg <= 2 ^ 63 ->
   0 <= written -> written + used < 2 ^ 31 -> mode <> 0 ->

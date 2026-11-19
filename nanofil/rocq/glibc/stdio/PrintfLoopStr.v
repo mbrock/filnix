@@ -6,6 +6,7 @@
     text. This module proves the rows of the two blocks in the table
     of [PrintfLoopState](PrintfLoopState.v). *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,7 +17,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -38,8 +39,8 @@ Local Notation blocks := (loop_blocks k R).
 (** The block `L1825` reads the argument of a `%s` and finds the text
     to print. *)
 Lemma str_start_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1825" None str_sig pl_in (conv_vals 115) (conv_pre k R FmtStr) (pl_post k R)).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -89,14 +90,14 @@ Qed.
     needs no padding, but the compiled code still calls the padding
     function when the text is empty or very long. *)
 Lemma print_body_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  body_triple glibc_printf_buffer "L1831" print_body pp_in pp_vals (print_pre k R) (fun z => pl_post k R (pp_in_ z)).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  body_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1831" print_body pp_in pp_vals (print_pre k R) (fun z => pl_post k R (pp_in_ z)).
 Proof using Type*.
   iIntros "#IH". iModIntro.
   iIntros ([[[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] str text] e Φ) "%He H HK".
   row_simpl. c_env_open He. iDestruct "H" as "((%Hok & Hout & Hown) & #Hstr)".
   iDestruct (word_string_range with "Hstr") as %Htr.
-  body_start glibc_printf_buffer "L1831". step. step. step. branch_eqn E.
+  body_start Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1831". step. step. step. branch_eqn E.
   - (* The string is empty or huge: the function pads with the difference, then writes the string. *)
     clear E. step. step. branch. step. step. step.
     call_callee with (bb, 32, _) giving "Hout"; [iFrame "Hout"; iPureIntro; split; [lia | apply Z.mod_pos_bound; lia]|].
@@ -120,7 +121,7 @@ Qed.
     takes the step into the block, which copies the string and its
     length, and then uses the body. *)
 Lemma str_rows_hold :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (str_rows k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (str_rows k R).
 Proof using Type*.
   iIntros "#IH". iPoseProof (print_body_holds with "IH") as "#Hprint".
   iSplit; [iApply (str_start_holds with "IH")|]. repeat iSplit; [| | done]; iModIntro.

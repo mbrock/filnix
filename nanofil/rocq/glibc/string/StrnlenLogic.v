@@ -10,6 +10,7 @@
     pointer subtraction in `c: strnlen` to prove frame and call
     specifications at any ownership share. *)
 
+From Glibc Require Import Unit_string_memchr_os Unit_string_strnlen_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLoop
   MemchrFirst MemchrLogic.
 From Glibc Require MemchrLast MemchrLogic WordString.
 From Glibc Require Import Fix.
@@ -74,14 +75,14 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 
 (** To search a [word_string] for its terminating NUL within n bytes,
-    [wp_glibc_memchr_nul] executes a call [[frame]] of [glibc_memchr]
+    [wp_glibc_memchr_nul] executes a call [[frame]] of [Unit_string_memchr_os.fn___memchr]
     with target byte zero and returns the pointer for [nul_hit]. *)
 Lemma wp_glibc_memchr_nul dq p s n e Φ :
   0 <= n < 2 ^ 64 ->
   lookup (TAtom "v0") e = Some (WPtr p) -> lookup (TAtom "v2") e = Some (WInt 0) ->
   lookup (TAtom "v4") e = Some (WInt n) ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (nul_hit s n))))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hn H0 H2 H4. iIntros "(%b & %reg & %ws & %Hs & Hl & Hw) HK".
   pose proof Hs as [Hc Hb0 Hb8 Hst Hf Hsp _ Hr _ _].
@@ -99,10 +100,10 @@ Definition memchr_nul_spec : fspec Σ :=
     (fun '(dq, p, s, n) v => ⌜v = Ret (WPtr (hit_ptr p (nul_hit s n)))⌝ ∗ word_string dq p s)%I.
 
 (** Memchr searches for the terminator without consuming the caller's string ownership. *)
-Lemma memchr_nul_spec_valid g : find_fn ge g = Some (Defined glibc_memchr) ->
+Lemma memchr_nul_spec_valid g : find_fn ge g = Some (Defined Unit_string_memchr_os.fn___memchr) ->
   HasSpec registry wi ge g memchr_nul_spec.
 Proof using SafepointStable0.
-  intros Hg [[[dq p] s] n]. exists glibc_memchr. split; [exact Hg|].
+  intros Hg [[[dq p] s] n]. exists Unit_string_memchr_os.fn___memchr. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post memchr_nul_spec].
   iIntros "[%Hn Hs] HK". iApply (wp_glibc_memchr_nul with "Hs");
@@ -111,7 +112,7 @@ Proof using SafepointStable0.
 Qed.
 
 (** The linked program identifies the memchr implementation used by callers. *)
-#[global] Instance memchr_nul_has_spec n `{!Defines ge n glibc_memchr} :
+#[global] Instance memchr_nul_has_spec n `{!Defines ge n Unit_string_memchr_os.fn___memchr} :
   HasSpec registry wi ge (TAtom n) memchr_nul_spec.
 Proof using SafepointStable0. apply memchr_nul_spec_valid. apply defines. Qed.
 
@@ -120,7 +121,7 @@ Proof using SafepointStable0. apply memchr_nul_spec_valid. apply defines. Qed.
     [nul_hit] and restores the string. *)
 Lemma wp_call_glibc_memchr_nul f e ls l r g args rest j dq p s n cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt 0; WInt n] -> 0 <= n < 2 ^ 64 ->
-  find_fn ge g = Some (Defined glibc_memchr) ->
+  find_fn ge g = Some (Defined Unit_string_memchr_os.fn___memchr) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WPtr (hit_ptr p (nul_hit s n)))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None (Exec l (Call r (Global g) args :: rest) j)) : gexpr) {{ Φ }}.
@@ -132,13 +133,13 @@ Proof using SafepointStable0.
   iIntros (v) "[-> Hs]". iExists cf'. iSplit; [done|]. iNext. iApply ("HK" with "Hs").
 Qed.
 
-(** Executing a call [[frame]] of [glibc_strnlen] on a [word_string] at
+(** Executing a call [[frame]] of [Unit_string_strnlen_os.fn___GI___strnlen] on a [word_string] at
     any share returns the minimum of the string's length and n, and
     restores the string. *)
 Lemma wp_glibc_strnlen_ws dq p s n Φ :
-  find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) -> 0 <= n < 2 ^ 64 ->
+  find_fn ge (TAtom "__GI_memchr") = Some (Defined Unit_string_memchr_os.fn___memchr) -> 0 <= n < 2 ^ 64 ->
   word_string dq p s -∗ (word_string dq p s -∗ Φ (Ret (WInt (Z.min (Z.of_nat (List.length s)) n)))) -∗
-  WP (ERun (mkFrame glibc_strnlen [(TAtom "v2", WInt n); (TAtom "v0", WPtr p)] [] None
+  WP (ERun (mkFrame Unit_string_strnlen_os.fn___GI___strnlen [(TAtom "v2", WInt n); (TAtom "v0", WPtr p)] [] None
               (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hg Hn. iIntros "Hs HK".
@@ -178,11 +179,11 @@ Definition strnlen_spec : fspec Σ :=
       ⌜v = Ret (WInt (Z.min (Z.of_nat (List.length s)) n))⌝ ∗ word_string dq p s)%I.
 
 (** Strnlen uses the linked memchr definition to establish its length contract. *)
-Lemma strnlen_spec_valid g : find_fn ge g = Some (Defined glibc_strnlen) ->
-  find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) ->
+Lemma strnlen_spec_valid g : find_fn ge g = Some (Defined Unit_string_strnlen_os.fn___GI___strnlen) ->
+  find_fn ge (TAtom "__GI_memchr") = Some (Defined Unit_string_memchr_os.fn___memchr) ->
   HasSpec registry wi ge g strnlen_spec.
 Proof using SafepointStable0.
-  intros Hg Hm [[[dq p] s] n]. exists glibc_strnlen. split; [exact Hg|].
+  intros Hg Hm [[[dq p] s] n]. exists Unit_string_strnlen_os.fn___GI___strnlen. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strnlen_spec].
   iIntros "[%Hn Hs] HK". iApply (wp_glibc_strnlen_ws with "Hs"); [exact Hm | exact Hn |].
@@ -190,18 +191,18 @@ Proof using SafepointStable0.
 Qed.
 
 (** Linked callers provide definitions of both strnlen and its memchr dependency. *)
-#[global] Instance strnlen_has_spec n `{!Defines ge n glibc_strnlen,
-    !Defines ge "__GI_memchr" glibc_memchr} :
+#[global] Instance strnlen_has_spec n `{!Defines ge n Unit_string_strnlen_os.fn___GI___strnlen,
+    !Defines ge "__GI_memchr" Unit_string_memchr_os.fn___memchr} :
   HasSpec registry wi ge (TAtom n) strnlen_spec.
 Proof using SafepointStable0. apply strnlen_spec_valid; apply defines. Qed.
 
 (** When a caller invokes `c: strnlen(p, n)` through a module whose
-    `__GI_memchr` resolves to [glibc_memchr], [wp_call_glibc_strnlen]
+    `__GI_memchr` resolves to [Unit_string_memchr_os.fn___memchr], [wp_call_glibc_strnlen]
     resumes the caller with the capped length and restores the string. *)
 Lemma wp_call_glibc_strnlen f e ls l r g args rest j dq p s n cf' Φ :
   map_option (arg_x ge e) args = Some [WPtr p; WInt n] -> 0 <= n < 2 ^ 64 ->
-  find_fn ge g = Some (Defined glibc_strnlen) ->
-  find_fn ge (TAtom "__GI_memchr") = Some (Defined glibc_memchr) ->
+  find_fn ge g = Some (Defined Unit_string_strnlen_os.fn___GI___strnlen) ->
+  find_fn ge (TAtom "__GI_memchr") = Some (Defined Unit_string_memchr_os.fn___memchr) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None)
     (Ret (WInt (Z.min (Z.of_nat (List.length s)) n))) = Some cf' ->
   word_string dq p s -∗ ▷ (word_string dq p s -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗

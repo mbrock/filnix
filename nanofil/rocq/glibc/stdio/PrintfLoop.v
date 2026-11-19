@@ -15,6 +15,7 @@
     between them. This module joins their proofs into a proof about
     the whole function. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -25,7 +26,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState PrintfLoopStart PrintfLoopHead
   PrintfLoopStr PrintfLoopChar PrintfLoopNext PrintfLoopInt.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
@@ -48,7 +49,7 @@ Local Notation blocks := (loop_blocks k R).
 (** Every block of the table meets its row. Each group of rows holds
     when the whole table holds one step later, and that is what a
     proof about a loop needs. *)
-Lemma loop_table : ⊢ blocks_hold glibc_printf_buffer blocks.
+Lemma loop_table : ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". iEval (rewrite /loop_blocks /blocks_hold !big_sepL_app).
   iSplit; [iApply (start_rows_hold with "IH")|]. iSplit; [iApply (head_rows_hold with "IH")|].
@@ -61,7 +62,7 @@ Qed.
 (** A caller of `c: __printf_buffer` uses this lemma. It says that the
     compiled function meets [printf_buffer_spec] in every program that
     defines the function. *)
-Lemma printf_buffer_has_spec `{!Defines ge "__printf_buffer" glibc_printf_buffer} :
+Lemma printf_buffer_has_spec `{!Defines ge "__printf_buffer" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer") (printf_buffer_spec k R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ blocks); [exact defines | reflexivity | reflexivity | | exact loop_table].

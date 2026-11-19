@@ -13,8 +13,8 @@
     current cookie and flags. The caller lends the key for the call and
     gets it back with the result. *)
 
+From Glibc Require Import Unit_csu_libcZ2dstart_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import HiAtexitTypedLI.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -96,7 +96,7 @@ End calls.
     `c: AT_SECURE`, and then calls the startup functions in order. *)
 
 (** This constant is the body of `c: __libc_start_main`. *)
-Definition start_libc_start_main_fn : func := hi_fn___libc_start_main.
+Definition start_libc_start_main_fn : func := Unit_csu_libcZ2dstart_os.fn___libc_start_main.
 
 (** The image defines `c: __libc_start_main` with that body. *)
 Lemma start_libc_start_main_defined :

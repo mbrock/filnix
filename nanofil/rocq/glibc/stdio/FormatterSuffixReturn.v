@@ -3,19 +3,20 @@
     and preserves the saved format pointer and readable source.
     It also covers the buffer writer's zero-length call, which does
     not access source or staging memory. Neither rule flushes a FILE. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString PrintfBufferIoCode MemFwdLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
+  Fix WordString MemFwdLogic.
 From Glibc Require Import FormatterSuffixScan.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** The captured formatter has no stack objects to release on return. *)
-Lemma formatter_no_stack_locals : local_objects glibc_printf_buffer = [].
+Lemma formatter_no_stack_locals : local_objects Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer = [].
 Proof. vm_compute. reflexivity. Qed.
 Section suffix.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -23,7 +24,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** A zero-length write checks the buffer mode and returns without
     reading the supplied source pointer or advancing the output cursor. *)
 Lemma wp_printf_buffer_write_zero fr bb reg p Φ :
-  call_frame glibc___printf_buffer_write [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt 0] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt 0] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end reg -> r_end reg <= 2^63 ->
   live bb reg -∗ int_cell bb 32 4 -∗
   ▷ (live bb reg -∗ int_cell bb 32 4 -∗ Φ RetVoid) -∗
@@ -46,7 +47,7 @@ Lemma wp_formatter_suffix_return e cb cr dq p s Φ :
   live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (length s))) -∗ word_string dq p s -∗
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p (Z.of_nat (length s))) -∗
     word_string dq p s -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None
     (Exec (TAtom "L1150") (skipn 15 (b_insts suffix_block)) (b_jump suffix_block))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hchk Hb Ha He Hr. iIntros "Hl Hcell Hs HK".

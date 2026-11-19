@@ -9,8 +9,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules Symbolic.
+From Glibc Require Import Unit_stdlib_getenv_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString
-  GetoptBytes GetenvCode GetenvEntry StrlenWord StrlenLogic.
+  GetoptBytes GetenvEntry StrlenWord StrlenLogic.
 Import ListNotations LG0 LG0.L ProgramAbbreviations GetoptBytes.ML.
 Open Scope Z_scope.
 
@@ -59,10 +60,10 @@ Lemma getenv_name_guard e p s (G : iProp Σ) Φ :
   word_string DfracDiscarded p s -∗ G -∗
   (match s with
    | [] => G -∗ Φ (Ret (WPtr null))
-   | _ :: _ => G -∗ WP (ERun (mkFrame glibc_getenv (getenv_name_env e p s) [] None
+   | _ :: _ => G -∗ WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv (getenv_name_env e p s) [] None
        (Enter (TAtom "L13") (Some (TAtom "L19")))) : gexpr) {{ Φ }}
    end) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
        (Enter (TAtom "L18") (Some (TAtom "L3")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hp. iIntros "#Hname HG HK".
@@ -103,10 +104,10 @@ Lemma getenv_strlen_slot e p s ep q b reg o qreg dq dqtarget (G : iProp Σ) Φ
   word_string DfracDiscarded p s -∗ liveq dq b reg -∗ pcellq dq b o q -∗
   live_capq dqtarget (ptr_cap q) qreg -∗ G -∗
   (liveq dq b reg -∗ pcellq dq b o q -∗ live_capq dqtarget (ptr_cap q) qreg -∗ G -∗
-   WP (ERun (mkFrame glibc_getenv (getenv_slot_env e ep q (Z.of_nat (length s))) [] None
+   WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv (getenv_slot_env e ep q (Z.of_nat (length s))) [] None
        (Enter (TAtom (if ptr_addr q =? 0 then "L35" else "L41")) (Some (TAtom "L32"))))
        : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
        (Enter (TAtom "L13") (Some (TAtom "L19")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hp Hep Hzero Hcap Haddr Hb Ho Hend Hspace Hal Hq.
@@ -140,9 +141,9 @@ Lemma getenv_counter_check e old dq bc rc counter (G : iProp Σ) Φ :
   liveq dq bc rc -∗ icellq dq bc 0 counter -∗ G -∗
   (liveq dq bc rc -∗ icellq dq bc 0 counter -∗ G -∗
    if counter mod 2 ^ 64 =? old mod 2 ^ 64 then Φ (Ret (WPtr null)) else
-   WP (ERun (mkFrame glibc_getenv (getenv_retry_env e bc counter) [] None
+   WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv (getenv_retry_env e bc counter) [] None
        (Enter (TAtom "L3") (Some (TAtom "L35")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
        (Enter (TAtom "L35") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hold Hcounter Hb Hend Hspace. iIntros "Hl Hcell HG HK".
@@ -172,7 +173,7 @@ Lemma getenv_nonnull_entry p s dq bc rc be re counter ep dqtarget reg (G : iProp
   word_string DfracDiscarded p s -∗ getenv_globals dq bc rc be re counter ep -∗
   live_capq dqtarget (ptr_cap ep) reg -∗ G -∗
   (getenv_globals dq bc rc be re counter ep -∗ live_capq dqtarget (ptr_cap ep) reg -∗ G -∗
-   WP (ERun (mkFrame glibc_getenv (getenv_nonnull_env p bc be counter ep) [] None
+   WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv (getenv_nonnull_env p bc be counter ep) [] None
        (Enter (TAtom "L18") (Some (TAtom "L3")))) : gexpr) {{ Φ }}) -∗
   WP (ERun (getenv_frame p) : gexpr) {{ Φ }}.
 Proof using Type.
@@ -217,7 +218,7 @@ Lemma getenv_first_slot p s dq bc rc be re counter ep b reg o q qreg dqa dqt
   (owned -∗ match s with
     | [] => Φ (Ret (WPtr null))
     | _ :: _ => if ptr_addr q =? 0 then Φ (Ret (WPtr null)) else
-      WP (ERun (mkFrame glibc_getenv
+      WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv
           (getenv_slot_env (getenv_name_env (getenv_nonnull_env p bc be counter ep) p s)
             ep q (Z.of_nat (length s))) [] None
           (Enter (TAtom "L41") (Some (TAtom "L32")))) : gexpr) {{ Φ }}

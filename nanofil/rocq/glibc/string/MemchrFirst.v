@@ -6,6 +6,7 @@
     path, which either returns null or loads the next word and enters
     [MemchrLoop]'s loop. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLoop.
 From Glibc Require MemchrLast MemchrLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -90,7 +91,7 @@ Lemma memchr_hit e from m j a c0 E Φ :
   lookup (TAtom "iw_5.v12") e = Some (WInt m) -> lookup (TAtom "v0") e = Some (WPtr (mkPtr a c0)) ->
   lookup (TAtom "v40") e = Some (WInt E) ->
   Φ (Ret (WPtr (hit_ptr (mkPtr a c0) (if a + j <=? E then Some (Z.to_nat j) else None)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "iw_6.start") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "iw_6.start") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hmr H01 Hj Hb Hlow Ha HE H12 H0 H40. iIntros "HK".
   assert (Hm0 : (m =? 0) = false).
@@ -133,7 +134,7 @@ Lemma memchr_next dq b reg w ws A c0 c1 e from c E r Φ :
   (E < A + 8 -> r = None) -> (A + 8 <= E -> ws <> [] /\ loop_hit (wbytes ws) (c mod 256) (A + 8) E r) ->
   liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (A - b) (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr (mkPtr (A + 8) c0) r)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L52") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "L52") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hc Hb0 HbA Hal Hend Hreg Hr HE H19 Hchk H43 H7 H40 Hlast Hnext. iIntros "Hl Hps HK".
   cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The triple for user glibc's `c: __libc_cleanup_pop_restore`
     (SysCode.v, nptl/libc-cleanup.c), the pop that ends the push of
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -47,7 +48,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
     `c: cleanup` is null again, and since the canceltype is deferred
     the call returns at once, [tcb_cleanup_inv] restored. *)
 Lemma wp_glibc___libc_cleanup_pop_restore fr bb breg bo Φ :
-  call_frame glibc___libc_cleanup_pop_restore [WPtr (mkPtr (bb + bo) (Obj bb))] = Some fr ->
+  call_frame Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore [WPtr (mkPtr (bb + bo) (Obj bb))] = Some fr ->
   0 < bb -> 0 <= bo -> (bb + bo) mod 8 = 0 -> bb + bo + 32 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   tcb_pushed (ow_self w0) (mkPtr (bb + bo) (Obj bb)) -∗ live bb breg -∗ pcell bb (bo + 24) null -∗
   int_cell bb (bo + 16) 0 -∗

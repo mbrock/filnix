@@ -4,6 +4,7 @@
     mode. Hello's idle stderr is never wide, so all three paths reach
     the report counter without a second print. *)
 
+From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,8 +12,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloClose.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream PrintfStateCode FxprintfNormalCode
-  ErrorCode ErrorEntry HelloErrorOpen HelloErrorOperand HelloVfxprintfIdle HelloCloseErrno Fix.
+  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream
+  ErrorEntry HelloErrorOpen HelloErrorOperand HelloVfxprintfIdle HelloCloseErrno Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
 
@@ -27,7 +28,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Lemma wp_report_body eb (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb)))
     (Hgerr : lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)))
     (Hreg : holds_os registry) (Hext : sys_external ge) vb sb sreg fe e from k fmt text ap cb Φ :
-  find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf) ->
+  find_fn ge (TAtom "__vfxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf) ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
   0 < sb -> sb mod 8 = 0 -> sb+8 <= r_end sreg -> r_end sreg <= 2^63 ->
   0 < ptr_addr (ow_self w0) < 2^64 -> In 2 (ow_fds w0) -> error_inputs e 0 k fmt ap 0 cb ->
@@ -36,8 +37,8 @@ Lemma wp_report_body eb (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb)))
   word_string DfracDiscarded fmt [37;115] -∗ str_arg (WPtr text) -∗
   printf_ro -∗ fputs_ro vb -∗ malloc_ro -∗ va_at ap 24 [WInt 0;WInt k;WPtr fmt;WPtr text] -∗ St -∗ errno_any eb -∗
   (∀ e' pred, ⌜error_inputs e' 0 k fmt ap 0 cb⌝ -∗ St -∗ errno_any eb -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None (Enter (TAtom "iw_2.L19") (Some pred))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None (Enter (TAtom "iw_2.L19") (Some pred))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hvf.
   intros Hvfx Hs Hsb Hsa Hse Hsr Hself Hfd Hin St. iIntros "#Hsl #Hsp #Hfmt Htext #Hp #Hf #Hm Hva Herr He HK".
   destruct Hin as (Hst & Hen & Hfm & Hap & Hmo & Hsv & Hchk).

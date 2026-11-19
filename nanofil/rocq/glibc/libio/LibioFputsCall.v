@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofputs_os.
 From Glibc Require Import GlibcProgram.
 (** The middle of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c), with the stream's lock held:
@@ -28,7 +29,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsMode LibioFputsLock LibioFputsUnlock.
+  WordString LibioPutsInv LibioPutsMode LibioFputsLock LibioFputsUnlock.
 From Glibc Require FileInv LibioCloseSteps LibioFputsLock LibioFputsUnlock LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -51,7 +52,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (vb : Z)
   (vreg : region)
   (Rx : iProp Σ).
-Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
 Context (Hxs : xsputn_spec_for w0 registry ge F (fun _ fp _ held => ∃ mode', F fp mode' held)%I Rx).
@@ -71,8 +72,8 @@ Lemma wp_fputs_L161 e p dq s fb Φ :
   vtables_ro ge vb vreg -∗ F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
      (∃ mode', F fp mode' (Some 0)) -∗ word_string dq p s -∗ Rx -∗
-     WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L161") (Some (TAtom "L125")))) : sexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e [] None (Enter (TAtom "L161") (Some (TAtom "L125")))) : sexpr) {{ Φ }}.
 Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".
@@ -124,8 +125,8 @@ Lemma wp_fputs_L113 e p dq s fb mode Φ :
   vtables_ro ge vb vreg -∗ F fp mode (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v2"; "chk0"]) e e' /\ lookup (TAtom "v176") e' = Some (WInt c)⌝ -∗
      (∃ mode', F fp mode' (Some 0)) -∗ word_string dq p s -∗ Rx -∗
-     WP (ERun (mkFrame glibc__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e' [] None (Exec (TAtom "L162") [] fp_j162)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e [] None (Enter (TAtom "L113") (Some (TAtom "L29")))) : sexpr) {{ Φ }}.
 Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv2 Hc0. subst fp.
   iIntros "#Hvt Hf Hstr HRx HK".

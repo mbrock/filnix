@@ -8,6 +8,7 @@
     The orientation test chooses between the narrow formatter and a wide
     path that converts the format string. This rule takes only the narrow
     path, so its caller must show that the stream is unoriented or narrow. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -17,7 +18,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream FxprintfJoin.
+  PrintfStreamInv FxprintfTidy FxprintfStream FxprintfJoin.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -52,7 +53,7 @@ Lemma wp_fx_tail e from vb fd sb sreg fb cb sb' fmt ys mode flags2 held dqf regf
   pts (snapshot_ps xs sb' (fx_req xs)) -∗ live_capq dqf (ptr_cap fmt) regf -∗ R -∗
   ▷ (∀ x mode', fx_stream vb (ow_self w0) fp fd mode' flags2 held -∗ live_capq dqf (ptr_cap fmt) regf -∗
      Q x mode' -∗ Φ (Ret (WInt (x mod 2 ^ 32)))) -∗
-  WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None (Enter (TAtom "L16") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel e [] None (Enter (TAtom "L16") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros fp xs Hpr Hc2 Hv2 Hv13 Hsb Hsmod Hsend Hfmtr Hmode Hcnt Hfmt (Hcb & Hc8 & Hcend).
   iIntros "#Hs Hst Hcur Hsnap Hfc HR HK".

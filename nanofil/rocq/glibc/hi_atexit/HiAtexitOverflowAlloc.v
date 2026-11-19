@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_io_fstat64_os Unit_io_write_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os.
+From Glibc Require Import Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram.
 (** stdout initially has no buffer. Its first overflow allocates one,
     switches the stream to writing, and sends the requested byte. This
@@ -10,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers AllocLogic LibioDoAllocBuf LibioOverflowAllocSetg LibioOverflowAlloc
   HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitDoAlloc HiAtexitOverflow.
 From Glibc Require LibioDoAllocBuf LibioOverflowAlloc LibioOverflowAllocSetg.
@@ -25,11 +27,11 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  (Hfstat : Defines ge "__GI___fstat64" glibc___fstat64)
-  (Hmaj : Defines ge "__gnu_dev_major" glibc___gnu_dev_major)
-  (Hisatty : Defines ge "__isatty_nostatus" glibc___isatty_nostatus)
-  (Hsetb : Defines ge "__GI__IO_setb" glibc__IO_setb).
+Context (Hstat : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat)
+  (Hfstat : Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64)
+  (Hmaj : Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major)
+  (Hisatty : Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus)
+  (Hsetb : Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb).
 Context (Hfree_fn : Defines ge "free" free_fn) (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
 Context (Hmalloc_fn : Defines ge "malloc" malloc_fn)
@@ -38,11 +40,11 @@ Existing Instances Hfstat Hmaj Hisatty Hsetb Hfree_fn Hmalloc_fn Hmalloc2.
 Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region).
 Context (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (mkPtr mp (Obj mp)))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (mkPtr tc (Obj tc))).
-Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
-  (Hdab : Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf)
-  (Hwrite : Defines ge "__GI___write" glibc___libc_write)
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : Defines ge "_IO_new_do_write" glibc__IO_new_do_write).
+Context (Hda : ge_fn ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate)
+  (Hdab : Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf)
+  (Hwrite : Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write)
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  (Hdwf : Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write).
 Existing Instances Hdab Hwrite Hdwf.
 
 (** A stream without a buffer calls the proved buffer allocator. *)

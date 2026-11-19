@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The end of `c: _IO_un_link` (LibioUnlinkCode.v), from block
     `c: L179`, after the stream has left the list: `c: _IO_LINKED`
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers SysCleanup SysCleanupPop LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysCleanupPop SysWrappers.
 From Glibc Require Import Fix.
@@ -47,7 +48,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 
 (** Expressions of the language. *)
@@ -67,7 +68,7 @@ Lemma wp_unlink_L257 e from cb creg lk lkreg rf rfreg sb sreg x Φ :
   tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
   ▷ (live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L257") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_un_link e [] None (Enter (TAtom "L257") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hglk Hgrf Hv10 Hcb Hcal Hcend Hcreg Hral Hrend.
   iIntros "#(%Hs & Hsl & Hsb) Hrl Hrc (%Hlk & Hll & Hl0 & [%Hc0 Hl4] & Hlo) Htcb Hcl Hcp Hct HK".
@@ -117,7 +118,7 @@ Lemma wp_unlink_L179 e from fb freg fl lb lbreg cb creg lk lkreg rf rfreg sb sre
      lock_state lb lbreg 0 0 null -∗
      live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L179") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_un_link e [] None (Enter (TAtom "L179") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hglk Hgrf Hv0 Hc0 Hv10 Hfb Hfal Hfend Hfreg Hfl Hul Hcb Hcal Hcend Hcreg Hral Hrend.
   iIntros "#Hs Hl [_ Hfl] Hlp (%Hb & Hbl & Hb0 & [%Hb4r Hb4] & Hbo) Hrl Hrc Hlk Htcb Hcl Hcp Hct HK".

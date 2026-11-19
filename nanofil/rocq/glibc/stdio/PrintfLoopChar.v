@@ -5,6 +5,7 @@
     reads no argument. This module proves the rows of the two blocks
     in the table of [PrintfLoopState](PrintfLoopState.v). *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,7 +16,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -40,8 +41,8 @@ Local Notation blocks := (loop_blocks k R).
     nothing. Then the code reads the argument and appends its low
     byte. *)
 Lemma char_start_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1796" None char_sig pl_in (conv_vals 99) (conv_pre k R FmtChar) (pl_post k R)).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -71,8 +72,8 @@ Qed.
 (** The conversion `%%` appends a percent sign and reads no
     argument. *)
 Lemma percent_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1151" None percent_sig pl_in pl_vals (conv_pre k R FmtPercent) (pl_post k R)).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -90,7 +91,7 @@ Qed.
 
 (** These two rows are the rows of the conversions `%c` and `%%`. *)
 Lemma char_rows_hold :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (char_rows k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (char_rows k R).
 Proof using Type*.
   iIntros "#IH". iSplit; [iApply (char_start_holds with "IH")|]. iSplit; [iApply (percent_holds with "IH") | done].
 Qed.

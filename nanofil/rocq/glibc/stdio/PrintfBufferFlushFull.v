@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** A full direct buffer publishes its end pointer to FILE before printf
     switches to its one-character staging area. This transition makes no
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+  LibioCloseSteps LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -43,7 +44,7 @@ Local Ltac load_shared H :=
 (** A full span selects an empty one-character staging area. The FILE end
     and character lifetime survive, and the count includes exactly that span. *)
 Lemma wp_printf_buffer_flush_full fr bb breg fb freg db dreg bo used written dqd oldwp Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < db -> 0 <= bo -> 0 <= used ->

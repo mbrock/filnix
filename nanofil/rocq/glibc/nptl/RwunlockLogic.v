@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: pthread_rwlock_unlock` releases a rwlock. The gettext
     lookup releases each read lock it took, so this module proves the
@@ -50,7 +51,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
   | apply (ext_fn ge Hext); cbn; tauto | apply (ext_data ge Hext); cbn; tauto].
 
 Lemma wp_glibc_rwunlock_read fr lb lreg r cw sh tb treg dqt dqi tid Φ :
-  call_frame glibc_pthread_rwlock_unlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
+  call_frame Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + 724 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 56 <= r_end lreg -> r_end lreg <= 2 ^ 63 ->
   r mod 8 = 0 -> 8 <= r -> cw <> tid ->
@@ -106,7 +107,7 @@ Qed.
 
 (** A call of a name bound to the captured function by a reader of a
     free lock removes that reader and resumes the caller with 0. *)
-Lemma wp_call_glibc_rwunlock `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma wp_call_glibc_rwunlock `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   r mod 8 = 0 -> 8 <= r -> cw <> tid ->
@@ -136,19 +137,19 @@ Definition un_route : list string :=
   ["start"; "iw_2.start"; "iw_2.iw_1.L3"; "iw_2.iw_1.L4"; "iw_2.L9"; "iw_2.L16"; "iw_2.L24";
    "iw_2.L18"; "iw_2.L42"; "iw_2.L12"; "iw_2.L46"; "L7"].
 Example rwunlock_route_calls :
-  flat_map (fun l => blk_callees (rw_blk glibc_pthread_rwlock_unlock l)) un_route = [TAtom "zthread_self_cookie"].
+  flat_map (fun l => blk_callees (rw_blk Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock l)) un_route = [TAtom "zthread_self_cookie"].
 Proof. vm_compute. reflexivity. Qed.
 (** The writer-phase wake and the waiting-readers wake call the futex. *)
 Example rwunlock_wake_calls :
-  blk_callees (rw_blk glibc_pthread_rwlock_unlock "iw_2.iw_2.L30") = [TAtom "zsys_futex_wake"] /\
-  blk_callees (rw_blk glibc_pthread_rwlock_unlock "iw_2.iw_3.L30") = [TAtom "zsys_futex_wake"].
+  blk_callees (rw_blk Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock "iw_2.iw_2.L30") = [TAtom "zsys_futex_wake"] /\
+  blk_callees (rw_blk Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock "iw_2.iw_3.L30") = [TAtom "zsys_futex_wake"].
 Proof. vm_compute. split; reflexivity. Qed.
 (** The reader route subtracts 8, and the last reader clears the
     waiting-readers flag with the mask ~4. *)
 Example rwunlock_steps :
-  hd_error (b_insts (rw_blk glibc_pthread_rwlock_unlock "iw_2.L9")) =
+  hd_error (b_insts (rw_blk Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock "iw_2.L9")) =
     Some (Let (TAtom "iw_2.v15") W Sub [Tmp (TAtom "iw_2.pr.2"); Const 8]) /\
-  b_insts (rw_blk glibc_pthread_rwlock_unlock "iw_2.L24") =
+  b_insts (rw_blk Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock "iw_2.L24") =
     [Let (TAtom "iw_2.v32") W And [Tmp (TAtom "iw_2.pr.4"); Const 4294967291]].
 Proof. vm_compute. split; reflexivity. Qed.
 (** The name that gettext calls is an alias of the captured body. *)

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** DcigettextRoute.v proves glibc's `c: __dcigettext` in the C locale
     when the privilege flag `__libc_enable_secure` reads 0. The flag in
@@ -16,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import MemFwdCode GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules.
+From Glibc Require Import GetoptLongPfxAlloc DcigettextFree DcigettextExit DcigettextPreRules.
 From Glibc Require Import DcigettextPre DcigettextDom DcigettextJoin DcigettextCopy DcigettextSecure DcigettextRoute StrchrnulLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -53,8 +54,8 @@ Proof using Type. reflexivity. Qed.
 (** The route returns the message id for every value of the flag. *)
 Lemma wp_dci_route_v e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg v
     msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -65,7 +66,7 @@ Lemma wp_dci_route_v e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib i
   L1 -∗ L2 -∗ T -∗ K -∗ C -∗ M -∗ errno_own eb bs -∗
   ▷ (dci_reads_v dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg v -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros (Hcpy & Hmv & Hmvf & Hmvs & Hheap & Hmal & Hloc & Hrt1 & Hut & Htf & Hr1 & Hr2 & Hu1 & Hu2)
     (Hlkt & Hrt & Htc & Hge & Hlk1 & Hlk2 & Hdb & Hdd & Hcn & Hci & H276 & H277 & Hsec)
@@ -113,8 +114,8 @@ Qed.
     old statement, and it needs no strchr link. *)
 Lemma wp_dci_route_f_v0 e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     msgid lk1 lk2 lkt rt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' K C M bs Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   dci_callees_f lk1 lk2 lkt rt tc L1 L1' L1'' L2 L2' L2'' T T' T'' K C M cv ->
   dci_globals eb lk1 lk2 lkt rt tc dd db nb nc ib ic p276 p277 sec ->
   dci_bounds db dbreg nb ib ic ireg k sec secreg ->
@@ -124,7 +125,7 @@ Lemma wp_dci_route_f_v0 e dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg i
   L1 -∗ L2 -∗ T -∗ K -∗ C -∗ M -∗ errno_own eb bs -∗
   ▷ (dci_reads dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg -∗
      L1'' -∗ L2'' -∗ T'' -∗ K -∗ C -∗ M -∗ errno_own eb (le_bytes (dci_w bs) 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type*. intros. iApply wp_dci_route_v; try eassumption; [lia | left; reflexivity]. Qed.
 
 (** The block at L298 takes the privileged branch exactly when the flag

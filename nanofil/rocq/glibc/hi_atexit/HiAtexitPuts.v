@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves puts for the actual linked hi_atexit program.
     Its string-output and newline calls use proved glibc functions,
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv WordString LibioPuts LibioPutsCode
+From Glibc Require Import OsWorld OsRegistry FileInv WordString LibioPuts
   HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitAlloc HiAtexitStdout
   HiAtexitPutsXsputn HiAtexitPutsNl HiAtexitPutsOverflow HiAtexitPutsRules.
 From Glibc Require FileInv LibioPuts LibioPutsInv LibioPutsLock.
@@ -41,7 +42,7 @@ Local Notation sexpr := (language.expr (nanofil_lang glibc_os_registry hge)).
     releases stdout's lock and returns the string, allocator state
     and stream resources needed by the close callback. *)
 Lemma hi_puts fr p dq' s so soreg fp mode eb vb vreg sb sreg Φ :
-  call_frame glibc__IO_puts [WPtr p] = Some fr ->
+  call_frame Unit_libio_ioputs_os.fn___GI__IO_puts [WPtr p] = Some fr ->
   lookup (TAtom "stdout") (ge_globals hge) = Some (mkPtr so (Obj so)) ->
   so mod 8 = 0 -> so + 8 <= r_end soreg ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> ptr_addr (ow_self w0) <> 0 ->

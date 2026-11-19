@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_memset_os.
 From Glibc Require Import GlibcProgram.
 (** The parser in glibc's getopt_long calls free, malloc and memset when
     it collects the candidates for an ambiguous long option. The parser's
@@ -18,8 +19,8 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloMain.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv StrchrCode StrcmpCode StrncmpCode StrlenLogic
-  MemFwdCode MemFwdLogic AllocLogic StdlibCode
+From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
+  MemFwdLogic AllocLogic
   GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr GetoptInitial
   AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts.
@@ -86,7 +87,7 @@ Qed.
     internal name is a premise here. *)
 
 (** glibc's memset meets the parser's rule for memset. *)
-Lemma hello_memset_rule : find_fn ge (TAtom "__GI_memset") = Some (Defined glibc_memset) ->
+Lemma hello_memset_rule : find_fn ge (TAtom "__GI_memset") = Some (Defined Unit_string_memset_os.fn___GI_memset) ->
   getopt_memset_rule w0 glibc_os_registry ge.
 Proof.
   intros Hgm f e ls l d args rest j b reg xs cs nz Φ Hx -> Hn Hb8 Hend Hlen. iIntros "Hl Hx Hcs HK".

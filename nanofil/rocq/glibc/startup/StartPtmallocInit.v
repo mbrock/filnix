@@ -13,8 +13,8 @@
     runs them. Each piece takes the contracts of its callees as
     assumptions, so the proof never imports how a callee was proved. *)
 
+From Glibc Require Import Unit_malloc_malloc_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import HiAtexitTypedPT.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -34,7 +34,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __ptmalloc_init`. *)
-Definition start_ptmalloc_init_fn : func := hi_fn___ptmalloc_init.
+Definition start_ptmalloc_init_fn : func := Unit_malloc_malloc_os.fn___ptmalloc_init.
 
 (** The image defines `c: __ptmalloc_init` with that body. *)
 Lemma start_ptmalloc_init_defined :

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The middle of one pass of `c: _IO_unbuffer_all`'s loop in
     `c: _IO_cleanup` (LibioCleanupCode.v), from block `c: iw_1.L93`,
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioCleanupCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock.
 From Glibc Require FileInv LibioCleanupFpLock LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
@@ -60,9 +61,9 @@ Lemma wp_cleanup_L93 e fb freg fl md r cb Φ :
   ▷ (∀ e', ⌜lookup (TAtom "iw_1.pr.1") e' = Some (WPtr fp) /\ lookup (TAtom "chk13") e' = Some (WPtr fp) /\
             lookup (TAtom "v1") e' = Some (WInt r) /\ lookup (TAtom "iw_1.v2") e' = Some (WPtr cb)⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode (2 ^ 32 - 1) -∗ pcell fb 80 null -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L306") (Some (TAtom "iw_1.L291"))))
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e' [] None (Enter (TAtom "iw_1.L306") (Some (TAtom "iw_1.L291"))))
           : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L93") (Some (TAtom "iw_1.L103"))))
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L93") (Some (TAtom "iw_1.L103"))))
        : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hp1 Hc13 Hv1 Hv2 Hfb Hfal Hfend Hfreg Hul Hmd Hub. subst fp.

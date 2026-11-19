@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_stdlib_cxa_thread_atexit_impl_os.
 From Glibc Require Import GlibcProgram.
 (** Process exit runs thread-local destructors and discards stream backup markers.
     This fixture has no registered thread-local destructors, so their function returns immediately.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioGenCode LibioCloseItEnd LibioCloseItMid ExitRun.
+  LibioCloseItEnd LibioCloseItMid ExitRun.
 From Glibc Require ExitRun FileInv LibioCloseItMid LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -31,10 +32,10 @@ Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileI
 Import ProgramAbbreviations.
 Section rules_values.
 Definition unsave_frame (fb : Z) : frame :=
-  mkFrame glibc__IO_unsave_markers [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
+  mkFrame Unit_libio_genops_os.fn___GI__IO_unsave_markers [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
     (Enter (TAtom "start") None).
 Lemma unsave_frame_call fb :
-  call_frame glibc__IO_unsave_markers [WPtr (mkPtr fb (Obj fb))] = Some (unsave_frame fb).
+  call_frame Unit_libio_genops_os.fn___GI__IO_unsave_markers [WPtr (mkPtr fb (Obj fb))] = Some (unsave_frame fb).
 Proof. reflexivity. Qed.
 End rules_values.
 Section rules.
@@ -60,7 +61,7 @@ Proof using Type.
 Qed.
 
 (** The marker cleanup proof supplies the contract used when closing a stream. *)
-Lemma unsave_spec_holds : LibioCloseItMid.unsave_spec w0 registry ge glibc__IO_unsave_markers.
+Lemma unsave_spec_holds : LibioCloseItMid.unsave_spec w0 registry ge Unit_libio_genops_os.fn___GI__IO_unsave_markers.
 Proof using Type.
   intros fb. exists (unsave_frame fb). split; [apply unsave_frame_call|].
   intros freg Φ Hfb Hfal Hfend. iIntros "Hl H80 H96 HK".
@@ -72,7 +73,7 @@ End rules.
 Section dtors.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (ge : genv).
-Context (Hdt : Defines ge "__GI___call_tls_dtors" glibc___call_tls_dtors).
+Context (Hdt : Defines ge "__GI___call_tls_dtors" Unit_stdlib_cxa_thread_atexit_impl_os.fn___GI___call_tls_dtors).
 Existing Instance Hdt.
 
 (** The empty destructor function returns immediately and preserves the caller's resources. *)

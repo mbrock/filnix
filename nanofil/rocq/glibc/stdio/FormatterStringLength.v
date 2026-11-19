@@ -7,13 +7,14 @@
     assumes that the formatter has selected the argument and that the
     program links to this strlen implementation. Null arguments, wide
     strings, and output writes require separate proofs. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode Fix WordString StrlenWord StrlenLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps Fix WordString StrlenWord StrlenLogic.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
@@ -45,10 +46,10 @@ Lemma wp_formatter_string_length e ls p dq s Φ :
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   word_string dq p s -∗
   ▷ (word_string dq p s -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (string_length_env e p (Z.of_nat (length s))) ls None
       (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hp Hprec Hwide Hs Hzero Haddr Hstrlen. iIntros "Hs HK".

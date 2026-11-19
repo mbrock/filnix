@@ -3,6 +3,7 @@
     there changes capability slots before the pointer, but not before the
     aligned staging array. This module keeps ownership of that array while
     preserving the separate header and the single allocation lifetime. *)
+From Glibc Require Import Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -125,7 +126,7 @@ Proof.
   destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hdst Hxi) as (Hv & _). by rewrite Hv.
 Qed.
 
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps MemFwdCode Fix GlibcSpec.
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps Fix GlibcSpec.
 Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic
   ProgramAbbreviations.
 
@@ -264,11 +265,11 @@ Definition window_copy_spec : fspec Σ :=
 
 (** The captured memcpy body invokes the runtime move and returns its
     original destination pointer, with the owned window updated. *)
-Lemma memcpy_window_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
+Lemma memcpy_window_spec_valid g : find_fn ge g = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   HasSpec registry (os_wi w0) ge g window_copy_spec.
 Proof using Type*.
   intros Hg [[[[[[[[[[[b reg] lo] xs] cs] o] dq] b'] reg'] o'] c'] ys].
-  exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  exists Unit_string_memcpy_os.fn___GI_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post window_copy_spec].
   iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
   destruct Hp as (Hc' & Hn & Hb8 & Hlo8 & Hb8' & Hlo & Ho & Ho' & Hon & Hend & Hend' & Hlc & Hx & Hy).
@@ -286,7 +287,7 @@ Qed.
 Lemma wp_call_memcpy_window f e ls lab r g args rest j b reg lo xs cs o dq b' reg' o' c' ys cf' Φ :
   map_option (arg_x ge e) args =
     Some [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length ys))] ->
-  find_fn ge g = Some (Defined glibc_memcpy) ->
+  find_fn ge g = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   resume (mkFrame f e ls None (Exec lab rest j)) (mkPending r None) (Ret (WPtr (mkPtr (b + o) (Obj b))))
     = Some cf' ->
   c' = Obj b' \/ c' = Ro b' -> Z.of_nat (length ys) < 2 ^ 64 ->

@@ -4,13 +4,14 @@
     bytes and preserves the snapshot and target ownership. FILE fields,
     staging, errno and registration globals remain in the caller's frame.
     This rule does not establish parser readiness or a complete conversion. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv FormatterCode Fix.
+From Glibc Require Import OsWorld FileInv Fix.
 Module StringVL := VariadicLogicOn R LG0.
 Import StringVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -33,9 +34,9 @@ Lemma wp_formatter_string_arg e ls from cb cr sb sr off x ps Φ :
   live sb sr -∗ pcell sb off x -∗ pts ps -∗
   ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
     live sb sr -∗ pcell sb off x -∗ pts ps -∗
-    WP (ERun (mkFrame glibc_printf_buffer (put (TAtom "v1828") (WPtr x) e) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (put (TAtom "v1828") (WPtr x) e) ls None
       (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L1825") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hcb Hsb Ho He Hr Ha Hx Htarget.

@@ -10,6 +10,7 @@
     loads the previous word using a [[half_check]] and enters the
     backward loop. *)
 
+From Glibc Require Import Unit_string_memrchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
-  MemchrLast MemchrLogic MemrchrCode MemrchrBits MemrchrLoop.
+  MemchrLast MemchrLogic MemrchrBits MemrchrLoop.
 From Glibc Require MemchrLast MemrchrLoop StrcmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -88,7 +89,7 @@ Ltac normp name v :=
   match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by arith end.
 
 (** Block `iw_3.join` merges the aligned and unaligned final-word mask
-    paths of [glibc_memrchr]. *)
+    paths of [Unit_string_memrchr_os.fn___GI___memrchr]. *)
 Definition rblk_join : block := Eval vm_compute in rblk "iw_3.join".
 
 (** To step backwards from the final word without repeating a full
@@ -140,7 +141,7 @@ Lemma memrchr_mask dq b reg ws a cp c (k n : nat) (Lz e' fm : Z) e r Φ :
   lookup (TAtom "iw_1.v7") e = Some (WInt (rep c)) ->
   wwin dq b reg (a - Z.of_nat k - b) ws -∗
   (wwin dq b reg (a - Z.of_nat k - b) ws -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a cp) r)))) -∗
-  WP (ERun (mkFrame glibc_memrchr (put (TAtom "v48") (WInt fm) e) [] None
+  WP (ERun (mkFrame Unit_string_memrchr_os.fn___GI___memrchr (put (TAtom "v48") (WInt fm) e) [] None
        (Exec (TAtom "iw_3.join") (b_insts rblk_join) (b_jump rblk_join))) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hb0 Hc Hba HW8 Hk Hend Hreg Hr HL0 HLw He' He Hfm Hbyte Hhit H31 H26 H42 Hchk H7. iIntros "Hw HK".

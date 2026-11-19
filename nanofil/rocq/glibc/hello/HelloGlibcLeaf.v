@@ -1,12 +1,13 @@
+From Glibc Require Import Unit_string_memchr_os Unit_string_memset_os.
 From Glibc Require Import GlibcProgram.
 (** GNU Hello's leaf functions (HelloLeaf.v's [mbszero_fn],
     [strnlen1_fn], [streq_fn] and [memeq_fn], Hello's own IR from
     HelloCode.v) linked with glibc, over the [os_world] of
     [OsWorld](../zsys/OsWorld.v), with no premise about the world.
 
-    - `mbszero` calls `memset`, glibc's own ([glibc_memset]):
+    - `mbszero` calls `memset`, glibc's own ([Unit_string_memset_os.fn___GI_memset]):
       [mbszero_glibc] zeroes the 8 bytes it owns.
-    - `strnlen1` calls `memchr`, glibc's own ([glibc_memchr]):
+    - `strnlen1` calls `memchr`, glibc's own ([Unit_string_memchr_os.fn___memchr]):
       [strnlen1_glibc] returns one past the NUL of a [word_string] when
       it is within n bytes, and n otherwise.
     - `streq` calls `strcmp` and `memeq` calls `memcmp`: their triples
@@ -28,8 +29,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic HelloLeaf.
-From Glibc Require Import StrlenBits StrlenLogic WordString OsWorld OsRegistry MemFwdCode MemFwdLogic
-  StrchrCode MemchrLast MemchrLogic StrnlenLogic.
+From Glibc Require Import StrlenBits StrlenLogic WordString OsWorld OsRegistry MemFwdLogic
+  MemchrLast MemchrLogic StrnlenLogic.
 From Glibc Require MemFwdLogic MemchrLast OsWorld StrnlenLogic WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -82,8 +83,8 @@ Context (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os
   (Hset_fn : find_fn ge (TAtom "zmemset") = None)
   (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None).
 (** Hello's `memset` and `memchr` are glibc's. *)
-Context `{Hmemset : !Defines ge "memset" glibc_memset}
-  `{Hmemchr : !Defines ge "memchr" glibc_memchr}.
+Context `{Hmemset : !Defines ge "memset" Unit_string_memset_os.fn___GI_memset}
+  `{Hmemchr : !Defines ge "memchr" Unit_string_memchr_os.fn___memchr}.
 
 (** [os_wi] w0 survives safepoints. *)
 Local Instance leaf_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.

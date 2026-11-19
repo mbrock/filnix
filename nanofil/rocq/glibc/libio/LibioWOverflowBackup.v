@@ -2,7 +2,7 @@
     backup area. An idle stream has no such area: glibc calls free on
     null, then writes null back to each of the three backup pointers. *)
 
-From Glibc Require Import HelloImageTypedIO.
+From Glibc Require Import Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileIn
 Open Scope Z_scope.
 Local Abbreviation obj b := (mkPtr b (Obj b)).
 
-Definition wfree_backup_fn := hello_image_fn___GI__IO_free_wbackup_area.
+Definition wfree_backup_fn := Unit_libio_wgenops_os.fn___GI__IO_free_wbackup_area.
 
 Section backup.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

@@ -14,6 +14,7 @@
     in any order, because the image does not record the order that the
     loader chose. *)
 
+From Glibc Require Import Unit_string_memrchr_os Unit_string_strrchr_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -22,7 +23,7 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import FileInv OsWorld OsRegistry OsStart OsCpuid StartCode StartCtors StartCtorRunnerSpec StartCtorRunner
   StartStdfilesInitSpec StartStdfilesInit StartCtorVtablesSpec StartCtorVtables StartInitMiscSpec StartInitMisc
-  StartInitFirstSpec StartInitFirst StartCtorCalls StartCtorChain StrlenLogic StrchrCode MemrchrCode StrrchrLogic
+  StartInitFirstSpec StartInitFirst StartCtorCalls StartCtorChain StrlenLogic StrrchrLogic
   MemrchrLogic HiAtexitGe HiAtexitModule HiAtexitInitial HiAtexitInitialStdout StartInitFirstImage
   StartVtablesImage StartStdfilesImage StartLogic StartLibcStartMain StartLsmImage StartEarlyInitSpec
   StartPtmallocInitSpec StartCtypeInitSpec StartTunableGetValSpec StartTlsInitTpSpec StartCallMainSpec
@@ -66,9 +67,9 @@ Proof using Type.
   assert (D2 : Defines hge "glibc_vtables#check_stdfiles_vtables" start_check_vtables_fn) by (vm_compute; reflexivity).
   assert (D3 : Defines hge "glibc_init_first#_init_first" start_init_first_fn) by (vm_compute; reflexivity).
   assert (D4 : Defines hge "__init_misc" start_init_misc_fn) by (vm_compute; reflexivity).
-  assert (D5 : Defines hge "__GI_strrchr" glibc_strrchr) by (vm_compute; reflexivity).
+  assert (D5 : Defines hge "__GI_strrchr" Unit_string_strrchr_os.fn___GI_strrchr) by (vm_compute; reflexivity).
   assert (D6 : Defines hge "__GI_strlen" glibc_strlen) by (vm_compute; reflexivity).
-  assert (D7 : Defines hge "__GI___memrchr" glibc_memrchr) by (vm_compute; reflexivity).
+  assert (D7 : Defines hge "__GI___memrchr" Unit_string_memrchr_os.fn___GI___memrchr) by (vm_compute; reflexivity).
   pose proof (OsWorld.os_wi_stable w) as Hst.
   pose proof (strrchr_has_spec glibc_os_registry (os_wi w) hge "__GI_strrchr"
     (glibc_memrchr_spec glibc_os_registry (os_wi w) hge D7)) as Hs.

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os.
 From Glibc Require Import GlibcProgram.
 (** `c: _IO_new_fclose(stdout)` (LibioFcloseCode.v, libio/iofclose.c),
     as `c: close_stdout` calls it at exit in hi_atexit.c, on stdout
@@ -19,8 +20,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioUnlinkCode LibioCloseItCode
-  LibioFcloseCode FileInv LibioLogic SysWrappers LibioCloseSteps LibioCloseItEnd LibioFinish LibioFcloseTail
+From Glibc Require Import OsBlocks OsWorld OsRegistry
+  FileInv LibioLogic SysWrappers LibioCloseSteps LibioCloseItEnd LibioFinish LibioFcloseTail
   LibioFcloseLock.
 From Glibc Require FileInv LibioCloseSteps LibioFcloseLock LibioFcloseTail LibioFinish LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -75,7 +76,7 @@ Definition close_it_spec : Prop :=
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> Z.land f2 32 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 -> Z.land fl io_no_writes = 0 ->
@@ -107,10 +108,10 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
-Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
-Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
-Context `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}.
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}.
+Context (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish).
+Context `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink}.
 
 
 (** Expressions of the language. *)
@@ -141,7 +142,7 @@ Lemma wp_glibc__IO_new_fclose_stdout fr pre post fb freg fl f2 fd tw off bb breg
   let fp := mkPtr fb (Obj fb) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofclose_os.fn__IO_new_fclose [WPtr fp] = Some fr ->
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some fp ->
   lookup (TAtom "_IO_2_1_stdin_") (ge_globals ge) = Some pin -> ptr_addr pin <> fb -> 0 <= ptr_addr pin < 2 ^ 64 ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->

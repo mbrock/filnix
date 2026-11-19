@@ -10,6 +10,7 @@
     from there. Main keeps everything else that setlocale reads or
     writes with its copy of the C locale. *)
 
+From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.program_logic Require Import language weakestpre.
 From iris.proofmode Require Import proofmode.
@@ -18,7 +19,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv StrlenLogic WordString GlibcSpec
-  RdlockLogic RwlockIdle DcgettextRwlock LocalenameLogic StartGetenv GetenvEntry GetenvStatic GetenvScan LocaleEnv SetlocaleCode
+  RdlockLogic RwlockIdle DcgettextRwlock LocalenameLogic StartGetenv GetenvEntry GetenvStatic GetenvScan LocaleEnv
   HelloGlibcDebts HelloGetoptDiagTcb HelloGetoptDiagLock HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloGetoptDiagImage HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloLocaleState
   HelloSetlocalePostload HelloSetlocaleAll.
@@ -57,7 +58,7 @@ Lemma hello_setlocale_all (Y priv : iProp Σ) dq dqa dqe bc rc be re counter ep 
     (Y ∗ hello_priv_rest w fr)) ->
   setlocale_all w hge ob priv.
 Proof using Hfd2.
-  intros Hbr Himg Henv Hfh Hpriv. exists glibc_setlocale. split; [vm_compute; reflexivity|].
+  intros Hbr Himg Henv Hfh Hpriv. exists Unit_locale_setlocale_os.fn___GI_setlocale. split; [vm_compute; reflexivity|].
   split; [eexists; reflexivity|]. intros f Φ Hf.
   assert (E80 : sym_ptr hge "hello#str.80" = mkPtr (img_a "hello#str.80") (Ro (img_a "hello#str.80")))
     by (vm_compute; reflexivity).

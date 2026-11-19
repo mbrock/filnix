@@ -3,7 +3,7 @@
     glibc leaves the input and output in place and sets errno. A NUL
     yields zero, and every other ASCII byte consumes one input byte. *)
 
-From Glibc Require Import HelloImageTypedMB.
+From Glibc Require Import Unit_wcsmbs_mbrtowc_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +18,7 @@ Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileIn
 Open Scope Z_scope.
 
 (** The public name mbrtowc is an alias for this body in Hello. *)
-Definition glibc_mbrtowc := hello_image_fn___GI___mbrtowc.
+Definition glibc_mbrtowc := Unit_wcsmbs_mbrtowc_os.fn___GI___mbrtowc.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

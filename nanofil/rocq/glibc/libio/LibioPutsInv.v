@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** What the proofs of `c: puts` and `c: fputs` (LibioPutsCode.v)
     share: a stream at a known mode and lock state ([file_at]), the
@@ -31,7 +32,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioGenCode LibioXsputnCode.
+  WordString.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -248,7 +249,7 @@ Lemma live_halves b reg : live b reg ⊣⊢ liveq (DfracOwn (1 / 2)) b reg ∗ l
 Proof using Type. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
 Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
     (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
   F fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ word_string dq p s -∗ Rx -∗
      Φ (Ret (WInt r))) -∗
@@ -256,7 +257,7 @@ Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
 Definition xsputn_spec (vb : Z) (Rx : iProp Σ) : Prop :=
   xsputn_spec_for (file_at vb (ow_self w0)) (fun _ => file_at vb (ow_self w0)) Rx.
 Definition overflow_spec (vb : Z) (Rx : iProp Σ) : Prop := forall fr fp Φ,
-  call_frame glibc___overflow [WPtr fp; WInt 10] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt 10] = Some fr ->
   file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 32⌝ -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.

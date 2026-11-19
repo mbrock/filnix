@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** The FILE-backed printf initializer sets a zero count, mode four and the
     stream pointer before calling the buffer-selection function. A stream
@@ -15,7 +16,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode PrintfBufferStage PrintfBufferDirect.
+  LibioCloseSteps PrintfBufferStage PrintfBufferDirect.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferDirect PrintfBufferStage SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -34,14 +35,14 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 (** The linked program supplies the checked switch body, not an external contract. *)
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Initialization overwrites the owned fields and returns an empty staging buffer.
     The original FILE write pointers remain null and all character bytes are framed. *)
 Lemma wp_printf_buffer_init_null fr bb breg fb freg oldbase oldptr oldend oldfp written mode Φ :
-  call_frame glibc___printf_buffer_to_file_init
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init
     [WPtr (mkPtr bb (Obj bb)); WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -80,7 +81,7 @@ Lemma wp_printf_buffer_init_owned fr bb breg fb freg db dreg bo eo dqf dqd
     oldbase oldptr oldend oldfp written mode Φ :
   let start := if bo <? eo then mkPtr (db + bo) (Obj db) else mkPtr (bb + 48) (Obj bb) in
   let stop := if bo <? eo then mkPtr (db + eo) (Obj db) else mkPtr (bb + 176) (Obj bb) in
-  call_frame glibc___printf_buffer_to_file_init
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init
     [WPtr (mkPtr bb (Obj bb)); WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->

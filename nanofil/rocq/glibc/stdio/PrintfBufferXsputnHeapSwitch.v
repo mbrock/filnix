@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** After xsputn reports the requested count, printf chooses where to store
     its next bytes. Reading the heap stream's write pointers leaves the stream
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode PrintfBufferXsputnSwitch PrintfStreamHeap.
+  LibioCloseSteps PrintfBufferXsputnSwitch PrintfStreamHeap.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioOverflowBase LibioPutsInv OsWorld PrintfBufferXsputnSwitch PrintfStreamHeap SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -27,7 +28,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (B : Z -> Z -> iProp Σ).
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 
 (** Selection uses remaining heap space or falls back to printf's staging array.
     The continuation receives the selected pointers and the original stream,
@@ -43,7 +44,7 @@ Lemma wp_printf_xsputn_heap_switch e from bb breg vb self fp mode flags2 held
     let stop := if k <? eo then mkPtr (db + eo) (Obj db) else mkPtr (bb + 176) (Obj bb) in
     live bb breg -∗ pcell bb 40 fp -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
     pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
 Proof.
   intros Hbb Hba Hbe Hbr Hv0.

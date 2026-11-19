@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_misc_makedev_os.
 From Glibc Require Import GlibcProgram.
 (** This file holds the shared pieces of the `c: _IO_file_doallocate` proofs
     (LibioReadCode.v). The function asks the jump table's stat for the
@@ -15,7 +16,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers LibioSetb.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioSetb.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec LibioSpecs.
@@ -130,7 +131,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: __gnu_dev_major(d)` returns [dev_major] d. *)
 Lemma wp_glibc___gnu_dev_major fr d Φ :
-  call_frame glibc___gnu_dev_major [WInt d] = Some fr -> 0 <= d < 2 ^ 64 ->
+  call_frame Unit_misc_makedev_os.fn___gnu_dev_major [WInt d] = Some fr -> 0 <= d < 2 ^ 64 ->
   ▷ Φ (Ret (WInt (dev_major d))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.
@@ -139,10 +140,10 @@ Proof using Type.
 Qed.
 
 (** The linked device-number helper establishes its pure result contract. *)
-#[global] Instance major_has_spec n `{!Defines ge n glibc___gnu_dev_major} :
+#[global] Instance major_has_spec n `{!Defines ge n Unit_misc_makedev_os.fn___gnu_dev_major} :
   HasSpec registry (os_wi w0) ge (TAtom n) major_spec.
 Proof using Type.
-  intros d. exists glibc___gnu_dev_major. split; [apply defines|].
+  intros d. exists Unit_misc_makedev_os.fn___gnu_dev_major. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post major_spec]. iIntros "%Hd HK".
   iApply (wp_glibc___gnu_dev_major fr d); [exact Hfr | exact Hd |].

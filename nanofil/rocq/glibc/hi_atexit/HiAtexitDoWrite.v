@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** Flushing a stream's buffer runs `c: _IO_new_do_write`, which hands
     the pending bytes to the write function and empties the buffer.
@@ -27,7 +28,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers LibioWriteDq LibioDoWriteEnd LibioDoWriteSetp LibioDoWriteTail LibioDoWriteRet
   LibioDoWriteCall LibioDoWrite HiAtexitBase.
 From Glibc Require FileInv LibioDoWrite LibioDoWriteCall LibioDoWriteEnd LibioDoWriteRet LibioDoWriteSetp LibioDoWriteTail LibioLogic LibioWriteDq OsWorld SysWrappers.
@@ -49,8 +50,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 
 
 (** Expressions of the language. *)
@@ -60,7 +61,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     LibioDoWriteCall.v asks for it: LibioWriteDq.v's triple at the
     whole share, through the object's own capability. *)
 Lemma hi_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b)); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
@@ -104,11 +105,11 @@ Definition hi_do_write_base :=
 (** A noncanceling write uses the captured wrapper rather than clearing flags2.
     Both branches return its exact value, the source bytes and errno ownership. *)
 Lemma hi_file_write_nocancel fr fb freg fl f2 fd tw off b reg o xs eb Φ :
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b)); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
@@ -133,7 +134,7 @@ Qed.
 Definition hi_do_write_mode_nocancel :=
   LibioDoWrite.wp_glibc__IO_new_do_write_mode
     (fun f2 => Z.land f2 2 = 0 \/
-      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
+      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel))
     (LibioDoWriteCall.wp_do_write_call Hfw _ hi_file_write_nocancel
        (LibioDoWriteRet.wp_do_write_ret
           (LibioDoWriteTail.wp_do_write_tail
@@ -144,7 +145,7 @@ Definition hi_do_write_mode_nocancel :=
 Definition hi_do_write_base_nocancel :=
   LibioDoWrite.wp_glibc__IO_new_do_write_base
     (fun f2 => Z.land f2 2 = 0 \/
-      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
+      Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel))
     (LibioDoWriteCall.wp_do_write_call Hfw _ hi_file_write_nocancel
        (LibioDoWriteRet.wp_do_write_ret
           (LibioDoWriteTail.wp_do_write_tail

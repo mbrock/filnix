@@ -10,6 +10,7 @@
     after the current word matches. [MemrchrMask] enters this loop
     whenever the final word holds no matching byte. *)
 
+From Glibc Require Import Unit_string_memrchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,18 +19,18 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
-  MemchrLast MemrchrCode MemrchrBits.
+  MemchrLast MemrchrBits.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
 (** Function [rblk] looks up a basic block by label in
-    [glibc_memrchr]. *)
+    [Unit_string_memrchr_os.fn___GI___memrchr]. *)
 Definition rblk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_memrchr) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_string_memrchr_os.fn___GI___memrchr) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 
-(** Block `L83` is the backward word-loop header of [glibc_memrchr]. *)
+(** Block `L83` is the backward word-loop header of [Unit_string_memrchr_os.fn___GI___memrchr]. *)
 Definition rblk83 : block := Eval vm_compute in rblk "L83".
 
 
@@ -124,7 +125,7 @@ Lemma rloop dq b reg wo ws cp c (k n i : nat) e r Φ :
   lookup (TAtom "iw_1.v7") e = Some (WInt (rep c)) ->
   wwin dq b reg wo ws -∗
   (wwin dq b reg wo ws -∗ Φ (Ret (WPtr (hit_ptr (mkPtr (b + wo + Z.of_nat k) cp) r)))) -∗
-  WP (ERun (mkFrame glibc_memrchr (put (TAtom "pr.1") (WPtr (mkPtr (b + wo + 8 * Z.of_nat i) cp))
+  WP (ERun (mkFrame Unit_string_memrchr_os.fn___GI___memrchr (put (TAtom "pr.1") (WPtr (mkPtr (b + wo + 8 * Z.of_nat i) cp))
          (put (TAtom "pr.2") (WInt (wrd ws (Z.of_nat i))) e)) [] None
        (Exec (TAtom "L83") (b_insts rblk83) (b_jump rblk83))) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.

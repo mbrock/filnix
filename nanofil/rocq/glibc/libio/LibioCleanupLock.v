@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves how `c: _IO_cleanup` (LibioCleanupCode.v) takes
     and releases `c: list_all_lock` around the loop of
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioCleanupCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart.
@@ -56,9 +57,9 @@ Lemma wp_cleanup_L23 e la lareg lk lkreg h hreg r cb Φ :
   ▷ (∀ e', ⌜lookup (TAtom "iw_1.v80") e' = Some (WPtr h) /\ lookup (TAtom "v1") e' = Some (WInt r) /\
             lookup (TAtom "iw_1.v2") e' = Some (WPtr cb)⌝ -∗
      live la lareg -∗ pcell la 0 h -∗ live_cap (ptr_cap h) hreg -∗ lock_state lk lkreg 1 0 (ow_self w0) -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L14")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L14")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
     {{ Φ }}.
 Proof using Type.
   intros Hgla Hglk Hv16 Hv1 Hv2 Hlaal Hlaend Hh.
@@ -78,7 +79,7 @@ Proof using Type.
 Qed.
 
 (** `c: __libc_cleanup_pop_restore`'s triple at offset 0 holds. *)
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 (** [pop_spec] holds. *)
 Context (Hpop_spec : pop_spec w0 registry ge).
@@ -95,7 +96,7 @@ Lemma wp_cleanup_L386 e r cb creg lk lkreg sb sreg Φ :
   single_ro ge sb sreg -∗ lock_state lk lkreg 1 0 (ow_self w0) -∗
   tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
   ▷ (lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81")))) : sexpr)
     {{ Φ }}.
 Proof using Type*.
   intros Hglk Hv2 Hv1 Hr Hcb Hcal Hcend Hcreg.

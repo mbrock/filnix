@@ -23,13 +23,15 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic StringLogic
   MemLogic HelloLeaf HelloMain.
+From Glibc Require Import Unit_nptl_alloca_cutoff_os Unit_stdlib_getenv_os Unit_string_memset_os Unit_string_strchr_os Unit_string_strchrnul_os.
+From Glibc Require Import Unit_string_strcmp_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry WordString FileInv
   GetoptModule GetoptState GetoptDiag GetoptLongDiag GetoptLongPfxAlloc GetoptInitial
   HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop HelloGetoptCall
-  HelloGetoptStart HelloGetoptBackend GetenvCode GetenvScan GetenvEntry GetenvStatic GetenvCall StrchrCode StrcmpCode
-  StrncmpCode StrlenLogic MemFwdCode HelloImageModule HelloImageLoad HelloImageLayout HelloImageStart
+  HelloGetoptStart HelloGetoptBackend GetenvScan GetenvEntry GetenvStatic GetenvCall
+  StrlenLogic HelloImageModule HelloImageLoad HelloImageLayout HelloImageStart
   HelloStartBridge HelloStartPost StartGetenv.
-From Glibc Require HelloGlibcJoin CutoffCode CutoffLogic.
+From Glibc Require HelloGlibcJoin CutoffLogic.
 Import ListNotations GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -104,13 +106,13 @@ Proof using Hi Hk.
   assert (Hgr : find_fn hge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r)) by num.
   assert (Hplo : find_fn hge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option))
     by num.
-  assert (Hcmp : find_fn hge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp)) by num.
-  assert (Hchr : find_fn hge (TAtom "__GI_strchr") = Some (Defined glibc_strchr)) by num.
-  assert (Hchrn : find_fn hge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul)) by num.
-  assert (Hncmp : find_fn hge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp)) by num.
-  assert (Hgetfn : find_fn hge (TAtom "__GI_getenv") = Some (Defined glibc_getenv)) by num.
-  assert (Hgms : find_fn hge (TAtom "__GI_memset") = Some (Defined glibc_memset)) by num.
-  assert (Hcut : find_fn hge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined CutoffCode.glibc_libc_alloca_cutoff))
+  assert (Hcmp : find_fn hge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp)) by num.
+  assert (Hchr : find_fn hge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr)) by num.
+  assert (Hchrn : find_fn hge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul)) by num.
+  assert (Hncmp : find_fn hge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp)) by num.
+  assert (Hgetfn : find_fn hge (TAtom "__GI_getenv") = Some (Defined Unit_stdlib_getenv_os.fn___GI_getenv)) by num.
+  assert (Hgms : find_fn hge (TAtom "__GI_memset") = Some (Defined Unit_string_memset_os.fn___GI_memset)) by num.
+  assert (Hcut : find_fn hge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff))
     by num.
   pose proof (hk_gi_strlen _ _ Hk) as Hlen.
   set (N := word_string DfracDiscarded (sym_ptr hge "glibc_getopt#str.145") [80;79;83;73;88;76;89;95;67;79;82;82;69;67;84] : iProp Σ).

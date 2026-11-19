@@ -7,6 +7,7 @@
     contract. The function that finishes a file-backed print calls the
     backend directly and can use the same contract. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_flush_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,7 +16,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic CFrame CStruct CBlocks
-  PrintfLayout PrintfOut PrintfSpec PrintfBufferIoCode PrintfBufferIoSrc PrintfBufferIoNames.
+  PrintfLayout PrintfOut PrintfSpec PrintfBufferIoSrc PrintfBufferIoNames.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -65,7 +66,7 @@ Definition flush_blocks : list bspec :=
 (** After a successful flush, the next append needs somewhere to write its
     first byte. The dispatcher checks that the write pointer differs from
     the end before it returns one to the caller. *)
-Lemma flush_table : ⊢ blocks_hold glibc___printf_buffer_flush flush_blocks.
+Lemma flush_table : ⊢ blocks_hold Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush flush_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [| |done]; iModIntro;
     iIntros (bb e from Φ) "_ %He H HK"; cbn [bs_sig bs_vals bs_label bs_post] in *; c_env_open He.
@@ -88,7 +89,7 @@ Qed.
 
 (** A caller of `c: __printf_buffer_write` can discharge the dispatcher's
     contract with the single backend that a file-backed buffer uses. *)
-Lemma flush_dispatch_has_spec `{!Defines ge "__printf_buffer_flush" glibc___printf_buffer_flush} :
+Lemma flush_dispatch_has_spec `{!Defines ge "__printf_buffer_flush" Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_flush") (flush_spec 4 R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ flush_blocks); [exact defines | reflexivity | reflexivity | | exact flush_table].

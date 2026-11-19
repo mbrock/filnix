@@ -15,6 +15,8 @@
     proof follows the code in that order, one category at a time, and
     its last lemma joins the parts into the whole call. *)
 
+From Glibc Require Import Unit_locale_findlocale_os Unit_locale_setlocale_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_stdlib_getenv_os.
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,10 +25,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic StringLogic VariadicLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageEarly OsWorld OsRegistry FileInv LibioLogic WordString
-  GetoptBytes GetenvEntry RdlockLogic RwlockIdle StrcmpLogic StrchrnulLogic StrlenWord GetenvCode GetenvScan GetenvStatic GetenvCall
-  StartGetenv LocaleEnv FindlocaleEnv FindlocaleCode FindlocaleC SetlocaleCode PostloadCtypeCode
-  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt WrlockCode RwunlockCode
-  HelloSetlocalePostload HelloLocaleState HelloStartHdBuild WrlockCode RwunlockCode StrchrCode StrlenLogic StrncmpCode AllocLogic LibioCloseSteps StartPtmallocInit SysWrappers LibioCleanupExit Fix.
+  GetoptBytes GetenvEntry RdlockLogic RwlockIdle StrcmpLogic StrchrnulLogic StrlenWord GetenvScan GetenvStatic GetenvCall
+  StartGetenv LocaleEnv FindlocaleEnv FindlocaleC
+  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt
+  HelloSetlocalePostload HelloLocaleState HelloStartHdBuild StrlenLogic AllocLogic LibioCloseSteps StartPtmallocInit SysWrappers LibioCleanupExit Fix.
 Module FL := VariadicLogicOn R LG0.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic FL.
 Open Scope Z_scope.
@@ -64,25 +66,25 @@ Local Abbreviation p80 := (rop (img_a "hello#str.80")).
 Local Abbreviation lk := (img_a "__libc_setlocale_lock").
 Local Abbreviation lkreg := (img_gd "__libc_setlocale_lock").
 
-Local Instance d_wrlock : Defines hge "__GI___pthread_rwlock_wrlock" WrlockCode.glibc_pthread_rwlock_wrlock.
-Proof. vm_compute. reflexivity. Qed.
+Local Instance d_wrlock : Defines hge "__GI___pthread_rwlock_wrlock" Unit_nptl_pthread_rwlock_wrlock_os.fn____pthread_rwlock_wrlock.
+Proof. reflexivity. Qed.
 
-Local Instance d_unlock : Defines hge "__GI___pthread_rwlock_unlock" RwunlockCode.glibc_pthread_rwlock_unlock.
-Proof. vm_compute. reflexivity. Qed.
-Local Instance d_getenv : Defines hge "__GI_getenv" glibc_getenv.
-Proof. vm_compute. reflexivity. Qed.
+Local Instance d_unlock : Defines hge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock.
+Proof. reflexivity. Qed.
+Local Instance d_getenv : Defines hge "__GI_getenv" Unit_stdlib_getenv_os.fn___GI_getenv.
+Proof. reflexivity. Qed.
 Local Instance d_strlen : Defines hge "__GI_strlen" glibc_strlen.
-Proof. vm_compute. reflexivity. Qed.
-Local Instance d_strncmp : Defines hge "__GI_strncmp" glibc_strncmp.
-Proof. vm_compute. reflexivity. Qed.
-Local Instance d_strchr : Defines hge "__GI_strchr" glibc_strchr.
-Proof. vm_compute. reflexivity. Qed.
-Local Instance d_strchrnul : Defines hge "__GI___strchrnul" glibc_strchrnul.
-Proof. vm_compute. reflexivity. Qed.
-Local Instance d_find : Defines hge "_nl_find_locale" glibc_nl_find_locale.
-Proof. vm_compute. reflexivity. Qed.
+Proof. reflexivity. Qed.
+Local Instance d_strncmp : Defines hge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp.
+Proof. reflexivity. Qed.
+Local Instance d_strchr : Defines hge "__GI_strchr" Unit_string_strchr_os.fn___GI_strchr.
+Proof. reflexivity. Qed.
+Local Instance d_strchrnul : Defines hge "__GI___strchrnul" Unit_string_strchrnul_os.fn___GI___strchrnul.
+Proof. reflexivity. Qed.
+Local Instance d_find : Defines hge "_nl_find_locale" Unit_locale_findlocale_os.fn__nl_find_locale.
+Proof. reflexivity. Qed.
 Local Instance d_free : Defines hge "free" free_fn.
-Proof. vm_compute. reflexivity. Qed.
+Proof. reflexivity. Qed.
 
 Local Ltac sums := repeat match goal with |- context [(?A + ?Y) mod 2 ^ 64] =>
   tryif has_var Y then fail else let v := eval vm_compute in Y in tryif constr_eq Y v then fail else change Y with v end.
@@ -170,7 +172,7 @@ Qed.
 (** ## The search in each category *)
 
 Definition sl_L262 : block := Eval vm_compute in
-  match find_block (TAtom "L262") (fn_blocks glibc_setlocale) with
+  match find_block (TAtom "L262") (fn_blocks Unit_locale_setlocale_os.fn___GI_setlocale) with
   | Some b => b | None => mkBlock (TAtom "L262") [] [] JRetVoid end.
 
 (** These temporaries hold setlocale's arguments and its locals for the
@@ -201,7 +203,7 @@ Definition sl_tmp (b4 b5 b103 b104 : Z) : iProp Σ :=
   live b4 (hreg b4 2) ∗ pcell b4 0 null ∗ live b5 (hreg b5 2) ∗ icell b5 0 0 ∗
   live b103 (hreg b103 14) ∗ live b104 (hreg b104 14).
 
-Local Abbreviation at262 e := (ERun (mkFrame glibc_setlocale e [] None
+Local Abbreviation at262 e := (ERun (mkFrame Unit_locale_setlocale_os.fn___GI_setlocale e [] None
   (Exec (TAtom "L262") (b_insts sl_L262) (b_jump sl_L262))) : sexpr).
 
 Local Ltac vmr := vm_compute; reflexivity.
@@ -295,10 +297,10 @@ Qed.
 (** ## The composite name *)
 
 Definition sl_C10 : block := Eval vm_compute in
-  match find_block (TAtom "iw_2.L10") (fn_blocks glibc_setlocale) with
+  match find_block (TAtom "iw_2.L10") (fn_blocks Unit_locale_setlocale_os.fn___GI_setlocale) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L10") [] [] JRetVoid end.
 
-Local Abbreviation atC10 e := (ERun (mkFrame glibc_setlocale e [] None
+Local Abbreviation atC10 e := (ERun (mkFrame Unit_locale_setlocale_os.fn___GI_setlocale e [] None
   (Exec (TAtom "iw_2.L10") (b_insts sl_C10) (b_jump sl_C10))) : sexpr).
 
 Local Abbreviation szb := (img_a "_nl_category_name_sizes").
@@ -390,10 +392,10 @@ Qed.
 (** ## Switching the categories *)
 
 Definition sl_L394 : block := Eval vm_compute in
-  match find_block (TAtom "L394") (fn_blocks glibc_setlocale) with
+  match find_block (TAtom "L394") (fn_blocks Unit_locale_setlocale_os.fn___GI_setlocale) with
   | Some b => b | None => mkBlock (TAtom "L394") [] [] JRetVoid end.
 
-Local Abbreviation at394 e := (ERun (mkFrame glibc_setlocale e [] None
+Local Abbreviation at394 e := (ERun (mkFrame Unit_locale_setlocale_os.fn___GI_setlocale e [] None
   (Exec (TAtom "L394") (b_insts sl_L394) (b_jump sl_L394))) : sexpr).
 
 (** The composite name is "C". *)
@@ -564,7 +566,7 @@ Local Ltac so k P Q := iApply (sl_set_one (nth k (tail sl_rows) (0,0,hreg 0 0,0,
   iIntros (?) "[% %]"; iIntros Q; kregs.
 
 Lemma sl_explore fr0 tb treg dqt dqi tid cw sh treg' dql Φ :
-  call_frame glibc_setlocale [WInt 6; WPtr p80] = Some fr0 ->
+  call_frame Unit_locale_setlocale_os.fn___GI_setlocale [WInt 6; WPtr p80] = Some fr0 ->
   rw_place (objp lk) lk lkreg tb treg -> cw <> tid ->
   rw_state lk lkreg 0 cw sh 0 -∗ rw_self dqt tb treg dqi tid -∗
   live gl glreg -∗ pcell gl 176 cv -∗ live_capq DfracDiscarded (Ro cb) treg' -∗

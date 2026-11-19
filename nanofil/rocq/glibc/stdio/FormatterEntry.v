@@ -7,20 +7,21 @@
     allocations. Its real call frame therefore has no stack objects to
     invalidate on return. This fact does not permit dropping an arbitrary
     list of stack objects supplied at an internal block. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
   FormatterLiteral FormatterInitialScan Fix.
 Import LiteralVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** Calling the captured function initializes its actual stack-object
     list to empty; the heap allocation instructions preserve that list. *)
 Lemma formatter_call_stack_empty bb p ab flags fr :
-  call_frame glibc_printf_buffer [WPtr bb; WPtr p; WPtr ab; WInt flags] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer [WPtr bb; WPtr p; WPtr ab; WInt flags] = Some fr ->
   fr_locals fr = [].
 Proof. intros H. injection H as <-. reflexivity. Qed.
 (** The scan needs the original call arguments and the allocated saved
@@ -42,7 +43,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     It supplies a fresh saved-format cell, work area and cursor copy.
     Other caller resources remain in the frame around the continuation. *)
 Lemma wp_formatter_entry fr bb p ab ar flags sb sr cur eb er err Φ :
-  call_frame glibc_printf_buffer
+  call_frame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     [WPtr bb; WPtr p; WPtr (mkPtr ab (Obj ab)); WInt flags] = Some fr ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   0 < ab -> ab mod 8 = 0 -> ab + 8 <= r_end ar -> r_end ar <= 2^63 ->
@@ -57,7 +58,7 @@ Lemma wp_formatter_entry fr bb p ab ar flags sb sr cur eb er err Φ :
     live fb (mkRegion fb (fb+16) Heap Live) -∗ pcell fb 0 null -∗
     obj wb (heap_req 4 1000) -∗
     live vb (mkRegion vb (vb+32) Heap Live) -∗ pcell vb 0 (mkPtr cur (Ro sb)) -∗
-    WP (ERun (mkFrame glibc_printf_buffer e [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None
       (Exec (TAtom "start") (skipn 19 (b_insts initial_scan_block)) (b_jump initial_scan_block))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type.

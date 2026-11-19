@@ -4,6 +4,7 @@
     The call rule stops before the count comparison. The composed rule
     follows the matching-count branch, leaving buffer selection to the caller. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,8 +12,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls Pieces Heap Language Logic Symbolic.
-From Glibc Require Import LibioLogic LibioXsputnCode LibioXsputnZero
-  PrintfBufferFileCode PrintfBufferXsputnReturn.
+From Glibc Require Import LibioLogic LibioXsputnZero
+  PrintfBufferXsputnReturn.
 From Glibc Require LibioXsputnZero.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -26,7 +27,7 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context {world : Type} (registry : name -> option (contract world))
   (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 
 (** The proof retains the caller's world interpretation across the indirect call. *)
 Local Instance zero_call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
@@ -47,10 +48,10 @@ Lemma wp_printf_xsputn_zero_call e fp src bb (P : iProp Σ) Φ :
     lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (bb+24) (Obj bb))) /\
     lookup (TAtom "v37") e' = Some (WInt 0) /\
     lookup (TAtom "v55") e' = Some (WInt 0)⌝ -∗ P -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Exec (TAtom "iw_1.join") (skipn 9 (b_insts printf_xsputn_block))
         (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
 Proof using Hfn SafepointStable0.
@@ -79,9 +80,9 @@ Lemma wp_printf_xsputn_zero_complete e fp src bb (P : iProp Σ) Φ :
   lookup (TAtom "v37") e = Some (WInt 0) ->
   P -∗ (∀ e', ⌜lookup (TAtom "v0") e' = Some (WPtr (mkPtr bb (Obj bb))) /\
     lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (bb+24) (Obj bb)))⌝ -∗ P -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L40") (Some (TAtom "iw_1.join")))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
 Proof using Hfn SafepointStable0.

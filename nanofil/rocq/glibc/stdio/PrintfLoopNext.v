@@ -8,6 +8,7 @@
     all of them. So the module proves that code once and uses the proof
     for each row. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -40,8 +41,8 @@ Local Notation blocks := (loop_blocks k R).
 (** The block ends a conversion. It needs the state of the loop with
     `c: f` at the last byte of the conversion. *)
 Lemma next_body_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  body_triple glibc_printf_buffer "L1150" next_body pl_in pl_vals (next_pre k R) (pl_post k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  body_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" next_body pl_in pl_vals (next_pre k R) (pl_post k R).
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
@@ -49,7 +50,7 @@ Proof using Type*.
   destruct tl as [|c tl]; [done|]. cbn [tail] in Hp. clear Hne.
   iDestruct (word_string_range with "Hs") as %Hfr. cbn [ptr_addr] in Hfr.
   assert (Hlen : length bytes = (length pre + S (length tl))%nat) by (rewrite Hbytes length_app; reflexivity).
-  body_start glibc_printf_buffer "L1150". step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs". step. check "Hfl". store "Hfl" "Hfc".
+  body_start Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150". step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs". step. check "Hfl". store "Hfl" "Hfc".
   cbn [ptr_add ptr_addr ptr_cap]. unwrap2.
   (* The rest of the format, after the conversion's last byte, is a string of its own for the search. *)
   assert (Hsplit : bytes = (pre ++ [c]) ++ tl) by (rewrite Hbytes -app_assoc; reflexivity).
@@ -94,7 +95,7 @@ Qed.
     uses the body. The step copies one variable, which holds the same
     value on every way in. *)
 Lemma next_rows_hold :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (next_rows k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (next_rows k R).
 Proof using Type*.
   iIntros "#IH". iPoseProof (next_body_holds with "IH") as "#Hnext".
   repeat iSplit; [| | | | | done]; iModIntro; iIntros (y e from Φ) "%Hfrom %He H HK"; row_simpl; c_env_open He;

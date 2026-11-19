@@ -13,6 +13,7 @@
     proofs here take the tables out, lend the locale to the function,
     and give the resources back when it returns. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,8 +21,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry SysCode FileInv LibioLogic LibioCloseSteps LibioReadCode
-  LibioDoWriteCode LibioWIdle LibioWXsputnWindow LibioWOverflowWrite LibioWCloseIt LibioWConvAscii
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioCloseSteps
+  LibioWIdle LibioWXsputnWindow LibioWOverflowWrite LibioWCloseIt LibioWConvAscii
   LibioWDoWriteLoop LibioWConvOut HelloImageLoad SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -30,9 +31,9 @@ Local Abbreviation objp b := (mkPtr b (Obj b)).
 Section use.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
-Context `{Hdw : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
+Context `{Hdw : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
   `{Hcvf : !Defines ge "__libio_codecvt_out" codecvt_out_fn}.
 Context (fd vb : Z) (vr : region) (eb : Z) (tw tm : ptr).
 Context (Hfd : In fd (ow_fds w0)) (Herr : ow_errno w0 = Some (objp eb)).

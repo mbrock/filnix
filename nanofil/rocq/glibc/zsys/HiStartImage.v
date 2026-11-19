@@ -29,13 +29,13 @@ Open Scope string_scope.
     appending it moves nothing. *)
 
 (** No item of the decoded image uses a runner name. *)
-Lemma hi_ctor_names_fresh : ctor_names_fresh hi_decoded = true.
+Lemma hi_ctor_names_fresh : ctor_names_fresh hi_linked = true.
 Proof. vm_compute. reflexivity. Qed.
 
 (** The image registers its three constructors: `c: _IO_stdfiles_init`,
     `c: check_stdfiles_vtables` and `c: _init_first`. *)
 Lemma hi_ctor_names :
-  ctor_names hi_decoded = [TAtom "glibc_stdfiles#_IO_stdfiles_init"; TAtom "glibc_vtables#check_stdfiles_vtables";
+  ctor_names hi_linked = [TAtom "glibc_stdfiles#_IO_stdfiles_init"; TAtom "glibc_vtables#check_stdfiles_vtables";
                            TAtom "glibc_init_first#_init_first"].
 Proof. vm_compute. reflexivity. Qed.
 
@@ -48,7 +48,7 @@ Proof. rewrite hi_module_runner. exact (with_ctor_runner_defines _ hi_ctor_names
     symbol of the decoded image. [initial_memory_globals] relates this
     layout to the one [initial_memory] gives. *)
 Lemma hi_start_keeps_globals :
-  match module_globals hi_decoded with
+  match module_globals hi_linked with
   | Some g0 => forallb (fun '(n, p) =>
       match lookup n hi_globals with
       | Some q => andb (Z.eqb (ptr_addr p) (ptr_addr q)) (cap_eqb (ptr_cap p) (ptr_cap q))

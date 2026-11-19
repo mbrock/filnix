@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf finds the stream operation through FILE's jump table before
     sending its staged bytes. It computes the byte count from its staging
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnReturn.
+  LibioCloseSteps LibioPutsInv PrintfBufferXsputnReturn.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -32,7 +33,7 @@ Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 
 (** An empty staging array requests zero bytes, and a full array requests 128.
     Every position between these endpoints gives its exact byte count. *)
@@ -55,10 +56,10 @@ Lemma wp_printf_xsputn_prelude e from bb breg fb freg dqf vb vreg n Φ :
     live bb breg -∗ liveq dqf fb freg -∗
     pcell bb 8 (mkPtr (bb + 48 + n) (Obj bb)) -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗
     pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
         (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L14") from)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hn Hv0 Hchk Hchk1.

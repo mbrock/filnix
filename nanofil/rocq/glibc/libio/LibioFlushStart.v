@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The start of `c: _IO_flush_all` (LibioFlushCode.v), to the head
     of its loop over `c: _IO_list_all`: `c: _IO_cleanup_region_start_noarg`
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean.
 From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -46,7 +47,7 @@ Local Instance flush_start_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition push_spec : Prop := forall fr cb creg pv xs Φ,
-  call_frame glibc___libc_cleanup_push_defer [WPtr (mkPtr cb (Obj cb))] = Some fr ->
+  call_frame Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer [WPtr (mkPtr cb (Obj cb))] = Some fr ->
   0 < cb -> cb mod 8 = 0 -> cb + 32 <= r_end creg -> r_end creg <= 2 ^ 63 -> length xs = 4%nat ->
   ⊢ tcb_cleanup_inv (ow_self w0) -∗ live cb creg -∗ pcell cb 24 pv -∗ bytes cb 16 xs -∗
     ▷ (tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
@@ -57,7 +58,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}.
 
 
 (** Expressions of the language. *)
@@ -85,7 +86,7 @@ Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H
     by the thread, and the loop's head is entered from `c: L15` with
     the list's head h in `c: v81` and cb in `c: v3`. *)
 Lemma wp_flush_start fr la lareg lk lkreg h hreg sb sreg fcp Φ :
-  call_frame glibc__IO_flush_all [] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_flush_all [] = Some fr ->
   lookup (TAtom "__GI__IO_list_all") (ge_globals ge) = Some (mkPtr la (Obj la)) ->
   lookup (TAtom "glibc_genops#list_all_lock") (ge_globals ge) = Some (mkPtr lk (Obj lk)) ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
@@ -97,7 +98,7 @@ Lemma wp_flush_start fr la lareg lk lkreg h hreg sb sreg fcp Φ :
                    0 < cb /\ cb mod 8 = 0 /\ cb + 32 <= r_end creg /\ r_end creg <= 2 ^ 63⌝ -∗
      tcb_pushed (ow_self w0) (mkPtr cb (Obj cb)) -∗ live cb creg -∗ pcell cb 24 null -∗ int_cell cb 16 0 -∗
      live la lareg -∗ pcell la 0 h -∗ live_cap (ptr_cap h) hreg -∗ lock_state lk lkreg 1 0 (ow_self w0) -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L82") (Some (TAtom "L15")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L82") (Some (TAtom "L15")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.

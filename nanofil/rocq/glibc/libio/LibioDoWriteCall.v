@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** The call of `c: _IO_new_do_write` (LibioDoWrite.v) through the
     jump table, from block `c: iw_1.L9` on ([wp_do_write_call]).
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers LibioDoWriteRet.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -38,7 +39,7 @@ Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 
 (** The caller chooses which cancellation flags its proved write rule accepts.
     This block forwards that condition without inspecting the flags itself. *)
@@ -49,7 +50,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The jump table's write, as LibioWrite.v proves it
     ([wp_glibc__IO_new_file_write]). *)
 Context (Hfw_spec : forall fr fb freg fl f2 fd tw off b reg o xs eb Φ,
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b)); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
@@ -83,7 +84,7 @@ Context (Hret_spec : forall fb freg fl bb breg rp re rb wb wp we be n r e mode �
      pcell fb off_write_ptr base -∗ pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗ bytes fb off_column [0; 0] -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.iw_2.join") (skipn 5 (b_insts dw_join)) (b_jump dw_join))) : sexpr) {{ Φ }}).
 
 (** Block `c: iw_1.L9` of `c: _IO_new_do_write` on: the jump table
@@ -115,7 +116,7 @@ Lemma wp_do_write_call fb freg fl f2 fd tw off bb breg i xs rp rb wp we be eb vb
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L9") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None (Enter (TAtom "iw_1.L9") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n wb base Hn0 Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr Happ He Hb Hi Hbend Hbreg Hy
     Hbe Hbec Hmd Hv0 Hc0 Hv2 Hv4.

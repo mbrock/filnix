@@ -9,7 +9,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics FileInv LibioLogic LibioReadCode
+From Glibc Require Import Unit_libio_genops_os.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics FileInv LibioLogic
   LibioSetb LibioPutsInv LibioCloseSteps.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -21,7 +22,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** Replacing the in-object buffer changes only the two buffer pointers
     and the flags. It needs no heap-buffer ownership or free rule. *)
 Lemma wp_glibc__IO_setb_short fr fb freg fl oe nb ne a Φ :
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= a < 2 ^ 32 -> Z.land fl io_user_buf <> 0 ->
   live fb freg -∗ int_cell fb off_flags fl -∗

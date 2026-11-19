@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_genops_os Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the tail blocks of `c: _IO_file_doallocate` (LibioDoAllocBase.v
     describes the function). Block `c: L7` calls `c: malloc` for the
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -36,7 +37,7 @@ Import LibioDoAllocBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld File
 Import ProgramAbbreviations.
 Section rules_values.
 Definition da_L7 : block := Eval vm_compute in
-  match find_block (TAtom "L7") (fn_blocks glibc__IO_file_doallocate) with
+  match find_block (TAtom "L7") (fn_blocks Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate) with
   | Some b => b | None => mkBlock (TAtom "L7") [] [] JRetVoid end.
 End rules_values.
 Section rules.
@@ -46,18 +47,18 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 (** The genv defines `c: __gnu_dev_major`. *)
-Context `{Hmaj : !Defines ge "__gnu_dev_major" glibc___gnu_dev_major}.
+Context `{Hmaj : !Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major}.
 (** The genv defines `c: __isatty_nostatus`. *)
-Context `{Hisatty : !Defines ge "__isatty_nostatus" glibc___isatty_nostatus}.
+Context `{Hisatty : !Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus}.
 
 (** The genv defines `c: _IO_setb`. *)
-Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
     [wp_glibc__IO_setb] proves it with the old buffer null. *)
 Context (Hsetb_null : forall fr fb freg fl oe nb ne a Φ,
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
@@ -91,7 +92,7 @@ Lemma wp_doalloc_malloc fb freg fl oe sz e Φ :
      live fb freg -∗ int_cell fb off_flags (setb_flags fl 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate (put (TAtom "pr.2") (WInt sz) e) [] None
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate (put (TAtom "pr.2") (WInt sz) e) [] None
               (Exec (TAtom "L7") (b_insts da_L7) (b_jump da_L7))) : sexpr) {{ Φ }}.
 Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsz Hv0. iIntros "Hl Hfl Hb He HM HK". cbn [da_L7 b_insts b_jump].
@@ -124,7 +125,7 @@ Lemma wp_doalloc_L7 fb freg fl oe sz from e Φ :
      live fb freg -∗ int_cell fb off_flags (setb_flags fl 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}.
 Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsz Hfrom Hv0. iIntros "Hl Hfl Hb He HM HK".
   destruct Hfrom as [[-> (v & Hv & Hvs)] | [[-> | ->] ->]]; step;
@@ -146,7 +147,7 @@ Lemma wp_doalloc_L28 fb freg fl oe sb sreg bs3 from e Φ :
      live fb freg -∗ int_cell fb off_flags (setb_flags fl 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L28") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L28") (Some from))) : sexpr) {{ Φ }}.
 Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hv4 Hc4.
   iIntros "Hl Hfl Hb He HM Hsl Hb3 HK".
@@ -185,7 +186,7 @@ Lemma wp_doalloc_L33 fb freg fl oe sb sreg bs3 from e Φ :
      live fb freg -∗ int_cell fb off_flags (setb_flags (Z.lor fl io_line_buf) 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
 Proof using Hmalloc Hsetb_null Hsetbf.
   intros Hfb Hal Hend Hfreg Hsb Hsal Hsend Hsreg Hl3 Hv0 Hc0 Hv4 Hc4.
   iIntros "Hl [%Hfl Hflb] Hb He HM Hsl Hb3 HK". unfold file_size in Hend.

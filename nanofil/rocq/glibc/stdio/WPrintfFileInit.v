@@ -4,7 +4,7 @@
     xsputn slot with a character count; the formatter never calls the
     stream's overflow slot. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileIn
 Open Scope Z_scope.
 
 (** Hello calls this function before it copies the first character into the array. *)
-Definition wprintf_file_init_fn := hello_image_fn___wprintf_buffer_to_file_init.
+Definition wprintf_file_init_fn := Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.fn___wprintf_buffer_to_file_init.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

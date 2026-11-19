@@ -18,11 +18,11 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
 From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode.
+From Glibc Require Import TfindEmpty LocalenameLogic.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextPreRules DcigettextRoute DcigettextSecure.
+From Glibc Require Import DcigettextPreRules DcigettextRoute DcigettextSecure.
 From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV.
 From Glibc Require Import HelloGettextLink HelloGettextImage HelloStrchrImageCode HelloStrchrImage.
 From Glibc Require Import Fix.

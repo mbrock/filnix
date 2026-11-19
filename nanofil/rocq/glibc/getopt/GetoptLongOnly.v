@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** In long-only mode, the scanner tries a single-dash argument as a
     long option unless the argument is one character that the short
@@ -17,7 +18,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule GetoptState GetoptBytes
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCursor GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld StrchrnulLogic.
 From Glibc Require Import Fix.
@@ -77,8 +78,8 @@ Ltac rdin q s k :=
     long-option parser with the cursor one byte into the argument. *)
 Lemma wp_getopt_long_only ks e i n c lonly po so b r av ar ps s Φ :
   avoids ks long_only_names = true ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
   lookup (TAtom "v10") e = Some (WInt lonly) ->
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->

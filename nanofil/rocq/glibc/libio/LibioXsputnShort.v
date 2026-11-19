@@ -3,15 +3,16 @@
     buffer if necessary, then writes the whole string from the caller's
     buffer. A partial write leaves the stream just as empty as a full one. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode SysWrappers FileInv FileIdle FileTidy
-  PrintfStreamInv LibioFputsSpec LibioLogic LibioPutsInv LibioReadCode LibioDoWriteCode LibioGenCode LibioSetb
-  LibioXsputnCode LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortSend LibioOverflowShortIdle
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy
+  PrintfStreamInv LibioFputsSpec LibioLogic LibioPutsInv LibioSetb
+  LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortSend LibioOverflowShortIdle
   LibioOverflowShort LibioXsputnShortWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -26,7 +27,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     and after every later write. The space test therefore skips the copy
     and passes the original pointer and count to the flush path. *)
 Lemma wp_xs_short_enter fr fb freg src n fresh rb fl Φ :
-  call_frame glibc__IO_new_file_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr src; WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr src; WInt n] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb+file_size <= r_end freg -> r_end freg <= 2^63 ->
   0 < n < 2^63 -> Z.land fl 512 = 0 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ short_input fb fresh rb -∗
@@ -35,7 +36,7 @@ Lemma wp_xs_short_enter fr fb freg src n fresh rb fl Φ :
        lookup (TAtom "v4") e = Some (WInt n) /\ lookup (TAtom "pr.5") e = Some (WInt n) /\
        lookup (TAtom "pr.1") e = Some (WPtr src)⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl -∗ short_input fb fresh rb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L120") (Some (TAtom "L96")))) : gexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Enter (TAtom "L120") (Some (TAtom "L96")))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hfr Hfb Hal Hend Hrend Hn H512. injection Hfr as <-. unfold file_size in Hend.
@@ -50,24 +51,24 @@ Proof using Type.
 Qed.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge).
-Context `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
-Context `{!Defines ge "__GI__IO_setb" glibc__IO_setb}.
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context `{!Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
+Context `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
+Context `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context `{!Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow).
 
 (** The caller gets its input share and a tidy stream back. On a
     nonempty input, even an error leaves the write pointer and write
     end at the short byte, with nothing pending and no room. *)
 Lemma wp_xsputn_short fr vb self fb freg st nb flags2 held dq b reg o c ys eb Φ :
   let fp := mkPtr fb (Obj fb) in let n := Z.of_nat (length ys) in let fd := fs_fileno st in
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
   fb mod 8 = 0 -> 0 < fb -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> flags_ok st ->
   idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 -> fs_vtable st = mkPtr (vb+vt_file) (Ro vb) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st -> has (fs_flags st) io_unbuffered = true ->
   has (fs_flags st) io_no_writes = false ->
-  (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   (c = Obj b \/ c = Ro b) -> 0 < b -> 0 <= o -> b+o+n <= r_end reg -> r_end reg <= 2^63 -> Forall (fun y => 0 <= y < 256) ys ->
   fputs_ro vb -∗ live fb freg -∗ file_fields fb st -∗ lock_inv self (fs_lock st) held -∗ buf_idle nb -∗

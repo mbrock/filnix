@@ -18,12 +18,12 @@ From Glibc Require Import StartCtors.
 Import ListNotations.
 Open Scope string_scope.
 
-(** The program is the decoded module followed by its constructor
+(** The program is the linked module followed by its constructor
     runner. *)
-Definition hi_module : module := with_ctor_runner hi_decoded.
+Definition hi_module : module := with_ctor_runner hi_linked.
 
-(** The program is exactly the decoded module with the runner appended. *)
-Lemma hi_module_runner : hi_module = with_ctor_runner hi_decoded.
+(** The program is exactly the linked module with the runner appended. *)
+Lemma hi_module_runner : hi_module = with_ctor_runner hi_linked.
 Proof. reflexivity. Qed.
 
 (** Laying out the program places each of its symbols at this pointer. *)

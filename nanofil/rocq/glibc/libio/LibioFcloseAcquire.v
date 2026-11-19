@@ -3,6 +3,7 @@
     the caller has not disabled locking. It stops at the descriptor-close
     branch and returns the stream fields with the held lock. *)
 
+From Glibc Require Import Unit_libio_iofclose_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFcloseCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps.
 Import ListNotations ProgramAbbreviations SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -31,7 +32,7 @@ Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply
     the two temporaries used by the descriptor-close branch. *)
 Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
   let fp := mkPtr fb (Obj fb) in
-  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofclose_os.fn__IO_new_fclose [WPtr fp] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_user_lock = false ->
   single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
@@ -40,7 +41,7 @@ Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
   (∀ e from, ⌜lookup (TAtom "v0") e = Some (WPtr fp) /\ lookup (TAtom "chk0") e = Some (WPtr fp)⌝ -∗
      tcb_cleanup_inv (ow_self w0) -∗ live fb freg -∗ int_cell fb off_flags fl -∗
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗
-     WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
   intros fp Hfr. injection Hfr as <-. intros Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.

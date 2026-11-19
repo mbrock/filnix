@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** The C-locale route of glibc's `c: __dcigettext` calls malloc twice,
     once for the name of the catalog file and once for a copy of the
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb DcigettextCode DcigettextFree DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb DcigettextFree DcigettextExit.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -52,7 +53,7 @@ Lemma wp_dci_fail_join_fr e xs xsreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
   0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xsreg -> r_end xsreg <= 2 ^ 48 ->
   live xs xsreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros [Hfn Hfl] Hge Hlk1 Hlk2 Hu1 Hu2 Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2 Hxs0 Hxs8 Hxsend Hxsr.
   iIntros "Hxl Hxc HU1 HU2 Herr HK".
@@ -85,7 +86,7 @@ Lemma wp_dci_fail_join e xs xsreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
   0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xsreg -> r_end xsreg <= 2 ^ 48 ->
   live xs xsreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros Hh. apply wp_dci_fail_join_fr, dci_free_rule_heap, Hh. Qed.
 
 (** ## The second allocation fails *)
@@ -105,7 +106,7 @@ Lemma wp_dci_fail_name_fr e xs xsreg xd xreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ
   0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xsreg -> r_end xsreg <= 2 ^ 48 -> r_kind xreg = Heap -> 0 < xd < 2 ^ 64 ->
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros [Hfn Hfl] Hge Hlk1 Hlk2 Hu1 Hu2 Hv17 Hc0 Hv232 Hv254 Hv69 Hs Hv6 Hv2
     Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
@@ -139,6 +140,6 @@ Lemma wp_dci_fail_name e xs xsreg xd xreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ :
   0 < xs -> xs mod 8 = 0 -> xs + 8 <= r_end xsreg -> r_end xsreg <= 2 ^ 48 -> r_kind xreg = Heap -> 0 < xd < 2 ^ 64 ->
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros Hh. apply wp_dci_fail_name_fr, dci_free_rule_heap, Hh. Qed.
 End rules.

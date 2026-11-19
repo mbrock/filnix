@@ -2,7 +2,7 @@
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -11,8 +11,8 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+From Glibc Require Import Unit_libio_wfiledoalloc_os Unit_libio_wgenops_os.
 
-From Glibc Require Import LibioWAllocCode.
 Module LibioWAllocSrc.
 
 Definition file_0 : string := "wfiledoalloc.c".
@@ -146,12 +146,8 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 End fn__IO_wfile_doallocate.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) libiowalloc_module with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) ["__GI__IO_wsetb"; "__GI__IO_wdoallocbuf"; "_IO_wfile_doallocate"].
+Definition source_blocks : list (string * list name) := Eval lazy in
+  [("__GI__IO_wsetb", map b_label (fn_blocks Unit_libio_wgenops_os.fn___GI__IO_wsetb)); ("__GI__IO_wdoallocbuf", map b_label (fn_blocks Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf)); ("_IO_wfile_doallocate", map b_label (fn_blocks Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate))].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -161,7 +157,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false

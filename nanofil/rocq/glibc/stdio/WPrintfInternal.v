@@ -4,7 +4,7 @@
     then initializes its private staging array, prints the greeting and
     flushes the array before returning an integer result. *)
 
-From Glibc Require Import HelloImageTypedIO HelloImageTypedVF.
+From Glibc Require Import Unit_libio_iofwide_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -22,8 +22,8 @@ Local Abbreviation stage_reg b := (mkRegion b (b+560) Heap Live).
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 
-Definition wprintf_internal_fn := hello_image_fn___vfwprintf_internal.
-Definition wprintf_fwide_fn := hello_image_fn__IO_fwide.
+Definition wprintf_internal_fn := Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.fn___vfwprintf_internal.
+Definition wprintf_fwide_fn := Unit_libio_iofwide_os.fn__IO_fwide.
 
 Section internal.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

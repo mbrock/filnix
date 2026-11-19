@@ -3,6 +3,7 @@
     for strerror and prints the returned string to stderr. Neither
     path needs stdout or restores the cancellation flag yet. *)
 
+From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalMachine Pieces StepRules Heap Language Logic MemLogic HelloLeaf.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
   WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream FxprintfNormalCall
-  FxprintfNormalCode PrintfStateCode ErrorCode ErrorEntry ErrorText StrerrorCode
+  ErrorEntry ErrorText
   HelloGlibcDebts HelloGlibcLibsT HelloImageModule HelloImageLoad HelloImageLayout HelloStartFacts
   HelloEmitBug HelloErrorOperand HelloVfxprintfIdle HelloGetoptDiagImage HelloGetoptDiagTcb
   StartImageEarly HelloCloseReportImage HelloCloseReportLocale HelloCloseReportStrerror HelloCloseReportText LibioCleanupExit Fix.
@@ -70,8 +71,8 @@ Lemma wp_report_count_text tb tr v tid treg e from k fmt ap cb nb nreg count Φ 
   let G := report_locale w R.free tb tr v tid treg in
   hello_ro hge ob -∗ ptsq DfracDiscarded hello_errlist_ps -∗ live nb nreg -∗ int_cell nb 0 count -∗ G -∗
   (∀ e' pred, ⌜error_inputs e' 0 k fmt ap 0 cb⌝ -∗ live nb nreg -∗ int_cell nb 0 ((count+1) mod 2^32) -∗ G -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None (Enter (TAtom "iw_2.L92") (Some pred))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None (Enter (TAtom "iw_2.L92") (Some pred))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
 Proof using Herr Hfd Hvf.
   intros Htr Hv Hk Hin Hglobal Hnb Hne Hnr G. iIntros "#Hro #Hel Hl Hcnt HG HK".
   destruct (Z.eq_dec k 0) as [->|Hnz].
@@ -80,7 +81,7 @@ Proof using Herr Hfd Hvf.
   iDestruct "Hcnt" as "[%Hcount Hbytes]". destruct Hin as (Hstatus & Herrnum & Hfmt & Hap & Hmode & Hsave & Hchk).
   assert (Htext : lookup (TAtom "glibc_error#str.252") img_globals = Some (hello_sym "glibc_error#str.252")) by (vm_compute; reflexivity).
   destruct report_strerror_links as (_ & _ & Hstr).
-  assert (Hfx : find_fn hge (TAtom "__fxprintf") = Some (Defined glibc_fxprintf)) by (vm_compute; reflexivity).
+  assert (Hfx : find_fn hge (TAtom "__fxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf)) by (vm_compute; reflexivity).
   iApply (wp_live_fit1 (glibc_program := print_program) nb nreg with "Hl"). iIntros ([Hnb0 Hnb48]) "Hl".
   step. step_global Hglobal. check "Hl".
   iApply (wp_raw_load_sub_bytes_dq with "Hl Hbytes");

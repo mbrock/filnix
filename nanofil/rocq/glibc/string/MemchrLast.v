@@ -12,6 +12,7 @@
     loop, and [MemchrFirst] and [MemchrLogic] handle the entry block and
     first partial word. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop.
 From Glibc Require WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -312,11 +313,11 @@ Proof using SafepointStable0.
   exact (op_half_check_read _ _ _ _ _ _ _ _ _ Hp1 Hp E Lv H1 H2 H3 H4 H5).
 Qed.
 
-(** Block `L84` is the word-loop body of [glibc_memchr], which checks
+(** Block `L84` is the word-loop body of [Unit_string_memchr_os.fn___memchr], which checks
     whether `pr.1` has reached the final word and otherwise tests word
     `pr.2` for a matching byte. *)
 Definition memchr_blk84 : block := Eval vm_compute in
-  match find_block (TAtom "L84") (fn_blocks glibc_memchr) with
+  match find_block (TAtom "L84") (fn_blocks Unit_string_memchr_os.fn___memchr) with
   | Some b => b | None => mkBlock (TAtom "L84") [] [] JUnreachable end.
 
 (** When `__memchr` reaches the word containing end address E, any match
@@ -336,7 +337,7 @@ Lemma memchr_last dq b reg w ws o e from q c E r Φ :
   loop_hit (wbytes (w :: ws)) (c mod 256) (b + o) E r ->
   liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hc Ho Hb0 Hal Hq Hend Hreg Hr HA HE Hphi H78 H7 H40 Hhit. iIntros "Hl Hps HK".
   iApply wp_enter; [reflexivity | exact Hphi |]. iNext. cbn [b_insts b_jump memchr_blk84].

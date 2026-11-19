@@ -3,7 +3,7 @@
     to the file backend. A short write leaves the buffer failed; a complete
     write leaves all 128 character positions available for the next append. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_flush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_dispatch_fn := hello_image_fn___wprintf_buffer_flush.
+Definition wprintf_dispatch_fn := Unit_stdioZ2dcommon_wprintf_buffer_flush_os.fn___wprintf_buffer_flush.
 
 (** The stream counts characters, but the array stores four bytes per character. *)
 Definition stage_bytes (cs : list Z) := flat_map (fun c => le_bytes c 4) cs.

@@ -3,6 +3,7 @@
     query copies the name into a local buffer and compares it with
     "C". A match ends the search before the comparison with "POSIX". *)
 
+From Glibc Require Import Unit_locale_setlocale_os Unit_string_memcpy_os Unit_string_strcmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloLocale.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic WordString StrlenLogic StrlenWord
-  MemFwdCode MemFwdLogic SetlocaleCode SetlocaleCtypeQuery StrcmpCode StrcmpLogic HelloImageModule HelloImageLoad.
+  MemFwdLogic SetlocaleCtypeQuery StrcmpLogic HelloImageModule HelloImageLoad.
 From Glibc Require Import Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
@@ -26,7 +27,7 @@ Local Abbreviation cn := (mkPtr cb (Ro cb)).
 Local Abbreviation names := (liveq dql gb greg ∗ pcellq dqc gb 128 cn)%I.
 Context (Hgl : lookup (TAtom "_nl_global_locale") (ge_globals ge) = Some (mkPtr gb (Obj gb)))
   (Hgb : 0 < gb) (H8 : gb mod 8 = 0) (Hend : gb + 136 <= r_end greg) (Hmax : r_end greg <= 2 ^ 48)
-  (Hset : find_fn ge (TAtom "setlocale") = Some (Defined glibc_setlocale)).
+  (Hset : find_fn ge (TAtom "setlocale") = Some (Defined Unit_locale_setlocale_os.fn___GI_setlocale)).
 
 (** The unlocked query returns the same pointer that glibc reads from
     the character category. The string keeps that pointer's target alive. *)
@@ -46,7 +47,7 @@ Qed.
 
 Context (Hquery : find_fn ge (TAtom "setlocale_null_unlocked") = Some (Defined snu_fn))
   (Hstrlen : find_fn ge (TAtom "strlen") = Some (Defined glibc_strlen))
-  (Hmemcpy : find_fn ge (TAtom "memcpy") = Some (Defined glibc_memcpy))
+  (Hmemcpy : find_fn ge (TAtom "memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy))
   (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
@@ -116,7 +117,7 @@ Qed.
 
 Context (Hsnr : find_fn ge (TAtom "setlocale_null_r") = Some (Defined snr_fn))
   (Heq : find_fn ge (TAtom "streq") = Some (Defined streq_fn))
-  (Hstrcmp : find_fn ge (TAtom "strcmp") = Some (Defined glibc_strcmp)).
+  (Hstrcmp : find_fn ge (TAtom "strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp)).
 
 (** The first comparison finds the C name. Gnulib returns false and
     gives the caller back the two shares lent to the locale query. *)

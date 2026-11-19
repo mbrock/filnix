@@ -12,6 +12,7 @@
     allocates five local objects for its other routes, and this route
     never touches them. *)
 
+From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic SetlocaleCode.
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic.
 From Glibc Require FileInv LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -39,7 +40,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     may lend the object's lifetime and the name's cell at different
     fractions, because the function only reads them. *)
 Lemma wp_setlocale_query fr gb greg dql dqc cn treg dqt Φ :
-  call_frame glibc_setlocale [WInt 5; WPtr null] = Some fr ->
+  call_frame Unit_locale_setlocale_os.fn___GI_setlocale [WInt 5; WPtr null] = Some fr ->
   lookup (TAtom "_nl_global_locale") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
   0 < gb -> gb mod 8 = 0 -> gb + 232 <= r_end greg -> r_end greg <= 2 ^ 48 -> 0 <= ptr_addr cn < 2 ^ 64 ->
   liveq dql gb greg -∗ pcellq dqc gb 168 cn -∗ live_capq dqt (ptr_cap cn) treg -∗

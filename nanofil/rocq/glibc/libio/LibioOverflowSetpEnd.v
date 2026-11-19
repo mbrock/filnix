@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the blocks around the switch to putting in
     `c: _IO_new_file_overflow` (LibioOverflowBase.v describes the
@@ -14,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -48,7 +49,7 @@ Context (HL18 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}).
 (** Block `c: L113`, as LibioOverflowSetp.v proves it ([wp_ovf_L113]). *)
 Context (HL113 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp0 we0 from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -71,7 +72,7 @@ Context (HL113 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = Z.lor fl 2048 \/ fl' = Z.lor (Z.lor fl 2048) io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L113") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L113") (Some from))) : sexpr) {{ Φ }}).
 
 (** Block `c: L162`: a stream that is line-buffered or unbuffered gets
     its write end at its write pointer; then block `c: L18`. *)
@@ -90,7 +91,7 @@ Lemma wp_ovf_L162 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off from 
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L162") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L162") (Some from))) : sexpr) {{ Φ }}.
 Proof using HL18.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ He Hmd Hv0 Hv2 Hc0 Hc30 Hc34 Hc39.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.
@@ -138,7 +139,7 @@ Lemma wp_ovf_L35 fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off wb0 wp
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = Z.lor fl 2048 \/ fl' = Z.lor (Z.lor fl 2048) io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : sexpr) {{ Φ }}.
 Proof using HL113.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ Hbk He Hmd Hbb Hbe Hbreg Hsz Hxl Hxr Hv0 Hv2 Hc0 Hc6.
   iIntros "#Hvt Hl Hfx Hbl Hxs [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".

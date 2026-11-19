@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** Finishing a closed, unlinked stream leaves its memory unchanged.
     The file-specific routine sees that the file descriptor is -1 and
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -46,7 +47,7 @@ Local Instance finish_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition unlink_unlinked_spec : Prop := forall fr fb freg fl Φ,
-  call_frame glibc__IO_un_link [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_un_link [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_linked = false ->
   live fb freg -∗ int_cell fb off_flags fl -∗
@@ -55,8 +56,8 @@ Definition unlink_unlinked_spec : Prop := forall fr fb freg fl Φ,
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
-Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}.
 
 
 (** The execution goal uses the language selected by the program context. *)
@@ -68,7 +69,7 @@ Context (Hunl_spec : (unlink_unlinked_spec w0 registry ge)).
 (** The default finish routine preserves a closed stream whose buffer,
     markers, and backup area are null. The stream still owns its lock. *)
 Lemma wp_glibc__IO_default_finish_closed fr fb freg fl lb lbreg Φ :
-  call_frame glibc__IO_default_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_default_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_linked = false -> 0 < lb -> lb + 16 <= r_end lbreg ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base null -∗ pcell fb 80 null -∗
@@ -96,7 +97,7 @@ Qed.
 (** The file-specific finish routine delegates to the default routine
     when the stream's file descriptor is -1. *)
 Lemma wp_glibc__IO_new_file_finish_closed fr fb freg fl lb lbreg Φ :
-  call_frame glibc__IO_new_file_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_finish [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_linked = false -> 0 < lb -> lb + 16 <= r_end lbreg ->
   live fb freg -∗ int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_flags fl -∗

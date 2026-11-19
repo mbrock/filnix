@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** An unbuffered stream without a buffer uses its internal one-byte buffer.
     This proof follows `c: _IO_doallocbuf` up to the call that installs that buffer. *)
@@ -9,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -28,13 +29,13 @@ Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_setb`. *)
-Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The buffer-setting function accepts a stream whose old buffer is null. *)
 Context (Hsetb_null : forall fr fb freg fl oe nb ne a Φ,
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
@@ -43,7 +44,7 @@ Context (Hsetb_null : forall fr fb freg fl oe nb ne a Φ,
 (** `c: _IO_doallocbuf(fp)` on an unbuffered stream with no buffer
     makes `c: _shortbuf` its buffer and sets `c: _IO_USER_BUF`. *)
 Lemma wp_glibc__IO_doallocbuf_short fr fb freg fl mode oe Φ :
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl io_unbuffered <> 0 -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗

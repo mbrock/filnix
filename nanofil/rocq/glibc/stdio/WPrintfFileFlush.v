@@ -3,7 +3,7 @@
     cursor. A short write leaves the cursor in place and marks the buffer
     failed, so later appends stop. *)
 
-From Glibc Require Import HelloImageTypedIO HelloImageTypedWP.
+From Glibc Require Import Unit_libio_wfileops_os Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -17,8 +17,8 @@ Open Scope Z_scope.
 
 (** The first function reads the stream's jump table. The second takes
     the array pointer and the number of characters to write. *)
-Definition wprintf_file_flush_fn := hello_image_fn___wprintf_buffer_flush_to_file.
-Definition wprintf_xsputn_fn := hello_image_fn___GI__IO_wfile_xsputn.
+Definition wprintf_file_flush_fn := Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.fn___wprintf_buffer_flush_to_file.
+Definition wprintf_xsputn_fn := Unit_libio_wfileops_os.fn___GI__IO_wfile_xsputn.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

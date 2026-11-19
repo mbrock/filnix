@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_close_nocancel_os Unit_io_fstat64_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** Stream readers inspect individual FILE fields or delegate to system-call wrappers.
     This module proves the pending-byte count, error test, stat, and close operations
@@ -14,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry FileInv LibioLogic
   SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -46,7 +47,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The pending-byte query subtracts the stream's write base from its write pointer.
     Both pointers must carry the same capability, and the stream must use narrow mode. *)
 Lemma wp_glibc___fpending fr fb freg mode wp wb reg' Φ :
-  call_frame glibc___fpending [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio___fpending_os.fn___fpending [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (mode = 0 \/ mode = 2 ^ 32 - 1) -> ptr_cap wp = ptr_cap wb ->
   0 <= ptr_addr wp < 2 ^ 64 -> 0 <= ptr_addr wb < 2 ^ 64 ->
@@ -75,7 +76,7 @@ Qed.
 (** The error query returns one when the stream's error flag is set and zero otherwise.
     Its locking macros skip the lock when the need-lock flag is clear. *)
 Lemma wp_glibc__IO_ferror fr fb freg fl f2 Φ :
-  call_frame glibc__IO_ferror [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_ferror_os.fn__IO_ferror [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 io_need_lock = 0 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_flags2 f2 -∗
@@ -105,8 +106,8 @@ Ltac resume_ret := iExists _; iSplit; [iPureIntro; reflexivity|]; iNext.
 (** Closing a stream passes its descriptor to the close wrapper.
     It returns zero or minus one and preserves ownership of errno's resulting bytes. *)
 Lemma wp_glibc__IO_file_close fr fb freg fd eb Φ :
-  call_frame glibc__IO_file_close [WPtr (mkPtr fb (Obj fb))] = Some fr ->
-  find_fn ge (TAtom "__GI___close_nocancel") = Some (Defined glibc___close_nocancel) ->
+  call_frame Unit_libio_fileops_os.fn___GI__IO_file_close [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  find_fn ge (TAtom "__GI___close_nocancel") = Some (Defined Unit_io_close_nocancel_os.fn___GI___close_nocancel) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   live fb freg -∗ int_cell fb off_fileno fd -∗ errno_any eb -∗
@@ -117,7 +118,7 @@ Proof using Type*.
   intros Hfr Hfn Hfb Hal Hend Hfreg He. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
-  assert (Hclose : Defines ge "__GI___close_nocancel" glibc___close_nocancel) by exact Hfn.
+  assert (Hclose : Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel) by exact Hfn.
   call_spec with (fd mod 2 ^ 32, eb).
   { split; [apply Z.mod_pos_bound; lia | exact He]. }
   iDestruct "Hpost" as (k) "(%Hout & Herr)". destruct Hout as [-> Hk]. resume_ret.
@@ -128,8 +129,8 @@ Qed.
 (** The stream stat operation passes its descriptor and an owned buffer to the stat wrapper.
     It returns zero or minus one and restores ownership of the buffer's new bytes. *)
 Lemma wp_glibc__IO_file_stat fr fb freg fd b reg o eb Φ :
-  call_frame glibc__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
-  find_fn ge (TAtom "__GI___fstat64") = Some (Defined glibc___fstat64) ->
+  call_frame Unit_libio_fileops_os.fn___GI__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
+  find_fn ge (TAtom "__GI___fstat64") = Some (Defined Unit_io_fstat64_os.fn___GI___fstat64) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   0 <= o -> b + o + stat_size <= r_end reg ->
@@ -141,7 +142,7 @@ Proof using Type*.
   intros Hfr Hfn Hfb Hal Hend Hfreg He Hin Ho Hst. injection Hfr as <-.
   iIntros "Hl [%Hfd Hfdb] Hbl Hb Herr HK". unfold file_size in Hend. step. step. norm. check "Hl".
   load_s32_group "Hl Hfdb".
-  assert (Hstat : Defines ge "__GI___fstat64" glibc___fstat64) by exact Hfn.
+  assert (Hstat : Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64) by exact Hfn.
   call_spec with (fd mod 2 ^ 32, b, reg, o, eb).
   { repeat split; try assumption; try (apply Z.mod_pos_bound; lia).
     rewrite Z.mod_small; [exact Hin | lia]. }

@@ -4,7 +4,7 @@
     write and gives the caller back the entire source, including any
     characters already copied. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_write_os Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -12,11 +12,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
-  LibioCloseSteps LibioPutsInv LibioWIdle CBlocks PrintfOut MemFwdCode WPrintfFileFlush WPrintfDispatch WPrintfCopy.
+  LibioCloseSteps LibioPutsInv LibioWIdle CBlocks PrintfOut WPrintfFileFlush WPrintfDispatch WPrintfCopy.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
-Definition wprintf_write_fn := hello_image_fn___wprintf_buffer_write.
+Definition wprintf_write_fn := Unit_stdioZ2dcommon_wprintf_buffer_write_os.fn___wprintf_buffer_write.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
@@ -36,7 +36,7 @@ Local Abbreviation at_write e l := (ERun (mkFrame wprintf_write_fn e [] None (bo
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hmemcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy))
+  (Hmemcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy))
   (Hcopy : find_fn ge (TAtom "__wmemcpy") = Some (Defined wprintf_copy_fn)).
 
 Local Ltac open_stage := iDestruct "Hs" as "(%tail & %slots & (%Hbb & %Hal & %Hend & %Hreg & %Hwr & %Hvalid & %Hlen & %Hslots & %Htail) & Hl & Hbase & Hcur & Hstop & Hw & Hm & Hfp & Hbs & Ha)".

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_rdlock_os.
 From Glibc Require Import GlibcProgram.
 (** Hello calls gettext after setlocale, and gettext takes setlocale's
     lock for reading. Setlocale leaves that lock in an idle write phase:
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RdlockCode RdlockLogic.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RdlockLogic.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -68,7 +69,7 @@ Qed.
     counts one more reader and has no write phase. The write-phase
     futex had no waiter bit, and it ends 0. *)
 Lemma wp_glibc_rdlock_phase fr lb lreg r wp cw fl tb treg dqt dqi tid Φ :
-  call_frame glibc_pthread_rwlock_rdlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
+  call_frame Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + 724 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 56 <= r_end lreg -> r_end lreg <= 2 ^ 63 ->
   r mod 8 = 1 -> r + 8 < 2 ^ 31 -> (wp = 0 \/ wp = 1) -> cw <> tid ->

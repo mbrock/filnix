@@ -9,7 +9,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics FileInv LibioLogic LibioReadCode
+From Glibc Require Import Unit_libio___fpending_os.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics FileInv LibioLogic
   LibioPutsInv LibioCloseSteps.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -22,7 +23,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     it reads. Self-pointer loads reuse the single stream lifetime. *)
 Lemma wp_glibc___fpending_short_empty fr fb freg md Φ :
   let buf := mkPtr (fb + off_shortbuf) (Obj fb) in
-  call_frame glibc___fpending [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio___fpending_os.fn___fpending [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   md = 0 \/ md = 2 ^ 32 - 1 ->
   live fb freg -∗ int_cell fb off_mode md -∗ pcell fb off_write_ptr buf -∗ pcell fb off_write_base buf -∗

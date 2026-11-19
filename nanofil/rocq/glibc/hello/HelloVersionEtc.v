@@ -10,7 +10,7 @@
     the contracts of those two calls. The module
     [HelloVersionEtcVa](HelloVersionEtcVa.v) proves the other two. *)
 
-From Glibc Require Import HelloImageTypedVE.
+From Glibc Require Import HelloImage_versionZ2detc.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -36,9 +36,9 @@ Local Arguments Z.mul : simpl nomatch.
 (** ## The three functions *)
 
 (** The proofs read the code of the three functions from the image. *)
-Definition version_etc_fn : func := hello_image_fn_version_etc.
-Definition version_etc_va_fn : func := hello_image_fn_version_etc_va.
-Definition version_etc_arn_fn : func := hello_image_fn_version_etc_arn.
+Definition version_etc_fn : func := HelloImage_versionZ2detc.fn_version_etc.
+Definition version_etc_va_fn : func := HelloImage_versionZ2detc.fn_version_etc_va.
+Definition version_etc_arn_fn : func := HelloImage_versionZ2detc.fn_version_etc_arn.
 
 (** The function [ablk] finds the block of [version_etc_arn_fn] that has label l. *)
 Definition ablk (l : string) : block :=

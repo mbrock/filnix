@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** Stream output copies bytes into a buffer whose write pointer need
     not be aligned. This module verifies those copies through glibc's
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode MemFwdLogic FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdLogic FileInv LibioLogic SysWrappers
   LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -244,11 +245,11 @@ Definition copy_in_spec (past : bool) : fspec Σ :=
       live b reg ∗ buf_after b (length xs) ∗ liveq dq b' reg' ∗ bytesq dq b' o' ys)%I.
 
 (** The whole-buffer move rule establishes memcpy's stream-copy contract. *)
-Lemma memcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_memcpy) ->
+Lemma memcpy_in_spec_valid g : find_fn ge g = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_in_spec false).
 Proof using Type*.
   intros Hg [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
-  exists glibc_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  exists Unit_string_memcpy_os.fn___GI_memcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
   iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
   destruct Hp as (Hc' & Hn & Hb8 & Hb8' & Ho & Ho' & Hon & Hend & Hend' & Hlc & Hx & Hy & _).
@@ -264,7 +265,7 @@ Qed.
 Lemma wp_call_memcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c' ys cf' Φ :
   map_option (arg_x ge e) args =
     Some [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length ys))] ->
-  find_fn ge g = Some (Defined glibc_memcpy) ->
+  find_fn ge g = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   resume (mkFrame f e ls None (Exec lab rest j)) (mkPending r None) (Ret (WPtr (mkPtr (b + o) (Obj b))))
     = Some cf' ->
   c' = Obj b' \/ c' = Ro b' -> Z.of_nat (length ys) < 2 ^ 64 ->
@@ -285,12 +286,12 @@ Proof using Type*.
 Qed.
 
 (** Mempcpy's frame uses the whole-buffer memcpy contract before advancing its result pointer. *)
-Lemma mempcpy_in_spec_valid g : find_fn ge g = Some (Defined glibc_mempcpy) ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+Lemma mempcpy_in_spec_valid g : find_fn ge g = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   HasSpec registry (os_wi w0) ge g (copy_in_spec true).
 Proof using Type*.
   intros Hg Hcpy [[[[[[[[[[b reg] o] xs] cs] dq] b'] reg'] o'] c'] ys].
-  exists glibc_mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
+  exists Unit_string_mempcpy_os.fn___GI___mempcpy. split; [exact Hg|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post copy_in_spec].
   iIntros "(%Hp & Hl & Hx & Hcs & Hl' & Hy) HK".
   destruct Hp as (Hc' & Hn & Hb8 & Hb8' & Ho & Ho' & Hon & Hend & Hend' & Hlc & Hx & Hy & Hb0 & Hbound).
@@ -310,10 +311,10 @@ Qed.
 
 (** Calling mempcpy preserves the whole buffer and returns the pointer just after the copied bytes. *)
 Lemma wp_call_mempcpy_in f e ls lab r g args rest j b reg xs cs o dq b' reg' o' c' ys cf' Φ :
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   map_option (arg_x ge e) args =
     Some [WPtr (mkPtr (b + o) (Obj b)); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (length ys))] ->
-  find_fn ge g = Some (Defined glibc_mempcpy) ->
+  find_fn ge g = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy) ->
   resume (mkFrame f e ls None (Exec lab rest j)) (mkPending r None)
     (Ret (WPtr (mkPtr (b + o + Z.of_nat (length ys)) (Obj b)))) = Some cf' ->
   c' = Obj b' \/ c' = Ro b' -> 0 <= b -> b + Z.of_nat (length xs) < 2 ^ 64 ->

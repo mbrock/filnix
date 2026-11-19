@@ -3,14 +3,15 @@
     later overflows enter the send path directly. Both paths leave the
     same heap allocation in place, even when a write fails. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode SysWrappers FileInv LibioLogic
-  LibioReadCode LibioDoWriteCode LibioOverflowBase LibioOverflowSetp LibioOverflowSetpRest
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv LibioLogic
+  LibioOverflowBase LibioOverflowSetp LibioOverflowSetpRest
   LibioOverflowSetpEnd HiAtexitOverflowSend HiAtexitOverflow.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -27,9 +28,9 @@ Definition heap_put_flags fl fl' : Prop :=
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The pointer resets do not inspect the cancellation setting. The
@@ -42,10 +43,10 @@ Definition heap_switch_to_putting :=
     pointers or resets them from the empty read area before sending.
     A call with EOF flushes without adding a byte. *)
 Lemma wp_heap_existing fr fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   (0 <= ch < 256 \/ ch = 2^32-1) ->
-  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2^32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   Z.land fl 8 = 0 -> Z.land fl 256 = 0 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   (mode = 0 \/ mode = 2^32-1) ->

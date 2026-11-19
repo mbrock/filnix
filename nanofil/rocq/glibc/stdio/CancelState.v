@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram.
 (** Fatal diagnostics disable cancellation before they lock and write stderr.
     The cancellation flag remains disabled when the diagnostic calls exit.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers PrintfStateCode.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -41,7 +42,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
 (** Disabling cancellation from the initial zero state saves zero and installs
     state one. The caller retains the thread object and its saved-state slot. *)
 Lemma wp_cancel_disable_save fr tb treg sb sreg so prior Φ :
-  call_frame glibc___pthread_setcancelstate
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate
     [WInt 1; WPtr (mkPtr (sb + so) (Obj sb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
@@ -78,7 +79,7 @@ Qed.
 (** A returning diagnostic restores enabled cancellation without writing an
     old-state pointer. The zero flag again excludes asynchronous unwind. *)
 Lemma wp_cancel_restore fr tb treg Φ :
-  call_frame glibc___pthread_setcancelstate [WInt 0; WPtr null] = Some fr ->
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate [WInt 0; WPtr null] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   live tb treg -∗ int_cell tb 792 1 -∗
@@ -107,7 +108,7 @@ Qed.
 (** A nested diagnostic saves the already-disabled state rather than pretending
     that cancellation was enabled. This path neither CASes nor unwinds. *)
 Lemma wp_cancel_disabled_save fr tb treg sb sreg so prior Φ :
-  call_frame glibc___pthread_setcancelstate
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate
     [WInt 1; WPtr (mkPtr (sb + so) (Obj sb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
@@ -137,7 +138,7 @@ Qed.
 (** Returning from a nested diagnostic leaves cancellation disabled for the
     outer diagnostic, without touching an old-state slot. *)
 Lemma wp_cancel_keep_disabled fr tb treg Φ :
-  call_frame glibc___pthread_setcancelstate [WInt 1; WPtr null] = Some fr ->
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate [WInt 1; WPtr null] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   live tb treg -∗ int_cell tb 792 1 -∗

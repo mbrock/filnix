@@ -16,7 +16,7 @@ def listing(values):
     return '[' + '; '.join(values) + ']'
 
 
-def source_tables(name, prefix, functions, layout, root, block_definitions):
+def source_tables(name, functions, bodies, root, block_definitions):
     files = sorted({f for row in functions for _, f, _ in row['block_src']} |
                    {row['source'][0] for row in functions if row['source'] is not None})
     file_names = {f: f'file_{i}' for i, f in enumerate(files)}
@@ -24,17 +24,13 @@ def source_tables(name, prefix, functions, layout, root, block_definitions):
     def filename(value):
         return file_names[value]
 
-    code = name + 'Code'
-    term = prefix + '_term'
-    decoded = prefix + '_module'
-    if layout in ('hi_atexit', 'getopt'):
-        code = name + 'Module'
-        decoded = 'hi_module' if layout == 'hi_atexit' else 'getopt_module'
+    imports = ' '.join(sorted({file for file, _ in bodies.values()}))
+    required = f'From Glibc Require Import {imports}.\n' if imports else ''
     header = '''(** These tables connect checked function bodies to C declarations and source lines.
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -47,12 +43,6 @@ Open Scope Z_scope.
     text = ''
     for f in files:
         text += f'\nDefinition {file_names[f]} : string := {string(f.removeprefix(str(root) + "/"))}.\n'
-    if layout not in ('libio', 'stdio', 'buffer', 'string', 'hi_atexit', 'getopt'):
-        decoded = 'source_module'
-        text += f'''
-(** Decoding once lets all source tables share the same checked function bodies. *)
-Definition source_module : module := Eval vm_compute in code_module {term}.
-'''
     identifiers = set()
     checks = []
     groups = []
@@ -102,15 +92,15 @@ Definition loop_heads : list name := {heads}.
 {block_definitions[fn]}
 End {ident}.
 ''')
-    names = listing(string(row['function']) for row in functions)
+    block_labels = []
+    for row in functions:
+        symbol = row['function']
+        file, body = bodies[symbol]
+        block_labels.append(f'({string(symbol)}, map b_label (fn_blocks {file}.{body}))')
     footer = f'''
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) {decoded} with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) {names}.
+Definition source_blocks : list (string * list name) := Eval lazy in
+  {listing(block_labels)}.
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -120,7 +110,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false
@@ -133,7 +123,7 @@ Proof. vm_compute. reflexivity. Qed.
             chunks.append([])
         chunks[-1].append(group)
     if len(chunks) == 1:
-        return {name + 'Src.v': header + f'\nFrom Glibc Require Import {code}.\nModule {name}Src.\n' +
+        return {name + 'Src.v': header + required + f'\nModule {name}Src.\n' +
                 text + ''.join(groups) + footer + f'\nEnd {name}Src.\n'}
     common = name + 'SrcFiles'
     output = {common + '.v': header + f'\nModule {common}.\n' + text + f'\nEnd {common}.\n'}
@@ -144,7 +134,7 @@ Proof. vm_compute. reflexivity. Qed.
         output[part + '.v'] = (header + f'\nFrom Glibc Require Import {common}.\n' +
                               f'Import {common}.\nModule {part}.\n' +
                               ''.join(chunk) + f'\nEnd {part}.\n')
-    output[name + 'Src.v'] = (header + f'\nFrom Glibc Require Import {code} {common} ' +
+    output[name + 'Src.v'] = (header + required + f'\nFrom Glibc Require Import {common} ' +
                              ' '.join(parts) + f'.\nModule {name}Src.\n' +
                              f'Include {common}.\n' + ''.join(f'Include {p}.\n' for p in parts) +
                              footer + f'\nEnd {name}Src.\n')

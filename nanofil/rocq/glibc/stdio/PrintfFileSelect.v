@@ -5,6 +5,7 @@
     This view retains the selected allocation and a way to restore the
     stream. Inline selection keeps the stream intact and borrows two shares
     of the wrapper's single lifetime instead. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  PrintfStreamHeap PrintfBufferFileCode PrintfBufferXsputnSwitch LibioPutsInv Fix.
+  PrintfStreamHeap PrintfBufferXsputnSwitch LibioPutsInv Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Section selected.
@@ -60,7 +61,7 @@ End selected.
 Section selection.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (B : Z -> Z -> iProp Σ).
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Selection retains the connection between the returned pointer and its
@@ -75,7 +76,7 @@ Lemma wp_printf_file_select e from bb br vb self fp mode flags2 held base cur st
     pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 finish -∗
     printf_selected bb start (printf_heap_stream_with B w0 vb self fp mode flags2 held) -∗
     Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L40") from)) : sexpr) {{ Φ }}.
 Proof.
   intros Hb Ha He Hr Hv. iIntros "Hb Hfp HF Hbase Hcur Hend HK".

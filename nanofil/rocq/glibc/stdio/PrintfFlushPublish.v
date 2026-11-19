@@ -4,6 +4,7 @@
     one-byte stage instead. Neither branch calls libio or writes any
     character bytes. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv LibioLogic CStruct PrintfLayout PrintfOut
-  PrintfBufferFileCode PrintfFlushStage PrintfBufferFlushDirect PrintfBufferFlushFull.
+  PrintfFlushStage PrintfBufferFlushDirect PrintfBufferFlushFull.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -36,7 +37,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     pointer. The write end stays fixed. The caller recovers the old
     window's bytes and slots, even when the new window points elsewhere. *)
 Lemma wp_flush_publish fr bb br fb freg w written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   bb+176 <= r_end br -> pw_obj w <> bb -> pw_end w <= bb \/ bb+176 < pw_end w ->
   let fp := mkPtr fb (Obj fb) in
   let dp a := mkPtr a (Obj (pw_obj w)) in

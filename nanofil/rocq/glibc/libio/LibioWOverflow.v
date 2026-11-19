@@ -4,6 +4,8 @@
     buffers are ready, the same code handles the first character, a
     later character, and a request to flush. *)
 
+From Glibc Require Import Unit_io_fstat64_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wfiledoalloc_os.
+From Glibc Require Import Unit_libio_wgenops_os Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv AllocLogic
-  SysWrappers SysCode LibioReadCode LibioSetb LibioWIdle LibioWXsputnWindow LibioWAllocCode LibioWAllocSetb
+  SysWrappers LibioSetb LibioWIdle LibioWXsputnWindow LibioWAllocSetb
   LibioWOverflowDispatch LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowState LibioWOverflowLoan
   LibioWOverflowEntry LibioWOverflowReady LibioWOverflowBackup LibioWOverflowAllocateSteps LibioWOverflowAllocate
   LibioWOverflowAllocated LibioWOverflowAllocFlags CBlocks.
@@ -26,15 +28,15 @@ Context (vb : Z) (self : ptr) (E : iProp Σ).
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 Local Abbreviation run e a := (ERun (mkFrame wfile_overflow_fn e [] None a) : sexpr).
 Context `{!Defines ge "__GI__IO_wdo_write" wdo_write_fn} (Hwrite : wdo_pending_spec vb self 1 E)
-  `{!Defines ge "__GI__IO_free_wbackup_area" wfree_backup_fn} `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}
-  `{!Defines ge "__GI__IO_wdoallocbuf" glibc__IO_wdoallocbuf}.
-Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  `{!Defines ge "__GI___fstat64" glibc___fstat64} `{!Defines ge "__gnu_dev_major" glibc___gnu_dev_major}
-  `{!Defines ge "__isatty_nostatus" glibc___isatty_nostatus} `{!Defines ge "__GI__IO_setb" glibc__IO_setb}
+  `{!Defines ge "__GI__IO_free_wbackup_area" wfree_backup_fn} `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}
+  `{!Defines ge "__GI__IO_wdoallocbuf" Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf}.
+Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hstat : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat)
+  `{!Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64} `{!Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major}
+  `{!Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus} `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
   `{!Defines ge "free" free_fn} (Hfh : frees_heap (ge_free ge)) (Hzf : find_fn ge zgc_free_name = None)
   (Hzg : lookup zgc_free_name (ge_globals ge) = None) `{!Defines ge "malloc" malloc_fn}
-  `{!Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} `{!Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}
-  `{!Defines ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate} (Hwdaf : ge_fn ge "_IO_wfile_doallocate" glibc__IO_wfile_doallocate).
+  `{!Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} `{!Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}
+  `{!Defines ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate} (Hwdaf : ge_fn ge "_IO_wfile_doallocate" Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate).
 Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region)
   (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (objp mp))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (objp tc))

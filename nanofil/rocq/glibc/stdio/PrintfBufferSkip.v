@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_flush_os Unit_stdioZ2dcommon_printf_buffer_write_os.
 From Glibc Require Import GlibcProgram.
 (** A failed printf buffer stops further writes and flushes before touching
     its character storage. A zero-length write also returns without reading
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers PrintfBufferIoCode.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -35,7 +36,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** Failure or an empty input prevents the write loop from touching either
     character allocation. The source pointer therefore needs no ownership. *)
 Lemma wp_printf_buffer_write_skip fr bb breg src count mode Φ :
-  call_frame glibc___printf_buffer_write
+  call_frame Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write
     [WPtr (mkPtr bb (Obj bb)); WPtr src; WInt count] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   (mode = 0 \/ count = 0) ->
@@ -62,7 +63,7 @@ Qed.
 (** Flushing an already failed buffer reports false without dispatching to
     a stream or inspecting any buffer pointer. *)
 Lemma wp_printf_buffer_flush_failed fr bb breg Φ :
-  call_frame glibc___printf_buffer_flush [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   live bb breg -∗ int_cell bb 32 0 -∗
   ▷ (live bb breg -∗ int_cell bb 32 0 -∗ Φ (Ret (WInt 0))) -∗

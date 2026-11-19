@@ -7,6 +7,7 @@
     no custom conversions are registered. It assumes that earlier code
     has found the percent sign. It does not prove program initialization
     or writing the buffer to a file. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -14,9 +15,9 @@ From iris.bi Require Import fractional.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString PrintfBufferIoCode MemFwdCode MemFwdLogic PrintfStagingCopy
-  FormatterStringRead FormatterRegistration StrlenLogic StrchrCode FormatterScan.
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+  Fix WordString MemFwdLogic PrintfStagingCopy
+  FormatterStringRead FormatterRegistration StrlenLogic FormatterScan.
 From Glibc Require Import FormatterPercentString FormatterStringFinish.
 Import ReadVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -64,10 +65,10 @@ Lemma wp_formatter_registered_final_string e from rb rr mb mr ab ar
   lookup (TAtom "glibc_vfprintf_internal#jump_table") (ge_globals ge) = Some (mkPtr jb (Ro jb)) ->
   lookup (TAtom "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < rb -> rb mod 8 = 0 -> rb + 8 <= r_end rr -> r_end rr <= 2^63 ->
   0 < mb -> mb mod 8 = 0 -> mb + 8 <= r_end mr -> r_end mr <= 2^63 ->
   0 < ab -> ab mod 8 = 0 -> ab + 8 <= r_end ar -> r_end ar <= 2^63 ->
@@ -92,7 +93,7 @@ Lemma wp_formatter_registered_final_string e from rb rr mb mr ab ar
     live fb fr -∗ pcell fb 0 (ptr_add fp 2) -∗ word_string dqf fp [37;115] -∗
     live bb br -∗ int_cell bb 32 4 -∗ pcell bb 8 (mkPtr (bb + bo + Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs bo s -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e [] None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e [] None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hshare Hrf Hmf Haf H9 Hw Hv Hfv Hfc Hb Hj Ht Hstrlen Hchr Hscan Hwrite Hcpy
     Hrb Hra Hre Hrr Hmb Hma Hme Hmr Hab Haa Hae Har Hjb Hje Hjr Htb Hte Htr

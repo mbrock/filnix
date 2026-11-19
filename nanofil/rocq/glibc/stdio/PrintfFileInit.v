@@ -6,6 +6,7 @@
     [PrintfSpec](PrintfSpec.v). It proves the same of the second
     function and [switch_spec]. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps PrintfBufferFileCode PrintfBufferFileSrc
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps PrintfBufferFileSrc
   PrintfBufferStage PrintfBufferDirect CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps.
 Open Scope string_scope.
@@ -43,7 +44,7 @@ Definition init_blocks : list bspec :=
      (fun i => [("buf", WPtr (mkPtr (fi_buf i) (Obj (fi_buf i)))); ("fp", WPtr (mkPtr (fi_file i) (Obj (fi_file i))))])
      (fs_pre file_init_spec) (fs_post file_init_spec)].
 
-Lemma init_table : ⊢ blocks_hold glibc___printf_buffer_to_file_init init_blocks.
+Lemma init_table : ⊢ blocks_hold Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init init_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [|done]; iModIntro.
   iIntros (i e from Φ) "_ %He (Hs & Hbl & Hfp & Hb) HK". cbn [bs_sig bs_vals bs_label bs_post] in *. c_env_open He.
@@ -63,7 +64,7 @@ Qed.
 (** A caller of `c: __printf_buffer_to_file_init` uses this lemma. It
     says that the compiled function meets the contract
     [file_init_spec] in any program that defines the function. *)
-Lemma file_init_has_spec `{!Defines ge "__printf_buffer_to_file_init" glibc___printf_buffer_to_file_init} :
+Lemma file_init_has_spec `{!Defines ge "__printf_buffer_to_file_init" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_init") file_init_spec.
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ init_blocks); [exact defines | reflexivity | reflexivity | | exact init_table].
@@ -77,7 +78,7 @@ End init.
 
 Section switch.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 
 (** The function `c: __printf_buffer_to_file_switch` chooses between
     the stream's buffer and the staging array. An older lemma covers
@@ -90,7 +91,7 @@ Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_
     cells. *)
 Lemma switch_has_spec : HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_switch") switch_spec.
 Proof using Type*.
-  intros i. exists glibc___printf_buffer_to_file_switch. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros i. exists Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_args fs_pre fs_post switch_spec] in *.
   iIntros "((Hfl & Hfc & Hcs) & Hbl & Hfp & Hb) HK". iDestruct "Hb" as (ob op oe) "Hb".
   struct_live_open "Hbl" as "[%Hbb Hl]". struct_live_open "Hfl" as "[%Hfb Hf]".

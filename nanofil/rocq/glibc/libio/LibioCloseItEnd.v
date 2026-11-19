@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** Closing a descriptor leaves the stream's buffer pointers to reset.
     These final blocks call setb and record the closed flags, descriptor and
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioCloseItCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioSetb LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -58,7 +59,7 @@ Definition old_base (fl : Z) (ob : ptr) : iProp Σ :=
   ⌜ob = null⌝ ∨ ∃ bb breg, ⌜ob = mkPtr bb (Obj bb) /\ r_kind breg = Heap /\ 0 < bb /\ bb < 2 ^ 64 /\
                             Z.land fl io_user_buf = 0⌝ ∗ live bb breg.
 Definition setb_spec_with (B : Z -> Z -> ptr -> iProp Σ) : Prop := forall fr fb freg fl ob oe nb ne a Φ,
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗
   B fb fl ob -∗
@@ -69,7 +70,7 @@ Definition setb_spec : Prop := setb_spec_with (fun _ => old_base).
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 
 
 (** Expressions use the caller's linked program and registry. *)
@@ -100,7 +101,7 @@ Lemma wp_close_it_L223_with e from p3 k fb freg fl fd off ob oe p8 p16 p24 p32 p
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
      Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
-  WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L223") (Some from))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L223") (Some from))) : sexpr)
     {{ Φ }}.
 Proof using Type*.
   intros fp Hv0 Hc0 Hc1 Hv2 Hp3 Hv220 Hfb Hfal Hfend Hfreg Hfl Hp3r Hk. subst fp.
@@ -139,7 +140,7 @@ End rules.
 
 Section legacy.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 (** Existing heap-buffer callers retain their original resource contract. *)
 Definition wp_close_it_L223 (Hsetb_spec : setb_spec w0 registry ge) :=
   wp_close_it_L223_with (fun _ => old_base) Hsetb_spec.

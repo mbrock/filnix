@@ -7,13 +7,14 @@
     writing any output. This rule covers those steps after glibc has
     read the letter s from the format. Earlier scanning, output writes,
     and initialization of the required memory remain separate work. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic FormatterCode Fix WordString
+From Glibc Require Import OsWorld FileInv LibioLogic Fix WordString
   FormatterStringTable FormatterStringDispatch FormatterStringLength StrlenLogic.
 (** The variadic rule uses the same heap and runtime as the formatter. *)
 Module ReadVL := VariadicLogicOn R LG0.
@@ -33,9 +34,9 @@ Lemma wp_formatter_string_arg_word e ls from cb cr sb sr off p dq s Φ :
   live sb sr -∗ pcell sb off p -∗ word_string dq p s -∗
   ▷ (pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
     live sb sr -∗ pcell sb off p -∗ word_string dq p s -∗
-    WP (ERun (mkFrame glibc_printf_buffer (put (TAtom "v1828") (WPtr p) e) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (put (TAtom "v1828") (WPtr p) e) ls None
       (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L1825") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hcb Hsb Ho He Hr Ha Hp.
@@ -84,11 +85,11 @@ Lemma wp_formatter_table_string_read e ls from jb jr tb tr dqj dqt p9 p4
     liveq dqt tb tr -∗ bytesq dqt tb 84 [21;0;0;0] -∗
     pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
     live sb sr -∗ pcell sb off p -∗ word_string dq p s -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (string_length_env (put (TAtom "v1828") (WPtr p)
         (string_dispatch_env (string_table_env e jb tb) p9 p4)) p (Z.of_nat (length s))) ls None
       (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs H9 H4 Hv Hzero Hj Ht Hstrlen Hjb Hje Hjr Htb Hte Htr

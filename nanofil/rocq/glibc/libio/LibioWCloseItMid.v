@@ -3,15 +3,16 @@
     function as the narrow table. The stream keeps its wide orientation
     and its lock pointer when it drops its two buffers. *)
 
+From Glibc Require Import Unit_io_close_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry SysCode SysWrappers FileInv FileIdle LibioLogic
-  LibioCloseSteps LibioGenLeaves LibioGenCode LibioCloseItCode LibioReadCode LibioSetb
-  LibioCloseItEnd LibioCloseItMid LibioCloseItShort LibioWIdle LibioWAllocCode LibioWAllocSetb LibioWCloseItEnd Fix.
+From Glibc Require Import OsWorld OsBlocks OsRegistry SysWrappers FileInv FileIdle LibioLogic
+  LibioCloseSteps LibioGenLeaves LibioSetb
+  LibioCloseItEnd LibioCloseItMid LibioCloseItShort LibioWIdle LibioWAllocSetb LibioWCloseItEnd Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
@@ -27,11 +28,11 @@ Definition wclosed_state (st : fstate) : fstate :=
 Section close_it.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge)
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  `{Hwsb : !Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}
-  `{Hsb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hcn : !Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  `{Hwsb : !Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}
+  `{Hsb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 
@@ -62,7 +63,7 @@ Qed.
     return EOF as well. The rule returns both results according to
     glibc's priority and keeps the actual closed FILE for its caller. *)
 Lemma wp_wclose_it_L18 e e' from p3 fb freg st nb vb vr eb wd w tw tm Φ :
-  (forall b, find_block (TAtom "L18") (fn_blocks glibc__IO_file_close_maybe_unlink) = Some b ->
+  (forall b, find_block (TAtom "L18") (fn_blocks Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink) = Some b ->
     phis_env ge (b_phis b) (Some from) e = Some e') ->
   lookup (TAtom "v0") e' = Some (WPtr (objp fb)) -> lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (fb+off_fileno) (Obj fb))) ->
   lookup (TAtom "chk1") e' = Some (WPtr (objp fb)) -> lookup (TAtom "v2") e' = Some (WInt 0) ->
@@ -75,7 +76,7 @@ Lemma wp_wclose_it_L18 e e' from p3 fb freg st nb vb vr eb wd w tw tm Φ :
   live fb freg -∗ file_fields fb st -∗ buf_idle nb -∗ wide_data vb tw tm wd w -∗
   ▷ (∀ k, ⌜k = 0 \/ k = 2^32-1⌝ -∗ errno_any eb -∗ live fb freg -∗ file_fields fb (wclosed_state st) -∗
      wide_data vb tw tm wd WbNone -∗ Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
-  WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hphi Hv Hc Hc1 Hv2 Hp Hp3 Hfb Hal He Hr Hmode Hvtp Hwd E9 E11 Hnc Hbp Hshort Hu Herr.
   iIntros "#Hvt #Hwv Herr Hl HF Hb Hdata HK".

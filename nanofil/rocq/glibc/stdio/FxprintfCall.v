@@ -12,6 +12,7 @@
     does not apply when the stream is wide or another thread holds its
     lock. The formatter's own behavior remains a premise that the caller
     supplies, so this module does not prove formatting. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -21,7 +22,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream FxprintfLock.
+  PrintfStreamInv FxprintfTidy FxprintfStream FxprintfLock.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -38,12 +39,12 @@ Import PrintfStreamInv SysWrappers LibioCloseSteps FileInv.ML FileInv.LG FileInv
 (** The checked function binds its two named parameters and snapshots
     every argument, including the named ones, before its first block. *)
 Definition fx_frame (fp fmt : ptr) (ys : list word) : frame :=
-  mkFrame glibc_fxprintf_nocancel (put (TAtom "v2") (WPtr fmt) (put (TAtom "v0") (WPtr fp) [])) [] None
+  mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel (put (TAtom "v2") (WPtr fmt) (put (TAtom "v0") (WPtr fp) [])) [] None
     (Snapshot (WPtr fp :: WPtr fmt :: ys) (TAtom "start")).
 
 (** Binding the call's arguments gives exactly this frame. *)
 Lemma fx_call_frame fp fmt ys :
-  call_frame glibc_fxprintf_nocancel (WPtr fp :: WPtr fmt :: ys) = Some (fx_frame fp fmt ys).
+  call_frame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel (WPtr fp :: WPtr fmt :: ys) = Some (fx_frame fp fmt ys).
 Proof. reflexivity. Qed.
 
 Import ProgramAbbreviations.
@@ -150,7 +151,7 @@ Qed.
 Lemma wp_call_fxprintf_at f e ls l d args rest j vb fd sb sreg fp fmt ys mode flags2 held dqf regf
     (R : iProp Σ) (Q : Z -> Z -> iProp Σ) Φ :
   map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) ->
   forallb snapshot_word ys = true -> ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
@@ -176,7 +177,7 @@ Qed.
 Lemma wp_call_fxprintf f e ls l d args rest j vb fd sb sreg fp fmt ys mode flags2 held dqf regf
     (R : iProp Σ) (Q : Z -> iProp Σ) Φ :
   map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) ->
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) ->
   forallb snapshot_word ys = true -> ptr_addr (ow_self w0) <> 0 -> 0 <= ptr_addr (ow_self w0) < 2 ^ 64 ->
   0 <= ptr_addr fmt < 2 ^ 64 ->
   mode = 0 \/ mode = 2 ^ 32 - 1 -> (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->

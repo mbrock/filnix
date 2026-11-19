@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_rdlock_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os.
 From Glibc Require Import GlibcProgram.
 (** Hello uses glibc's setlocale lock in two ways. Setlocale takes it
     for writing once, and gettext takes it for reading every time it
@@ -25,7 +26,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
-From Glibc Require Import RdlockCode RwunlockCode WrlockCode RdlockLogic RdlockPhase RwunlockLogic WrlockLogic
+From Glibc Require Import RdlockLogic RdlockPhase RwunlockLogic WrlockLogic
   RwunlockWrite.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -114,7 +115,7 @@ Definition rw_cells (lb : Z) (lreg : region) (r wp wf cw sh fl : Z) : iProp Σ :
 
 (** A call of a name bound to the captured read lock, on a lock that is
     ready for a reader, returns 0 and leaves the word [rd_word] r. *)
-Lemma wp_call_rdlock_ready `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock}
+Lemma wp_call_rdlock_ready `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock}
     f e ls l d args rest j lk lb lreg tb treg r wp wf cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   rw_word_ready r wp -> cw <> tid ->
@@ -138,7 +139,7 @@ Qed.
 
 (** A reader that unlocks a word it holds, with no flag set, removes
     itself. *)
-Lemma wp_call_rwunlock_held `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma wp_call_rwunlock_held `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     f e ls l d args rest j lk lb lreg tb treg r wp wf cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   r mod 8 = 0 -> 8 <= r -> cw <> tid ->
@@ -156,7 +157,7 @@ Qed.
 
 (** A call of a name bound to the captured write lock, on an idle lock,
     returns 0 and leaves the word 3 with the calling thread as writer. *)
-Lemma wp_call_wrlock_idle `{!Defines ge "__GI___pthread_rwlock_wrlock" glibc_pthread_rwlock_wrlock}
+Lemma wp_call_wrlock_idle `{!Defines ge "__GI___pthread_rwlock_wrlock" Unit_nptl_pthread_rwlock_wrlock_os.fn____pthread_rwlock_wrlock}
     f e ls l d args rest j lk lb lreg tb treg r wp wf cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   rw_word_idle r wp wf -> cw <> tid ->
@@ -178,7 +179,7 @@ Qed.
     This rule says the release leaves no writer, the word 1 and the
     writers futex 0. It holds for a lock that prefers readers, as a
     lock with flags 0 does. *)
-Lemma wp_call_rwunlock_writer `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma wp_call_rwunlock_writer `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     f e ls l d args rest j lk lb lreg tb treg wp wf sh dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg -> (wf = 0 \/ wf = 1) ->
   rw_cells lb lreg 3 wp wf tid sh 0 ∗ rw_self dqt tb treg dqi tid -∗
@@ -226,7 +227,7 @@ Proof using Type. iIntros "H". iExists 0, 0, 0. iFrame "H". iPureIntro. lia. Qed
 (** A reader's lock adds one to the count. When the count is 0 and the
     word is 1, this is the phase route, which also clears the
     write-phase futex. *)
-Lemma wp_call_rdlock_state `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock}
+Lemma wp_call_rdlock_state `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock}
     f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   0 <= r -> r mod 8 = 0 -> r + 8 < 2 ^ 31 -> cw <> tid ->
@@ -249,7 +250,7 @@ Proof using Type*.
 Qed.
 
 (** A reader's unlock takes the count back down by one reader. *)
-Lemma wp_call_rwunlock_state `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma wp_call_rwunlock_state `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     f e ls l d args rest j lk lb lreg tb treg r cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   0 <= r -> r mod 8 = 0 -> cw <> tid ->
@@ -269,7 +270,7 @@ Qed.
 
 (** Setlocale's write lock takes a lock with no reader and makes the
     calling thread its writer. *)
-Lemma wp_call_wrlock_state `{!Defines ge "__GI___pthread_rwlock_wrlock" glibc_pthread_rwlock_wrlock}
+Lemma wp_call_wrlock_state `{!Defines ge "__GI___pthread_rwlock_wrlock" Unit_nptl_pthread_rwlock_wrlock_os.fn____pthread_rwlock_wrlock}
     f e ls l d args rest j lk lb lreg tb treg cw sh fl dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg -> cw <> tid ->
   rw_state lb lreg 0 cw sh fl ∗ rw_self dqt tb treg dqi tid -∗
@@ -287,7 +288,7 @@ Proof using Type*.
 Qed.
 
 (** Setlocale's unlock leaves a lock with no reader and no writer. *)
-Lemma wp_call_rwunlock_writing `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma wp_call_rwunlock_writing `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     f e ls l d args rest j lk lb lreg tb treg sh dqt dqi tid Φ :
   map_option (arg_x ge e) args = Some [WPtr lk] -> rw_place lk lb lreg tb treg ->
   rw_writing lb lreg tid sh 0 ∗ rw_self dqt tb treg dqi tid -∗

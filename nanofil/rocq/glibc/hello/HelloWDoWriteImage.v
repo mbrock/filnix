@@ -3,6 +3,7 @@
     This module checks how the loaded image writes the resulting bytes
     to the file descriptor for stdout. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String List ZArith.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap.
 From Glibc Require Import Fix OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioCloseSteps
-  LibioWIdle LibioReadCode LibioDoWriteCode SysCode LibioCleanupExit LibioWCloseIt
+  LibioWIdle LibioCleanupExit LibioWCloseIt
   LibioWConvAscii LibioWDoWriteLoop LibioWDoWriteUse LibioWOverflowWrite
   HelloImageModule HelloImageLoad HelloImageLayout HelloGlibcDebts HelloGlibcLibsT HelloStartFacts.
 From Glibc Require HelloWConvImage.
@@ -27,16 +28,16 @@ Local Abbreviation tw := (mkPtr (img_a "glibc_wcsmbsload#to_wc") (Ro (img_a "gli
 Local Abbreviation tm := (mkPtr (img_a "glibc_wcsmbsload#to_mb") (Ro (img_a "glibc_wcsmbsload#to_mb"))).
 Context (Hfd : In 1 (ow_fds w)) (Herr : ow_errno w = Some (mkPtr eb (Obj eb))).
 
-#[local] Instance image_syswrite : Defines hge "__GI___write" glibc___libc_write.
+#[local] Instance image_syswrite : Defines hge "__GI___write" Unit_io_write_os.fn___GI___libc_write.
 Proof using Type. vm_compute; reflexivity. Qed.
-#[local] Instance image_dowrite : Defines hge "_IO_new_do_write" glibc__IO_new_do_write.
+#[local] Instance image_dowrite : Defines hge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write.
 Proof using Type. vm_compute; reflexivity. Qed.
 #[local] Instance image_codecvt : Defines hge "__libio_codecvt_out" codecvt_out_fn.
 Proof using Type. vm_compute; reflexivity. Qed.
 
 (** The stream calls its byte writer through a jump table, so the
     image must supply its address as well as its body. *)
-Local Lemma image_file_write : ge_fn hge "_IO_new_file_write" glibc__IO_new_file_write.
+Local Lemma image_file_write : ge_fn hge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write.
 Proof using Type.
   exists (img_addr "_IO_new_file_write"). split; [vm_compute; reflexivity|].
   split; [vm_compute; reflexivity|split; vm_compute; congruence].

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_new_file_write` (LibioReadCode.v), the jump
     table's write: it hands the bytes from data to
@@ -22,7 +23,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -49,7 +50,7 @@ Context (Hexit : forall fb freg off n t e from Φ,
   lookup (TAtom "pr.2") e = Some (WInt t) ->
   live fb freg -∗ icell fb off_offset off -∗
   ▷ (∀ off', live fb freg -∗ icell fb off_offset off' -∗ Φ (Ret (WInt (n - t)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}).
 
 (** A failed call's block, as LibioWriteExit.v proves it ([wp_file_write_err]). *)
 Context (Herr_spec : forall fb freg fl off n t e from Φ,
@@ -61,7 +62,7 @@ Context (Herr_spec : forall fb freg fl off n t e from Φ,
   live fb freg -∗ int_cell fb off_flags fl -∗ icell fb off_offset off -∗
   ▷ (∀ off', live fb freg -∗ int_cell fb off_flags (Z.lor fl io_err_seen) -∗ icell fb off_offset off' -∗
      Φ (Ret (WInt (n - t)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}).
 
 (** The block after a call that wrote, as LibioWriteExit.v proves it
     ([wp_file_write_next]). *)
@@ -77,9 +78,9 @@ Context (Hnext : forall fb freg tw t k p e from Φ,
                  lookup (TAtom "pr.2") e' = Some (WInt (t - k)) /\
                  lookup (TAtom "pr.1") e' = Some (WPtr (mkPtr (ptr_addr p + k) (ptr_cap p)))⌝ -∗
        live fb freg -∗ icell fb off_total_written tw' -∗
-       WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
+       WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
              : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}).
 
 (** The call of `c: __write`, as LibioWriteCall.v proves it
     ([wp_file_write_call]). *)
@@ -100,9 +101,9 @@ Context (Hcall : forall fb freg f2 fd b reg o xs eb t e Φ,
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ live b reg -∗ bytes b o xs -∗
      errno_any eb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}).
 
 (** The loop of `c: _IO_new_file_write(fp, data, n)` at its head, t of
     the n bytes xs at offset o of b left to write. *)
@@ -123,7 +124,7 @@ Lemma wp_file_write_loop fb freg fl f2 fd b reg o xs eb Φ :
        live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗
        icell fb off_total_written tw' -∗ icell fb off_offset off' -∗ live b reg -∗ bytes b o xs -∗ errno_any eb -∗
        Φ (Ret (WInt r))) -∗
-    WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
+    WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
           : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd Hflr He Hb Ho Hbend Hreg' Hy. unfold file_size in Hend.
@@ -166,7 +167,7 @@ Qed.
     of the object b, through `c: __write` on the stream's
     `c: _fileno`: r of them written, [fw_post]. *)
 Lemma wp_glibc__IO_new_file_write fr fb freg fl f2 fd tw off b reg o xs eb Φ :
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b)); WInt (Z.of_nat (length xs))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->

@@ -20,7 +20,7 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloMain HelloName.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioWIdle StrchrCode StrcmpCode StrncmpCode StrlenLogic
+From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioWIdle StrlenLogic
   GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr GetoptInitial
   AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop

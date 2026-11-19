@@ -1,6 +1,6 @@
 (** Hello's wide print call makes stdout wide with `c: _IO_fwide`. *)
 
-From Glibc Require Import HelloImageTypedWC.
+From Glibc Require Import Unit_string_memset_os Unit_wcsmbs_wcsmbsload_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -9,7 +9,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloLeaf.
 From Glibc Require Import CodePrelude HelloImageModule HelloImageLoad
-  OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioWIdle MemFwdCode MemFwdLogic Mbrtowc StartImageCpu StartImageEarly HelloImageMbsObjs HelloImageWFwideObjs LibioCloseSteps WPrintfInternal Fix.
+  OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioWIdle MemFwdLogic Mbrtowc StartImageCpu StartImageEarly HelloImageMbsObjs HelloImageWFwideObjs LibioCloseSteps WPrintfInternal Fix.
 From Glibc Require MemchrLast StartInitMisc.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
@@ -20,7 +20,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
 
-Definition glibc_clone_conv := hello_image_fn___wcsmbs_clone_conv.
+Definition glibc_clone_conv := Unit_wcsmbs_wcsmbsload_os.fn___wcsmbs_clone_conv.
 
 Local Abbreviation ts := (img_a "__libc_tsd_LOCALE").
 Local Abbreviation ft := (img_a "__wcsmbs_gconv_fcts_c").
@@ -195,7 +195,7 @@ Context (Hts : lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp t
   (Hset : registry (TAtom "zmemset") = Some (void_only (memset_contract os_world)))
   (Hset_fn : find_fn ge (TAtom "zmemset") = None)
   (Hset_sym : lookup (TAtom "zmemset") (ge_globals ge) = None)
-  `{!Defines ge "__wcsmbs_clone_conv" glibc_clone_conv, !Defines ge "__GI_memset" glibc_memset}.
+  `{!Defines ge "__wcsmbs_clone_conv" glibc_clone_conv, !Defines ge "__GI_memset" Unit_string_memset_os.fn___GI_memset}.
 Context (vb : Z) (self : ptr).
 
 (** A wide stream reads its mode, finds 1 and returns it, and nothing

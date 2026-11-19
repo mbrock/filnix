@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The small fill of `c: _IO_default_xsputn`'s loop
     (LibioGenCode.v), block `c: L50`, when at most 20 bytes go into the
@@ -13,8 +14,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -48,7 +49,7 @@ Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia | do 3 f
     at `c: L22`. *)
 Lemma wp_dx_L50 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   room_ok b sz reg xs cs (mkPtr wa (Obj b)) (mkPtr ea (Obj b)) ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
@@ -64,7 +65,7 @@ Lemma wp_dx_L50 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cn
   os fb (Some (b, sz)) -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ dx_loop w0 registry ge os fb freg vb vreg dq b' reg' so c' ys Φ -∗
   ▷ dx_post registry ge os fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Enter (TAtom "L50") (Some (TAtom "L44")))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_default_xsputn e [] None (Enter (TAtom "L50") (Some (TAtom "L44")))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hok Hc' Hb8' Hso Hyend Hyreg Hy Ht Hcnt Hsmall Hroom Hv0 Hc0 Hv4 Hp7 Hp9 Hp2.
   unfold file_size in Hfend.

@@ -5,13 +5,14 @@
     the conversion and write of the pending characters to the rule for
     `c: _IO_wdo_write`. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_wfiledoalloc_os.
 From Glibc Require Import GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls Pieces Heap.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioWIdle LibioReadCode LibioWAllocCode
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioWIdle
   HelloGlibcDebts HelloGlibcLibsT HelloImageModule HelloImageLoad HelloImageLayout HiAtexitAlloc
   LibioWOverflowDispatch LibioWOverflowWrite LibioWOverflowAllocate LibioWOverflow LibioWXsputn WPrintfFileFlush.
 From Glibc Require LibioCleanupExit.
@@ -38,8 +39,8 @@ Lemma hello_wprintf_xsputn_image (E : iProp Σ) : hello_link hge o ->
   wdo_pending_spec vb self 1 E -> wprintf_xsputn_call_spec vb self E.
 Proof using Type*.
   intros Link Err Fd Loan Write. destruct (hk_frees _ _ Link) as (Free & Zfn & Zg).
-  assert (FileStat : ge_fn hge "__GI__IO_file_stat" glibc__IO_file_stat) by image_fn "__GI__IO_file_stat".
-  assert (Alloc : ge_fn hge "_IO_wfile_doallocate" glibc__IO_wfile_doallocate) by image_fn "_IO_wfile_doallocate".
+  assert (FileStat : ge_fn hge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat) by image_fn "__GI__IO_file_stat".
+  assert (Alloc : ge_fn hge "_IO_wfile_doallocate" Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate) by image_fn "_IO_wfile_doallocate".
   assert (Target : ge_fn hge "__GI__IO_wfile_overflow" wfile_overflow_fn) by image_fn "__GI__IO_wfile_overflow".
   assert (Env : wo_alloc_env vb E DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o)).
   { iIntros "HE". iDestruct (Loan with "HE") as "(HV & HW & HM & He & HK)".

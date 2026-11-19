@@ -6,6 +6,7 @@
     [memchr_last] so that [MemchrFirst] and [MemchrLogic] can verify the
     whole function. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast.
 From Glibc Require MemchrLast WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -60,7 +61,7 @@ Lemma memchr_loop_ind (dq : dfrac) (b : Z) (reg : region) (c E : Z) (Φ : outcom
     ⌜(loop_hit (wbytes (w :: ws)) (c mod 256) (b + o) E r)%Z⌝ -∗
     liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
     (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
-    WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
+    WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hb0 Hreg. iLöb as "IH".
   iIntros (w ws o e from q r Hc Ho Hal Hq Hend Hr HE Hphi H78 H7 H40 Hhit) "Hl Hps HK".
@@ -135,7 +136,7 @@ Lemma memchr_loop dq b reg w ws o e from q c E r Φ :
   loop_hit (wbytes (w :: ws)) (c mod 256) (b + o) E r ->
   liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b o (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr q r)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "L84") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hc Ho Hb0 Hal Hq Hend Hreg Hr HE Hphi H78 H7 H40 Hhit. iIntros "Hl Hps HK".
   iApply (memchr_loop_ind dq b reg c E Φ Hb0 Hreg $! w ws o e from q r

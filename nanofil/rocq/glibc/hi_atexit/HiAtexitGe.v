@@ -12,11 +12,11 @@
     | [hi_ge_file_write] and the others | [ge_fn] of a function called through a jump table |
     | [hge], [hge_frees], [hge_zgc_free] | the genv with the interpreter's free | *)
 
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcTactics LibioTactics.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls.
-From Glibc Require Import HiAtexitModule HiAtexitFns OsWorld OsRegistry SysWrappers LibioLogic SysCode
-  LibioReadCode LibioDoWriteCode LibioGenCode LibioXsputnCode LibioUnlinkCode.
+From Glibc Require Import HiAtexitModule HiAtexitFns OsWorld OsRegistry SysWrappers LibioLogic.
 Import ListNotations.
 Open Scope string_scope.
 
@@ -39,31 +39,31 @@ Lemma hi_move : glibc_os_registry (TAtom "zmemmove") = Some (void_only (memmove_
 Proof using Type. split; [reflexivity|]. vm_compute. split; reflexivity. Qed.
 
 (** `c: _IO_new_file_write` is laid out at its own symbol. *)
-Lemma hi_ge_file_write : ge_fn (hi_ge fre) "_IO_new_file_write" glibc__IO_new_file_write.
+Lemma hi_ge_file_write : ge_fn (hi_ge fre) "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_new_file_xsputn` is laid out at its own symbol. *)
-Lemma hi_ge_xsputn : ge_fn (hi_ge fre) "_IO_new_file_xsputn" glibc__IO_new_file_xsputn.
+Lemma hi_ge_xsputn : ge_fn (hi_ge fre) "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_new_file_overflow` is laid out at its own symbol. *)
-Lemma hi_ge_overflow : ge_fn (hi_ge fre) "_IO_new_file_overflow" glibc__IO_new_file_overflow.
+Lemma hi_ge_overflow : ge_fn (hi_ge fre) "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_file_close` is laid out at its own symbol. *)
-Lemma hi_ge_file_close : ge_fn (hi_ge fre) "__GI__IO_file_close" glibc__IO_file_close.
+Lemma hi_ge_file_close : ge_fn (hi_ge fre) "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_file_stat` is laid out at its own symbol. *)
-Lemma hi_ge_file_stat : ge_fn (hi_ge fre) "__GI__IO_file_stat" glibc__IO_file_stat.
+Lemma hi_ge_file_stat : ge_fn (hi_ge fre) "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_file_doallocate` is laid out at its own symbol. *)
-Lemma hi_ge_doallocate : ge_fn (hi_ge fre) "__GI__IO_file_doallocate" glibc__IO_file_doallocate.
+Lemma hi_ge_doallocate : ge_fn (hi_ge fre) "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 (** `c: _IO_new_file_finish` is laid out at its own symbol. *)
-Lemma hi_ge_file_finish : ge_fn (hi_ge fre) "_IO_new_file_finish" glibc__IO_new_file_finish.
+Lemma hi_ge_file_finish : ge_fn (hi_ge fre) "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish.
 Proof using Type. eexists. split; [vm_compute; reflexivity|]. split; [vm_compute; reflexivity|]. lia. Qed.
 
 End ge.

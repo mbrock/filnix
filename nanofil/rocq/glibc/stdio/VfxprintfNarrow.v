@@ -5,6 +5,7 @@
     change the stream's flags word, for example to mark the stream as
     writing. Its contract must return the fields needed to release the
     stream lock. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FxprintfNormalCode VfxprintfReturn Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps VfxprintfReturn Fix.
 Module NarrowVL := VariadicLogicOn R LG0.
 Import NarrowVL.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
@@ -58,7 +59,7 @@ Lemma wp_vfxprintf_narrow e from fb freg fl lb lbreg fmt ap flags md dqf fmtreg 
     live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
     lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
-  WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "iw_1.start") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf e [] None (Enter (TAtom "iw_1.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hpr Hchk Hfmt Hap Hflags Hfb Hal Hend Hreg Huser Hfmtr Hmd (fn & fr & Hfn & Hframe & Hcall).
   iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".

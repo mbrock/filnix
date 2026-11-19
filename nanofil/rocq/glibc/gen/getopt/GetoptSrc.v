@@ -2,7 +2,7 @@
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -11,8 +11,9 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+From Glibc Require Import Unit_posix_getopt1_os Unit_posix_getopt_os.
 
-From Glibc Require Import GetoptModule GetoptSrcFiles GetoptSrc01 GetoptSrc02 GetoptSrc03.
+From Glibc Require Import GetoptSrcFiles GetoptSrc01 GetoptSrc02 GetoptSrc03.
 Module GetoptSrc.
 Include GetoptSrcFiles.
 Include GetoptSrc01.
@@ -20,12 +21,8 @@ Include GetoptSrc02.
 Include GetoptSrc03.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) getopt_module with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) ["glibc_getopt#process_long_option"; "_getopt_internal_r"; "_getopt_internal"; "getopt_long"].
+Definition source_blocks : list (string * list name) := Eval lazy in
+  [("glibc_getopt#process_long_option", map b_label (fn_blocks Unit_posix_getopt_os.fn_glibc_getopt'23process_long_option)); ("_getopt_internal_r", map b_label (fn_blocks Unit_posix_getopt_os.fn__getopt_internal_r)); ("_getopt_internal", map b_label (fn_blocks Unit_posix_getopt_os.fn__getopt_internal)); ("getopt_long", map b_label (fn_blocks Unit_posix_getopt1_os.fn_getopt_long))].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -35,7 +32,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false

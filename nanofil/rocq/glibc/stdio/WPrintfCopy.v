@@ -3,7 +3,7 @@
     same byte copier as the narrow formatter. The copy may change shadow
     slots in the array, but it preserves the characters before the cursor. *)
 
-From Glibc Require Import HelloImageTypedWM.
+From Glibc Require Import Unit_string_memcpy_os Unit_wcsmbs_wmemcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,11 +11,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
-  LibioCloseSteps MemFwdCode MemFwdLogic PrintfStagingCopy WPrintfDispatch.
+  LibioCloseSteps MemFwdLogic PrintfStagingCopy WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
-Definition wprintf_copy_fn := hello_image_fn___wmemcpy.
+Definition wprintf_copy_fn := Unit_wcsmbs_wmemcpy_os.fn___wmemcpy.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
@@ -51,7 +51,7 @@ Qed.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  (Hmemcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy)).
+  (Hmemcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy)).
 
 (** Appending some characters needs just their source bytes, the array
     and the two object lifetimes. The caller keeps the header fields,

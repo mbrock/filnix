@@ -20,6 +20,7 @@
     counter, and static buffer, any external world must satisfy
     [wi_ignores] for those three objects. *)
 
+From Glibc Require Import Unit_stdlib_atexit_oS Unit_stdlib_cxa_atexit_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -27,22 +28,22 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import StdlibCode GlibcLogic LeavesLogic.
+From Glibc Require Import GlibcLogic LeavesLogic.
 From Glibc Require GlibcLogic LeavesLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
 (** [new_exitfn_fn] is the decoded IR body of glibc's `__new_exitfn`. *)
-Definition new_exitfn_fn : func := Eval vm_compute in stdlib_fn "__new_exitfn".
+Definition new_exitfn_fn : func := Unit_stdlib_cxa_atexit_os.fn___new_exitfn.
 (** [internal_atexit_fn] is the decoded IR body of glibc's
     `__internal_atexit`. *)
-Definition internal_atexit_fn : func := Eval vm_compute in stdlib_fn "__internal_atexit".
+Definition internal_atexit_fn : func := Unit_stdlib_cxa_atexit_os.fn___internal_atexit.
 (** [cxa_atexit_fn] is the decoded IR body of glibc's
     `__GI___cxa_atexit`. *)
-Definition cxa_atexit_fn : func := Eval vm_compute in stdlib_fn "__GI___cxa_atexit".
+Definition cxa_atexit_fn : func := Unit_stdlib_cxa_atexit_os.fn___GI___cxa_atexit.
 (** [atexit_fn] is the decoded IR body of glibc's `c: atexit`. *)
-Definition atexit_fn : func := Eval vm_compute in stdlib_fn "atexit".
+Definition atexit_fn : func := Unit_stdlib_atexit_oS.fn_atexit.
 
 (** [new_exitfn_frame] states the initial call [[frame]] constructed
     when calling `__new_exitfn` with pointer p. *)

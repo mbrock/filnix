@@ -11,6 +11,7 @@
     `c: strcmp` so callers can share strings, recover their read
     permissions, and obtain [strcmp_res]. *)
 
+From Glibc Require Import Unit_string_strcmp_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCode StrcmpBits StrcmpLoop.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
@@ -101,7 +102,7 @@ Lemma after_bytes dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 q1 q2 z1 z2 z
   ptr_addr q1 = ptr_addr p1 + c -> ptr_cap q1 = ptr_cap p1 -> ptr_addr q2 = ptr_addr p2 + c -> ptr_cap q2 = ptr_cap p2 ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp (put (TAtom "v17") z1 (put (TAtom "v16") z2 (put (TAtom "pr.1") (WPtr q1)
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "v17") z1 (put (TAtom "v16") z2 (put (TAtom "pr.1") (WPtr q1)
        (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") z3 e))))) [] None (Enter (TAtom "L13") (Some (TAtom "L10"))))
        : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
@@ -186,7 +187,7 @@ Lemma byte_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 i q1 q2 e Φ :
   lookup (TAtom "v8") e = Some (WInt ((- ptr_addr p1) mod 8)) ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") (WInt i) e)))
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "pr.1") (WPtr q1) (put (TAtom "pr.2") (WPtr q2) (put (TAtom "pr.3") (WInt i) e)))
        [] None (Exec (TAtom "L10") (b_insts blk10) (b_jump blk10))) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hs1 Hs2. facts Hs1 Hs2. set (n8 := (- ptr_addr p1) mod 8).
@@ -249,7 +250,7 @@ Lemma strcmp_entry dq1 dq2 p1 p2 s1 s2 e Φ :
   e = [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2)] \/ e = [(TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros He. iIntros "(%b1 & %reg1 & %ws1 & %Hs1 & W1) (%b2 & %reg2 & %ws2 & %Hs2 & W2) HK". facts Hs1 Hs2.
   destruct He as [-> | ->];
@@ -268,7 +269,7 @@ Qed.
 Lemma wp_glibc_strcmp_ws dq1 dq2 p1 p2 s1 s2 Φ :
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2)] [] None
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp [(TAtom "v0", WPtr p1); (TAtom "v2", WPtr p2)] [] None
              (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0. apply strcmp_entry. left. reflexivity. Qed.
 
@@ -281,10 +282,10 @@ Definition strcmp_spec : fspec Σ :=
       ⌜v = Ret (WInt (strcmp_res s1 s2))⌝ ∗ word_string dq1 p1 s1 ∗ word_string dq2 p2 s2)%I.
 
 (** The entry proof accepts the parameter order produced by argument binding. *)
-Lemma strcmp_spec_valid g : find_fn ge g = Some (Defined glibc_strcmp) ->
+Lemma strcmp_spec_valid g : find_fn ge g = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   HasSpec registry wi ge g strcmp_spec.
 Proof using SafepointStable0.
-  intros Hg [[[[[dq1 dq2] p1] p2] s1] s2]. exists glibc_strcmp. split; [exact Hg|].
+  intros Hg [[[[[dq1 dq2] p1] p2] s1] s2]. exists Unit_string_strcmp_os.fn___GI_strcmp. split; [exact Hg|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn in Hfr. injection Hfr as <-. cbn [fs_pre fs_post strcmp_spec].
   iIntros "[H1 H2] HK". iApply (strcmp_entry with "H1 H2"); [right; reflexivity|].
@@ -292,7 +293,7 @@ Proof using SafepointStable0.
 Qed.
 
 (** Linked callers supply the comparison function's definition by name. *)
-#[global] Instance strcmp_has_spec n `{!Defines ge n glibc_strcmp} :
+#[global] Instance strcmp_has_spec n `{!Defines ge n Unit_string_strcmp_os.fn___GI_strcmp} :
   HasSpec registry wi ge (TAtom n) strcmp_spec.
 Proof using SafepointStable0. apply strcmp_spec_valid. apply defines. Qed.
 
@@ -300,7 +301,7 @@ Proof using SafepointStable0. apply strcmp_spec_valid. apply defines. Qed.
     by name g, returning [strcmp_res] and both [word_string]
     permissions. *)
 Lemma wp_call_glibc_strcmp f e ls l r g args rest j dq1 dq2 p1 p2 s1 s2 cf' Φ :
-  map_option (arg_x ge e) args = Some [WPtr p1; WPtr p2] -> find_fn ge g = Some (Defined glibc_strcmp) ->
+  map_option (arg_x ge e) args = Some [WPtr p1; WPtr p2] -> find_fn ge g = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   resume (mkFrame f e ls None (Exec l rest j)) (mkPending r None) (Ret (WInt (strcmp_res s1 s2))) = Some cf' ->
   word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗
   ▷ (word_string dq1 p1 s1 -∗ word_string dq2 p2 s2 -∗ WP (ERun cf' : gexpr) {{ Φ }}) -∗

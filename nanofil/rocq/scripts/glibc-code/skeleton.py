@@ -32,7 +32,7 @@ def main():
     parser.add_argument("unit", help="manifest directory/fixture row, e.g. getopt/Getopt")
     parser.add_argument("function", help="exact linked IR symbol, including its object prefix")
     parser.add_argument("--capture", type=Path, default=Path("/tmp/glibc-pp"))
-    parser.add_argument("--rocq-function", default="F", help="decoded func expression (default: F)")
+    parser.add_argument("--rocq-function", default="F", help="typed func expression (default: F)")
     parser.add_argument("--expr-type", default="gexpr", help="local expression notation (default: gexpr)")
     parser.add_argument("--json", action="store_true", help="print block data and entry lines as JSON")
     args = parser.parse_args()
@@ -59,7 +59,7 @@ def main():
             hashes = "buffer-fixtures.sha256" if cfg["layout"] == "buffer" else "fixtures.sha256"
             generator["run"](["sha256sum", "-c", manifest.parent / hashes], cwd=gen.capture)
         linked, _ = gen.link(cfg, name, roots or cfg.get("roots", ""),
-                          "- " + paths if paths else cfg.get("units", ""),
+                          "- " + paths if paths else generator["manifest_units"](cfg),
                           program[0] if program else "")
         term = work / "linked.term"
         term.write_text(linked)

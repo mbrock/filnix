@@ -6,6 +6,7 @@
     Restoring zero permits the caller to rebuild its cleanup invariant,
     provided it also kept the original cleanup pointers. The flag alone
     does not supply those pointers or the thread's lifetime. *)
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode CancelState ErrorCode ErrorEntry Fix.
+  CancelState ErrorEntry Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -27,7 +28,7 @@ Context (Hreg : holds_os registry) (Hext : sys_external ge).
 (** The old flag selects the actual enable or already-disabled path.
     Neither path writes an old-state output cell because that pointer is null. *)
 Lemma wp_error_restore_cancel old fr tb treg Φ :
-  call_frame glibc___pthread_setcancelstate [WInt old;WPtr null] = Some fr ->
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate [WInt old;WPtr null] = Some fr ->
   old = 0 \/ old = 1 -> ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   live tb treg -∗ int_cell tb 792 1 -∗
@@ -45,12 +46,12 @@ Lemma wp_error_restore e from status errnum fmt ap mode cb old tb treg (E : iPro
   error_inputs e status errnum fmt ap mode cb -> old = 0 \/ old = 1 ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   live tb treg -∗ int_cell tb 792 1 -∗
   live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗ E -∗
   (live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗ E -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.join") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hinputs Hold Hself Htb Hta Hte Htr Hcancel.

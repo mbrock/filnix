@@ -3,7 +3,7 @@
     sets to zero. The 128-byte discard array in the printf buffer is
     not part of the caller's string. *)
 
-From Glibc Require Import HelloImageTypedPR.
+From Glibc Require Import Unit_libio_vsnprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,7 +16,7 @@ From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct Printf
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope Z_scope.
 
-Definition report_init := hello_image_fn___printf_buffer_snprintf_init.
+Definition report_init := Unit_libio_vsnprintf_os.fn___printf_buffer_snprintf_init.
 
 Section init.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

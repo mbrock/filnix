@@ -5,6 +5,7 @@
 
     The input must be nonempty and fit the remaining staging space.
     This rule does not interpret conversions or flush the stream. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  LibioPutsInv PrintfBufferIoCode MemFwdCode MemFwdLogic WordString Fix
+  LibioPutsInv MemFwdLogic WordString Fix
   PrintfStagingCopy PrintfBufferWriteWindow.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
@@ -28,9 +29,9 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** The write advances the staging pointer and returns exact copied bytes.
     The caller recovers the same string share without copying its NUL. *)
 Lemma wp_printf_buffer_write_word fr bb reg off xs cs dq p s Φ :
-  call_frame glibc___printf_buffer_write
+  call_frame Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write
     [WPtr (mkPtr bb (Obj bb)); WPtr p; WInt (Z.of_nat (length s))] = Some fr ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end reg -> r_end reg <= 2 ^ 63 ->
   48 <= off -> 0 < Z.of_nat (length s) -> off + Z.of_nat (length s) <= 176 ->
   length xs = 128%nat -> length cs = length xs -> Forall (fun x => 0 <= x < 256) xs ->

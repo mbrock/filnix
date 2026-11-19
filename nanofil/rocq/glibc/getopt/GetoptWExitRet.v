@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** The option string "W;" tells getopt to read "-W foo" as "--foo".
     [GetoptWExit](GetoptWExit.v) carries the W of a single-dash word
@@ -14,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
+  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
@@ -59,10 +60,10 @@ Lemma entry_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j (G : iProp �
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -107,10 +108,10 @@ Lemma entry_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T 
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -143,10 +144,10 @@ Lemma entry_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp d
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -184,10 +185,10 @@ Lemma scan_w_ret_arg_with ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -234,10 +235,10 @@ Lemma scan_w_ret_arg ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -269,10 +270,10 @@ Lemma scan_w_ret ks ks2 n av ar p os lo li lonly b r ps j (G : iProp Σ) T fp do
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -310,10 +311,10 @@ Lemma long_only_w_ret_with kc kr n av ar p os lo li lonly b r ps j (G : iProp Σ
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule_with w0 registry ge G -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->
@@ -361,10 +362,10 @@ Lemma long_only_w_ret kc kr n av ar p os lo li lonly b r ps j (G : iProp Σ) T f
   lookup (TAtom "glibc_getopt#str.150") (ge_globals ge) = Some pfx ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
   getopt_ldiag_rule w0 registry ge G T fp dom -> getopt_free_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "glibc_getopt#str.138") (ge_globals ge) = Some f138 ->
   lookup (TAtom "glibc_getopt#str.139") (ge_globals ge) = Some f139 ->
   lookup (TAtom "glibc_getopt#str.140") (ge_globals ge) = Some f140 ->

@@ -2,13 +2,14 @@
     on an eight-byte boundary. Writing it can clear the pointer tag for
     the eight bytes around it. The formatter owns that tag as part of
     its window, so memset leaves the separate buffer header alone. *)
+From Glibc Require Import Unit_string_memset_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic MemFwdCode MemFwdLogic
+From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic MemFwdLogic
   PrintfStagingCopy PrintfOut.
 Import ListNotations ProgramAbbreviations OsWorld FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
@@ -67,10 +68,10 @@ Definition win_fill_spec : fspec Σ :=
 
 (** The compiled glibc wrapper calls the runtime fill once. Its result
     supplies both the updated ownership and the unchanged frame. *)
-Lemma memset_window_has_spec `{!Defines ge "__GI_memset" glibc_memset} :
+Lemma memset_window_has_spec `{!Defines ge "__GI_memset" Unit_string_memset_os.fn___GI_memset} :
   HasSpec registry (os_wi w0) ge (TAtom "__GI_memset") win_fill_spec.
 Proof using Type*.
-  intros [[[[[[b reg] lo] hi] a] c] n]. exists glibc_memset. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [[[[[[b reg] lo] hi] a] c] n]. exists Unit_string_memset_os.fn___GI_memset. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hcall. injection Hcall as <-. cbn [fs_pre fs_post win_fill_spec].
   iIntros "((%Hb8 & %Hl8 & %Ha & %Hlim & %Hend & %Hc & %Hn) & Hl & Hwin) HK".
   iDestruct "Hwin" as (xs cs) "((%Hx & %Hlen & %Hvalid) & Hbytes & Haux)".

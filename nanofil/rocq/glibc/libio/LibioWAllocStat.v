@@ -6,6 +6,7 @@
     for that table. The proof in [LibioDoAlloc](LibioDoAlloc.v) covers
     a narrow stream, and the two differ only in the slot they load. *)
 
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsFstat OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase LibioDoAlloc LibioWIdle.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -33,7 +34,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_file_stat` at the symbol that the stat
     slot of the wide jump table holds. Both tables name the same stat
     function. *)
-Context (Hstatf : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat).
+Context (Hstatf : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat).
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -66,7 +67,7 @@ Context (HL5 : forall fb freg fl fd eb oe sb sreg bs1 bs2 bs3 e Φ,
   pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗ Mres -∗
   live sb sreg -∗ bytes sb 24 bs1 -∗ bytes sb 40 bs2 -∗ bytes sb 56 bs3 -∗
   ▷ doalloc_k Mres fb freg fl fd eb Φ -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L5") (Some (TAtom "L13")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L5") (Some (TAtom "L13")))) : sexpr)
     {{ Φ }}).
 
 (** Block `c: L7` allocates the buffer and installs it. The proof
@@ -83,14 +84,14 @@ Context (HL7 : forall fb freg fl oe sz from e Φ,
      live fb freg -∗ int_cell fb off_flags (setb_flags fl 1) -∗
      pcell fb off_buf_base (mkPtr bb (Obj bb)) -∗ pcell fb off_buf_end (mkPtr (bb + sz) (Obj bb)) -∗
      new_buf bb sz -∗ Mres -∗ Φ (Ret (WInt 1))) -∗
-  WP (ERun (mkFrame glibc__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate e [] None (Enter (TAtom "L7") (Some from))) : sexpr) {{ Φ }}).
 
 (** `c: _IO_file_stat` asks the kernel about the stream's file. The
     call fills the stat buffer and returns 0, or it fails and returns
     -1. The proof assumes this contract, which
     [LibioRead](LibioRead.v) proves. *)
 Context (Hstat_spec : forall fr fb freg fd b reg o eb Φ,
-  call_frame glibc__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn___GI__IO_file_stat [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   0 <= o -> b + o + stat_size <= r_end reg ->
@@ -105,7 +106,7 @@ Context (Hstat_spec : forall fr fb freg fd b reg o eb Φ,
     stream. The function reads the stat slot through the wide table, so
     the caller also lends the shares of that table. *)
 Lemma wp_glibc__IO_file_doallocate_wide fr fb freg fl fd eb oe vb vreg Φ :
-  call_frame glibc__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   vtables_ro ge vb vreg -∗ wvtables_ro ge vb -∗

@@ -3,6 +3,7 @@
     the first call still has null read pointers. The second call then
     finds the narrow buffer already installed. *)
 
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,8 +11,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle LibioWXsputnWindow
-  LibioWAllocCode LibioWAllocBuf LibioWOverflowDispatch LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowSetWide
-  LibioWOverflowState LibioWOverflowLoan LibioWOverflowReady LibioWOverflowAllocateSteps LibioReadCode CBlocks.
+  LibioWAllocBuf LibioWOverflowDispatch LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowSetWide
+  LibioWOverflowState LibioWOverflowLoan LibioWOverflowReady LibioWOverflowAllocateSteps CBlocks.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
@@ -45,7 +46,7 @@ Proof using Type*.
     try assumption. rewrite /wo_cells /wo_wide_before /=. by iFrame.
 Qed.
 
-Context `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
+Context `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
 
 (** The wide allocator has already provided both heap buffers. The
     narrow allocator reads the nonnull base and returns without

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** After glibc's `c: __dcigettext` has allocated the buffer for the name
     of the catalog file, it writes that name into the buffer and copies
@@ -24,8 +25,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import MemFwdCode MemFwdLogic LibioDefaultXsputnCopy.
-From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
+From Glibc Require Import MemFwdLogic LibioDefaultXsputnCopy.
+From Glibc Require Import GetoptLongPfxAlloc DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -103,8 +104,8 @@ Ltac vx_len n :=
     with valid bytes and the sixteen-byte buffer sl, which is aligned to
     16 and holds zeros. *)
 Lemma wp_dci_copy_w_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
   find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
   dci_stpcpy_rule_r ->
@@ -133,8 +134,8 @@ Lemma wp_dci_copy_w_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 
       live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗ bytes sl 2 (replicate 14 0) -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hmv Hmvf Hmvs Hcpy Henv Hv224 Hv9 Hv226 Hv232 Hxd0 Hxd16 Hxdend Hs Hxs0 Hxs8 Hxsend Hxsr Hheap Hmal
     H276 H277 Hge Hlk1 Hlk2 Hu1 Hu2.
@@ -207,8 +208,8 @@ Qed.
 (** The older statement drops the bytes that the locale test does not
     read when the flag is zero. *)
 Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
   find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
   dci_stpcpy_rule_r ->
@@ -237,8 +238,8 @@ Lemma wp_dci_copy_r_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 
       live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros. iIntros "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr HK".
   iApply (wp_dci_copy_w_fr with "Ho Hcat Hdom Hcv H276 H277 HM Hxl Hxc HU1 HU2 Herr"); try eassumption.
@@ -249,8 +250,8 @@ Qed.
 
 (** The older statement takes the model's free, which meets the rule. *)
 Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
   find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
   dci_stpcpy_rule_r ->
@@ -279,15 +280,15 @@ Lemma wp_dci_copy_r e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p27
       live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros. eapply wp_dci_copy_r_fr; eauto using dci_free_rule_heap. Qed.
 
 (** Callers written against the old stpcpy rule still get the same
     statement of the copy block. *)
 Lemma wp_dci_copy e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 lk1 lk2 U1 U1' U2 U2' bs M Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)) ->
   find_fn ge (TAtom "zmemmove") = None -> lookup (TAtom "zmemmove") (ge_globals ge) = None ->
   dci_stpcpy_rule ->
@@ -316,7 +317,7 @@ Lemma wp_dci_copy e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd xd p276 p277 
       live sl (mkRegion sl (sl + 16) Heap Live) -∗ ibyte sl 0 0 -∗ ibyte sl 1 0 -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros Hmv Hmvf Hmvs Hcpy. apply wp_dci_copy_r; try assumption. exact (dci_stpcpy_rule_r_of Hcpy). Qed.
 End rules.

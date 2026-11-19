@@ -4,6 +4,7 @@
     join block after the formatter call to the return. The proof holds
     for any formatter that gives the stream back with the same flags and
     lock count, whatever it did to the buffer. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfCode FxprintfTidy FxprintfStream.
+  PrintfStreamInv FxprintfTidy FxprintfStream.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -46,7 +47,7 @@ Lemma wp_fx_join e vb fd sb sreg fb a19 f flags2 held r md Φ :
   (forall c, held = Some c -> 0 <= c /\ c + 1 < 2 ^ 32) ->
   single_ro ge sb sreg -∗ fx_stream vb (ow_self w0) fp fd md (Z.lor flags2 2) (Some (fx_cnt held)) -∗
   ▷ (fx_stream vb (ow_self w0) fp fd md flags2 held -∗ Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
-  WP (ERun (mkFrame glibc_fxprintf_nocancel e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel e [] None
     (Enter (TAtom "iw_1.join") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hr Hpr Hc2 Hc19 Ha19 Hv107 Hf Hf2r Hnl Hcnt.

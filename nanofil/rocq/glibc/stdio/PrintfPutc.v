@@ -14,6 +14,7 @@
     function calls one other function, `c: __printf_buffer_putc_1`,
     and the proof assumes a contract for it. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,7 +22,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic FormatterCode FormatterSrc
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic FormatterSrc
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec FormatterNames.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
@@ -93,7 +94,7 @@ Definition putc_blocks : list bspec :=
 
 (** ## The blocks *)
 
-Lemma putc_table : ⊢ blocks_hold glibc_printf_buffer_putc putc_blocks.
+Lemma putc_table : ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_putc putc_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". repeat iSplit; [| | | | done]; iModIntro.
   - (* start: is the window full? *)
@@ -133,7 +134,7 @@ Qed.
 
 (** The compiled `c: __printf_buffer_putc` meets [putc_spec] in any
     program that defines it. *)
-Lemma putc_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" glibc_printf_buffer_putc} :
+Lemma putc_has_spec `{!Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_putc} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__printf_buffer_putc") (putc_spec k R).
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ putc_blocks); [exact defines | reflexivity | reflexivity | | exact putc_table].

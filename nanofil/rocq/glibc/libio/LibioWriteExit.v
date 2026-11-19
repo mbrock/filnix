@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** What the proof of `c: _IO_new_file_write` (LibioWrite.v) builds on:
     its loop's head block, the bytes a write reads, and the loop's
@@ -25,7 +26,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -39,7 +40,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** Block `c: L8` of `c: _IO_new_file_write`, the loop's head. *)
 Definition fw_L8 : block := Eval vm_compute in
-  match find_block (TAtom "L8") (fn_blocks glibc__IO_new_file_write) with
+  match find_block (TAtom "L8") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_write) with
   | Some b => b | None => mkBlock (TAtom "L8") [] [] JRetVoid end.
 
 (** The bytes xs from offset o of the live object b, each a byte and in
@@ -102,7 +103,7 @@ Lemma wp_file_write_exit fb freg off n t e from Φ :
   lookup (TAtom "pr.2") e = Some (WInt t) ->
   live fb freg -∗ icell fb off_offset off -∗
   ▷ (∀ off', live fb freg -∗ icell fb off_offset off' -∗ Φ (Ret (WInt (n - t)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Ht Hn Hv0 Hv4 Ht'. unfold file_size in Hend. iIntros "Hl Hoff HK".
   step. step. step. norm. check "Hl".
@@ -127,7 +128,7 @@ Lemma wp_file_write_err fb freg fl off n t e from Φ :
   live fb freg -∗ int_cell fb off_flags fl -∗ icell fb off_offset off -∗
   ▷ (∀ off', live fb freg -∗ int_cell fb off_flags (Z.lor fl io_err_seen) -∗ icell fb off_offset off' -∗
      Φ (Ret (WInt (n - t)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L38") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Ht Hn Hfl Hv0 Hv4 Ht' Hc0. unfold file_size in Hend. iIntros "Hl [_ Hfl] Hoff HK".
   step. check "Hl". load_s32_group "Hl Hfl". step. check "Hl".
@@ -155,9 +156,9 @@ Lemma wp_file_write_next fb freg tw t k p e from Φ :
                  lookup (TAtom "pr.2") e' = Some (WInt (t - k)) /\
                  lookup (TAtom "pr.1") e' = Some (WPtr (mkPtr (ptr_addr p + k) (ptr_cap p)))⌝ -∗
        live fb freg -∗ icell fb off_total_written tw' -∗
-       WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
+       WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L8") (b_insts fw_L8) (b_jump fw_L8)))
              : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L40") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Hk Ht Hp0 Hp64 Hv0 Hv37 Ht' Hp Hc0. unfold file_size in Hend. iIntros "Hl Htw HK".
   step. step. norm. check "Hl".

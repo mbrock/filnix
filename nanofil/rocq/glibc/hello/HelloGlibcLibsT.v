@@ -7,6 +7,8 @@
     They hide internal proofs from later substitutions while exposing
     the concrete predicates needed to compose registration and exit. *)
 
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
+From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,9 +16,9 @@ From stdpp Require Import base list fin_maps.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic HelloLeaf HelloName.
 From Nanofil Require HelloClose HelloVersion.
-From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic StrncmpCode MemrchrCode MemcmpCode
-  MemFwdCode StrchrCode AllocLogic LeavesLogic AtexitLogic ExitRunCode LibioGenCode SysCode LibioFlushCode
-  LibioCleanupCode HelloGlibcDebts.
+From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers StrlenLogic
+  AllocLogic LeavesLogic AtexitLogic
+  HelloGlibcDebts.
 From Glibc Require AtexitLogic HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -26,15 +28,15 @@ Open Scope Z_scope.
     read by the library proofs. OS entry points remain external. *)
 Record hello_link (ge : genv) (o : hello_objs) : Prop := mkHelloLink {
   hk_mbszero : find_fn ge (TAtom "mbszero") = Some (Defined mbszero_fn);
-  hk_memset : find_fn ge (TAtom "memset") = Some (Defined glibc_memset);
+  hk_memset : find_fn ge (TAtom "memset") = Some (Defined Unit_string_memset_os.fn___GI_memset);
   hk_zmemset : find_fn ge (TAtom "zmemset") = None /\ lookup (TAtom "zmemset") (ge_globals ge) = None;
   hk_name : find_fn ge (TAtom "set_program_name") = Some (Defined set_program_name_fn);
-  hk_strrchr : find_fn ge (TAtom "strrchr") = Some (Defined glibc_strrchr);
+  hk_strrchr : find_fn ge (TAtom "strrchr") = Some (Defined Unit_string_strrchr_os.fn___GI_strrchr);
   hk_gi_strlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen);
-  hk_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr);
-  hk_memcmp : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp);
+  hk_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined Unit_string_memrchr_os.fn___GI___memrchr);
+  hk_memcmp : find_fn ge (TAtom "memcmp") = Some (Defined Unit_string_memcmp_os.fn___GI_memcmp);
   hk_memeq : find_fn ge (TAtom "memeq") = Some (Defined memeq_fn);
-  hk_strncmp : find_fn ge (TAtom "strncmp") = Some (Defined glibc_strncmp);
+  hk_strncmp : find_fn ge (TAtom "strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp);
   hk_pb : lookup (TAtom "program_name") (ge_globals ge) = Some (mkPtr (ho_pb o) (Obj (ho_pb o)));
   hk_nb : lookup (TAtom "program_invocation_name") (ge_globals ge) = Some (mkPtr (ho_nb o) (Obj (ho_nb o)));
   hk_nsb : lookup (TAtom "program_invocation_short_name") (ge_globals ge) = Some (mkPtr (ho_nsb o) (Obj (ho_nsb o)));
@@ -58,19 +60,19 @@ Record hello_link (ge : genv) (o : hello_objs) : Prop := mkHelloLink {
   hk_exit_fns : exit_fns ge;
   hk_exit_layout : exit_layout (ho_x o);
   hk_exit_globals : exit_globals ge (ho_x o);
-  hk_exit : find_fn ge (TAtom "exit") = Some (Defined glibc_exit);
-  hk_run_exit : find_fn ge (TAtom "__run_exit_handlers") = Some (Defined glibc___run_exit_handlers);
+  hk_exit : find_fn ge (TAtom "exit") = Some (Defined Unit_stdlib_exit_os.fn___GI_exit);
+  hk_run_exit : find_fn ge (TAtom "__run_exit_handlers") = Some (Defined Unit_stdlib_exit_os.fn___run_exit_handlers);
   hk_exit_soft : find_fn ge (TAtom "zsys_exit_soft") = None /\ lookup (TAtom "zsys_exit_soft") (ge_globals ge) = None;
   hk_cookie : find_fn ge (TAtom "zthread_self_cookie") = None /\
               lookup (TAtom "zthread_self_cookie") (ge_globals ge) = None;
   hk_el : 0 < ho_el o /\ ho_el o mod 8 = 0 /\ ho_el o + 16 <= r_end (ho_elr o) <= 2 ^ 64 /\
           lookup (TAtom "glibc_exit#__exit_lock") (ge_globals ge) = Some (mkPtr (ho_el o) (Obj (ho_el o)));
-  hk_dtors : find_fn ge (TAtom "__GI___call_tls_dtors") = Some (Defined glibc___call_tls_dtors);
+  hk_dtors : find_fn ge (TAtom "__GI___call_tls_dtors") = Some (Defined Unit_stdlib_cxa_thread_atexit_impl_os.fn___GI___call_tls_dtors);
   hk_sys : sys_external ge;
-  hk_push : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") = Some (Defined glibc___libc_cleanup_push_defer);
-  hk_pop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") = Some (Defined glibc___libc_cleanup_pop_restore);
-  hk_flush : find_fn ge (TAtom "__GI__IO_flush_all") = Some (Defined glibc__IO_flush_all);
-  hk_cleanup : find_fn ge (TAtom "_IO_cleanup") = Some (Defined glibc__IO_cleanup);
+  hk_push : find_fn ge (TAtom "__GI___libc_cleanup_push_defer") = Some (Defined Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer);
+  hk_pop : find_fn ge (TAtom "__GI___libc_cleanup_pop_restore") = Some (Defined Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore);
+  hk_flush : find_fn ge (TAtom "__GI__IO_flush_all") = Some (Defined Unit_libio_genops_os.fn___GI__IO_flush_all);
+  hk_cleanup : find_fn ge (TAtom "_IO_cleanup") = Some (Defined Unit_libio_genops_os.fn__IO_cleanup);
   hk_fcp : lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some (ho_fcp o) /\
            0 <= ptr_addr (ho_fcp o) < 2 ^ 64;
   hk_close_stdout : find_fn ge (TAtom "close_stdout") = Some (Defined HelloClose.close_stdout_fn);

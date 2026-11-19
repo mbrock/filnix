@@ -8,16 +8,17 @@
     conversions are registered, plus the function definitions used by
     the call. Initialization and writing the buffer to a FILE remain
     outside this rule. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps FormatterCode
-  Fix WordString PrintfBufferIoCode MemFwdCode MemFwdLogic PrintfStagingCopy
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+  Fix WordString MemFwdLogic PrintfStagingCopy
   FormatterLiteral FormatterInitialScan FormatterStringRead FormatterStringJoin
-  StrlenLogic StrchrCode FormatterScan.
+  StrlenLogic FormatterScan.
 From Glibc Require Import FormatterEntry.
 Import ReadVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -33,7 +34,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     this call. *)
 Lemma wp_printf_buffer_final_string fr bb br bo xs cs fp dqf
     ab ar sb sr off p dq s eb er err flags rb rr mb mr gb gr jb jr tb tr dqj dqt Φ :
-  call_frame glibc_printf_buffer
+  call_frame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     [WPtr (mkPtr bb (Obj bb)); WPtr fp; WPtr (mkPtr ab (Obj ab)); WInt flags] = Some fr ->
   (dqf = DfracDiscarded \/ exists q, dqf = DfracOwn q) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
@@ -43,11 +44,11 @@ Lemma wp_printf_buffer_final_string fr bb br bo xs cs fp dqf
   lookup (TAtom "glibc_vfprintf_internal#jump_table") (ge_globals ge) = Some (mkPtr jb (Ro jb)) ->
   lookup (TAtom "glibc_vfprintf_internal#__printf_buffer.step0_jumps.277") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") = Some (Defined glibc_find_specmb) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
   find_fn ge (TAtom "glibc_vfprintf_internal#__printf_buffer_has_failed") = Some (Defined glibc_format_failed) ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end br -> r_end br <= 2^63 ->
   48 <= bo -> 0 < Z.of_nat (length s) -> bo + Z.of_nat (length s) <= 176 ->
   length xs = 128%nat -> length cs = length xs -> Forall (fun x => 0 <= x < 256) xs ->

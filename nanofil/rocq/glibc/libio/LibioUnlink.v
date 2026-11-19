@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** `c: _IO_un_link(fp)` (LibioUnlinkCode.v, libio/genops.c), which
     `c: fclose` calls to take a stream off `c: _IO_list_all`.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail LibioUnlinkMid LibioUnlinkLock.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkLock LibioUnlinkMid LibioUnlinkTail OsThread OsWorld SysCleanup SysWrappers.
 From Glibc Require Import Fix.
@@ -38,8 +39,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 
 (** Expressions of the language. *)
@@ -57,7 +58,7 @@ Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H
     `c: _IO_LINKED`: the cleanup buffer is allocated, the flag read,
     and the call returns. *)
 Lemma wp_glibc__IO_un_link_unlinked fr fb freg fl Φ :
-  call_frame glibc__IO_un_link [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_un_link [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_linked = false ->
   live fb freg -∗ int_cell fb off_flags fl -∗
@@ -82,7 +83,7 @@ Qed.
     cleanup routine's pointer, `c: flush_cleanup`, is ge's symbol. *)
 Lemma wp_glibc__IO_un_link fr pre post fb freg fl lb lbreg sb sreg fcp Φ :
   let fp := mkPtr fb (Obj fb) in
-  call_frame glibc__IO_un_link [WPtr fp] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_un_link [WPtr fp] = Some fr ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_user_lock = false -> has fl io_linked = true ->

@@ -3,14 +3,15 @@
     staged write it consults the stream again, because the write may have
     allocated a buffer or changed how much room remains. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_flush_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv FileTidy LibioLogic LibioFputsSpec AllocRo LibioGenCode LibioXsputnCode
-  CStruct CFrame CBlocks PrintfLayout PrintfOut PrintfSpec PrintfFileOut PrintfBufferFileCode PrintfBufferFileNames PrintfBufferIoCode
+From Glibc Require Import Fix OsBlocks OsWorld FileInv FileTidy LibioLogic LibioFputsSpec AllocRo
+  CStruct CFrame CBlocks PrintfLayout PrintfOut PrintfSpec PrintfFileOut PrintfBufferFileNames
   PrintfBufferXsputnCall PrintfBufferOverflowCall PrintfFlush PrintfFlushDirect PrintfFlushChoice PrintfFlushStage PrintfFlushSwitch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Import PrintfBufferFileNames.fn___printf_buffer_flush_to_file.
@@ -20,7 +21,7 @@ Open Scope Z_scope.
 
 Section flush.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{!Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{!Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Variable a : fout.
 Let F fp := file_tidy (fo_vb a) (fo_self a) fp (fo_fd a) (fo_flags2 a) (fo_held a).
@@ -35,7 +36,7 @@ Lemma flush_reselect l from e bb br n cap count Φ :
   printf_buf bb br w count 4 -∗ win_own bb (pw_end w) (bb+stage_end) -∗
   pcell bb 40 (fo_fp a) -∗ F (fo_fp a) -∗ E -∗
   (fs_post (flush_to_file_spec (file_R a)) bb RetVoid -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None (Enter (TAtom l) from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None (Enter (TAtom l) from)) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hlab He Hsize Hcount w. iIntros "Hbuf Htail Hfp HF (Herr & #Hro & #Hm) HK". buf_open "Hbuf".
   assert (Hlo : pw_lo w = bb + stage_off) by (unfold w, pw_lo, staged, stage_off; cbn [pw_base]; Z.div_mod_to_equations; lia).
@@ -56,17 +57,17 @@ Proof using Type*.
     struct_open "Hptrs" as "(Hbase & Hptr & Hend & _)". struct_close.
 Qed.
 
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context `{!Defines ge "__GI___overflow" glibc___overflow}.
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
+Context `{!Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hbulk : printf_xsputn_call_spec w0 registry ge F E) (Hchar : printf_overflow_call_spec w0 registry ge F E).
 
 (** An unsuccessful stream call leaves the buffer marked failed. An
     empty one-byte stage needs no stream call. Every other success
     chooses an empty window with room for the next byte. *)
-Lemma flush_to_file_has_spec `{!Defines ge "__printf_buffer_flush_to_file" glibc___printf_buffer_flush_to_file} :
+Lemma flush_to_file_has_spec `{!Defines ge "__printf_buffer_flush_to_file" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_flush_to_file") (flush_to_file_spec (file_R a)).
 Proof using Type*.
-  intros bb. exists glibc___printf_buffer_flush_to_file. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros bb. exists Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. iIntros "(%br & %w & %written & Hbuf & HR) HK".
   destruct (Z.eq_dec (pw_obj w) bb) as [Hsame|Hdirect]; last first.
   { iApply (flush_direct_post _ a with "Hbuf HR"); try assumption. iApply "HK". }
@@ -95,8 +96,8 @@ Qed.
 
 (** A flush in file mode now gets its result by calling the file
     backend. The dispatcher needs no separate facts about the stream. *)
-Lemma flush_file_has_spec `{!Defines ge "__printf_buffer_flush_to_file" glibc___printf_buffer_flush_to_file}
-    `{!Defines ge "__printf_buffer_flush" glibc___printf_buffer_flush} :
+Lemma flush_file_has_spec `{!Defines ge "__printf_buffer_flush_to_file" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file}
+    `{!Defines ge "__printf_buffer_flush" Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_flush") (flush_spec 4 (file_R a)).
 Proof using Type*. apply flush_dispatch_has_spec; [apply flush_to_file_has_spec|assumption]. Qed.
 End flush.

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** This file connects Hello's small memory calls to their proved glibc
     implementations. It proves zeroing, string length, bounded comparison
@@ -15,7 +16,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   HelloLeaf.
-From Glibc Require Import OsWorld OsRegistry WordString StrlenLogic StrcmpBits StrncmpBits StrncmpCode
+From Glibc Require Import OsWorld OsRegistry WordString StrlenLogic StrcmpBits StrncmpBits
   LeavesLogic StrlenWord StrncmpLogic MemFwdLogic HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require LeavesLogic MemFwdLogic OsWorld StrlenWord StrncmpLogic.
 From Glibc Require Import Fix.
@@ -158,10 +159,10 @@ Lemma libs_strncmp :
     (word_string DfracDiscarded p1 s1 ∗ word_string DfracDiscarded p2 s2)
     (fun r => ∃ k, ⌜r = Ret (WInt k) /\ 0 <= k < 2 ^ 32⌝)%I.
 Proof using Type.
-  intros Hk p1 p2 s1 s2. exists glibc_strncmp. split; [exact (hk_strncmp _ _ Hk)|].
+  intros Hk p1 p2 s1 s2. exists Unit_string_strncmp_os.fn___GI_strncmp. split; [exact (hk_strncmp _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
-  assert (E : call_frame glibc_strncmp [WPtr p1; WPtr p2; WInt 3] =
-              Some (mkFrame glibc_strncmp [(TAtom "v4", WInt 3); (TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] []
+  assert (E : call_frame Unit_string_strncmp_os.fn___GI_strncmp [WPtr p1; WPtr p2; WInt 3] =
+              Some (mkFrame Unit_string_strncmp_os.fn___GI_strncmp [(TAtom "v4", WInt 3); (TAtom "v2", WPtr p2); (TAtom "v0", WPtr p1)] []
                       None (Enter (TAtom "start") None))) by reflexivity.
   rewrite E in Hfr. injection Hfr as <-. iIntros "[H1 H2] HK".
   iApply (StrncmpLogic.strncmp_entry glibc_os_registry (os_wi w0) ge DfracDiscarded DfracDiscarded p1 p2 s1 s2 3

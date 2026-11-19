@@ -2,6 +2,7 @@
     read-only tables. This rule follows the actual loads for the byte s.
     The caller supplies their linked addresses and readable ownership;
     this rule does not obtain those resources from startup. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -43,9 +44,9 @@ Lemma wp_formatter_string_table e ls from jb jr tb tr dqj dqt Φ :
   liveq dqt tb tr -∗ bytesq dqt tb 84 [21;0;0;0] -∗
   ▷ (liveq dqj jb jr -∗ bytesq dqj jb 83 [21] -∗
     liveq dqt tb tr -∗ bytesq dqt tb 84 [21;0;0;0] -∗
-    WP (ERun (mkFrame glibc_printf_buffer (string_table_env e jb tb) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (string_table_env e jb tb) ls None
       (Enter (TAtom "L114") (Some (TAtom "L113")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hj Ht Hjb Hje Hjr Htb Hte Htr.

@@ -11,6 +11,7 @@
     fewer than 16 bytes free. This file proves the call for both kinds of
     narrow buffer that a wide stream can have. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,8 +19,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode FileInv LibioLogic
-  LibioPutsInv LibioReadCode LibioDoWriteCode LibioWriteDq LibioOverflowBase LibioOverflowShortWrite LibioWIdle SysWrappers.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic
+  LibioPutsInv LibioWriteDq LibioOverflowBase LibioOverflowShortWrite LibioWIdle SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -30,8 +31,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 
 (** ## A heap buffer
 
@@ -52,7 +53,7 @@ Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
 Lemma wp_wide_do_write_heap fr fb freg fl f2 fd tw off bb breg be db dreg o xs rp rb wp we eb vb vreg Φ :
   let n := Z.of_nat (length xs) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
   0 < n -> 0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -178,7 +179,7 @@ Lemma wp_wide_do_write_short fr fb freg fl f2 fd tw off db dreg o xs rp rb wp we
   let n := Z.of_nat (length xs) in
   let sb := short_ptr fb in
   let se := mkPtr (fb + 132) (Obj fb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
   0 < n -> 0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->

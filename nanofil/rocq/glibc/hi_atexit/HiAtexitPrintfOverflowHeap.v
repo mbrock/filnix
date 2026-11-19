@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** An error report can fill stderr's buffer while the caller holds its lock.
     Flushing must leave the caller's lock and cancellation settings as they
@@ -14,8 +15,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
-  LibioLogic SysWrappers LibioOverflowBase LibioGenCode LibioOverflowGen
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
+  LibioLogic SysWrappers LibioOverflowBase LibioOverflowGen
   PrintfStreamHeap PrintfBufferOverflowCall HiAtexitBase HiAtexitOverflow.
 From Glibc Require FileInv LibioOverflowGen LibioPutsInv PrintfBufferOverflowCall PrintfStreamHeap PrintfStreamInv SysWrappers.
 Import ListNotations.
@@ -31,9 +32,9 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -41,10 +42,10 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     as well as success. Neither the lock count nor flags2 is existentially
     forgotten, and errno's value is allowed to change. *)
 Lemma hi_printf_heap_file_overflow_with B fr eb vb vreg self fp mode flags2 held ch Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
-    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro ge vb vreg -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗ errno_any eb -∗
   ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream_with B w0 vb self fp mode flags2 held -∗
@@ -78,10 +79,10 @@ Qed.
 (** The bytes-only entry retains its original contract. Calls that also own
     capability slots use the stronger rule without discarding those slots. *)
 Lemma hi_printf_heap_file_overflow fr eb vb vreg self fp mode flags2 held ch Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr fp; WInt ch] = Some fr ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
-    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro ge vb vreg -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗ errno_any eb -∗
   ▷ (∀ r, ⌜ovf_ret ch r⌝ -∗ printf_heap_stream w0 vb self fp mode flags2 held -∗
@@ -93,12 +94,12 @@ Proof using Type*. exact (hi_printf_heap_file_overflow_with (fun _ _ => emp%I) f
     Its checked dispatch reaches the proved heap backend, and every canonical
     result, including EOF, returns the same stream and errno ownership. *)
 Lemma hi_printf_heap_overflow
-    (Hovf : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow)
+    (Hovf : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow)
     fr eb vb vreg self fp flags2 held ch Φ :
-  call_frame glibc___overflow [WPtr fp; WInt ch] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt ch] = Some fr ->
   0 <= ch < 256 ->
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
-    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro ge vb vreg -∗ printf_heap_stream w0 vb self fp (2 ^ 32 - 1) flags2 held -∗ errno_any eb -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 32 /\ ovf_ret ch r⌝ -∗
@@ -127,10 +128,10 @@ Qed.
     The caller retains the jump table and errno's storage across the call.
     A failed write may still change errno and return EOF. *)
 Lemma hi_printf_heap_overflow_spec
-    (Hovf : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow)
+    (Hovf : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow)
     eb vb vreg self flags2 held :
   (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\
-    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
     (fun fp => printf_heap_stream w0 vb self fp (2 ^ 32 - 1) flags2 held)

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: stpcpy` ends every copy by writing the last word's bytes
     one at a time until it has written the terminator. The source calls
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes StpcpyCode StpcpyBytes.
+From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes StpcpyBytes.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -25,7 +26,7 @@ Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 
 (** This definition finds the block named l in the captured function. *)
 Definition sblk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_stpcpy) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_string_stpcpy_os.fn___GI___stpcpy) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 (** These definitions name the loop heads of the two copies of the byte loop. *)
 Definition blk_t1 : block := Eval vm_compute in sblk "iw_1.iw_2.L7".
 Definition blk_t2 : block := Eval vm_compute in sblk "iw_2.iw_4.L7".
@@ -92,7 +93,7 @@ Lemma stp_tail1 e bd rd xs o s k u w Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o (k + u) (s ++ [0])) -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_1.iw_2.L7") (b_insts blk_t1) (b_jump blk_t1))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "iw_1.iw_2.L7") (b_insts blk_t1) (b_jump blk_t1))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hu Ha Hw Hw64 Hk Hu0 Hn Hbyte Hs Ho Hox Hbd Hend Hreg.
   set (n := Z.of_nat (length s)) in *. set (S := (s ++ [0])%list) in *.
@@ -152,7 +153,7 @@ Lemma stp_tail2 e bd rd xs o s k u w Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o (k + u) (s ++ [0])) -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_2.iw_4.L7") (b_insts blk_t2) (b_jump blk_t2))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "iw_2.iw_4.L7") (b_insts blk_t2) (b_jump blk_t2))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hu Ha Hw Hw64 Hk Hu0 Hn Hbyte Hs Ho Hox Hbd Hend Hreg.
   set (n := Z.of_nat (length s)) in *. set (S := (s ++ [0])%list) in *.

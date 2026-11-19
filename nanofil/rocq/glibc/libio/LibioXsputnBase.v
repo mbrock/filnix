@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** Narrow stream output fills its buffer, flushes complete blocks and writes any remaining bytes.
     This file describes its state and proves the newline scan and final output blocks.
@@ -35,8 +36,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnTail LibioDefaultXsputn.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -51,17 +52,17 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The newline scan starts at this block after selecting its current pointer. *)
 Definition xs_L50 : block := Eval vm_compute in
-  match find_block (TAtom "L50") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "L50") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L50") [] [] JRetVoid end.
 
 (** The scan leaves its byte count and flush flag at this block. *)
 Definition xs_L20 : block := Eval vm_compute in
-  match find_block (TAtom "L20") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "L20") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L20") [] [] JRetVoid end.
 
 (** The final output block receives the number of bytes still unwritten. *)
 Definition xs_L178 : block := Eval vm_compute in
-  match find_block (TAtom "L178") (fn_blocks glibc__IO_new_file_xsputn) with
+  match find_block (TAtom "L178") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L178") [] [] JRetVoid end.
 
 (** The scan assigns these local names and preserves every other binding. *)
@@ -158,12 +159,12 @@ Local Instance xs_base_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition fwq_spec : Prop :=
   forall fr fb freg fl f2 fd tw off dq b reg o c xs eb Φ,
-  call_frame glibc__IO_new_file_write
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_write
     [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b + o) c); WInt (Z.of_nat (length xs))] = Some fr ->
   (c = Obj b \/ c = Ro b) ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
@@ -182,7 +183,7 @@ Definition fwq_spec : Prop :=
     noncanceling write. *)
 Definition xs_fwq_spec : Prop :=
   fwq_spec /\ forall f2 fd, xs_fixed f2 fd -> Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel).
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel).
 Definition xs_post (eb : Z) (X : Z -> option (Z * Z) -> iProp Σ) (fb : Z) (freg : region) (vb n : Z)
     (dq : dfrac) (b' : Z) (reg' : region) (so : Z) (ys : list Z)
     (Φ : language.val (nanofil_lang registry ge) -> iProp Σ) : iProp Σ :=
@@ -205,9 +206,9 @@ Context `{XF : !XsFlags}.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
-  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}
-  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
+  `{Hcpy : !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}
+  `{Hdxf : !Defines ge "__GI__IO_default_xsputn" Unit_libio_genops_os.fn___GI__IO_default_xsputn}.
 
 
 (** The expression type uses this caller's linked program and registry. *)
@@ -240,9 +241,9 @@ Lemma wp_xs_scan dq b' reg' so c' ys cnt0 :
     (∀ e' cnt mf, ⌜same_out xs_scan_names e e' /\ lookup (TAtom "pr.10") e' = Some (WInt cnt) /\
          lookup (TAtom "pr.6") e' = Some (WInt mf) /\ ((mf = 0 /\ cnt = cnt0) \/ (mf = 1 /\ 1 <= cnt <= n))⌝ -∗
        liveq dq b' reg' -∗ bytesq dq b' so ys -∗
-       WP (ERun (mkFrame glibc__IO_new_file_xsputn e' [] None (Exec (TAtom "L20") (b_insts xs_L20) (b_jump xs_L20)))
+       WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e' [] None (Exec (TAtom "L20") (b_insts xs_L20) (b_jump xs_L20)))
              : sexpr) {{ Φ }}) -∗
-    WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L50") (b_insts xs_L50) (b_jump xs_L50)))
+    WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Exec (TAtom "L50") (b_insts xs_L50) (b_jump xs_L50)))
           : sexpr) {{ Φ }}.
 Proof using Type.
   intros n Hc' Hso Hyend Hyreg Hy Hcr.
@@ -289,7 +290,7 @@ Qed.
     It combines that byte count with the bytes already written and returns the total. *)
 Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge (xos w0 eb X) -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> nb <> None ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys -> 0 <= t -> 0 <= d -> t + d <= n ->
@@ -299,7 +300,7 @@ Lemma wp_xs_L178 eb X fb freg vb vreg nb wp we dq b' reg' so c' ys t d e Φ :
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
   wbuf fb nb wp we -∗ xos w0 eb X fb nb -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ (xs_post w0 registry ge) eb X fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Exec (TAtom "L178") (b_insts xs_L178) (b_jump xs_L178)))
         : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hnb Hc' Hb8' Hso Hyend Hyreg Hy Ht Hd Htd Hv0 Hv4 Hp3 Hv175 Hp1.

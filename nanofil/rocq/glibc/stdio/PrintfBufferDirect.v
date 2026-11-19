@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** A printf buffer writes directly into a stream buffer when the stream's
     write pointer lies below its end. The switch function borrows these
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode.
+  LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -40,7 +41,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     The borrowed stream pointers and both lifetime shares are returned unchanged. *)
 Lemma wp_printf_buffer_switch_direct fr bb breg fb freg db dreg bo eo dqf dqd
     oldbase oldptr oldend Φ :
-  call_frame glibc___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 48 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 56 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < db -> 0 <= bo -> bo < eo -> db + eo <= r_end dreg -> r_end dreg <= 2 ^ 63 ->

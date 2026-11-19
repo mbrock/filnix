@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_doallocbuf` (LibioReadCode.v) on a stream
     with no buffer that is not unbuffered: it calls the jump table's
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic SysWrappers
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioSetb LibioDoAllocBase.
 From Glibc Require FileInv LibioDoAllocBase LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -31,16 +32,16 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_file_doallocate` at the symbol the jump
     table's doallocate slot holds. *)
-Context (Hdaf : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate).
+Context (Hdaf : ge_fn ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate).
 (** The genv defines `c: _IO_setb`. *)
-Context `{Hsetbf : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hsetbf : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** `c: _IO_setb` on a stream with no buffer, as LibioSetb.v's
     [wp_glibc__IO_setb] proves it with the old buffer null. *)
 Context (Hsetb_null : forall fr fb freg fl oe nb ne a Φ,
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end oe -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
@@ -51,7 +52,7 @@ Context (Mres : iProp Σ).
 (** `c: _IO_file_doallocate`, as LibioDoAlloc.v proves it
     ([wp_glibc__IO_file_doallocate]). *)
 Context (Hda_spec : forall fr fb freg fl fd eb oe vb vreg Φ,
-  call_frame glibc__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   vtables_ro ge vb vreg -∗
@@ -64,7 +65,7 @@ Context (Hda_spec : forall fr fb freg fl fd eb oe vb vreg Φ,
 (** `c: _IO_doallocbuf(fp)` on a stream with no buffer that is not
     unbuffered ends as `c: _IO_file_doallocate` does. *)
 Lemma wp_glibc__IO_doallocbuf_alloc fr fb freg fl fd eb oe vb vreg Φ :
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 -> Z.land fl io_unbuffered = 0 ->
   vtables_ro ge vb vreg -∗

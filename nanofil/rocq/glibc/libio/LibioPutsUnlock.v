@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** Block `c: L103` of `c: puts(s)` (LibioPutsCode.v,
     libio/ioputs.c), `c: _IO_release_lock(stdout)`: stdout's lock,
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioPutsCode LibioPutsInv LibioPutsLock.
+  LibioPutsInv LibioPutsLock.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv LibioPutsLock OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -27,7 +28,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** Block `c: L103` of `c: puts`, which releases the lock. *)
 Definition pu_L103 : block := Eval vm_compute in
-  match find_block (TAtom "L103") (fn_blocks glibc__IO_puts) with
+  match find_block (TAtom "L103") (fn_blocks Unit_libio_ioputs_os.fn___GI__IO_puts) with
   | Some b => b | None => mkBlock (TAtom "L103") [] [] JRetVoid end.
 
 
@@ -54,7 +55,7 @@ Lemma wp_puts_unlock e r fb freg fl lb lbreg sb sreg Φ :
   lock_state lb lbreg 1 0 (ow_self w0) -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 0 0 null -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
         : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hv12 Hc1 Hr Hrr Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.

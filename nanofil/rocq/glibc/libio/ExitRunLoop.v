@@ -1,10 +1,11 @@
 (** The handler loop of user glibc's `__run_exit_handlers`
-    (ExitRunCode.v's [glibc___run_exit_handlers]), from the block L101
+    (ExitRunCode.v's [Unit_stdlib_exit_os.fn___run_exit_handlers]), from the block L101
     with the lock held: [exit_loop] pops the entries of `initial` one at
     a time from the top, calling each handler between the user
     resources R (S i) and R i, and ends with ExitRunTail.v's
     [exit_tail]. By induction on the entries. *)
 
+From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunCode ExitRunTail.
+From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunTail.
 From Glibc Require AtexitLogic ExitRunTail LeavesLogic OsExit OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -21,7 +22,7 @@ Open Scope list_scope.
 
 Import ExitRunTail ExitRunTail.L ExitRunTail.LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit.
 
-Local Opaque glibc___run_exit_handlers.
+Local Opaque Unit_stdlib_exit_os.fn___run_exit_handlers.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -83,7 +84,7 @@ Lemma exit_loop x ents c status e from (R : nat -> iProp Σ) Φ :
   loop_env w0 ge x -> loop_vars x status e ->
   exit_held x ents c -∗ R (List.length ents) -∗
   ([∗ list] i ↦ en ∈ ents, exit_handler w0 ge (status mod 2 ^ 32) en (R (S i)) (R i)) -∗ cleanup_rule w0 ge (R 0%nat) -∗
-  WP (ERun (mkFrame glibc___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdlib_exit_os.fn___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   revert e from. induction ents as [|en pre IH] using rev_ind; intros e from Henv Hvars.
   { iIntros "Hx HR _ HK". iApply (exit_tail with "Hx HR HK"); [exact Henv | exact Hvars]. }

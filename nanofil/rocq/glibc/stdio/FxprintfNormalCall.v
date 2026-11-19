@@ -3,6 +3,7 @@
     after the two named arguments to __vfxprintf. It does not select stderr,
     take a lock or change cancellation itself. Those operations, if any,
     belong to the called function, whose contract remains explicit here. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,18 +12,18 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
-  FxprintfStream FxprintfNormalCode Fix.
+  FxprintfStream Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Module NormalVL := VariadicLogicOn R LG0.
 Import NormalVL.
 
 Definition fxprintf_normal_frame (fp fmt : ptr) (ys : list word) : frame :=
-  mkFrame glibc_fxprintf
+  mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf
     (put (TAtom "v2") (WPtr fmt) (put (TAtom "v0") (WPtr fp) [])) [] None
     (Snapshot (WPtr fp :: WPtr fmt :: ys) (TAtom "start")).
 Lemma fxprintf_normal_call_frame fp fmt ys :
-  call_frame glibc_fxprintf (WPtr fp :: WPtr fmt :: ys) = Some (fxprintf_normal_frame fp fmt ys).
+  call_frame Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf (WPtr fp :: WPtr fmt :: ys) = Some (fxprintf_normal_frame fp fmt ys).
 Proof. reflexivity. Qed.
 
 Section wrapper.
@@ -84,7 +85,7 @@ Qed.
 Lemma wp_call_fxprintf_normal f e ls l d args rest j fp fmt ys vfn (vf : ptr -> frame)
     (R E : iProp Σ) (Q : Z -> iProp Σ) Φ :
   map_option (arg_x ge e) args = Some (WPtr fp :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "__fxprintf") = Some (Defined glibc_fxprintf) ->
+  find_fn ge (TAtom "__fxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf) ->
   forallb snapshot_word ys = true ->
   find_fn ge (TAtom "__vfxprintf") = Some (Defined vfn) ->
   (forall ap, call_frame vfn [WPtr fp;WPtr fmt;WPtr ap;WInt 0] = Some (vf ap)) ->

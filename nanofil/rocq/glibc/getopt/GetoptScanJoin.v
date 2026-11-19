@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strcmp_os.
 From Glibc Require Import GlibcProgram.
 (** The scanner of glibc's getopt either returns early or reaches the
     option parser. This file joins the scanner's proof with the
@@ -16,7 +17,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode
+From Glibc Require Import OsWorld FileInv LibioLogic WordString
   GetoptModule GetoptState GetoptBytes GetoptArgv GetoptExchange GetoptReturn GetoptIdlePath GetoptScanEnd
   GetoptScan GetoptScanSession.
 From Glibc Require FileInv GetoptArgv GetoptExchange GetoptInitialize GetoptScan GetoptScanSession GetoptState OsWorld.
@@ -46,7 +47,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     receives the word that starts with a dash and all nine fields. *)
 Lemma wp_getopt_scan_session ks e fr0 n i o f l a err oo c b r av ar ps pdd sdd Φ :
   avoids ks idle_names = true -> avoids ks scan_end_names = true ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   lookup (TAtom "v0") e = Some (WInt n) ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->

@@ -3,7 +3,7 @@
     built-in step with a finalizer would fail an assertion. Both Hello
     steps have a null finalizer as well as a null library handle. *)
 
-From Glibc Require Import HelloImageTypedGC.
+From Glibc Require Import Unit_iconv_gconv_db_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ From Glibc Require MemchrLast.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition glibc_gconv_release_step := hello_image_fn___gconv_release_step.
+Definition glibc_gconv_release_step := Unit_iconv_gconv_db_os.fn___gconv_release_step.
 
 Section release.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

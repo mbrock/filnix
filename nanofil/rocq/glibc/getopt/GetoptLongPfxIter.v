@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** When no long option has exactly the name of a word, glibc's parser
     looks through the table for options whose names start with it. This
@@ -14,8 +15,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
+  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
   GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep.
@@ -53,7 +54,7 @@ Lemma wp_pfx_iter_with ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b 
   avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
   avoids ks palloc_names = true -> avoids ks pmark_names = true ->
   getopt_cutoff_rule_with w0 registry ge M -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   pfx_at e b s lonly pe (Z.of_nat (List.length os)) ->
@@ -138,7 +139,7 @@ Lemma wp_pfx_iter ks e (M : iProp Σ) (k : nat) p w a m sp cur s lo os F b r lon
   avoids ks ploop_names = true -> avoids ks pcmp_names = true -> avoids ks pset_names = true ->
   avoids ks palloc_names = true -> avoids ks pmark_names = true ->
   getopt_cutoff_rule w0 registry ge -> getopt_malloc_rule w0 registry ge M -> getopt_memset_rule w0 registry ge ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   Forall (fun x => lo_flag x = null \/ lo_flag x ∈ F) os -> (List.length os < 2 ^ 31)%Z -> 0 <= pe < 2 ^ 32 ->
   0 < b -> b mod 8 = 0 -> b + 56 <= r_end r -> r_end r <= 2 ^ 48 ->
   pfx_at e b s lonly pe (Z.of_nat (List.length os)) ->

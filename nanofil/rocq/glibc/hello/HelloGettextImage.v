@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** HelloGettextLink.v checks gettext's link record against an image
     linked from gettext alone. That image does not show what Hello's own
@@ -20,8 +21,8 @@ From Glibc Require Import GlibcProgram.
     record already says where they live. *)
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Semantics.
-From Glibc Require Import MemFwdCode HiAtexitModule StpcpyCode TfindCode LocalenameCode RdlockCode RwunlockCode.
-From Glibc Require Import DcgettextCode DcigettextCode GettextLinkCode HelloGettextImageCode HelloGettextLink.
+From Glibc Require Import HiAtexitModule.
+From Glibc Require Import GettextLinkCode HelloGettextImageCode HelloGettextLink.
 Import ListNotations.
 
 (** ## What Hello's link gives gettext
@@ -136,7 +137,7 @@ Definition hello_image_retarget : module :=
 Definition hello_image_rebody : module :=
   map (fun i => match i with
                 | IFunc f => if name_eqb (fn_name f) (TAtom "__GI___stpcpy")
-                             then IFunc (mkFunc (fn_name f) (fn_linkage f) (fn_ret f) (fn_params f) (fn_blocks glibc_mempcpy))
+                             then IFunc (mkFunc (fn_name f) (fn_linkage f) (fn_ret f) (fn_params f) (fn_blocks Unit_string_mempcpy_os.fn___GI___mempcpy))
                              else i
                 | _ => i end) hellogettextimage_module.
 

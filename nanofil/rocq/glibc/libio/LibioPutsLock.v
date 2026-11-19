@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** The puts function measures its input string before taking stdout's lock.
     This proof covers the single-threaded path, where the lock is initially free.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString StrlenLogic StrlenWord LibioPutsCode LibioPutsInv.
+  WordString StrlenLogic StrlenWord LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsThread OsWorld StrlenWord SysWrappers.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec.
@@ -50,7 +51,7 @@ Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H
     The next block receives the string pointer, its length, and the stream pointer in its environment. *)
 Lemma wp_puts_start fr p dq s so soreg fb freg fl lb lbreg sb sreg Φ :
   let fp := mkPtr fb (Obj fb) in
-  call_frame glibc__IO_puts [WPtr p] = Some fr ->
+  call_frame Unit_libio_ioputs_os.fn___GI__IO_puts [WPtr p] = Some fr ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   ptr_addr (ow_self w0) <> 0 ->
@@ -64,7 +65,7 @@ Lemma wp_puts_start fr p dq s so soreg fb freg fl lb lbreg sb sreg Φ :
      word_string dq p s -∗ live so soreg -∗ pcell so 0 fp -∗
      live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 1 0 (ow_self w0) -∗
-     WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L109") (Some (TAtom "L25")))) : sexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L109") (Some (TAtom "L25")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
   intros fp Hfr Hstr Hgso Hsoal Hsoend Hsz Hfb Hfal Hfend Hfreg Hfl Hul. injection Hfr as <-. subst fp.

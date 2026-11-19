@@ -45,6 +45,7 @@
     into digits. The proof assumes a contract for each of the seven,
     which says what the function needs and what it gives back. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -55,7 +56,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec ItoaWordSpec PrintfCopy FormatterNames VaArgRound.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -99,11 +100,11 @@ Definition entry_sig : cut_sig := Eval vm_compute in cut_at S.temp_keys S.live_i
     has one list of temporaries for each way in and one list for the
     rest of the block. *)
 Definition head_from_entry : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L79" "L67").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L79" "L67").
 Definition head_from_round : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L79" "L2128").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L79" "L2128").
 Definition head_body : cut_sig :=
-  Eval vm_compute in keep (cut_body S.temp_keys S.live_in glibc_printf_buffer "L79" "L2128").
+  Eval vm_compute in keep (cut_body S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L79" "L2128").
 
 (** The code of a conversion starts at a block of its own. The block
     `L1825` starts a `%s`, the block `L1796` starts a `%c`, and the
@@ -129,11 +130,11 @@ Definition sign_sig : cut_sig := Eval vm_compute in keep_keys int_keys (cut_at S
     from the block `L1871` with the argument's string and its length,
     and from the block `L1836` with the constant `(null)`. *)
 Definition print_from_len : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1831" "L1871").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1831" "L1871").
 Definition print_from_null : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1831" "L1836").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1831" "L1836").
 Definition print_body : cut_sig :=
-  Eval vm_compute in keep (cut_body S.temp_keys S.live_in glibc_printf_buffer "L1831" "L1871").
+  Eval vm_compute in keep (cut_body S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1831" "L1871").
 
 (** Every conversion ends at the block `L1150`, which counts the
     conversion and copies the plain text after it. The function
@@ -143,17 +144,17 @@ Definition print_body : cut_sig :=
     block `L1151` comes from a `%%`, and the block `L1558` comes from
     a `%d`. *)
 Definition next_from_write : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1887").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1887").
 Definition next_from_pad : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1901").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1901").
 Definition next_from_char : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1807").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1807").
 Definition next_from_percent : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1151").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1151").
 Definition next_from_digits : cut_sig :=
-  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1558").
+  Eval vm_compute in keep (cut_edge S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1558").
 Definition next_body : cut_sig :=
-  Eval vm_compute in keep (cut_body S.temp_keys S.live_in glibc_printf_buffer "L1150" "L1887").
+  Eval vm_compute in keep (cut_body S.temp_keys S.live_in Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L1150" "L1887").
 
 (** ## Formats and their arguments *)
 

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** Generic string output fills the stream buffer and sends remaining bytes through its overflow function.
     The file-specific output function uses this loop after filling and flushing its own buffer.
@@ -29,8 +30,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnRoom.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -54,8 +55,8 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
-  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}.
+  `{Hcpy : !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}.
 
 
 (** The expression type uses this caller's linked program and registry. *)
@@ -69,7 +70,7 @@ Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
     [[later-modality|Löb induction]] supplies the continuation for the next iteration. *)
 Lemma wp_dx_loop os fb freg vb vreg dq b' reg' so c' ys Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys ->
@@ -118,8 +119,8 @@ Qed.
     Its result returns the updated stream together with the borrowed source memory. *)
 Lemma wp_glibc__IO_default_xsputn fr os fb freg vb vreg nb wp we dq b' reg' so c' ys Φ :
   let n := Z.of_nat (length ys) in
-  call_frame glibc__IO_default_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b' + so) c'); WInt n] = Some fr ->
-  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_default_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr (b' + so) c'); WInt n] = Some fr ->
+  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys ->
@@ -144,11 +145,11 @@ Proof using Type*.
 Qed.
 
 (** A linked generic output function provides the stream-and-source contract. *)
-#[global] Instance default_xsputn_has_spec g `{!Defines ge g glibc__IO_default_xsputn} :
+#[global] Instance default_xsputn_has_spec g `{!Defines ge g Unit_libio_genops_os.fn___GI__IO_default_xsputn} :
   HasSpec registry (os_wi w0) ge (TAtom g) default_xsputn_spec.
 Proof using Type*.
   intros [[[[[[[[[[[[[os fb] freg] vb] vreg] nb] wp] we] dq] b] reg] so] c] ys].
-  exists glibc__IO_default_xsputn. split; [apply defines|].
+  exists Unit_libio_genops_os.fn___GI__IO_default_xsputn. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post default_xsputn_spec].
   iIntros "(%Hpre & #Hvt & Hl & Hvtp & Hwb & Hos & Hl' & Hys) HK".

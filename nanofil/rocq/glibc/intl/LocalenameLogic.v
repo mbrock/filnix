@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_locale_localename_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: __current_locale_name` returns the name of one category
     of the calling thread's locale. The gettext lookup calls it to learn
@@ -22,7 +23,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LocalenameCode.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic.
 From Glibc Require WordString.
 From Glibc Require Import StrlenBits.
 From Glibc Require Import Fix.
@@ -64,7 +65,7 @@ Lemma wp_glibc_current_locale_name e cat gb go greg dqg lp lb lreg dql dqn cv tr
   pcellq dqn lb (ptr_addr lp - lb + 128 + 8 * cat) cv -∗ live_capq dqt (ptr_cap cv) treg -∗
   (liveq dqg gb greg -∗ pcellq dqg gb go lp -∗ liveq dql lb lreg -∗
    pcellq dqn lb (ptr_addr lp - lb + 128 + 8 * cat) cv -∗ live_capq dqt (ptr_cap cv) treg -∗ Φ (Ret (WPtr cv))) -∗
-  WP (ERun (mkFrame glibc_current_locale_name e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_locale_localename_os.fn___current_locale_name e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hg Hv0 Hcat Hgb Hgo Hgal Hgend Hgreg Hlc Hlb Hlal Hlend Hlreg Hcv.
   iIntros "Hgl Hgc Hll Hnc Hct HK".
@@ -100,7 +101,7 @@ Qed.
 (** A call of a name bound to the captured body passes the category and
     resumes the caller with the name and the same resource. *)
 Lemma wp_call_glibc_current_locale_name f e ls l d g args rest j cat gb go greg dqg lp lb lreg dql dqn cv treg dqt Φ :
-  map_option (arg_x ge e) args = Some [WInt cat] -> find_fn ge g = Some (Defined glibc_current_locale_name) ->
+  map_option (arg_x ge e) args = Some [WInt cat] -> find_fn ge g = Some (Defined Unit_locale_localename_os.fn___current_locale_name) ->
   lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (mkPtr (gb + go) (Obj gb)) -> 0 <= cat < 13 ->
   0 < gb -> 0 <= go -> (gb + go) mod 8 = 0 -> gb + go + 8 <= r_end greg -> r_end greg <= 2 ^ 48 ->
   (ptr_cap lp = Obj lb \/ ptr_cap lp = Ro lb) -> 0 < lb <= ptr_addr lp -> ptr_addr lp mod 8 = 0 ->
@@ -140,7 +141,7 @@ End rules.
     entry 5, which lies 168 bytes into the locale object because 13 data
     pointers and three table pointers come before the names table. *)
 Definition loc_insts : list inst :=
-  match fn_blocks glibc_current_locale_name with b :: _ => b_insts b | [] => [] end.
+  match fn_blocks Unit_locale_localename_os.fn___current_locale_name with b :: _ => b_insts b | [] => [] end.
 Definition inst_globals (i : inst) : list name :=
   match i with
   | Let _ _ _ args => flat_map (fun v => match v with Global s => [s] | _ => [] end) args
@@ -148,7 +149,7 @@ Definition inst_globals (i : inst) : list name :=
   | _ => []
   end.
 Example localename_shape :
-  length (fn_blocks glibc_current_locale_name) = 1%nat /\
+  length (fn_blocks Unit_locale_localename_os.fn___current_locale_name) = 1%nat /\
   flat_map inst_globals loc_insts = [TAtom "__libc_tsd_LOCALE"] /\
   length (filter (fun i => match i with Let _ _ (RawLoadPointer _ _) _ => true | _ => false end) loc_insts) = 2%nat /\
   existsb (fun i => match i with Call _ _ _ | RawCall _ _ _ => true | _ => false end) loc_insts = false.
@@ -164,7 +165,7 @@ Definition inst_consts (i : inst) : list Z :=
   end.
 Example localename_consts :
   flat_map inst_consts loc_insts = [128; 3] /\
-  match fn_blocks glibc_current_locale_name with b :: _ => Validate.jump_uses (b_jump b) | [] => [] end = [TAtom "v9"].
+  match fn_blocks Unit_locale_localename_os.fn___current_locale_name with b :: _ => Validate.jump_uses (b_jump b) | [] => [] end = [TAtom "v9"].
 Proof. vm_compute. split; reflexivity. Qed.
 Example localename_offset : 8 * 13 + 3 * 8 = 128 /\ 128 + 8 * 5 = 168.
 Proof. split; reflexivity. Qed.

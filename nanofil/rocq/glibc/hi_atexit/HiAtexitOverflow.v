@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** When stdout first switches to writing, glibc resets its read and
     write pointers to the buffer's base. It then stores or flushes the
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioOverflowSetpEnd LibioOverflowSetpRest LibioOverflowSetp
   LibioOverflow HiAtexitBase HiAtexitOverflowSend.
 From Glibc Require LibioOverflow LibioOverflowSetp LibioOverflowSetpEnd LibioOverflowSetpRest.
@@ -27,9 +28,9 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : Defines ge "__GI___write" glibc___libc_write)
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : Defines ge "_IO_new_do_write" glibc__IO_new_do_write).
+Context (Hwrite : Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write)
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  (Hdwf : Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write).
 Existing Instances Hwrite Hdwf.
 
 (** Line-buffered streams keep the write end at the write pointer. *)

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strcmp_os.
 From Glibc Require Import GlibcProgram.
 (** Each call of glibc's scanner first tidies the argument vector, which
     only the permuting order rearranges, and then decides what the
@@ -15,7 +16,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode
+From Glibc Require Import OsWorld FileInv LibioLogic WordString
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptIdlePath GetoptReturn GetoptScanEnd.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptIdlePath GetoptInitialize GetoptScanEnd GetoptState LibioLogic OsWorld.
@@ -52,7 +53,7 @@ Ltac kin Hk H := rewrite (keeps_in _ _ _ _ Hk); [exact H | cbn; tauto].
     with its string. *)
 Lemma wp_getopt_scan ks e fr0 n i o f l a b r av ar ps pdd sdd Φ :
   avoids ks idle_names = true -> avoids ks scan_end_names = true ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   lookup (TAtom "v0") e = Some (WInt n) ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->

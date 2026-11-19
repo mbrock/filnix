@@ -1,3 +1,4 @@
+From Glibc Require Import HiAtexit_hi_atexit.
 From Glibc Require Import GlibcProgram.
 (** hi_atexit.c registers `c: close_stdout_hi` with `c: atexit`, so
     `c: exit` runs it before glibc's own cleanup. It asks
@@ -12,7 +13,6 @@ From Glibc Require Import GlibcProgram.
     with stdout out of the list, or ends the process in `c: _exit`.
     Either way any postcondition of a return holds. *)
 
-From Glibc Require Import HiAtexitTypedCL.
 From Glibc Require Import GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,8 +20,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioGenCode
-  LibioUnlinkCode LibioCloseItCode LibioFcloseCode FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps
+From Glibc Require Import OsBlocks OsWorld OsRegistry
+  FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps
   HiAtexitModule HiAtexitFns HiAtexitGe HiAtexitBase HiAtexitCloseIt HiAtexitFclose.
 From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioLogic LibioRead OsWorld SysWrappers.
 Import ListNotations.
@@ -29,7 +29,7 @@ Open Scope Z_scope.
 Import LibioFcloseTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** hi_atexit.c's `c: close_stdout_hi`, renamed by link.pl. *)
-Definition hi_close_fn : func := hi_fn_hi_atexit'23close_stdout_hi.
+Definition hi_close_fn : func := HiAtexit_hi_atexit.fn_hi_atexit'23close_stdout_hi.
 
 (** A call of `c: close_stdout_hi` runs [hi_close_fn]. *)
 Lemma hi_find_close : find_fn hge (TAtom "hi_atexit#close_stdout_hi") = Some (Defined hi_close_fn).

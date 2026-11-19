@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram.
 (** GNU Hello calls `c: fflush` through glibc's `c: error`, on stdout
     before an error report and on stderr after it. Each of those
@@ -27,8 +28,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers SysCode FileInv FileIdle LibioLogic LibioCloseSteps
-  LibioPutsInv LibioReadCode LibioDoWriteCode FileSyncCode FflushCode FflushAcquire FflushUnlock
+From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle LibioLogic LibioCloseSteps
+  LibioPutsInv FflushAcquire FflushUnlock
   HiAtexitDoWrite GlibcSpec LibioFputsSpec LibioFflushSpec Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
@@ -106,7 +107,7 @@ Local Ltac load_buf H :=
     offset unknown and returns 0. The rule holds for every buffer an
     idle stream can have. *)
 Lemma wp_file_sync_quiet fr fb freg fl off nb p wp Φ :
-  call_frame glibc__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 256 = 0 -> in_buf fb nb p -> in_buf fb nb wp ->
   0 <= ptr_addr p < 2 ^ 64 -> 0 <= ptr_addr wp < 2 ^ 64 -> ptr_addr wp <= ptr_addr p ->
@@ -139,10 +140,10 @@ Qed.
     write function and the joined proof of `c: _IO_new_do_write`. *)
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
 
 (** The n bytes xs wait in the heap buffer bb from offset i, so the
     write base and both read pointers are bb + i and the write pointer
@@ -157,7 +158,7 @@ Lemma wp_file_sync_pending fr fb freg fl f2 fd tw off bb breg i xs rb we sz eb v
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
   let be := mkPtr (bb + sz) (Obj bb) in
-  call_frame glibc__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr -> 0 < n ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 ->
   Z.land fl io_is_appending = 0 -> Z.land fl 256 = 0 ->
@@ -247,7 +248,7 @@ Lemma wp_fflush_dispatch e fb freg fl lb lbreg sb sreg vb vreg (S : iProp Σ) (T
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  (forall fr Ψ, call_frame glibc__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  (forall fr Ψ, call_frame Unit_libio_fileops_os.fn__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
     vtables_ro ge vb vreg -∗ live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗ S -∗
     ▷ (∀ r fl', ⌜(r = 0 \/ r = 2 ^ 32 - 1) /\ Z.land fl' 32768 = 0⌝ -∗ live fb freg -∗ int_cell fb 0 fl' -∗
        pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗ T r fl' -∗ Ψ (Ret (WInt r))) -∗
@@ -259,7 +260,7 @@ Lemma wp_fflush_dispatch e fb freg fl lb lbreg sb sreg vb vreg (S : iProp Σ) (T
   ▷ (∀ r fl', ⌜(r = 0 \/ r = 2 ^ 32 - 1) /\ Z.land fl' 32768 = 0⌝ -∗ live fb freg -∗ int_cell fb 0 fl' -∗
      pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ T r fl' -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_fflush e [] None
+  WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None
     (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
 Proof using Hsync.
   intros Hv0 Hc0 Hfb Hal Hend Hregion Hspec.
@@ -328,7 +329,7 @@ Qed.
     `c: EOF` when the write fell short. A failed write sets errno, so
     the caller lends errno. *)
 Lemma wp_fflush_idle fr fp vb vreg sb sreg fd eb Φ :
-  call_frame glibc__IO_fflush [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr fp] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗
   file_idle vb (ow_self w0) fp fd -∗ errno_any eb -∗
@@ -486,11 +487,11 @@ End sync.
 Section has_spec.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge)
-  (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync)
-  `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
-  `{Hff : !Defines ge "__GI__IO_fflush" glibc__IO_fflush}.
+  (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync)
+  `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
+  `{Hff : !Defines ge "__GI__IO_fflush" Unit_libio_iofflush_os.fn___GI__IO_fflush}.
 
 (** The stream lock records its owner's thread pointer, and glibc's
     lock macros treat a null owner as no owner, so the thread pointer
@@ -498,7 +499,7 @@ Context (Hreg : holds_os registry) (Hext : sys_external ge)
 Lemma fflush_has_spec (Hself : ptr_addr (ow_self w0) <> 0) :
   HasSpec registry (os_wi w0) ge (TAtom "__GI__IO_fflush") fflush_spec.
 Proof using Hdwf Hext Hff Hfw Hreg Hsync Hwrite.
-  intros [vb fp fd eb]. exists glibc__IO_fflush. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [vb fp fd eb]. exists Unit_libio_iofflush_os.fn___GI__IO_fflush. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_pre fs_post fs_args fflush_spec ff_vb ff_fp ff_fd ff_eb].
   iIntros "([%Heb %Hfd] & Hf & Herr & (%vreg & %sb & %sreg & #Hvt & #Hs)) HK".
   iApply (wp_fflush_idle Hreg Hext Hsync Hfw with "Hvt Hs Hf Herr"); try eassumption.

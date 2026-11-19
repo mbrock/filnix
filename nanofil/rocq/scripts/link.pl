@@ -3,8 +3,8 @@
 % arguments, each FILE a checked module term (`module(Items).`, as
 % nanofil's CC wrapper keeps it), and prints one `module(Items).` on
 % stdout: the items a run from ENTRY can name, with every name a
-% linker keeps apart made distinct. rocq/scripts/gallina.pl then prints it as
-% Gallina.
+% linker keeps apart made distinct. The glibc fixture generator can also
+% request the object and symbol of each linked item with --origins FILE.
 %
 %   swipl rocq/scripts/link.pl main hello=src/hello.o.term closeout=... >linked.term
 %   swipl rocq/scripts/link.pl --ctors main hello=... --archive malloc=... >linked.term
@@ -28,26 +28,38 @@
 % --context retains the records belonging to each surviving function.
 
 :- initialization(main, main).
+:- use_module(library(http/json)).
 
 main :-
     set_stream(user_output, encoding(utf8)),
     current_prolog_flag(argv, Args0),
     ( select('--context', Args0, Args1) -> Context = true ; Args1 = Args0, Context = false ),
-    ( select('--ctors', Args1, Args) -> Ctors = true ; Args = Args1, Ctors = false ),
+    ( select('--ctors', Args1, Args2) -> Ctors = true ; Args2 = Args1, Ctors = false ),
+    ( append(Before, ['--origins', OriginFile|After], Args2) ->
+        append(Before, After, Args), Origin = file(OriginFile)
+    ; Args = Args2, Origin = none ),
     Args = [Entry|Specs],
     atomic_list_concat(Entries, ',', Entry),
     objects(Specs, Objects0, Archive),
     extract(Entries, Objects0, Archive, Objects),
     maplist(check_ctors(Ctors), Objects),
-    findall(I, (member(object(_, Is), Objects), member(I, Is), \+ is_context(I)), Items00),
+    findall(I, (member(object(_, _, Is), Objects), member(I, Is), \+ is_context(I)), Items00),
     exclude(overridden(Items00), Items00, Items0),
     exported_unique(Items0),
     findall(N, member(data(N, init(_, _), _, _), Items0), InitNames),
     append(Entries, InitNames, Roots),
     reachable(Roots, Items0, [], Names),
-    findall(I, (member(object(_, Is), Objects), member(I, Is),
-                linked_item(Context, Names, Items0, Is, I)), Items),
+    findall(File-I, (member(object(_, File, Is), Objects), member(I, Is),
+                    linked_item(Context, Names, Items0, Is, I)), Linked),
+    pairs_values(Linked, Items),
+    print_origins(Origin, Linked),
     print_module(Items).
+
+print_origins(none, _).
+print_origins(file(File), Linked) :-
+    findall([Path, Name], (member(Path-I, Linked), item_name(I, Name)), Origins),
+    setup_call_cleanup(open(File, write, Out, [encoding(utf8)]),
+                       json_write(Out, Origins), close(Out)).
 
 objects([], [], []).
 objects(['--archive', Spec|Specs], Objects, [O|Archive]) :- !,
@@ -56,14 +68,14 @@ objects([Spec|Specs], [O|Objects], Archive) :-
     object(Spec, O), objects(Specs, Objects, Archive).
 
 % object(+Spec, -Object): OBJECT=FILE's items, its locals renamed.
-object(Spec, object(Obj, Items)) :-
+object(Spec, object(Obj, File, Items)) :-
     atomic_list_concat([Obj, File], '=', Spec),
     read_file_to_terms(File, [module(Items0)], [encoding(utf8)]),
     convlist(local_name, Items0, Locals),
     maplist(rename(Obj, Locals), Items0, Items).
 
 check_ctors(true, _) :- !.
-check_ctors(false, object(Obj, Items0)) :-
+check_ctors(false, object(Obj, _, Items0)) :-
     forall(member(data(N, init(K, P), _, _), Items0),
            ( format(user_error,
                     "link.pl: ~w's ~q is a ~w entry (init(~w, ~w)), which the linked module does not run~n",
@@ -74,11 +86,11 @@ check_ctors(false, object(Obj, Items0)) :-
 % introduced by that member. A declaration never counts as a definition.
 extract(_, Objects, [], Objects) :- !.
 extract(Entries, Objects0, Archive0, Objects) :-
-    findall(I, (member(object(_, Is), Objects0), member(I, Is)), Items),
+    findall(I, (member(object(_, _, Is), Objects0), member(I, Is)), Items),
     findall(N, ( ( member(N, Entries) ; member(I, Items), sub_name(I, N) ),
                  \+ (member(D, Items), item_name(D, N), \+ declaration(D)) ), Ns0),
     sort(Ns0, Ns),
-    (   select(O, Archive0, Archive), O = object(_, Is),
+    (   select(O, Archive0, Archive), O = object(_, _, Is),
         member(D, Is), \+ declaration(D), item_name(D, N), memberchk(N, Ns)
     ->  append(Objects0, [O], Objects1), extract(Entries, Objects1, Archive, Objects)
     ;   Objects = Objects0

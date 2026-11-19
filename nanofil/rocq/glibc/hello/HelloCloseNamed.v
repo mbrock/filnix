@@ -14,8 +14,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic HelloClose.
+From Glibc Require Import Unit_posix__exit_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  FileInv LibioLogic LibioCloseSteps HelloCloseErrno HelloCloseDiagnostic LeavesLogic SysCode SysWrappers.
+  FileInv LibioLogic LibioCloseSteps HelloCloseErrno HelloCloseDiagnostic LeavesLogic SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
@@ -26,7 +27,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
 Context `{!Defines ge "__errno_location" errno_location_fn}
-  `{!Defines ge "_exit" glibc__exit}.
+  `{!Defines ge "_exit" Unit_posix__exit_os.fn___GI__exit}.
 #[local] Hint Opaque live live_cap pcell int_cell bytes errno_any NS.string : typeclass_instances.
 
 Context (nb : Z) (nreg : region) (filename : ptr) (preg : region)

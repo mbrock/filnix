@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** When the stream's overflow call returns EOF, printf marks its buffer
     failed and returns without selecting another buffer. The caller keeps
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode.
+  LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -21,7 +22,7 @@ Open Scope Z_scope.
 
 (** The captured block places the result comparison immediately after its call. *)
 Definition printf_overflow_block : block := Eval vm_compute in
-  match find_block (TAtom "L74") (fn_blocks glibc___printf_buffer_flush_to_file) with
+  match find_block (TAtom "L74") (fn_blocks Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file) with
   | Some b => b | None => mkBlock (TAtom "L74") [] [] JRetVoid end.
 
 
@@ -41,7 +42,7 @@ Lemma wp_printf_overflow_eof e bb breg mode Φ :
   lookup (TAtom "v96") e = Some (WInt 4294967295) ->
   live bb breg -∗ int_cell bb 32 mode -∗
   ▷ (live bb breg -∗ int_cell bb 32 0 -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 8 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
 Proof using Type.
@@ -58,10 +59,10 @@ Qed.
 Lemma wp_printf_overflow_continue e r Φ :
   0 <= r < 2 ^ 32 -> r <> 4294967295 ->
   lookup (TAtom "v96") e = Some (WInt r) ->
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file
     (put (TAtom "v98") (WInt 0) e) [] None
     (Enter (TAtom "L88") (Some (TAtom "L74")))) : sexpr) {{ Φ }} -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 8 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
 Proof using Type.

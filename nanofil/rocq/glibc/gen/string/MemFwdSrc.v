@@ -2,7 +2,7 @@
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -11,8 +11,8 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_memset_os Unit_string_strdup_os Unit_wcsmbs_mbsinit_os Unit_wctype_wcfuncs_os.
 
-From Glibc Require Import MemFwdCode.
 Module MemFwdSrc.
 
 Definition file_0 : string := "../include/ctype.h".
@@ -584,12 +584,8 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 End fn___ctype_get_mb_cur_max.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) memfwd_module with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) ["__GI_memcpy"; "__GI___mempcpy"; "__GI_memset"; "__GI___strdup"; "__GI___errno_location"; "__mbsinit"; "__GI___towlower"; "__GI___towupper"; "__ctype_b_loc"; "__ctype_toupper_loc"; "__ctype_tolower_loc"; "__GI___ctype_init"; "__ctype_get_mb_cur_max"].
+Definition source_blocks : list (string * list name) := Eval lazy in
+  [("__GI_memcpy", map b_label (fn_blocks Unit_string_memcpy_os.fn___GI_memcpy)); ("__GI___mempcpy", map b_label (fn_blocks Unit_string_mempcpy_os.fn___GI___mempcpy)); ("__GI_memset", map b_label (fn_blocks Unit_string_memset_os.fn___GI_memset)); ("__GI___strdup", map b_label (fn_blocks Unit_string_strdup_os.fn___GI___strdup)); ("__GI___errno_location", map b_label (fn_blocks Unit_csu_errnoZ2dloc_os.fn___GI___errno_location)); ("__mbsinit", map b_label (fn_blocks Unit_wcsmbs_mbsinit_os.fn___mbsinit)); ("__GI___towlower", map b_label (fn_blocks Unit_wctype_wcfuncs_os.fn___GI___towlower)); ("__GI___towupper", map b_label (fn_blocks Unit_wctype_wcfuncs_os.fn___GI___towupper)); ("__ctype_b_loc", map b_label (fn_blocks Unit_ctype_ctypeZ2dinfo_os.fn___ctype_b_loc)); ("__ctype_toupper_loc", map b_label (fn_blocks Unit_ctype_ctypeZ2dinfo_os.fn___ctype_toupper_loc)); ("__ctype_tolower_loc", map b_label (fn_blocks Unit_ctype_ctypeZ2dinfo_os.fn___ctype_tolower_loc)); ("__GI___ctype_init", map b_label (fn_blocks Unit_ctype_ctypeZ2dinfo_os.fn___GI___ctype_init)); ("__ctype_get_mb_cur_max", map b_label (fn_blocks Unit_locale_mb_cur_max_os.fn___ctype_get_mb_cur_max))].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -599,7 +595,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false

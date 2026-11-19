@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** This module proves the prefix of glibc's `c: __dcigettext` up to the
     search of the domain bindings, for the call that getopt's diagnostics
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic VariadicLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic DcigettextCode DcigettextExit DcigettextPreRules.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic DcigettextExit DcigettextPreRules.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -65,8 +66,8 @@ Lemma wp_dci_pre e dom msgid lk1 lk2 L1 L1' L2 L2' bs C cv lkt T T' T'' rt tc K 
      live xs xreg -∗ pcell xs 0 null -∗ obj rl (heap_req 8 8) -∗
      live sb sreg -∗ pcell sb 0 dom -∗ bytes sb 8 (le_bytes 5 4) -∗ pcell sb 16 cv -∗ pcell sb 32 null -∗
      pcell sb 56 msgid -∗ errno_own eb bs -∗ L1' -∗ L2' -∗ C -∗ T'' -∗ K -∗
-     WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L102") (Some (TAtom "L108")))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hloc Hlkt Hrt Htc Hrt1 Hut Htf Hge Hlk1 Hlk2 Hr1 Hr2 Hv0 Hv2 Hv6 Hv10 Hm Hd.
   iIntros "HL1 HL2 Herr HC HT HK HΦ".

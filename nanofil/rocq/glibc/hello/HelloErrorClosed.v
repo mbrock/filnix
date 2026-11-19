@@ -5,6 +5,7 @@
     Printing the program name and the message still need separate proofs.
     Reporting disables thread cancellation and saves its previous setting.
     The proof stops before the code that restores that setting. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode ErrorCode ErrorEntry FflushCode FileSyncCode HelloClosedStdout Fix.
+  ErrorEntry HelloClosedStdout Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic
   LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -61,11 +62,11 @@ Definition error_closed_report tb treg state status errnum fmt ap mode
     live tb treg -∗ int_cell tb 792 1 -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 state -∗
     error_stdout_loan -∗ error_private_cells -∗ Q -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge)
-  (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
+  (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
 
 (** The prefix may consume the closed fields or other lent state. Its
     contract, rather than an assumption about output success, determines
@@ -76,7 +77,7 @@ Lemma wp_error_closed_entry status errnum fmt ap mode tb treg state
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -87,7 +88,7 @@ Lemma wp_error_closed_entry status errnum fmt ap mode tb treg state
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 <= ptr_addr pname < 2 ^ 64 ->
   lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
-  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined Unit_libio_iofflush_os.fn___GI__IO_fflush) ->
   find_fn ge (TAtom "__fxprintf") = Some (Defined prefixfn) ->
   call_frame prefixfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
   (⊢ live_capq dqn (ptr_cap pname) namer -∗ error_closed_flush vbreg sb sreg D -∗
@@ -109,7 +110,7 @@ Proof using Hext Hreg Hsync.
     Hp Hpb Hpa Hpe Hpr Hcu Hn Hnb Hna Hne Hnr Hnu Hprefix Hflush
     Hfx Hfxframe Hfxcall Hcap Hcheck Hcbfn Hconv Hcbframe Hcbcall.
   assert (Hflushcall : ⊢ live fb freg -∗ error_closed_flush vbreg sb sreg D -∗
-    WP (ERun (mkFrame glibc__IO_fflush [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
+    WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None
       (Enter (TAtom "start") None)) : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗
         live fb freg ∗ error_closed_flush vbreg sb sreg D }}).
   { iIntros "Hl (Hfields & #Hvt & #Hslot & #Hs & HD)".
@@ -123,7 +124,7 @@ Proof using Hext Hreg Hsync.
   iIntros "Ht Hstate (Hol & Hop & Hout) (Hpl & Hpp & Hcb & Hnl & Hnp & Hname) HR HE HK".
   iApply (wp_error_internal_entry Hreg Hext status errnum fmt ap mode tb treg state
     ob oreg (mkPtr fb (Obj fb)) (DfracOwn 1) freg pb preg callback dqc cbr nb nreg pname dqn namer prefix
-    glibc__IO_fflush _ prefixfn prefixframe cbname cbfn cbframe
+    Unit_libio_iofflush_os.fn___GI__IO_fflush _ prefixfn prefixframe cbname cbfn cbframe
     (error_closed_flush vbreg sb sreg D) (error_closed_flush vbreg sb sreg D) Q E
     with "Ht Hstate Hol Hop Hout Hpl Hpp Hcb Hnl Hnp Hname HR HE");
     try assumption; try reflexivity; try (cbn; lia); try exact Hflushcall; try (intros _; assumption).

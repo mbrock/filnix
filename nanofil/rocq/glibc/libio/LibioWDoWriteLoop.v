@@ -26,7 +26,7 @@
     pass converts into a sixteen-byte array on the stack. In either
     case it writes the bytes from the chosen buffer to the descriptor. *)
 
-From Glibc Require Import HelloImageTypedLI.
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofwide_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -34,8 +34,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic VariadicLogic.
-From Glibc Require Import CodePrelude Fix OsBlocks OsWorld OsRegistry SysCode FileInv FileIdle
-  LibioLogic LibioReadCode LibioDoWriteCode LibioPutsInv LibioCloseSteps LibioWIdle LibioWXsputnWindow
+From Glibc Require Import CodePrelude Fix OsBlocks OsWorld OsRegistry FileInv FileIdle
+  LibioLogic LibioPutsInv LibioCloseSteps LibioWIdle LibioWXsputnWindow
   LibioWXsputnRoom LibioWOverflowWrite LibioWDoWriteStream LibioWDoWriteTail CBlocks SysWrappers.
 Module WdVL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps WdVL.
@@ -52,7 +52,7 @@ Local Typeclasses Opaque iconv_cell pcell icell bytes auxes live.
 
 (** To read the conversion instructions that Hello actually runs, we
     look up the function in its linked image. *)
-Definition codecvt_out_fn := hello_image_fn___libio_codecvt_out.
+Definition codecvt_out_fn := Unit_libio_iofwide_os.fn___libio_codecvt_out.
 
 (** ## The wide characters as words
 
@@ -236,9 +236,9 @@ Definition codecvt_out_rule (CR L : iProp Σ) : Prop :=
     WP (ERun fr : sexpr) {{ Φ }}.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
-Context `{Hdw : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write} `{Hcvf : !Defines ge "__libio_codecvt_out" codecvt_out_fn}.
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
+Context `{Hdw : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write} `{Hcvf : !Defines ge "__libio_codecvt_out" codecvt_out_fn}.
 Context (CR L : iProp Σ) `{!Persistent CR} (Hcv : codecvt_out_rule CR L).
 Context (fd vb fb : Z) (vr freg : region) (eb wd : Z) (w : wbuf) (tw tm : ptr).
 Context (Hfd : In fd (ow_fds w0)) (Herr : ow_errno w0 = Some (objp eb)).

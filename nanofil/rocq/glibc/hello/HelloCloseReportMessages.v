@@ -4,6 +4,7 @@
     permissions from Hello's initial error table, using the same
     index for the pointer and its target. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_errlist_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +12,7 @@ From stdpp Require Import list.
 From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Machine Pieces Heap Logic Language.
 From Glibc Require Import FileInv WordString HelloGetoptTable StartImageEarly HelloImageLoad
-  ErrlistCode HelloCloseReportImage HelloCloseReportLookup Fix.
+  HelloCloseReportImage HelloCloseReportLookup Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
@@ -67,7 +68,7 @@ Qed.
     finds one. A hole or a number outside the table yields null and
     grants no permission to read from it. *)
 Lemma wp_hello_get_errlist fr k Φ : ge_globals ge = img_globals ->
-  call_frame glibc_get_errlist [WInt k] = Some fr -> 0 <= k < 2^32 ->
+  call_frame Unit_stdioZ2dcommon_errlist_os.fn___get_errlist [WInt k] = Some fr -> 0 <= k < 2^32 ->
   ptsq dq hello_errlist_ps -∗ ▷ (err_text (err_at k) -∗ Φ (Ret (WPtr (err_ptr (err_at k))))) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type.

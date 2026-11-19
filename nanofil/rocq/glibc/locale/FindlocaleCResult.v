@@ -3,6 +3,7 @@
     necessary, with "POSIX". It writes the canonical name back to the
     caller and returns the data for the requested category. *)
 
+From Glibc Require Import Unit_locale_findlocale_os Unit_string_strcmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic StepRules Symbolic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptBytes StrcmpCode StrcmpLogic FindlocaleCode LocaleEnv Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptBytes StrcmpLogic LocaleEnv Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -33,7 +34,7 @@ Local Abbreviation heap d := (mkRegion d (d+16) Heap Live).
 Context (cb pb lb : Z) (Hcn : lookup (TAtom "_nl_C_name") (ge_globals ge) = Some (rop cb))
   (Hpn : lookup (TAtom "_nl_POSIX_name") (ge_globals ge) = Some (rop pb))
   (Hlo : lookup (TAtom "_nl_C_locobj") (ge_globals ge) = Some (rop lb))
-  (Hcmp : find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp)).
+  (Hcmp : find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp)).
 
 (** The name in the local slot is either "C" or "POSIX". The caller's
     slot still has its old value until both comparisons are finished.
@@ -48,7 +49,7 @@ Lemma findlocale_c_result e pred cat b o reg d p q s dq dc dt lr target tr Φ :
   liveq dq lb lr -∗ pcellq dc lb (8*cat) target -∗ live_capq dt (ptr_cap target) tr -∗
   (live b reg -∗ pcell b o (rop cb) -∗ liveq dq lb lr -∗ pcellq dc lb (8*cat) target -∗ live_capq dt (ptr_cap target) tr -∗
    Φ (Ret (WPtr target))) -∗
-  WP (ERun (mkFrame glibc_nl_find_locale e [] None (Enter (TAtom "L20") (Some pred))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_locale_findlocale_os.fn__nl_find_locale e [] None (Enter (TAtom "L20") (Some pred))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros (Hcat & Hslot & Hchk & Hdreg & Hdchk) Hs Hcatb Hb Ho Ha He Hr Hd Hda Hde Hlb Hla Hle Hlr Ht.
   iIntros "#HC #HP #Hs Hd Hq Hl Hcell Hlo Hval Hlife HK".

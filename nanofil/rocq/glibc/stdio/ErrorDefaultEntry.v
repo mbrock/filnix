@@ -2,6 +2,7 @@
     This rule follows that branch without requiring a custom callback to
     exist. It disables cancellation and flushes stdout before printing the
     prefix, then passes the original arguments to the message continuation. *)
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  SysWrappers PrintfStateCode CancelState ErrorCode ErrorEntry Fix.
+  SysWrappers CancelState ErrorEntry Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps
   OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -39,9 +40,9 @@ Lemma error_default_prefix_block e from status errnum fmt ap mode cb
   live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ S -∗
   (∀ e', ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ Q -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.start") (Some (TAtom "L13")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "L13") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Hn Hnb Hna Hne Hnr Hnu Hprefix Hfx Hfxframe Hfxcall.
@@ -63,7 +64,7 @@ Qed.
     then disables cancellation. Its remaining instructions flush stdout
     and choose between the custom and default prefixes. *)
 Definition error_after_cancel : point := Eval vm_compute in
-  match find_block (TAtom "start") (fn_blocks glibc_error_internal) with
+  match find_block (TAtom "start") (fn_blocks Unit_misc_error_os.fn___error_internal) with
   | Some b => Exec (TAtom "start") (skipn 4 (b_insts b)) (b_jump b)
   | None => Enter (TAtom "start") None
   end.
@@ -89,9 +90,9 @@ Lemma error_default_start_suffix e status errnum fmt ap mode cb
   (∀ e', ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     live ob oreg -∗ pcell ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
     live pb preg -∗ pcell pb 0 null -∗ S -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "L13") (Some (TAtom "start")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None error_after_cancel) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None error_after_cancel) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Ho Hob Hoa Hoe Hor Hou Hp Hpb Hpa Hpe Hpr Hflush Hff Hflushcall.
   iIntros "Hol Hop Hout Hpl Hpp HR HK". unfold error_after_cancel.
@@ -123,7 +124,7 @@ Lemma wp_error_internal_default_entry status errnum fmt ap mode tb treg state
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 <= ptr_addr stdout < 2 ^ 64 ->
@@ -153,7 +154,7 @@ Lemma wp_error_internal_default_entry status errnum fmt ap mode tb treg state
     live ob oreg -∗ pcell ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
     live pb preg -∗ pcell pb 0 null -∗
     live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ Q -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
 Proof using Type*.

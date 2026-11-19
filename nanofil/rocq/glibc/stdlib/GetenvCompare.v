@@ -9,8 +9,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules Symbolic.
+From Glibc Require Import Unit_stdlib_getenv_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString
-  GetoptBytes GetenvCode GetenvName StrncmpCode StrncmpLogic StrncmpBits StrcmpBits.
+  GetoptBytes GetenvName StrncmpLogic StrncmpBits StrcmpBits.
 Import ListNotations LG0 LG0.L ProgramAbbreviations GetoptBytes GetoptBytes.ML.
 Open Scope Z_scope.
 
@@ -67,9 +68,9 @@ Lemma getenv_advance e p ep n old (G : iProp Σ) Φ :
   G -∗
   (∀ e', ⌜getenv_scan_bindings e' p ep n old /\
            lookup (TAtom "v81") e' = Some (WPtr (ptr_add ep 8))⌝ -∗ G -∗
-    WP (ERun (mkFrame glibc_getenv e' [] None
+    WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e' [] None
       (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
     (Enter (TAtom "L34") (Some (TAtom "L67")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound. iIntros "HG HK".
@@ -92,9 +93,9 @@ Lemma getenv_equals e p ep q s t old (G : iProp Σ) Φ :
      G -∗ Φ (Ret (WPtr (ptr_add q (Z.of_nat (length s) + 1))))
    else ∀ e', ⌜getenv_scan_bindings e' p ep (Z.of_nat (length s)) old /\
            lookup (TAtom "v81") e' = Some (WPtr (ptr_add ep 8))⌝ -∗ G -∗
-     WP (ERun (mkFrame glibc_getenv e' [] None
+     WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e' [] None
        (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
     (Enter (TAtom "L66") (Some (TAtom "L58")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound Hq Hprefix. iIntros "#Ht HG HK".
@@ -143,7 +144,7 @@ Definition getenv_entry_matches s t :=
     current pointer cell, and the loaded target lifetime. Both strings remain
     readable; the rule makes no assumption about reading subsequent entries. *)
 Lemma getenv_compare_entry e p ep q s t old (G : iProp Σ) Φ
-    `{!Defines ge "__GI_strncmp" glibc_strncmp} :
+    `{!Defines ge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp} :
   getenv_scan_bindings e p ep (Z.of_nat (length s)) old ->
   0 <= ptr_addr ep < 2 ^ 48 ->
   lookup (TAtom "v38") e = Some (WPtr q) -> s <> [] ->
@@ -152,9 +153,9 @@ Lemma getenv_compare_entry e p ep q s t old (G : iProp Σ) Φ
      G -∗ Φ (Ret (WPtr (ptr_add q (Z.of_nat (length s) + 1))))
    else ∀ e', ⌜getenv_scan_bindings e' p ep (Z.of_nat (length s)) old /\
            lookup (TAtom "v81") e' = Some (WPtr (ptr_add ep 8))⌝ -∗ G -∗
-     WP (ERun (mkFrame glibc_getenv e' [] None
+     WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e' [] None
        (Enter (TAtom "L32") (Some (TAtom "L34")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
     (Enter (TAtom "L41") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros (Hp & Hep & Hn & Hold & Hz) Hepbound Hq Hnonempty.

@@ -3,7 +3,7 @@
     stream has failed, it returns minus one; if the count overflows, it
     also stores EOVERFLOW in errno. Neither path needs another buffer. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_done_os Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,8 +15,8 @@ From Glibc Require Import CodePrelude Fix OsBlocks OsWorld
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
-Definition wprintf_count_fn := hello_image_fn___wprintf_buffer_done.
-Definition wprintf_file_done_fn := hello_image_fn___wprintf_buffer_to_file_done.
+Definition wprintf_count_fn := Unit_stdioZ2dcommon_wprintf_buffer_done_os.fn___wprintf_buffer_done.
+Definition wprintf_file_done_fn := Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.fn___wprintf_buffer_to_file_done.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

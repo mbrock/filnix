@@ -20,6 +20,7 @@
     releases a live heap object, and [wp_glibc_free_null] ignores a null
     pointer. *)
 
+From Glibc Require Import Unit_malloc_malloc_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec StdlibSpecs.
 From Stdlib Require Import ZArith Lia.
 From Glibc Require Import StrlenBits.
@@ -52,19 +53,19 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import StdlibCode GlibcLogic StrlenBits LeavesLogic.
+From Glibc Require Import GlibcLogic StrlenBits LeavesLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
 (** [malloc_fn] extracts the decoded IR body of glibc's
     `__GI___libc_malloc`. *)
-Definition malloc_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_malloc".
+Definition malloc_fn : func := Unit_malloc_malloc_os.fn___GI___libc_malloc.
 (** [malloc2_fn] extracts the decoded IR body of `__libc_malloc2`,
     which `c: link.pl` renames to `glibc_malloc#__libc_malloc2`. *)
-Definition malloc2_fn : func := Eval vm_compute in stdlib_fn "glibc_malloc#__libc_malloc2".
+Definition malloc2_fn : func := Unit_malloc_malloc_os.fn_glibc_malloc'23__libc_malloc2.
 (** [free_fn] extracts the decoded IR body of glibc's
     `__GI___libc_free`. *)
-Definition free_fn : func := Eval vm_compute in stdlib_fn "__GI___libc_free".
+Definition free_fn : func := Unit_malloc_malloc_os.fn___GI___libc_free.
 
 
 Module LG := LG0.

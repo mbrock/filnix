@@ -3,6 +3,7 @@
     skip both steps, but a stream which already has its short buffer
     need not yet be in write mode. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,8 +11,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioDoWriteCode
-  LibioReadCode LibioPutsInv LibioSetb LibioDoAllocShort LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortPut.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic
+  LibioPutsInv LibioSetb LibioDoAllocShort LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortPut.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -20,8 +21,8 @@ Local Arguments Z.sub : simpl nomatch.
 
 Section start.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Halloc : !Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
-Context `{!Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Halloc : !Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
+Context `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 Context (Hfree : free_rule w0 registry ge).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -34,7 +35,7 @@ Definition short_setup_flags (fresh : bool) fl fl' :=
     buffer. It leaves the read base alone if the stream was already
     writing. Otherwise it sets the read base to the short byte. *)
 Lemma wp_short_start fr fb freg ch fl mode (fresh : bool) rb Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   Z.land fl 8 = 0 -> Z.land fl 256 = 0 -> Z.land fl 2 <> 0 ->
   (fresh = true -> Z.land fl 2048 = 0) -> (mode = 0 \/ mode = 2^32-1) ->
@@ -48,7 +49,7 @@ Lemma wp_short_start fr fb freg ch fl mode (fresh : bool) rb Φ :
        lookup (TAtom "v2") e = Some (WInt ch) /\ lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) /\
        short_setup_flags fresh fl fl' /\ ((fresh = false /\ rb' = rb) \/ rb' = short_ptr fb)⌝ -∗
     live fb freg -∗ int_cell fb off_flags fl' -∗ int_cell fb off_mode mode -∗ short_ptrs fb rb' (short_ptr fb) -∗
-    WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}) -∗
+    WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfr Hfb Hal Hend Hrend Hnw Hbk Hu Hfresh Hmd. injection Hfr as <-. cbn zeta.

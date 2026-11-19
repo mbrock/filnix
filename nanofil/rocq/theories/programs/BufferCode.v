@@ -4,7 +4,6 @@
 
 From Stdlib Require Import String ZArith List Ascii.
 From Nanofil Require Import Term.
-From Nanofil Require Import CaptureNotation.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -15,37 +14,42 @@ Definition chr (n : nat) : term := TAtom (String (ascii_of_nat n) EmptyString).
 (** The module term. *)
 Definition buffer_term : term :=
   TApp "module" [TList [
-    cap_fn{ "export" "buffer" [param "w" %"v0"] -> "l"
-      {
-        @"start":
-          %"v4" : "p" = op "alloc"(int 16) #32
-          => goto "L6";
-        @"L6" [phi %"pr.1" : "w" = ("start" => #0, "L7" => %"v18")]:
-          %"v11" : "w" = op "cmp"("slt", "w") %"pr.1", #4
-          => br %"v11" ? "L7" : "L24";
-        @"L7":
-          %"v14" : "l" = op "ext"("sw") %"pr.1";
-          %"v15" : "l" = "shl" %"v14", #3;
-          %"v16" = %"v4" +p %"v15";
-          %"v18" : "w" = "add" %"pr.1", #1;
-          %"v19" : "l" = op "ext"("sw") %"v18";
-          %"chk0" : "a" = op "check"(int 0, int 8, "write", int 1) %"v16";
-          store "l" [%"chk0" + 0] <- %"v19"
-          => goto poll "L6";
-        @"L24" [phi %"pr.3" : "w" = ("L25" => %"v41", "L6" => #0); phi %"pr.2" : "l" = ("L25" => %"v39", "L6" => #0)]:
-          %"v30" : "w" = op "cmp"("slt", "w") %"pr.3", %"v0"
-          => br %"v30" ? "L25" : "L27";
-        @"L25":
-          %"v34" : "w" = "rem" %"pr.3", #4;
-          %"v35" : "l" = op "ext"("sw") %"v34";
-          %"v36" : "l" = "shl" %"v35", #3;
-          %"v37" = %"v4" +p %"v36";
-          %"chk1" : "a" = op "check"(int 0, int 8, "read", int 1) %"v37";
-          %"v38" : "l" = op "raw_load"("l", int 0) %"chk1";
-          %"v39" : "l" = "add" %"pr.2", %"v38";
-          %"v41" : "w" = "add" %"pr.3", #1
-          => goto poll "L24";
-        @"L27":
-          => ret %"pr.2"
-      } }
+    TApp "func" [TAtom "buffer"; TAtom "export"; TAtom "l"; TList [TApp "param" [TAtom "w"; TApp "tmp" [TAtom "v0"]]];
+      TList [
+        TApp "block" [TAtom "start"; TList [];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v4"]; TAtom "p"; TApp "alloc" [TInt 16]; TList [TApp "const" [TInt 32]]]];
+          TApp "goto" [TAtom "L6"]];
+        TApp "block" [TAtom "L6"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.1"]; TAtom "w"; TList [TApp "-" [TAtom "start"; TApp "const" [TInt 0]]; TApp "-" [TAtom "L7"; TApp "tmp" [TAtom "v18"]]]]];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v11"]; TAtom "w"; TApp "cmp" [TAtom "slt"; TAtom "w"]; TList [TApp "tmp" [TAtom "pr.1"]; TApp "const" [TInt 4]]]];
+          TApp "branch" [TApp "tmp" [TAtom "v11"]; TAtom "L7"; TAtom "L24"]];
+        TApp "block" [TAtom "L7"; TList [];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v14"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "pr.1"]]];
+            TApp "let" [TApp "tmp" [TAtom "v15"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "v14"]; TApp "const" [TInt 3]]];
+            TApp "flight" [TApp "tmp" [TAtom "v16"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v4"]]; TApp "tmp" [TAtom "v15"]]; TApp "lower" [TApp "tmp" [TAtom "v4"]]];
+            TApp "let" [TApp "tmp" [TAtom "v18"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.1"]; TApp "const" [TInt 1]]];
+            TApp "let" [TApp "tmp" [TAtom "v19"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v18"]]];
+            TApp "let" [TApp "tmp" [TAtom "chk0"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "write"; TInt 1]; TList [TApp "tmp" [TAtom "v16"]]];
+            TApp "raw_store" [TAtom "l"; TInt 0; TApp "tmp" [TAtom "v19"]; TApp "tmp" [TAtom "chk0"]]];
+          TApp "goto" [TApp "poll" [TAtom "L6"]]];
+        TApp "block" [TAtom "L24"; TList [TApp "phi" [TApp "tmp" [TAtom "pr.3"]; TAtom "w"; TList [TApp "-" [TAtom "L25"; TApp "tmp" [TAtom "v41"]]; TApp "-" [TAtom "L6"; TApp "const" [TInt 0]]]]; TApp "phi" [TApp "tmp" [TAtom "pr.2"]; TAtom "l"; TList [TApp "-" [TAtom "L25"; TApp "tmp" [TAtom "v39"]]; TApp "-" [TAtom "L6"; TApp "const" [TInt 0]]]]];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v30"]; TAtom "w"; TApp "cmp" [TAtom "slt"; TAtom "w"]; TList [TApp "tmp" [TAtom "pr.3"]; TApp "tmp" [TAtom "v0"]]]];
+          TApp "branch" [TApp "tmp" [TAtom "v30"]; TAtom "L25"; TAtom "L27"]];
+        TApp "block" [TAtom "L25"; TList [];
+          TList [
+            TApp "let" [TApp "tmp" [TAtom "v34"]; TAtom "w"; TAtom "rem"; TList [TApp "tmp" [TAtom "pr.3"]; TApp "const" [TInt 4]]];
+            TApp "let" [TApp "tmp" [TAtom "v35"]; TAtom "l"; TApp "ext" [TAtom "sw"]; TList [TApp "tmp" [TAtom "v34"]]];
+            TApp "let" [TApp "tmp" [TAtom "v36"]; TAtom "l"; TAtom "shl"; TList [TApp "tmp" [TAtom "v35"]; TApp "const" [TInt 3]]];
+            TApp "flight" [TApp "tmp" [TAtom "v37"]; TAtom "add"; TList [TApp "address" [TApp "tmp" [TAtom "v4"]]; TApp "tmp" [TAtom "v36"]]; TApp "lower" [TApp "tmp" [TAtom "v4"]]];
+            TApp "let" [TApp "tmp" [TAtom "chk1"]; TAtom "a"; TApp "check" [TInt 0; TInt 8; TAtom "read"; TInt 1]; TList [TApp "tmp" [TAtom "v37"]]];
+            TApp "let" [TApp "tmp" [TAtom "v38"]; TAtom "l"; TApp "raw_load" [TAtom "l"; TInt 0]; TList [TApp "tmp" [TAtom "chk1"]]];
+            TApp "let" [TApp "tmp" [TAtom "v39"]; TAtom "l"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.2"]; TApp "tmp" [TAtom "v38"]]];
+            TApp "let" [TApp "tmp" [TAtom "v41"]; TAtom "w"; TAtom "add"; TList [TApp "tmp" [TAtom "pr.3"]; TApp "const" [TInt 1]]]];
+          TApp "goto" [TApp "poll" [TAtom "L24"]]];
+        TApp "block" [TAtom "L27"; TList [];
+          TList [];
+          TApp "ret" [TApp "tmp" [TAtom "pr.2"]]]]]
   ]].

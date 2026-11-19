@@ -1,26 +1,19 @@
-(** Hello's safety proof runs main_fn, the body of main in Hello's own
-    module, and its library bridges assume the record hello_link. That
-    record says which body each call finds and which names are left to
-    the OS. A proof about the whole linked program needs those facts for
-    the whole decoded image, because the linker could have placed a
-    different main or a different malloc there.
+(** Hello's safety proof runs main_fn and uses the link record hello_link
+    to identify the functions that its calls reach. This file shows that
+    the complete image resolves those calls to the functions named by
+    the record. The library proofs and the linked image refer to the same
+    captured glibc definitions.
 
-    This file checks main and every function field of hello_link against
-    the whole decoded image, with the bodies that the record names. The
-    stdlib and hi_atexit fixtures, from which the malloc and atexit
-    bodies come, name the private objects of malloc and cxa_atexit as
-    the genuine link does, glibc_malloc#... and glibc_cxa_atexit#..., so
-    those bodies match the image too.
-
-    The file checks names and bodies only. It does not say that Hello
-    starts from this image. Apart from the symbol of malloc's parameter
-    object, it proves no object or layout field. *)
+    The rest of the file checks that OS calls are left external and that
+    malloc's parameter object has a symbol in the loaded image. *)
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap HelloLeaf HelloName.
 From Nanofil Require HelloClose HelloMain.
-From Glibc Require Import SysWrappers StrlenLogic StrncmpCode MemrchrCode MemcmpCode MemFwdCode StrchrCode
-  AllocLogic LeavesLogic AtexitLogic ExitRunCode LibioGenCode SysCode LibioFlushCode LibioCleanupCode
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
+From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
+From Glibc Require Import SysWrappers StrlenLogic
+  AllocLogic LeavesLogic AtexitLogic
   HelloGlibcLibsT.
 From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageGettextLink HelloImageLoad.
 Import ListNotations.
@@ -55,17 +48,17 @@ Proof. vm_compute. discriminate. Qed.
 (** These are all the calls of hello_link, paired with the bodies that
     the record names. *)
 Definition hello_image_fns : list (string * func) :=
-  [("mbszero", mbszero_fn); ("memset", glibc_memset); ("set_program_name", set_program_name_fn);
-   ("strrchr", glibc_strrchr); ("__GI_strlen", glibc_strlen); ("__GI___memrchr", glibc_memrchr);
-   ("memcmp", glibc_memcmp); ("memeq", memeq_fn); ("strncmp", glibc_strncmp); ("strlen", glibc_strlen);
+  [("mbszero", mbszero_fn); ("memset", Unit_string_memset_os.fn___GI_memset); ("set_program_name", set_program_name_fn);
+   ("strrchr", Unit_string_strrchr_os.fn___GI_strrchr); ("__GI_strlen", glibc_strlen); ("__GI___memrchr", Unit_string_memrchr_os.fn___GI___memrchr);
+   ("memcmp", Unit_string_memcmp_os.fn___GI_memcmp); ("memeq", memeq_fn); ("strncmp", Unit_string_strncmp_os.fn___GI_strncmp); ("strlen", glibc_strlen);
    ("__errno_location", errno_location_fn); ("xmalloc", xmalloc_fn); ("malloc", malloc_fn);
    ("glibc_malloc#__libc_malloc2", malloc2_fn); ("free", free_fn); ("atexit", atexit_fn);
    ("__new_exitfn", new_exitfn_fn); ("__internal_atexit", internal_atexit_fn);
-   ("__cxa_atexit", cxa_atexit_fn); ("exit", glibc_exit);
-   ("__run_exit_handlers", glibc___run_exit_handlers); ("__GI___call_tls_dtors", glibc___call_tls_dtors);
-   ("__GI___libc_cleanup_push_defer", glibc___libc_cleanup_push_defer);
-   ("__GI___libc_cleanup_pop_restore", glibc___libc_cleanup_pop_restore);
-   ("__GI__IO_flush_all", glibc__IO_flush_all); ("_IO_cleanup", glibc__IO_cleanup);
+   ("__cxa_atexit", cxa_atexit_fn); ("exit", Unit_stdlib_exit_os.fn___GI_exit);
+   ("__run_exit_handlers", Unit_stdlib_exit_os.fn___run_exit_handlers); ("__GI___call_tls_dtors", Unit_stdlib_cxa_thread_atexit_impl_os.fn___GI___call_tls_dtors);
+   ("__GI___libc_cleanup_push_defer", Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer);
+   ("__GI___libc_cleanup_pop_restore", Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore);
+   ("__GI__IO_flush_all", Unit_libio_genops_os.fn___GI__IO_flush_all); ("_IO_cleanup", Unit_libio_genops_os.fn__IO_cleanup);
    ("close_stdout", HelloClose.close_stdout_fn); ("proper_name", HelloVersion.proper_name_fn)]%string.
 
 (** These names must stay outside the program, so that calls to them
@@ -107,7 +100,7 @@ Theorem hello_image_fn_link g m fr : initial_memory hello_image_module = Some (g
     hello_image_absent.
 Proof.
   intros Hi. split; [apply hello_image_main|]. split.
-  - unfold hello_image_fns. repeat (apply Forall_cons; [cbn [fst snd]; vm_compute; reflexivity|]). apply Forall_nil.
+  - unfold hello_image_fns. repeat constructor; reflexivity.
   - assert (C : forallb (absent_ok hello_image_module) hello_image_absent = true) by (vm_compute; reflexivity).
     rewrite forallb_forall in C. apply List.Forall_forall. intros s Hs. exact (absent_ok_sound _ _ _ fr _ Hi (C s Hs)).
 Qed.

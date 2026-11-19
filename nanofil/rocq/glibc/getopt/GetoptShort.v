@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** A cluster of short options such as "-ab" names one option per
     character. Each call of glibc's scanner takes the character at the
@@ -17,7 +18,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic GetoptModule
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
   GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld StrchrnulLogic.
 From Glibc Require Import Fix.
@@ -76,8 +77,8 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     points at that character inside the option string. *)
 Lemma wp_getopt_char ks e fr i cur t po so b r Φ :
   avoids ks char_names = true ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) ->
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) ->
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) ->
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) ->
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "pr.1") e = Some (WPtr po) ->
   lookup (TAtom "v80") e = Some (WInt 0) ->

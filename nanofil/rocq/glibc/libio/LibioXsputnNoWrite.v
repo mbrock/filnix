@@ -3,6 +3,7 @@
     string writer returns zero bytes written and never reads the string.
     An empty string returns zero without even setting the error bit. *)
 
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy PrintfStreamInv LibioFputsSpec LibioLogic
-  LibioReadCode LibioDoWriteCode LibioXsputnCode LibioPutsInv LibioFflushIdle LibioOverflowBase LibioOverflowNoWrite.
+  LibioPutsInv LibioFflushIdle LibioOverflowBase LibioOverflowNoWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -24,7 +25,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     newline scan. Glibc compares the pointer addresses next. The write
     end may lie below the write pointer, so equality is not required. *)
 Lemma wp_xs_nowrite_enter fr fb freg src n st nb Φ :
-  call_frame glibc__IO_new_file_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr src; WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr (mkPtr fb (Obj fb)); WPtr src; WInt n] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> 0 < n < 2^63 ->
   has (fs_flags st) io_currently_putting = false -> ptr_addr (fs_ptr st 5) <= ptr_addr (fs_ptr st 4) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> live fb freg -∗ file_fields fb st -∗ buf_idle nb -∗
@@ -32,7 +33,7 @@ Lemma wp_xs_nowrite_enter fr fb freg src n st nb Φ :
        lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) /\
        lookup (TAtom "v4") e = Some (WInt n) /\ lookup (TAtom "pr.5") e = Some (WInt n)⌝ -∗
      live fb freg -∗ file_fields fb st -∗ buf_idle nb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "L120") (Some (TAtom "L96")))) : gexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Enter (TAtom "L120") (Some (TAtom "L96")))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hfr Hfb Hal Hend Hrend Hn Hnp Hroom Hb. injection Hfr as <-. unfold file_size in Hend.
@@ -57,14 +58,14 @@ Proof using Type.
   all: unfold file_fields; rewrite -Eps; cbn [big_opL]; iFrame; done.
 Qed.
 
-Context (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
+Context (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow).
 
 (** A refused flush leaves the entire source available to the caller.
     The stream keeps its original orientation because this call goes
     straight to the file method rather than through the overflow wrapper. *)
 Lemma wp_xsputn_nowrite fr vb self fb freg st nb flags2 held dq b reg o c ys eb Φ :
   let fp := mkPtr fb (Obj fb) in let n := Z.of_nat (length ys) in let fd := fs_fileno st in
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr (mkPtr (b+o) c); WInt n] = Some fr ->
   fb mod 8 = 0 -> 0 < fb -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> flags_ok st ->
   idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 -> fs_vtable st = mkPtr (vb+vt_file) (Ro vb) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st -> has (fs_flags st) io_no_writes = true ->

@@ -12,18 +12,23 @@
     a run of bytes with its string writer, which
     [LibioXsputnHeap](../libio/LibioXsputnHeap.v) proves. *)
 
+From Glibc Require Import Unit_io_fstat64_os Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_filedoalloc_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_libio_iofputs_os Unit_misc_makedev_os Unit_stdioZ2dcommon__fitoa_word_os Unit_stdioZ2dcommon_printf_buffer_done_os.
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_flush_os Unit_stdioZ2dcommon_printf_buffer_pad_1_os Unit_stdioZ2dcommon_printf_buffer_putc_1_os Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_printf_buffer_write_os.
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_memset_os Unit_string_strchrnul_os.
+From Glibc Require Import Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls Pieces Heap.
-From Glibc Require Import OsWorld OsRegistry SysCode LibioLogic LibioSetb LibioReadCode LibioDoWriteCode
-  LibioGenCode LibioXsputnCode LibioStreamTidy LibioOverflowHeap PrintfSpec PrintfBufferFileCode PrintfBufferIoCode
-  PrintfStateCode StrlenLogic StrchrCode MemFwdCode FormatterCode FormatterScan FormatterLiteral PrintfPutcOneCode
-  PrintfPadOneCode ItoaWordCode PrintfFileEntry PrintfFileCalls PrintfInternal HiAtexitSetb HelloGlibcLibsT
+From Glibc Require Import OsWorld OsRegistry LibioLogic LibioSetb
+  LibioStreamTidy LibioOverflowHeap PrintfSpec
+  StrlenLogic FormatterScan FormatterLiteral
+  PrintfFileEntry PrintfFileCalls PrintfInternal HiAtexitSetb HelloGlibcLibsT
   LibioXsputnHeap
-  LibioFputsSpec LibioPutsCode LibioFputsIdle.
+  LibioFputsSpec LibioFputsIdle.
 From Glibc Require LibioCleanupExit AllocLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout.
 Import ListNotations.
@@ -50,22 +55,22 @@ Proof.
   set (ge := mkGenv hello_image_module img_globals fr) in *.
   set (P := program_of w0 glibc_os_registry ge) in *.
   destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
-  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
-  assert (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
-  assert (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat) by image_fn "__GI__IO_file_stat".
-  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
+  assert (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
+  assert (Hstat : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat) by image_fn "__GI__IO_file_stat".
+  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
   assert (Hmove : find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None)
     by (split; vm_compute; reflexivity).
-  assert (Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf) by image_defines.
-  assert (Defines ge "__GI__IO_setb" glibc__IO_setb) by image_defines.
-  assert (Defines ge "__GI___write" glibc___libc_write) by image_defines.
-  assert (Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
-  assert (Defines ge "__GI_memcpy" glibc_memcpy) by image_defines.
-  assert (Defines ge "__GI_mempcpy" glibc_mempcpy) by image_defines.
-  assert (Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn) by image_defines.
-  assert (Defines ge "__GI___fstat64" glibc___fstat64) by image_defines.
-  assert (Defines ge "__gnu_dev_major" glibc___gnu_dev_major) by image_defines.
-  assert (Defines ge "__isatty_nostatus" glibc___isatty_nostatus) by image_defines.
+  assert (Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf) by image_defines.
+  assert (Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb) by image_defines.
+  assert (Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by image_defines.
+  assert (Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by image_defines.
+  assert (Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy) by image_defines.
+  assert (Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy) by image_defines.
+  assert (Defines ge "__GI__IO_default_xsputn" Unit_libio_genops_os.fn___GI__IO_default_xsputn) by image_defines.
+  assert (Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64) by image_defines.
+  assert (Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major) by image_defines.
+  assert (Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus) by image_defines.
   assert (Defines ge "free" AllocLogic.free_fn) by exact (hk_free _ _ Hk).
   assert (Defines ge "malloc" AllocLogic.malloc_fn) by exact (hk_malloc _ _ Hk).
   assert (Defines ge "glibc_malloc#__libc_malloc2" AllocLogic.malloc2_fn) by exact (hk_malloc2 _ _ Hk).
@@ -89,42 +94,42 @@ Proof.
   set (P := program_of w0 glibc_os_registry ge) in *.
   destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
   pose proof (hi_free_rule (glibc_program := P) (Hfree_fn := hk_free _ _ Hk) Hfh Hzf Hzg) as Hfree.
-  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
-  assert (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
-  assert (Hxs : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn) by image_fn "_IO_new_file_xsputn".
+  assert (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
+  assert (Hxs : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn) by image_fn "_IO_new_file_xsputn".
   assert (Hmove : find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None)
     by (split; vm_compute; reflexivity).
-  assert (Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf) by image_defines.
-  assert (Defines ge "__GI__IO_setb" glibc__IO_setb) by image_defines.
-  assert (Defines ge "__GI___write" glibc___libc_write) by image_defines.
-  assert (Defines ge "__GI___write_nocancel" glibc___write_nocancel) by image_defines.
-  assert (Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
-  assert (Defines ge "__GI___overflow" glibc___overflow) by image_defines.
-  assert (Defines ge "__printf_buffer_to_file_init" glibc___printf_buffer_to_file_init) by image_defines.
-  assert (Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch) by image_defines.
-  assert (Defines ge "__printf_buffer_flush_to_file" glibc___printf_buffer_flush_to_file) by image_defines.
-  assert (Defines ge "__printf_buffer_to_file_done" glibc___printf_buffer_to_file_done) by image_defines.
-  assert (Defines ge "__printf_buffer_done" glibc___printf_buffer_done) by image_defines.
-  assert (Defines ge "__printf_buffer_write" glibc___printf_buffer_write) by image_defines.
-  assert (Defines ge "__printf_buffer_flush" glibc___printf_buffer_flush) by image_defines.
-  assert (Defines ge "__GI_memcpy" glibc_memcpy) by image_defines.
-  assert (Defines ge "__GI_memset" glibc_memset) by image_defines.
-  assert (Defines ge "__printf_buffer_putc_1" glibc_printf_buffer_putc_1) by image_defines.
-  assert (Defines ge "__printf_buffer_pad_1" glibc_printf_buffer_pad_1) by image_defines.
-  assert (Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" glibc_printf_buffer_putc) by image_defines.
-  assert (Defines ge "glibc_vfprintf_internal#__printf_buffer_pad" glibc_printf_buffer_pad) by image_defines.
+  assert (Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf) by image_defines.
+  assert (Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb) by image_defines.
+  assert (Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by image_defines.
+  assert (Defines ge "__GI___write_nocancel" Unit_io_write_nocancel_os.fn___GI___write_nocancel) by image_defines.
+  assert (Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by image_defines.
+  assert (Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow) by image_defines.
+  assert (Defines ge "__printf_buffer_to_file_init" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init) by image_defines.
+  assert (Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch) by image_defines.
+  assert (Defines ge "__printf_buffer_flush_to_file" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file) by image_defines.
+  assert (Defines ge "__printf_buffer_to_file_done" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done) by image_defines.
+  assert (Defines ge "__printf_buffer_done" Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done) by image_defines.
+  assert (Defines ge "__printf_buffer_write" Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) by image_defines.
+  assert (Defines ge "__printf_buffer_flush" Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush) by image_defines.
+  assert (Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy) by image_defines.
+  assert (Defines ge "__GI_memset" Unit_string_memset_os.fn___GI_memset) by image_defines.
+  assert (Defines ge "__printf_buffer_putc_1" Unit_stdioZ2dcommon_printf_buffer_putc_1_os.fn___printf_buffer_putc_1) by image_defines.
+  assert (Defines ge "__printf_buffer_pad_1" Unit_stdioZ2dcommon_printf_buffer_pad_1_os.fn___printf_buffer_pad_1) by image_defines.
+  assert (Defines ge "glibc_vfprintf_internal#__printf_buffer_putc" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_putc) by image_defines.
+  assert (Defines ge "glibc_vfprintf_internal#__printf_buffer_pad" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn_glibc_vfprintf_internal'23__printf_buffer_pad) by image_defines.
   assert (Defines ge "glibc_vfprintf_internal#__printf_buffer_has_failed" glibc_format_failed) by image_defines.
   assert (Defines ge "glibc_vfprintf_internal#__find_specmb.gnu_inline" glibc_find_specmb) by image_defines.
-  assert (Defines ge "__GI___strchrnul" glibc_strchrnul) by image_defines.
+  assert (Defines ge "__GI___strchrnul" Unit_string_strchrnul_os.fn___GI___strchrnul) by image_defines.
   assert (Defines ge "__GI_strlen" glibc_strlen) by image_defines.
-  assert (Defines ge "_itoa_word" glibc_itoa_word) by image_defines.
-  assert (Defines ge "__printf_buffer" glibc_printf_buffer) by image_defines.
-  assert (Defines ge "__vfprintf_internal" glibc_vfprintf_internal) by image_defines.
-  assert (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat) by image_fn "__GI__IO_file_stat".
-  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
-  assert (Defines ge "__GI___fstat64" glibc___fstat64) by image_defines.
-  assert (Defines ge "__gnu_dev_major" glibc___gnu_dev_major) by image_defines.
-  assert (Defines ge "__isatty_nostatus" glibc___isatty_nostatus) by image_defines.
+  assert (Defines ge "_itoa_word" Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word) by image_defines.
+  assert (Defines ge "__printf_buffer" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer) by image_defines.
+  assert (Defines ge "__vfprintf_internal" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal) by image_defines.
+  assert (Hstat : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat) by image_fn "__GI__IO_file_stat".
+  assert (Hda : ge_fn ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate) by image_fn "__GI__IO_file_doallocate".
+  assert (Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64) by image_defines.
+  assert (Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major) by image_defines.
+  assert (Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus) by image_defines.
   assert (Defines ge "free" AllocLogic.free_fn) by exact (hk_free _ _ Hk).
   assert (Defines ge "malloc" AllocLogic.malloc_fn) by exact (hk_malloc _ _ Hk).
   assert (Defines ge "glibc_malloc#__libc_malloc2" AllocLogic.malloc2_fn) by exact (hk_malloc2 _ _ Hk).
@@ -154,14 +159,14 @@ Proof.
   set (P := program_of w0 glibc_os_registry ge) in *.
   destruct (hk_frees _ _ Hk) as (Hfh & Hzf & Hzg).
   pose proof (hi_free_rule (glibc_program := P) (Hfree_fn := hk_free _ _ Hk) Hfh Hzf Hzg) as Hfree.
-  assert (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
-  assert (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
-  assert (Hxs : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn) by image_fn "_IO_new_file_xsputn".
-  assert (Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf) by image_defines.
-  assert (Defines ge "__GI__IO_setb" glibc__IO_setb) by image_defines.
-  assert (Defines ge "__GI___write" glibc___libc_write) by image_defines.
-  assert (Defines ge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
-  assert (Defines ge "fputs" glibc__IO_fputs) by image_defines.
+  assert (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow) by image_fn "_IO_new_file_overflow".
+  assert (Hxs : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn) by image_fn "_IO_new_file_xsputn".
+  assert (Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf) by image_defines.
+  assert (Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb) by image_defines.
+  assert (Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by image_defines.
+  assert (Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by image_defines.
+  assert (Defines ge "fputs" Unit_libio_iofputs_os.fn___GI__IO_fputs) by image_defines.
   exact (fputs_has_spec (glibc_program := P) LibioCleanupExit.holds_os_glibc (hk_sys _ _ Hk) Hfree Hfw Hov Hxs
     (hello_xsputn_heap_image w0 fr Hk) (hk_gi_strlen _ _ Hk) He Hself).
 Qed.

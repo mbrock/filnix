@@ -11,6 +11,7 @@
     step constant-time, and proves the three epilogue lemmas for
     `c: strncmp`. *)
 
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrncmpCode
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop
   StrcmpBits StrcmpLoop StrncmpBits.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
@@ -127,7 +128,7 @@ Lemma fin_a Δ e fl s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_1.pr.4") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_1.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
+  ent Δ (WP (ERun (mkFrame Unit_string_strncmp_os.fn___GI_strncmp e [] None (Enter (TAtom "iw_1.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
 Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
 (** Lemma [fin_b] verifies the final comparison epilogue for the
@@ -137,12 +138,12 @@ Lemma fin_b Δ e fl s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_2.pr.6") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Enter (TAtom "iw_2.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
+  ent Δ (WP (ERun (mkFrame Unit_string_strncmp_os.fn___GI_strncmp e [] None (Enter (TAtom "iw_2.iw_2.start") (Some fl))) : gexpr) {{ Φ }}).
 Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. step. fin_tac x y r Hl HK Hc A1 A2. Qed.
 
 (** Function [nblk] looks up basic block l in `__GI_strncmp`. *)
 Definition nblk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_strncmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_string_strncmp_os.fn___GI_strncmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 (** Constant [blk32] holds the basic block for the trailing-bytes exit
     of an unaligned second string. *)
 Definition blk32 : block := Eval vm_compute in nblk "iw_2.L32".
@@ -155,7 +156,7 @@ Lemma fin_c Δ e s1 s2 f1 f2 c x y L r Φ :
   lookup (TAtom "iw_2.pr.5") e = Some (WInt r) -> 0 <= x < 2 ^ 64 -> 0 <= y < 2 ^ 64 -> r < 2 ^ 64 ->
   Forall (fun ch => 0 < ch < 256) s1 -> agree_str f1 s1 -> agree_str f2 s2 -> last_cmp f1 f2 c x y L r ->
   ent Δ (Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strncmp e [] None (Exec (TAtom "iw_2.L32") (b_insts blk32) (b_jump blk32))) : gexpr)
+  ent Δ (WP (ERun (mkFrame Unit_string_strncmp_os.fn___GI_strncmp e [] None (Exec (TAtom "iw_2.L32") (b_insts blk32) (b_jump blk32))) : gexpr)
            {{ Φ }}).
 Proof using SafepointStable0. intros H3 H5 H4 X Y Rr Hc A1 A2 Hl HK. cbn [blk32 b_insts b_jump]. fin_tac x y r Hl HK Hc A1 A2. Qed.
 

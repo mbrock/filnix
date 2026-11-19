@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** GNU Hello asks glibc to translate getopt's messages, and glibc's
     `c: __dcigettext` returns a message unchanged when the program runs in
@@ -21,7 +22,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextCode DcigettextFree DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextFree DcigettextExit.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -99,7 +100,7 @@ Lemma wp_dci_c_locale_fr e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s ms
   U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 0 -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hcv Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2
     Hsl0 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
@@ -160,6 +161,6 @@ Lemma wp_dci_c_locale e cv sl sreg a0 a1 sec secreg dqs xs xsreg xd xreg s msgid
   U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 0 -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros. eapply wp_dci_c_locale_fr; eauto using dci_free_rule_heap. Qed.
 End rules.

@@ -3,13 +3,14 @@
     conversion lock once, releases both steps, and unlocks before it
     returns the saved result of closing the descriptor. *)
 
+From Glibc Require Import Unit_libio_iofclose_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioFcloseCode LibioWIdle
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioWIdle
   LibioWFwide LibioWRelease Mbrtowc HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs StartImageEarly Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -41,7 +42,7 @@ Lemma wp_fclose_wide_release e from p1 fb freg wd wr pin Φ :
   live wd wr -∗ pcell wd 72 null -∗ pcell wd 104 (rop tw) -∗ pcell wd 160 (rop tm) -∗
   ▷ (gconv_lock_free -∗ live fb freg -∗ pcell fb 160 (objp wd) -∗ pcell fb 152 (mkPtr (wd+104) (Obj wd)) -∗
      live wd wr -∗ pcell wd 72 null -∗ pcell wd 104 (rop tw) -∗ pcell wd 160 (rop tm) -∗ Φ (Ret (WInt p1))) -∗
-  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L136") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L136") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv Hc Hp Hp1 Hout Hin Hneq Hinr Hlk Hrel Hfb Hfa Hfe Hfr Hwd Hwa Hwe Hwr.
   iIntros "(_ & _ & _ & _ & _ & _ & #Htw & #Htw0 & _) #Hw #Hends (Hll & % & Hlb) Hl Hwd Hcv Hwlife H72 H104 H160 HK".

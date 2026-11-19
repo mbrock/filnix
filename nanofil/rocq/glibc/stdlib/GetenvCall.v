@@ -8,8 +8,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run
   Pieces Heap Language Logic ExternalCalls.
-From Glibc Require Import GlibcProgram WordString GetenvCode GetenvEntry
-  GetenvScan GetenvStatic StrlenLogic StrncmpCode OsWorld.
+From Glibc Require Import Unit_stdlib_getenv_os Unit_string_strncmp_os.
+From Glibc Require Import GlibcProgram WordString GetenvEntry
+  GetenvScan GetenvStatic StrlenLogic OsWorld.
 Import ListNotations LG0 LG0.L ProgramAbbreviations.
 Open Scope Z_scope.
 
@@ -42,7 +43,7 @@ End named_rule.
 
 Section calls.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{!Defines ge "__GI_getenv" glibc_getenv}.
+Context `{!Defines ge "__GI_getenv" Unit_stdlib_getenv_os.fn___GI_getenv}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A caller with a readable name can use a frame contract for any resource G.
@@ -76,7 +77,7 @@ Proof using Type*.
 Qed.
 
 Context `{!Defines ge "__GI_strlen" glibc_strlen}.
-Context `{!Defines ge "__GI_strncmp" glibc_strncmp}.
+Context `{!Defines ge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp}.
 
 (** The static environment implementation returns its exact computed pointer.
     Both global cells, the array, entry lifetimes, and arbitrary caller resources

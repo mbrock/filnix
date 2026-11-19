@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: stpcpy` copies a string and its terminator into a buffer
     and returns the address of the copied terminator. This module proves
@@ -25,7 +26,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes WordString StrcmpBits StrcmpLoop.
-From Glibc Require Import LibioCloseSteps StpcpyCode StpcpyBytes StpcpyTail StpcpyShift StpcpyWords.
+From Glibc Require Import LibioCloseSteps StpcpyBytes StpcpyTail StpcpyShift StpcpyWords.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -59,7 +60,7 @@ Lemma stp_head e bd rd xs o q b reg ws dq s i Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o i (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "L9") (b_insts blk_9) (b_jump blk_9))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "L9") (b_insts blk_9) (b_jump blk_9))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B & S1 & M & P & K & E & R & N & C).
   pose proof (ss_words _ _ _ _ _ Hs) as F. pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (sbyte_agree _ _ _ _ _ Hs) as A.
@@ -132,7 +133,7 @@ Lemma wp_glibc_stpcpy e bd rd xs o dq q s Φ :
   live bd rd -∗ bytes bd 0 xs -∗ word_string dq q s -∗
   (live bd rd -∗ bytes bd 0 (splice xs (Z.to_nat o) (s ++ [0])) -∗ word_string dq q s -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv0 Hv2 Ho Hox Hend. iIntros "Hl Hb Hs HK".
   iApply (wp_live_fit1 with "Hl"). iIntros ([Hbd Hreg]) "Hl".
@@ -158,7 +159,7 @@ Qed.
     caller resumes with the address of the copied terminator. *)
 Lemma wp_call_glibc_stpcpy f e ls l d g args rest j bd rd xs o dq q s Φ :
   map_option (arg_x ge e) args = Some [WPtr (mkPtr (bd + o) (Obj bd)); WPtr q] ->
-  find_fn ge g = Some (Defined glibc_stpcpy) ->
+  find_fn ge g = Some (Defined Unit_string_stpcpy_os.fn___GI___stpcpy) ->
   0 <= o -> o + Z.of_nat (length s) + 1 <= Z.of_nat (length xs) -> bd + Z.of_nat (length xs) <= r_end rd ->
   live bd rd -∗ bytes bd 0 xs -∗ word_string dq q s -∗
   ▷ (live bd rd -∗ bytes bd 0 (splice xs (Z.to_nat o) (s ++ [0])) -∗ word_string dq q s -∗

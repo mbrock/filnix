@@ -3,6 +3,9 @@
     This proof returns the same borrowed pointer and leaves the supplied
     scratch buffer unchanged. It does not cover unknown errors or acquire
     static ownership from the program image. *)
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_stdioZ2dcommon_errlist_os Unit_string__strerror_os Unit_string_memcpy_os Unit_string_mempcpy_os.
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,11 +14,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrappers
-  AllocLogic HiAtexitAlloc GetoptMallocGlibc StpcpyCode TfindCode TfindEmpty
-  LocalenameCode LocalenameLogic RdlockCode RwunlockCode RdlockLogic RwunlockLogic
-  StrlenLogic MemFwdCode WordString DcgettextCode DcigettextCode DcigettextRoute
+  AllocLogic HiAtexitAlloc GetoptMallocGlibc TfindEmpty
+  LocalenameLogic RdlockLogic RwunlockLogic
+  StrlenLogic WordString DcigettextRoute
   DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
-  StrerrorCode ErrlistCode ErrlistEnoent ErrlistFacts ErrorText Fix.
+  ErrlistEnoent ErrlistFacts ErrorText Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
@@ -56,13 +59,13 @@ Definition enoent_translation (bs : list Z) : iProp Σ :=
     (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg)
     (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs.
 
-Context `{!Defines ge "__get_errlist" glibc_get_errlist,
-  !Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-  !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-  !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-  !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-  !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-  !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock,
+Context `{!Defines ge "__get_errlist" Unit_stdioZ2dcommon_errlist_os.fn___get_errlist,
+  !Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+  !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+  !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+  !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+  !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+  !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock,
   !Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn, !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}.
 Context (Hheap : dci_heap_glibc mpb tcb)
   (Hlk1 : rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid) (Hlk2 : rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid)
@@ -77,7 +80,7 @@ Context (Hheap : dci_heap_glibc mpb tcb)
     gettext. The proof follows both calls and preserves the caller's other
     memory, including any scratch buffer. It does not access a FILE. *)
 Lemma wp_strerror_enoent fr buf len lenb lenr tab tabr mid mr bs (E : iProp Σ) Φ :
-  call_frame glibc_strerror_r [WInt 2;WPtr buf;WInt len] = Some fr ->
+  call_frame Unit_string__strerror_os.fn___GI___strerror_r [WInt 2;WPtr buf;WInt len] = Some fr ->
   lookup (TAtom "_sys_errlist_internal_len") (ge_globals ge) = Some (mkPtr lenb (Ro lenb)) ->
   lookup (TAtom "_sys_errlist_internal") (ge_globals ge) = Some (mkPtr tab (Ro tab)) ->
   0 < lenb -> lenb + 8 <= r_end lenr -> r_end lenr <= 2 ^ 48 ->
@@ -111,7 +114,7 @@ Lemma error_strerror_enoent_call lenb lenr tab tabr mid mb mr bs (E : iProp Σ) 
   0 < lenb -> lenb + 8 <= r_end lenr -> r_end lenr <= 2 ^ 48 ->
   0 < tab -> tab mod 8 = 0 -> tab + 24 <= r_end tabr -> r_end tabr <= 2 ^ 48 ->
   string_ok mid mb mr enoent_chars ->
-  forall b, exists fr, call_frame glibc_strerror_r [WInt 2;WPtr (mkPtr b (Obj b));WInt 1024] = Some fr /\
+  forall b, exists fr, call_frame Unit_string__strerror_os.fn___GI___strerror_r [WInt 2;WPtr (mkPtr b (Obj b));WInt 1024] = Some fr /\
     (⊢ obj b (heap_req 4 1024) -∗
       (enoent_lookup_cells lenb lenr tab tabr mid mr ∗ enoent_translation bs ∗
        bytesq DfracDiscarded mb (ptr_addr mid - mb) (enoent_chars ++ [0]) ∗ E) -∗

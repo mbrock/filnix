@@ -20,49 +20,37 @@
     [wp_check_read_dq] to verify read checks against fractional
     liveness tokens. *)
 
+From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_wcsmbs_mbsinit_os.
 From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
-  StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import StdlibCode GlibcLogic.
+  StepRules Symbolic ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
+From Glibc Require Import GlibcLogic.
 From Glibc Require GlibcLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-(** ## The module
+(** ## The captured functions
 
-    The compiled fixture [stdlib_term] bundles the `c: stdlib` units
-    into one decoded IR module. Here we decode that module and extract
-    the four leaf function bodies that the proofs below step through. *)
+    The function definitions come from the objects that glibc links.
+    Each triple below verifies one of these bodies against the state
+    that its caller supplies. *)
 
-(** [stdlib_module] holds the decoded IR module for the linked
-    `c: stdlib` units in [stdlib_term]. *)
-Definition stdlib_module : module :=
-  match decode_module stdlib_term with Some md => md | None => [] end.
-
-(** [stdlib_fn] looks up a defined function named n in [stdlib_module],
-    falling back to an empty stub when missing. *)
-Definition stdlib_fn (n : string) : func :=
-  match find_direct (TAtom n) stdlib_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
-  end.
-
-(** [errno_location_fn] is the decoded IR body of glibc's
+(** [errno_location_fn] is the checked IR body of glibc's
     `__GI___errno_location`. *)
-Definition errno_location_fn : func := Eval vm_compute in stdlib_fn "__GI___errno_location".
-(** [ctype_b_loc_fn] is the decoded IR body of glibc's
+Definition errno_location_fn : func := Unit_csu_errnoZ2dloc_os.fn___GI___errno_location.
+(** [ctype_b_loc_fn] is the checked IR body of glibc's
     `__ctype_b_loc`. *)
-Definition ctype_b_loc_fn : func := Eval vm_compute in stdlib_fn "__ctype_b_loc".
-(** [mb_cur_max_fn] is the decoded IR body of glibc's
+Definition ctype_b_loc_fn : func := Unit_ctype_ctypeZ2dinfo_os.fn___ctype_b_loc.
+(** [mb_cur_max_fn] is the checked IR body of glibc's
     `__ctype_get_mb_cur_max`. *)
-Definition mb_cur_max_fn : func := Eval vm_compute in stdlib_fn "__ctype_get_mb_cur_max".
-(** [mbsinit_fn] is the decoded IR body of glibc's `__mbsinit`. *)
-Definition mbsinit_fn : func := Eval vm_compute in stdlib_fn "__mbsinit".
+Definition mb_cur_max_fn : func := Unit_locale_mb_cur_max_os.fn___ctype_get_mb_cur_max.
+(** [mbsinit_fn] is the checked IR body of glibc's `__mbsinit`. *)
+Definition mbsinit_fn : func := Unit_wcsmbs_mbsinit_os.fn___mbsinit.
 
 (** ## Arithmetic tactics
 

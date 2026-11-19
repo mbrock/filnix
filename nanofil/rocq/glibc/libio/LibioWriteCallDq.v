@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** `c: fputs` and `c: puts` hand `c: _IO_new_file_xsputn` the
     caller's string, which they may only read: it can be a string
@@ -26,7 +27,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsWrite OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsWrite OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit.
 From Glibc Require FileInv LibioLogic LibioWriteExit OsWorld OsWrite SysWrappers.
 From Glibc Require Import Fix.
@@ -85,7 +86,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
 
 
 (** Expressions of the language. *)
@@ -130,7 +131,7 @@ Qed.
 (** `c: __libc_write(fd, p, n)` over pieces owned at the share dq:
     SysWrappers.v's [wp_glibc___libc_write] at a share. *)
 Lemma wp_glibc___libc_write_dq fr fd p n eb dq ps Φ :
-  call_frame glibc___libc_write [WInt fd; WPtr p; WInt n] = Some fr ->
+  call_frame Unit_io_write_os.fn___GI___libc_write [WInt fd; WPtr p; WInt n] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= n < 2 ^ 64 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   (forall m, all_agree m ps -> os_readable m p n) ->
@@ -153,7 +154,7 @@ Qed.
     It preserves fractional source ownership and errno ownership without
     inspecting or changing the caller's cancellation state. *)
 Lemma wp_glibc___write_nocancel_dq fr fd p n eb dq ps Φ :
-  call_frame glibc___write_nocancel [WInt fd; WPtr p; WInt n] = Some fr ->
+  call_frame Unit_io_write_nocancel_os.fn___GI___write_nocancel [WInt fd; WPtr p; WInt n] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= n < 2 ^ 64 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   (forall m, all_agree m ps -> os_readable m p n) ->
@@ -199,9 +200,9 @@ Lemma wp_file_write_call_dq fb freg f2 fd dq b reg c o xs eb t e {src keep} Φ :
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ src -∗
      bytesq dq b o xs -∗ errno_any eb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hloan Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".
@@ -231,7 +232,7 @@ Qed.
     It preserves the exact flags and fractional source ownership even
     when the OS write fails. *)
 Lemma wp_file_write_call_nocancel_dq
-    (Hnocancel : find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel))
+    (Hnocancel : find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel))
     fb freg f2 fd dq b reg c o xs eb t e {src keep} Φ :
   write_source_life fb freg dq b reg src keep ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -250,9 +251,9 @@ Lemma wp_file_write_call_nocancel_dq
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ src -∗
      bytesq dq b o xs -∗ errno_any eb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L14") [] (JGoto (To (TAtom "L16")))))
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L14") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
 Proof.
   intros Hloan Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".

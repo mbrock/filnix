@@ -3,6 +3,7 @@
     with no room, even if the system call failed. The buffer pointers in
     this proof use the stream's own [[capability]] and lifetime. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,8 +11,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode FileInv LibioLogic LibioPutsInv
-  LibioReadCode LibioDoWriteCode LibioWriteDq LibioDoWriteRet LibioOverflowBase SysWrappers.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioPutsInv
+  LibioWriteDq LibioDoWriteRet LibioOverflowBase SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -45,7 +46,7 @@ Lemma wp_short_reset fb freg fl mode rb wp n r e from Φ :
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗ short_ptrs fb rb wp -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      short_ptrs fb (short_ptr fb) (short_ptr fb) -∗ Φ (Ret (WInt (if r =? n then 0 else 2^32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None (Enter (TAtom "iw_1.L70") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Hfl Hub Hmd Hr Hn Hv0 Hc0 Hv4 Hv67. unfold file_size in Hend.
   iIntros "Hl [%Hflr Hfl] [%Hmr Hmode] (Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend) HK".
@@ -64,8 +65,8 @@ Proof using Type.
 Qed.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 
 (** A character overflow calls `c: _IO_new_do_write` after it has placed
     the byte in the short buffer. The read end matches the write base, so
@@ -73,10 +74,10 @@ Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
     the field pointers, and an incomplete write reports EOF. *)
 Lemma wp_short_do_write fr fb freg fl f2 fd tw off mode ch rb eb vb vreg Φ :
   let sb := short_ptr fb in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr sb; WInt 1] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr sb; WInt 1] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2^32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 -> Z.land fl 514 <> 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2^32 - 1) -> 0 <= ch < 256 ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ short_ptrs fb rb (mkPtr (fb + 132) (Obj fb)) -∗

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** `c: _IO_flush_all ()` (LibioFlushCode.v, libio/genops.c), which
     `c: _IO_cleanup` calls at exit to write out what every open
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushBody.
 From Glibc Require FileInv LibioCloseSteps LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
@@ -64,8 +65,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 Context (Hpush_spec : push_spec w0 registry ge)
   (Hpop_spec : pop_spec w0 registry ge).
 
@@ -93,9 +94,9 @@ Lemma flush_loop (P Q : ptr -> iProp Σ) rest prev e from r cb rf rfreg sb sreg 
   (∀ e' r', ⌜lookup (TAtom "v3") e' = Some (WPtr cb) /\ lookup (TAtom "pr.4") e' = Some (WInt r') /\
              0 <= r' < 2 ^ 32 /\ (r' = r \/ r' = 2 ^ 32 - 1)⌝ -∗
      live rf rfreg -∗ pcell rf 0 null -∗ chain_links prev rest -∗ ([∗ list] g ∈ rest, stream_life g ∗ Q g) -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L414") (Some (TAtom "L82")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L82") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L82") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hbody Hgrf Hral Hrend Hsz. revert prev e from r.
   induction rest as [|g rest IH]; intros prev e from r Hph Hv3 Hr; cbn [head_ptr] in Hph.
@@ -138,7 +139,7 @@ Qed.
     restored. The cleanup routine's pointer, `c: flush_cleanup`, is
     ge's symbol. *)
 Lemma wp_glibc__IO_flush_all fr (P Q : ptr -> iProp Σ) fs sb sreg fcp Φ :
-  flush_body w0 registry ge P Q -> call_frame glibc__IO_flush_all [] = Some fr ->
+  flush_body w0 registry ge P Q -> call_frame Unit_libio_genops_os.fn___GI__IO_flush_all [] = Some fr ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge fs -∗
   ([∗ list] g ∈ fs, stream_life g ∗ P g) -∗

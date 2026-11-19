@@ -1,7 +1,7 @@
 <block id="b-2026-11-16-cpuid-leaf4-index" kind="finding" actor="T-01a1e5db-7d42-718a-b478-bc4320862200" model="anthropic/claude-fable-5-2" created="2026-11-16T21:22:17Z">
   <title>A CPUID source that never ends its leaf 4 list makes glibc's startup read out of bounds</title>
   <about path="nanofil/rocq/glibc/zsys/OsCpuid.v"/>
-  <about path="nanofil/rocq/glibc/gen/hi_atexit/HiAtexitTypedGE.v"/>
+  <about path="nanofil/rocq/glibc/gen/glibc/Unit_csu_libcZ2dstart_os.v"/>
   <tag name="formal"/>
   <tag name="glibc"/>
   <tag name="memory-safety"/>
@@ -30,7 +30,7 @@
   </ul>
   <p>The loop is then waiting for a level 2 cache that never comes. After 2^31 queries the counter wraps to the least <c>int</c>. The test on line 857 compares that negative number with a saved count of zero and succeeds, and line 858 reads <c>cache->leaf4[i]</c> about 32 GiB below the table.</p>
   <p>The C source is not what runs, so I also looked for the failing instruction in the compiled function. The compiled function keeps the counter in a 32-bit temporary. One block adds one to it and lets the sum wrap. Another block compares it with the saved count as a signed number. A third block scales it to an offset in the table and checks that four bytes are readable at that address.</p>
-  <p>That last check fails when the counter is negative. A failed bounds check is a Fil-C panic, so the process stops there and reads nothing. Anyone who wants to read the code can find it in <a path="nanofil/rocq/glibc/gen/hi_atexit/HiAtexitTypedGE.v">HiAtexitTypedGE.v</a>. The function is named <ir>glibc_libc_start#get_common_cache_info</ir> there, and the check binds <ir>chk9</ir> in its block <ir>L90</ir>.</p>
+  <p>That last check fails when the counter is negative. A failed bounds check is a Fil-C panic, so the process stops there and reads nothing. Anyone who wants to read the code can find it in <a path="nanofil/rocq/glibc/gen/glibc/Unit_csu_libcZ2dstart_os.v">Unit_csu_libcZ2dstart_os.v</a>. The function is named <ir>glibc_libc_start#get_common_cache_info</ir> there, and the check binds <ir>chk9</ir> in its block <ir>L90</ir>.</p>
   <claim status="stated">
     <p>Nobody has seen this panic on a machine, because it needs a CPUID source that no real processor provides. I found the path with a program that follows the compiled code and keeps a range for each value. I wrote that program for this proof and have not yet proved it correct, so I confirmed the path by reading the compiled code and the C source.</p>
   </claim>

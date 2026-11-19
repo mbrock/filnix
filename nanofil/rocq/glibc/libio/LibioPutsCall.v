@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** The call of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c) that
     writes the string, with stdout's lock held and the stream narrow:
@@ -20,7 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsLock LibioPutsUnlock.
+  WordString LibioPutsInv LibioPutsLock LibioPutsUnlock.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv LibioPutsLock LibioPutsUnlock OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -46,7 +47,7 @@ Context (vb : Z)
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (G : list Z -> ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
-Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
 
@@ -67,8 +68,8 @@ Lemma wp_puts_L162_for e p dq s so soreg fb Φ :
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v179") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗
      word_string dq p s -∗ Rx -∗
-     WP (ERun (mkFrame glibc__IO_puts e' [] None (Exec (TAtom "L163") [] pu_j163)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L162") (Some (TAtom "L121")))) : sexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e' [] None (Exec (TAtom "L163") [] pu_j163)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L162") (Some (TAtom "L121")))) : sexpr) {{ Φ }}.
 Proof using Hopen Hxs Hxs_fn.
   intros fp Hv0 Hv6 Hv12 Hc1 Hgso Hsoal Hsoend. subst fp.
   iIntros "#Hvt Hso Hsoc Hf Hstr HRx HK".

@@ -1,10 +1,9 @@
 # The glibc code generator
 
-`generate.py` compiles captured glibc units, links their checked terms and
-prints the code fixtures used by the glibc proofs. Each directory's
-`code.toml` lists its units, roots and selected functions. The shell drivers
-delegate to this generator; `stdio/buffer-code.sh` now checks all of `stdio`.
-`gallina.pl` prints the transport terms that the smaller fixtures decode.
+The generator compiles the captured glibc units and links the checked IR.
+It writes Rocq definitions of type `func` or `item` for each object that
+supplies linked items. The proof fixtures assemble those definitions in link
+order. Each directory's `code.toml` lists its units, roots and selected functions.
 
 ## Regenerate or check
 
@@ -18,29 +17,26 @@ nix build -L -f nanofil/survey/glibc/capture.nix -o /tmp/glibc-pp
 export FILCC=/tmp/filcc/bin/clang SWIPL=/tmp/swipl/bin/swipl
 ```
 
-The default command checks every directory and returns nonzero for a missing,
-different or stale numbered fixture. It prints unified diffs for changed files.
+The default command checks the generated files and reports any changes,
+missing files or stale files.
 
 ```sh
 nanofil/rocq/glibc/code.sh /tmp/glibc-pp
-nanofil/rocq/glibc/code.sh --update /tmp/glibc-pp
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --update
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --output /tmp/generated-code
 ```
 
-The generator emits only the shared-prelude form used by the committed
-fixtures. It reads the canonical `rocq/glibc/CodePrelude.v` for fixtures that store raw terms. To inspect output without
-updating the checkout, write a separate tree:
+Use `--directory string` to select the views and source tables under
+`gen/string`. This option can be repeated. Every run refreshes the shared
+object inventory from all manifests because different links may reach
+different definitions in the same object. Use `--directory glibc` to check or
+write only the shared objects. Use `--tree` to choose the comparison or
+update destination.
 
-```sh
-nanofil/rocq/glibc/code.sh /tmp/glibc-pp
-nanofil/rocq/glibc/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
-```
-
-`--directory string` selects one directory; `--directory .` selects only
-the top-level fixtures. Repeat the option to select several directories.
-`--tree` selects the comparison or update destination. `--output` writes only
-generated sources and the shared prelude and notation modules; it never reads the comparison tree.
-If the capture argument is omitted, the generator uses `/tmp/glibc-pp` or
-builds `survey/glibc/capture.nix`.
+The generator uses `/tmp/glibc-pp` when no capture is supplied. It builds
+`survey/glibc/capture.nix` if that directory is absent. It uses Python 3.11 or
+newer, SWI-Prolog and the staging compiler. Set `MODEL` to an existing
+`nanofil-model` executable to skip the Nix build for the extracted model.
 
 ## Source hints
 
@@ -54,7 +50,7 @@ lines and cut points.
 
 The proofs never trust a source hint. Only the checked IR in the code fixture
 is proved about, and a soundness theorem must not take a hint as a premise.
-Compilation checks that every label a hint cites belongs to the decoded
+Compilation checks that every label a hint cites belongs to the captured
 function, but it does not check that a name, path or location is accurate.
 
 The generator writes four kinds of source hint, described in the sections
@@ -64,8 +60,8 @@ Layouts give the fields of C records.
 
 ## Use source tables
 
-The shared-prelude form also emits `<Name>Src.v` beside each code fixture.
-Each sidecar imports its fixture and groups its tables under
+The generator also emits `<Name>Src.v` beside each code fixture.
+Each sidecar imports the captured functions and groups its tables under
 `<Name>Src.fn_<symbol>`, replacing punctuation in the linked symbol with
 underscores. For example, `LibioXsputnSrc.fn__IO_new_file_xsputn.loop_heads`
 contains the optional cut labels for that function.
@@ -104,13 +100,10 @@ analysis. It covers reachable natural loops, not every irreducible cycle.
 Changing a function's blocks can leave old labels in its source tables.
 The sidecar rejects those labels during compilation. One `labels_valid`
 lemma uses `vm_compute` to check every function and all label tables in
-the fixture. It reuses the code fixture's decoded module when available;
-otherwise, the sidecar decodes the module once for all its tables.
-Lazy projection extracts block labels before the boolean computation, so
-the VM does not compile the decoded instruction bodies for this check.
-Large fixtures put their table definitions in numbered source slices of about 100 KB.
-The main sidecar includes those definitions and performs the single membership check.
-Source and block facts share these slices, so only the main sidecar imports the decoded module.
+the fixture. The sidecar projects block labels straight from the typed function
+definitions, so the VM does not compile the instruction bodies for this check.
+Large fixtures put their tables in numbered source slices of about 100 KB.
+Only the main sidecar imports the functions and checks membership.
 The check does not establish that a source location or C name is accurate.
 The sidecars contain definitions and computed proofs, with no axioms.
 
@@ -130,9 +123,9 @@ Without that flag, the linker's output stays unchanged.
 Generate into a separate tree to leave existing code fixtures untouched:
 
 ```sh
-nanofil/rocq/glibc/libio/code.sh /tmp/glibc-pp --form shared-prelude --output /tmp/generated-code
-cp /tmp/generated-code/libio/*Src.v nanofil/rocq/glibc/libio/
-nanofil/rocq/glibc/libio/code.sh /tmp/glibc-pp --form shared-prelude
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --directory libio --output /tmp/generated-code
+cp /tmp/generated-code/libio/*Src.v nanofil/rocq/glibc/gen/libio/
+nanofil/rocq/glibc/code.sh /tmp/glibc-pp --directory libio
 ```
 
 The generator reports how many functions and blocks have locations and how
@@ -242,9 +235,9 @@ The generator does not infer accesses inside called functions.
 A proof may use these hints to choose candidate memory regions,
 but it must justify each access without trusting them.
 
-Compilation rejects labels that are not blocks of the decoded function.
+Compilation rejects labels that are not blocks of the captured function.
 The shared `labels_valid` lemma performs this check once per fixture, using
-the decoded module's block labels. The generator projects labels before compiling
+the captured functions' block labels. The generator projects labels before compiling
 the membership computation, so temporary sets and access records stay out
 of its VM code. Large fixtures split definitions into numbered files by
 size, while the main file retains the single check.
@@ -303,114 +296,52 @@ proofs still unfold them without evaluating a table lookup.
 with all twelve consecutive pointer fields. No soundness theorem takes a
 generated layout table as a premise.
 
-## Driver compatibility
-
-All eight driver paths still accept `[--update] [GLIBC_PP]`. Checks return 0
-for current files and 1 for different, missing or stale numbered fixtures.
-The root driver now checks every directory instead of only Len and Say.
-Both stdio drivers now check all three stdio fixtures instead of separate
-groups. Their `--update` commands have the same expanded scope. Other
-directory drivers keep their original scope.
-
-The drivers print per-directory counts and unified diffs rather than their
-old individual success messages. All drivers now use `/tmp/glibc-pp` if no
-capture is supplied and that directory exists; root and stdlib previously
-asked Nix for the capture, and getopt required an argument. `KEEP` no longer
-retains temporary files. Python 3.11 or newer is required for TOML parsing.
-
 ## Add a unit or function
 
-The fixture rows retain the drivers' table format:
+Each fixture row uses the following fields.
 
 ```text
 NAME|ROOTS|UNITS|FUNCTIONS[|PROGRAM]
 ```
 
-`NAME` gives the output file's base name without `Code.v`. An empty roots or
-units column inherits the manifest's `roots` or `units`. A `units` table uses
-`OBJECT UNIT` rows; `- UNIT...` derives each object name as `glibc_` followed
-by the unit basename with hyphens changed to underscores. Preserve explicit
-object names, unit order and root order: the linker uses them to name private
-symbols and order the resulting terms. `FUNCTIONS` lists the bodies to decode;
-the libio and stdio layouts also select only those functions from the link.
-`PROGRAM` names a C source relative to `nanofil`.
+An empty roots or units field inherits the manifest's setting. The linker
+keeps items reachable from the roots and preserves object and item order.
+It scopes private symbols to the input object, so a function such as
+`__printf_buffer_putc` in vfprintf is named
+`glibc_vfprintf_internal#__printf_buffer_putc` in the linked IR.
+`FUNCTIONS` lists exact linked names for the source tables. The libio and
+stdio selections also limit their module lists to those functions. An absent
+function fails generation. `PROGRAM` names a C source relative to `nanofil`.
 
-A function that is private to its unit is listed by its linked name,
-`OBJECT#NAME`, such as `glibc_vfprintf_internal#__printf_buffer_putc`. In the
-`string` and `formatter` layouts its Rocq constant is named after `NAME` alone,
-here `glibc_printf_buffer_putc`. Its source tables are the module
-`fn_OBJECT_NAME`, with every character that is not a letter, a digit or an
-underscore changed to an underscore.
+The linker reports the object supplying each item after reachability and
+weak-symbol resolution. The extracted model reads the linked term and
+prints the typed Gallina. The generator groups glibc definitions under
+`gen/glibc` by the full capture path and rejects different bodies for the
+same object and symbol. Program directories hold their own objects and
+join lists for their images. The list references preserve aliases,
+initializers and link order.
 
-Existing fixtures must keep their names and presentation when units are added.
-The `layout` setting chooses those conventions. The `mode` setting preserves
-how each old driver compiled its units: `checked` by default, `trap` for stdlib
-and `outcomes` for Len/Say.
+Import the generated object to use its function or data in a proof. For
+example, `Unit_string_strlen_os.fn___strlen` names the body in
+`string/strlen.os`. You can also import `IRNotation` to use the same SSA
+spelling when Rocq prints a function or block. A pointer store with unusual
+effects keeps its full Gallina form. An outside function retains its
+transport term. The quick Rocq check compares the resulting typed module
+with decoding on a small fixture that exercises these cases.
 
-Some linked units contain constructors that initialize the standard streams.
-The `ctors` setting keeps those constructors. The stdio manifest uses a second
-`[[batch]]` because its buffer fixtures come from a separate link.
+## Select from a linked image
 
-The getopt and formatter fixtures store raw terms in slices. For HiAtexit and
-the complete GNU Hello image, the generator runs the linked term through
-`nanofil-model --gallina`. It builds the extracted driver through Nix on Linux.
-Set `MODEL` to the path of a locally built driver on another platform.
+Hello's manifest selects the functions and aliases used by the gettext
+and strchr proofs. The `objects` setting supplies the program's checked
+objects. The `units_files` setting supplies glibc units ahead of the
+explicit `units` rows. Generation fails before compiling a linked image
+if one of its units is missing or repeated.
 
-The driver prints the functions returned by the Rocq decoder in SSA notation.
-For example, a loop can branch to `poll "L10"`, and a zero-argument
-indirect call can read `rawcall void %"fn"()`. A block lists its phis
-after its label and its instructions before `=>`. In a proof session,
-import `IRNotation` to see the same spelling when Rocq prints a function
-or a block. Parentheses preserve an instruction that needs its full Gallina
-spelling. For example, `store.ptr` requires the standard ordered pointer-store
-effects. A different effect list prints in full. An outside function retains
-its original transport term.
-
-The smaller fixtures, including the program and spike examples, use
-`cap_fn{` and `cap_blk{` from `CaptureNotation`. Their definitions still
-have type `term`, and their existing witnesses check the result of decoding
-that term. The printer's `--constructors` option emits the constructor
-spelling for comparison.
-
-The layout script groups
-function definitions by the first two letters of their C symbol after removing
-the unit qualifier, the glibc internal prefix and leading underscores. For
-example, `HelloImageTypedIO` exports `hello_image_fn___GI__IO_wfile_overflow`.
-A proof can import that family even if the function moves in the linked image.
-The generated item lists reference the definitions in the original link order.
-Hello checks the zero runs in each list and combines the proofs.
-
-Rocq typechecks the printed AST. The quick Rocq check also compares the
-printed module with in-kernel decoding of a fixture that exercises signed
-loads, pointer effects, byte strings and outside functions.
-
-Every function in a fixture row must be defined in its linked units. A missing
-function fails generation and names the manifest row, rather than silently
-emitting an empty decoded body. Run `test.sh CAPTURE` to check this rejection,
-shared-prelude output, fixture corruption and the manifest proof-style switch.
-
-## Select from a large linked image
-
-GNU Hello linked with all the user glibc it reaches is too large to decode
-within the compile budget. The `image` layout in `hello/code.toml` links that
-whole image and keeps only the items that a proof needs. The manifest's
-`objects` setting names a flake output whose `*.term` files are the program's
-checked objects, and `object_prefix` is stripped from their names, as
-`nix/hello-fixture.nix` does. The `units_files` setting names files of glibc
-units to link before the manifest's own `units` rows. Hello's manifest names
-`survey/glibc/run/units.txt` and `hello-siblings.txt`, the two files that
-`nix/hello-glibc.nix` also reads, so both link the same 321 units. Generation
-stops before compiling anything when a unit repeats or is missing from the
-capture.
-
-`image.pl` keeps each name in `FUNCTIONS` and the target of each kept alias,
-with their terms and order unchanged. It stops generation when a name or a
-target is missing, has more than one item, or is not a function or an alias.
-The `compare` setting names another fixture, such as `intl/GettextLink`, and
-each kept item must be the same term in that fixture's image. These checks run
-on the whole image, which Rocq never sees. The generated file therefore states
-them in a provenance section, with digests of the objects, the units and the
-whole image. `test-image.py` checks these refusals on small images.
+The selection keeps each requested name and each retained alias's target
+in link order. The `compare` setting names a standalone fixture whose
+matching items must have identical terms. Both views use the canonical
+definitions. The provenance records the input digests and that comparison.
+The complete Hello image also checks its initializer zero runs in Rocq.
 
 ## Start a block lemma
 
@@ -422,10 +353,10 @@ exact linked symbol, including the object prefix of a private function:
 ```sh
 python3 -I nanofil/rocq/scripts/glibc-code/skeleton.py \
   getopt/Getopt 'glibc_getopt#process_long_option' \
-  --capture /tmp/glibc-pp --rocq-function glibc_process_long_option
+  --capture /tmp/glibc-pp --rocq-function "Unit_posix_getopt_os.fn_glibc_getopt'23process_long_option"
 python3 -I nanofil/rocq/scripts/glibc-code/skeleton.py \
   hi_atexit/HiAtexit __GI__IO_puts \
-  --capture /tmp/glibc-pp --rocq-function glibc__IO_puts --expr-type sexpr
+  --capture /tmp/glibc-pp --rocq-function Unit_libio_ioputs_os.fn___GI__IO_puts --expr-type sexpr
 ```
 
 A statement must name the function and expression type used by its proof.
@@ -438,9 +369,7 @@ and linking code; it does not read proof files or write generated files.
 
 `blocks.pl` computes the block data from the linked Prolog term. It reuses
 `src/cfg.pl` for predecessor labels and backward liveness, including loop
-backedges and phi operands on their particular incoming edges. The slicer
-remains a text packer. Analysis follows control flow, not the order in which
-blocks happen to appear in a file.
+backedges and phi operands on their particular incoming edges. The analysis follows control-flow edges between blocks.
 
 A join can read different incoming values depending on which block jumped to
 it. The command therefore prints one statement for each incoming edge and adds
@@ -466,47 +395,3 @@ the analysis alone can run as `swipl blocks.pl MODULE.term FUNCTION` from this
 directory. `test-blocks.py` checks edge-specific phi inputs, parallel loop phis,
 dead definitions, poll edges and unreachable blocks without needing the capture.
 `test.sh CAPTURE` also exercises the complete manifest-to-statement command.
-
-## Follow the computed-proof conversion
-
-The `[proof_styles]` table in each directory's `code.toml` is the only place
-that records a generated file's computed-equality proof style. The generator
-never reads that style from the files it checks, so checking catches changed
-proofs as well as changed terms. Each file uses `vm_compute` unless its manifest
-lists another style:
-
-```toml
-[proof_styles]
-"StrcmpCode.v" = "vm_cast_no_check"
-```
-
-After converting a file's computed-equality proofs, run this command from the
-repository root to record the new style in its manifest:
-
-```sh
-python3 -I nanofil/rocq/scripts/glibc-code/sync-proof-styles.py nanofil/rocq/glibc
-```
-
-This separate helper reads the tree and changes only manifests. It rejects
-mixed styles within one file and unknown proof scripts before writing anything.
-It requires every manifest fixture and numbered slice to be present with its
-generated header. It checks multiline proofs too and does not convert proofs.
-Review and commit its manifest changes before running the regeneration check.
-
-## Integrate the check
-
-`rocq/glibc/code.sh CAPTURE --tree TREE` checks a separate tree.
-A Nix caller needs the compiler sources, these generator scripts, manifests,
-fixture hashes, the checked tree, Python 3.11 or newer, SWI-Prolog, coreutils,
-and `FILCC` set to the staging compiler. Pass the capture as a derivation
-input. For either typed image, set `MODEL` to the executable from
-`checks.x86_64-linux.nanofil-rocq.model.driver` to skip the driver's Nix
-build. The Hello manifest also builds its captured program objects through Nix. The generator reads the canonical prelude from `rocq/glibc` and emits
-shared-prelude fixtures by default. Use `--output TREE` to write a separate
-tree, or `--update` to update the comparison tree.
-
-The capture built successfully in an orb at
-`/nix/store/7hh45cvwzrqyqvpknnlj82vrqdmg6kxw-filc-glibc-pp-2.44`.
-The compiler came from Cachix; this capture was built locally, not substituted.
-The check can therefore run in an orb and can be a dependency of the glibc
-gate once its caller supplies the capture. It need not remain a manual check.

@@ -6,6 +6,7 @@
     function returns the stream pointers and argument cursor, and restores
     cancellation to its previous setting. A thread that entered with
     cancellation disabled still has it disabled on return. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,8 +15,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode ErrorCode ErrorCall ErrorEntry ErrorText ErrorMessage ErrorReport
-  FflushCode FileSyncCode HelloErrorClosed HelloErrorCall Fix.
+  ErrorCall ErrorEntry ErrorText ErrorMessage ErrorReport
+  HelloErrorClosed HelloErrorCall Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic
   LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -29,7 +30,7 @@ Context (fb : Z) (freg : region) (vb lb : Z) (lbreg : region) (ob : Z) (oreg : r
 Let loan := error_stdout_loan fb freg ob oreg.
 Let private := error_private_cells pb preg callback dqc cbr nb nreg pname dqn namer.
 Context (Hreg : holds_os registry) (Hext : sys_external ge)
-  (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
+  (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
 Context (errnum : Z) (fmt : ptr) (ys : list word) (state : Z)
   (rsb : Z) (rsreg : region) (rfb : Z) (rdq : dfrac) (rfreg : region)
   (countb : Z) (countreg : region) (count : Z)
@@ -53,7 +54,7 @@ Context (Hgstderr : lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr rsb (O
   (Htext : lookup (TAtom "glibc_error#str.252") (ge_globals ge) = Some textfmt)
   (Hwide : lookup (TAtom "glibc_error#str.253") (ge_globals ge) = Some wide)
   (Hnewlineframe : call_frame fxfn [WPtr null;WPtr newline] = Some newlineframe)
-  (Hflushframe : call_frame glibc__IO_fflush [WPtr (mkPtr rfb (Obj rfb))] = Some flushframe)
+  (Hflushframe : call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr rfb (Obj rfb))] = Some flushframe)
   (Hstr : find_fn ge (TAtom "__GI___strerror_r") = Some (Defined strerrorfn))
   (Hformatter : find_fn ge (TAtom "__vfxprintf") = Some (Defined formatter))
   (Hwidefn : find_fn ge (TAtom "__GI_fputws_unlocked") = Some (Defined widefn))
@@ -115,11 +116,11 @@ Lemma wp_call_error_returning_zero_loans (RP RQ : iProp Σ)
     vbreg sb sreg prefix prefixframe cbname cbfn cbframe (D E : iProp Σ) Φ :
   let flush := error_closed_flush fb vb lb lbreg vbreg sb sreg D in
   map_option (arg_x ge e) args = Some (WInt 0 :: WInt errnum :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error) ->
   forallb snapshot_word ys = true -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -130,7 +131,7 @@ Lemma wp_call_error_returning_zero_loans (RP RQ : iProp Σ)
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 <= ptr_addr pname < 2 ^ 64 ->
   lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
-  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined Unit_libio_iofflush_os.fn___GI__IO_fflush) ->
   find_fn ge (TAtom "__fxprintf") = Some (Defined fxfn) ->
   call_frame fxfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
   (⊢ live_capq dqn (ptr_cap pname) namer -∗ flush -∗
@@ -161,7 +162,7 @@ Proof using Hcount Hcountb Hcounte Hcountr Hext Hflushframe Hformat Hformatter H
   iDestruct (Hpost with "Hready") as "(Hnl & Hcount & Hsl & Hsp & Hfl & HP & HK)".
   destruct (Hformat ap) as (fr & Hframe & Hcall).
   iApply (wp_error_report_zero_loans Hreg Hext tb treg state rsb rsreg rfb rdq rfreg
-    newline fxfn newlineframe glibc__IO_fflush flushframe R S Q T
+    newline fxfn newlineframe Unit_libio_iofflush_os.fn___GI__IO_fflush flushframe R S Q T
     (loan ∗ private ∗ error_cleanup_fields tb jb ∗ K)%I
     Hstate Hself Htb Hta Hte Htr Hcancel Hgstderr Hrsb Hrsa Hrse Hrsr Hrptr
     Hnewline Hfx Hnewlineframe Hflush Hflushframe Hstderrflush
@@ -187,11 +188,11 @@ Lemma wp_call_error_returning_zero_loan
     vbreg sb sreg prefix prefixframe cbname cbfn cbframe (D E : iProp Σ) Φ :
   let flush := error_closed_flush fb vb lb lbreg vbreg sb sreg D in
   map_option (arg_x ge e) args = Some (WInt 0 :: WInt errnum :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error) ->
   forallb snapshot_word ys = true -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -202,7 +203,7 @@ Lemma wp_call_error_returning_zero_loan
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 <= ptr_addr pname < 2 ^ 64 ->
   lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
-  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined Unit_libio_iofflush_os.fn___GI__IO_fflush) ->
   find_fn ge (TAtom "__fxprintf") = Some (Defined fxfn) ->
   call_frame fxfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
   (⊢ live_capq dqn (ptr_cap pname) namer -∗ flush -∗
@@ -239,11 +240,11 @@ Lemma wp_call_error_returning_zero f e ls l args rest j
     vbreg sb sreg prefix prefixframe cbname cbfn cbframe (D E : iProp Σ) Φ :
   let flush := error_closed_flush fb vb lb lbreg vbreg sb sreg D in
   map_option (arg_x ge e) args = Some (WInt 0 :: WInt errnum :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error) ->
   forallb snapshot_word ys = true -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -254,7 +255,7 @@ Lemma wp_call_error_returning_zero f e ls l args rest j
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 <= ptr_addr pname < 2 ^ 64 ->
   lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
-  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined Unit_libio_iofflush_os.fn___GI__IO_fflush) ->
   find_fn ge (TAtom "__fxprintf") = Some (Defined fxfn) ->
   call_frame fxfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
   (⊢ live_capq dqn (ptr_cap pname) namer -∗ flush -∗

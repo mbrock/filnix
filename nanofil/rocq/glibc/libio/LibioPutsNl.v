@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** The newline of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c),
     block `c: L180` to the end of block `c: L184`, with stdout's lock
@@ -27,7 +28,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioGenCode LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsBuf.
+  WordString LibioPutsInv LibioPutsBuf.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsBuf LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -46,7 +47,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (vb : Z)
   (Rx : iProp Σ).
-Context `{Hov_fn : !Defines ge "__GI___overflow" glibc___overflow}.
+Context `{Hov_fn : !Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hov : overflow_spec w0 registry ge vb Rx).
 
 
@@ -63,8 +64,8 @@ Lemma wp_puts_L180 e so soreg fb Φ :
   live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ file_at vb (ow_self w0) fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
-     WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros fp Hgso Hsoal Hsoend. subst fp.
   iIntros "Hso Hsoc Hf HRx HK".

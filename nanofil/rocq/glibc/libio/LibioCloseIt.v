@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** `c: _IO_file_close_maybe_unlink(fp, 0)` (LibioCloseItCode.v;
     glibc 2.44's `c: _IO_file_close_it`, libio/fileops.c), which
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode LibioCloseItCode
+From Glibc Require Import OsBlocks OsWorld OsRegistry
   FileInv LibioLogic SysWrappers LibioSetb LibioCloseSteps LibioCloseItEnd LibioCloseItMid.
 From Glibc Require FileInv LibioCloseItEnd LibioCloseItMid LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -50,7 +51,7 @@ Definition do_write_spec : Prop :=
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -73,15 +74,15 @@ Definition do_write_spec : Prop :=
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Definition do_write_zero_spec : Prop := forall fr fp data Φ,
-  call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
-Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
-Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close).
+Context `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
+Context `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
 
 
 (** Expressions of the language. *)
@@ -160,7 +161,7 @@ Lemma wp_glibc__IO_file_close_maybe_unlink fr fb freg fl f2 fd tw off bb breg i 
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land f2 2 = 0 -> Z.land f2 32 = 0 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 -> Z.land fl io_no_writes = 0 ->

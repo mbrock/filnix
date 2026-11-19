@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** When getopt reports an error, gettext translates the message, and its
     lookup takes read locks on three rwlocks: the cache's tree lock, the
@@ -26,11 +28,11 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
-From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic.
-From Glibc Require Import RdlockCode RwunlockCode RdlockLogic RwunlockLogic RwlockIdle.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
+From Glibc Require Import LibioSetb TfindEmpty LocalenameLogic.
+From Glibc Require Import RdlockLogic RwunlockLogic RwlockIdle.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
 From Glibc Require Import DcgettextC.
 From Glibc Require Import DcgettextStpcpy DcgettextTfind DcgettextLocale.
 From Glibc Require Import Fix.
@@ -61,7 +63,7 @@ Definition rw_ready (lk : ptr) (lb : Z) (lreg : region) (tb : Z) (treg : region)
   rw_place lk lb lreg tb treg /\ 0 <= r /\ r mod 8 = 0 /\ r + 8 < 2 ^ 31 /\ cw <> tid.
 
 (** The real read lock meets the old rule and adds one reader. *)
-Lemma dci_rdlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock}
+Lemma dci_rdlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock}
     lk lb lreg tb treg r cw sh fl dqt dqi tid :
   rw_ready lk lb lreg tb treg r cw tid ->
   dci_rdlock_rule lk (rw_held lb lreg r cw sh fl dqt tb treg dqi tid) (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid).
@@ -73,7 +75,7 @@ Qed.
 
 (** When the lookup releases the lock, glibc's unlock satisfies the old
     rule and the count drops back by 8. *)
-Lemma dci_unlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma dci_unlock_rule_rw `{!Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     lk lb lreg tb treg r cw sh fl dqt dqi tid :
   rw_ready lk lb lreg tb treg r cw tid ->
   dci_unlock_rule lk (rw_held lb lreg (r + 8) cw sh fl dqt tb treg dqi tid) (rw_held lb lreg r cw sh fl dqt tb treg dqi tid).
@@ -93,8 +95,8 @@ Definition dci_rest_rw (M : iProp Σ) : Prop :=
 (** The translation should not need separate promises about its locks.
     When the caller owns three free locks and describes the functions
     above, nothing else is missing, and each lock ends where it began. *)
-Lemma dci_rest_l_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma dci_rest_l_rw `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M :
   dci_rest_rw M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   dci_rest_l lk1 lk2 lkt (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 (r1 + 8) cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid)
@@ -117,8 +119,8 @@ Lemma dci_rest_rwf_of M : dci_rest_rw M -> dci_rest_rwf M.
 Proof using Type. intros (H1 & H2 & H3 & H4 & H5). split_and!; try assumption. exact (dci_free_rule_heap H4). Qed.
 
 (** The real locks answer here as well. *)
-Lemma dci_rest_l_rwf `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock}
+Lemma dci_rest_l_rwf `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock}
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid M :
   dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   dci_rest_lf lk1 lk2 lkt (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 (r1 + 8) cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid)
@@ -136,12 +138,12 @@ Qed.
 Lemma wp_dcgettext_c_rwf f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -170,12 +172,12 @@ Qed.
 Lemma wp_dcgettext_c_rw f e ls l d args rest j mid dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rw M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -200,12 +202,12 @@ Proof using Type*. intros Hh. eapply wp_dcgettext_c_rwf; first [exact (dci_rest_
 Lemma dcg_diag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -231,12 +233,12 @@ Qed.
 Lemma dcg_diag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rw M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -259,12 +261,12 @@ Proof using Type*. intros Hh. eapply dcg_diag_translate_rwf; first [exact (dci_r
 Lemma dcg_ldiag_translate_rwf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rwf M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -290,12 +292,12 @@ Qed.
 Lemma dcg_ldiag_translate_rw dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     tc dd M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
     lk1 a1 ar1 r1 cw1 sh1 fl1 q1 i1 lk2 a2 ar2 r2 cw2 sh2 fl2 q2 i2 lkt a3 ar3 r3 cw3 sh3 fl3 q3 i3 tb tbreg tid
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name,
-      !Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name,
+      !Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} :
   dci_rest_rw M -> rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid -> rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid -> rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid ->
   locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
@@ -318,8 +320,8 @@ Proof using Type*. intros Hh. eapply dcg_ldiag_translate_rwf; first [exact (dci_
     A lock taken from 16 readers holds 24 while the lookup reads it and
     16 again afterwards. The contract rejects a lock whose count has no
     room left and a lock in its writer phase. *)
-Example rw_pair_16 `{!Defines ge "__GI___pthread_rwlock_rdlock" glibc_pthread_rwlock_rdlock,
-      !Defines ge "__GI___pthread_rwlock_unlock" glibc_pthread_rwlock_unlock} lk lb lreg tb treg cw sh fl dqt dqi tid :
+Example rw_pair_16 `{!Defines ge "__GI___pthread_rwlock_rdlock" Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock,
+      !Defines ge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock} lk lb lreg tb treg cw sh fl dqt dqi tid :
   rw_place lk lb lreg tb treg -> cw <> tid ->
   dci_rdlock_rule lk (rw_held lb lreg 16 cw sh fl dqt tb treg dqi tid) (rw_held lb lreg 24 cw sh fl dqt tb treg dqi tid) /\
   dci_unlock_rule lk (rw_held lb lreg 24 cw sh fl dqt tb treg dqi tid) (rw_held lb lreg 16 cw sh fl dqt tb treg dqi tid).

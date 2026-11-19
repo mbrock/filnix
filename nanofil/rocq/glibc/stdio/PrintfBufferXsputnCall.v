@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf sends its staging array through the stream's checked xsputn
     function pointer. The array contains raw bytes and need not end in NUL.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnReturn.
+  LibioCloseSteps PrintfBufferXsputnReturn.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -43,7 +44,7 @@ Definition printf_xsputn_call_spec : Prop := forall fr fp bb breg dq xs Φ,
   0 < bb -> bb mod 8 = 0 -> Z.of_nat (length xs) <= 128 ->
   bb + 48 + Z.of_nat (length xs) <= r_end breg -> r_end breg <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) xs ->
-  call_frame glibc__IO_new_file_xsputn
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn
     [WPtr fp; WPtr (mkPtr (bb + 48) (Obj bb)); WInt (Z.of_nat (length xs))] = Some fr ->
   F fp -∗ E -∗ liveq dq bb breg -∗ bytesq dq bb 48 xs -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 64⌝ -∗ F fp -∗ E -∗ liveq dq bb breg -∗
@@ -58,7 +59,7 @@ Context (F : ptr -> iProp Σ)
 (** The backend must preserve the source bytes and stream resources on every
     return. The result may differ from the requested count. *)
 
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (Hcall : (printf_xsputn_call_spec w0 registry ge F E)).
 
 (** Printf compares the returned count after calling the stream operation.
@@ -81,10 +82,10 @@ Lemma wp_printf_xsputn_call e fp bb breg dq xs Φ :
       lookup (TAtom "v37") e' = Some (WInt (Z.of_nat (length xs))) /\
       lookup (TAtom "v55") e' = Some (WInt r)⌝ -∗
     F fp -∗ E -∗ liveq dq bb breg -∗ bytesq dq bb 48 xs -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Exec (TAtom "iw_1.join") (skipn 9 (b_insts printf_xsputn_block))
         (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "iw_1.join") (skipn 7 (b_insts printf_xsputn_block))
       (b_jump printf_xsputn_block))) : sexpr) {{ Φ }}.
 Proof using Type*.

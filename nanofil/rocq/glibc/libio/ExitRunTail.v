@@ -1,6 +1,7 @@
+From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcProgram.
 (** The definitions of the handler loop of user glibc's
-    `__run_exit_handlers` (ExitRunCode.v's [glibc___run_exit_handlers])
+    `__run_exit_handlers` (ExitRunCode.v's [Unit_stdlib_exit_os.fn___run_exit_handlers])
     and the end of the function after it ([exit_tail]). ExitRunLoop.v
     proves the loop, and ExitRun.v enters it.
 
@@ -33,7 +34,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunCode.
+From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry.
 From Glibc Require AtexitLogic LeavesLogic OsExit OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -68,7 +69,7 @@ Module LG := LG0.
 Module L := LG.L.
 Import L LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit.
 
-Local Opaque glibc___run_exit_handlers.
+Local Opaque Unit_stdlib_exit_os.fn___run_exit_handlers.
 
 (** Close the instance premise a rule's eapply leaves. *)
 
@@ -165,7 +166,7 @@ Definition loop_vars (x : exit_objs) (status : Z) (e : list (name * word)) : Pro
 Lemma exit_tail x c status e from P Φ :
   loop_env x -> loop_vars x status e ->
   exit_held x [] c -∗ P -∗ cleanup_rule P -∗
-  WP (ERun (mkFrame glibc___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdlib_exit_os.fn___run_exit_handlers e [] None (Enter (TAtom "L101") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   destruct x as [lk lkr dn dnr cl clr fs fsr ib ibr].
   intros (Hlay & Hgl & Hwi & Hwdn & Hwfs & Hxf & Hxg) (H0 & H2 & H4 & H6 & H90 & H96).

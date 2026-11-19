@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** One pass of `c: _IO_flush_all`'s loop (LibioFlushCode.v), from
     the loop's head `c: L83` to its next entry of `c: L82`, stated as
@@ -22,7 +23,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushInv.
 From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushInv LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
@@ -71,9 +72,9 @@ Definition flush_body (P Q : ptr -> iProp Σ) : Prop :=
                  lookup (TAtom "v3") e' = Some (WPtr cb) /\ 0 <= r' < 2 ^ 32 /\ (r' = r \/ r' = 2 ^ 32 - 1)⌝ -∗
        live fb freg -∗ Q fp -∗ live rf rfreg -∗ pcell rf 0 null -∗ pcell fb off_chain nx -∗
        live_cap (ptr_cap nx) nreg -∗
-       WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L82") (Some (TAtom "L329")))) : sexpr)
+       WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L82") (Some (TAtom "L329")))) : sexpr)
          {{ Φ }}) -∗
-    WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L83") (Some (TAtom "L82")))) : sexpr)
+    WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L83") (Some (TAtom "L82")))) : sexpr)
       {{ Φ }}.
 End rules_values.
 Section rules.

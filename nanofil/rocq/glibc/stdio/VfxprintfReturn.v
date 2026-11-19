@@ -3,6 +3,7 @@
     acquired by a single-threaded caller. Recursive and contended locks
     need different return paths. No cancellation flag is read or restored
     on this path, so the caller can keep that flag in its frame. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FxprintfNormalCode Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
@@ -28,7 +29,7 @@ Lemma wp_vfxprintf_return e k fb freg fl lb lbreg sb sreg (E : iProp Σ) Φ :
   pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗ E -∗
   ▷ (live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
     lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt k))) -∗
-  WP (ERun (mkFrame glibc_vfxprintf e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf e [] None
     (Enter (TAtom "iw_1.join") (Some (TAtom "iw_1.L8")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hpr Hchk Hr Hkr Hfb Hal Hend Hreg Huser.

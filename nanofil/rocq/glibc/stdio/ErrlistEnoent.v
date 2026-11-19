@@ -2,13 +2,14 @@
     reads the actual length and pointer cells; their addresses alone do not
     supply permission to read them or the message. The caller retains all
     three lifetimes and both cells. *)
+From Glibc Require Import Unit_stdioZ2dcommon_errlist_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic ErrlistCode Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
@@ -24,7 +25,7 @@ Definition enoent_lookup_cells lb lr tb tr mid mr : iProp Σ :=
   live_capq DfracDiscarded (ptr_cap mid) mr.
 
 Lemma wp_get_errlist_enoent fr lb lr tb tr mid mr Φ :
-  call_frame glibc_get_errlist [WInt 2] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_errlist_os.fn___get_errlist [WInt 2] = Some fr ->
   lookup (TAtom "_sys_errlist_internal_len") (ge_globals ge) = Some (mkPtr lb (Ro lb)) ->
   lookup (TAtom "_sys_errlist_internal") (ge_globals ge) = Some (mkPtr tb (Ro tb)) ->
   0 < lb -> lb + 8 <= r_end lr -> r_end lr <= 2 ^ 48 ->

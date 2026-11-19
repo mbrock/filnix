@@ -3,6 +3,7 @@
     glibc flushes it at the start of the report. The rest of the
     report uses stderr and the C locale before returning to its caller. *)
 
+From Glibc Require Import Unit_libio_iofflush_os Unit_libio_wfileops_os Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,10 +12,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   Pieces Heap Language Logic MemLogic VariadicLogic HelloLeaf.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString NarrowArgs PrintfSpec LibioFputsSpec LibioCleanupExit FflushCode FxprintfNormalCode FxprintfNormalCall
-  ErrorCode ErrorEntry ErrorCall HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
+  WordString NarrowArgs PrintfSpec LibioFputsSpec LibioCleanupExit FxprintfNormalCall
+  ErrorEntry ErrorCall HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageEarly HelloStartFacts HelloGetoptDiagTcb HelloGetoptDiagImage
-  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloWClosedStdout WFileSyncCode HelloImageCloseObjs HelloGetoptTable
+  HelloStartHdGetopt HelloErrorOperandCall HelloClosedStdout HelloWClosedStdout HelloImageCloseObjs HelloGetoptTable
   HelloCloseReportImage HelloCloseReportText HelloCloseReportLocale HelloCloseReportBody HelloCloseReportPrint HelloCloseReportFinish Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
@@ -65,7 +66,7 @@ Section with_flush.
 Context (fields : iProp Σ).
 Local Abbreviation M := (report_state_for tb fb freg fields nb nr).
 Context (Hflush : forall fr (D : iProp Σ),
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> ptr_addr (ow_self w) <> 0 ->
   ⊢ hello_ro hge ob -∗ live fb freg -∗ (fields ∗ D) -∗
   WP (ERun fr : gexpr) {{ v, ∃ r, ⌜v = Ret (WInt r)⌝ ∗ live fb freg ∗ (fields ∗ D) }}).
@@ -92,9 +93,9 @@ Proof using Herr Hfd Hvf Hout Hfa Hfe Hfr Hflush Hn Hne Hnr.
   set (S := (fields ∗ D)%I).
   iApply (wp_error_internal_entry_lend (glibc_program := report_program) holds_os_glibc (hk_sys _ _ L)
     (dqs := dq) (dqp := dq) 0 k fmt ap 0 tb tr 0 (ho_so ob) (ho_soreg ob) (mkPtr fb (Obj fb)) (live fb freg)
-    pb preg null dq preg (ho_nb ob) (ho_nreg ob) name dq name_r pre glibc__IO_fflush
-    (mkFrame glibc__IO_fflush [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None (Enter (TAtom "start") None))
-    glibc_fxprintf (fxprintf_normal_frame null pre [WPtr name]) (TAtom "error") glibc_error (error_frame 0 k fmt [WPtr text])
+    pb preg null dq preg (ho_nb ob) (ho_nreg ob) name dq name_r pre Unit_libio_iofflush_os.fn___GI__IO_fflush
+    (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush [(TAtom "v0", WPtr (mkPtr fb (Obj fb)))] [] None (Enter (TAtom "start") None))
+    Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf (fxprintf_normal_frame null pre [WPtr name]) (TAtom "error") Unit_misc_error_os.fn___error (error_frame 0 k fmt [WPtr text])
     S S (fields ∗ St ∗ errno_any eb)%I True%I
     with "Ht Hflag Hol Hop Hout Hpl Hpp [] Hnl Hnp Hcap [$Hfields $Herr $He $Hro $Hname] [//]");
     [exact Hself|exact Htb|exact Hta|lia|exact Htrlim|left; reflexivity|exact (erl_cancel _ _ El)|
@@ -187,7 +188,7 @@ Proof using Herr Hfd Hvf Hout Hvb Hfa Hfe Hfr Hn Hne Hnr.
   iIntros (r) "(-> & He & HM)". resume. iApply ("HK" with "He HM").
 Qed.
 
-Local Lemma report_wsync_link : ge_fn hge "__GI__IO_wfile_sync" glibc__IO_wfile_sync.
+Local Lemma report_wsync_link : ge_fn hge "__GI__IO_wfile_sync" Unit_libio_wfileops_os.fn___GI__IO_wfile_sync.
 Proof. exists (img_addr "__GI__IO_wfile_sync"). split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]. Qed.
 
 Local Abbreviation WM tw tm wd := (report_state_for tb fb freg (closed_wide_fields fb vb lb lr tw tm wd) nb nr).

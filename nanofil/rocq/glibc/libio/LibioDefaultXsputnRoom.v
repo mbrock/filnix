@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram.
 (** The default stream writer fills available buffer space before trying
     to flush it. This module verifies the following part of its loop:
@@ -25,8 +26,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnSmall.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -42,7 +43,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** This block begins the copy after the writer has chosen its byte count. *)
 Definition dx_L44 : block := Eval vm_compute in
-  match find_block (TAtom "L44") (fn_blocks glibc__IO_default_xsputn) with
+  match find_block (TAtom "L44") (fn_blocks Unit_libio_genops_os.fn___GI__IO_default_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L44") [] [] JRetVoid end.
 
 
@@ -56,8 +57,8 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{Hcpy : !Defines ge "__GI_memcpy" glibc_memcpy}
-  `{Hpcpy : !Defines ge "__GI_mempcpy" glibc_mempcpy}.
+  `{Hcpy : !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy}
+  `{Hpcpy : !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}.
 
 
 (** This abbreviation selects expressions in the caller's linked program. *)
@@ -73,7 +74,7 @@ Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia | do 3 f
     The count fits both the source and the available destination space. *)
 Lemma wp_dx_L44 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cnt e Φ :
   let n := Z.of_nat (length ys) in
-  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow ->
+  overflow_spec w0 registry ge os -> ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   room_ok b sz reg xs cs (mkPtr wa (Obj b)) (mkPtr ea (Obj b)) ->
   c' = Obj b' \/ c' = Ro b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
@@ -89,7 +90,7 @@ Lemma wp_dx_L44 os fb freg vb vreg b sz reg xs cs wa ea dq b' reg' so c' ys t cn
   os fb (Some (b, sz)) -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
   ▷ dx_loop w0 registry ge os fb freg vb vreg dq b' reg' so c' ys Φ -∗
   ▷ dx_post registry ge os fb freg vb n dq b' reg' so ys Φ -∗
-  WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L44") (b_insts dx_L44) (b_jump dx_L44)))
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_default_xsputn e [] None (Exec (TAtom "L44") (b_insts dx_L44) (b_jump dx_L44)))
         : sexpr) {{ Φ }}.
 Proof using Type*.
   intros n Hov Hfo Hfb Hfal Hfend Hfreg Hok Hc' Hb8' Hso Hyend Hyreg Hy Ht Hcnt Hroom Hv0 Hc0 Hv4 Hp7 Hp9 Hp2.

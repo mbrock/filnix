@@ -17,6 +17,7 @@
     [[capability]], so the subsequent [[check]] always traps with
     `null_capability`. *)
 
+From Glibc Require Import Unit_string_memcmp_os.
 From Glibc Require Import GlibcTactics.
 From Glibc Require Import GlibcSym.
 From iris.proofmode Require Import proofmode.
@@ -25,7 +26,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Panics Language Logic StringLogic MemLogic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop MemcmpCode.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop.
 From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -61,10 +62,10 @@ Proof.
   injection H as -> H. rewrite Z.eqb_refl. apply IH, H.
 Qed.
 
-(** Block `L89` is the byte-by-byte comparison loop of [glibc_memcmp]
+(** Block `L89` is the byte-by-byte comparison loop of [Unit_string_memcmp_os.fn___GI_memcmp]
     used when the byte count is below 16. *)
 Definition memcmp_blk89 : block := Eval vm_compute in
-  match find_block (TAtom "L89") (fn_blocks glibc_memcmp) with
+  match find_block (TAtom "L89") (fn_blocks Unit_string_memcmp_os.fn___GI_memcmp) with
   | Some b => b | None => mkBlock (TAtom "L89") [] [] JUnreachable end.
 
 
@@ -202,7 +203,7 @@ Lemma byte_loop dq1 dq2 b reg o c xs b' reg' o' c' ys i e Φ :
   liveq dq1 b reg -∗ bytesq dq1 b o xs -∗ liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗
   (liveq dq1 b reg -∗ bytesq dq1 b o xs -∗ liveq dq2 b' reg' -∗ bytesq dq2 b' o' ys -∗
    Φ (Ret (WInt (cmp_bytes xs ys mod 2 ^ 32)))) -∗
-  WP (ERun (mkFrame glibc_memcmp (put (TAtom "pr.3") (WInt (Z.of_nat (List.length xs - i)))
+  WP (ERun (mkFrame Unit_string_memcmp_os.fn___GI_memcmp (put (TAtom "pr.3") (WInt (Z.of_nat (List.length xs - i)))
          (put (TAtom "pr.6") (WInt (b + o + Z.of_nat i)) (put (TAtom "pr.12") (WInt (b' + o' + Z.of_nat i)) e)))
        [] None (Exec (TAtom "L89") (b_insts memcmp_blk89) (b_jump memcmp_blk89))) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
@@ -245,11 +246,11 @@ Proof using SafepointStable0.
       iApply ("HK" with "Hl Hx Hl' Hy").
 Qed.
 
-(** Executing a call [[frame]] of [glibc_memcmp] on two shared byte
+(** Executing a call [[frame]] of [Unit_string_memcmp_os.fn___GI_memcmp] on two shared byte
     slices of equal length below 16 returns `[cmp_bytes] xs ys mod 2 ^ 32`
     and restores both slices. *)
 Lemma wp_glibc_memcmp_small fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ :
-  call_frame glibc_memcmp [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (List.length xs))] =
+  call_frame Unit_string_memcmp_os.fn___GI_memcmp [WPtr (mkPtr (b + o) c); WPtr (mkPtr (b' + o') c'); WInt (Z.of_nat (List.length xs))] =
     Some fr -> (List.length xs < 16)%nat ->
   (c = Obj b \/ c = Ro b) -> (c' = Obj b' \/ c' = Ro b') -> List.length ys = List.length xs ->
   0 <= o -> 0 <= o' -> b + o + Z.of_nat (List.length xs) <= r_end reg ->
@@ -298,10 +299,10 @@ Definition memcmp_small_spec : Prop :=
       WP (ERun fr : gexpr) {{ Φ }}.
 
 (** Glibc's `memcmp` satisfies [memcmp_small_spec] whenever the global
-    environment binds `memcmp` to [glibc_memcmp]. *)
-Lemma glibc_memcmp_small : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) -> memcmp_small_spec.
+    environment binds `memcmp` to [Unit_string_memcmp_os.fn___GI_memcmp]. *)
+Lemma glibc_memcmp_small : find_fn ge (TAtom "memcmp") = Some (Defined Unit_string_memcmp_os.fn___GI_memcmp) -> memcmp_small_spec.
 Proof using SafepointStable0.
-  intros Hf. exists glibc_memcmp. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
+  intros Hf. exists Unit_string_memcmp_os.fn___GI_memcmp. split; [exact Hf|]. split; [intros; eexists; reflexivity|].
   intros fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ Hfr H16 Hc Hc' Hly Ho Ho' Hend Hend' Hr Hr' Hx Hy.
   iIntros "Hl Hx Hl' Hy HK".
   iApply (wp_glibc_memcmp_small with "Hl Hx Hl' Hy"); [exact Hfr | exact H16 | exact Hc | exact Hc' | exact Hly | exact Ho | exact Ho'

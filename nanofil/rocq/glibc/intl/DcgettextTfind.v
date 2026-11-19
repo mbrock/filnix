@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_misc_tsearch_os Unit_string_memcpy_os Unit_string_mempcpy_os.
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** The C-locale translation searches glibc's cache of translations
     before it builds a catalog file name, and the earlier proofs assumed
@@ -23,10 +25,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString.
-From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString.
+From Glibc Require Import LibioSetb TfindEmpty.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
 From Glibc Require Import DcgettextC DcgettextStpcpy.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -46,7 +48,7 @@ Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
     misses. An empty tree always misses, so the real search meets the
     miss rule for every key and comparison function. The resource that
     the search borrows and returns is the empty root cell. *)
-Lemma dci_tfind_miss_rule_empty `{!Defines ge "__GI___tfind" glibc_tfind} key cmp dq rb ro rreg :
+Lemma dci_tfind_miss_rule_empty `{!Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} key cmp dq rb ro rreg :
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_tfind_miss_rule key (mkPtr (rb + ro) (Obj rb)) cmp (tfind_root dq rb ro rreg).
 Proof using Type.
@@ -71,7 +73,7 @@ Definition dci_rest (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' C M : 
 (** An empty cache answers the one question about tfind that the
     earlier translation asks. With it, the rules listed above are all
     that translation still needs. *)
-Lemma dci_others_empty `{!Defines ge "__GI___tfind" glibc_tfind} lk1 lk2 lkt tc L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv
+Lemma dci_others_empty `{!Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} lk1 lk2 lkt tc L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv
     dq rb ro rreg :
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
@@ -99,7 +101,7 @@ Lemma dci_rest_f_of lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv :
 Proof using Type. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
 
 (** The empty cache answers the tfind question here as well. *)
-Lemma dci_others_empty_f `{!Defines ge "__GI___tfind" glibc_tfind} lk1 lk2 lkt tc L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv
+Lemma dci_others_empty_f `{!Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} lk1 lk2 lkt tc L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv
     dq rb ro rreg :
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
@@ -117,10 +119,10 @@ Qed.
     ro of object rb. *)
 Lemma wp_dcgettext_c_tff f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -142,10 +144,10 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma wp_dcgettext_c_tf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -164,10 +166,10 @@ Proof using Type*. intros Hr. eapply wp_dcgettext_c_tff; first [exact (dci_rest_
     way. *)
 Lemma dcg_diag_translate_tff dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -187,10 +189,10 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_tf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -207,10 +209,10 @@ Proof using Type*. intros Hr. eapply dcg_diag_translate_tff; first [exact (dci_r
     way. *)
 Lemma dcg_ldiag_translate_tff dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest_f lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -230,10 +232,10 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_tf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' C M bs dqr rb ro rreg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind} :
   dci_rest lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' C M cv ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->

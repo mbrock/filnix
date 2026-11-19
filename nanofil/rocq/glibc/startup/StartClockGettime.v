@@ -9,8 +9,8 @@
     shared module. So adding it rebuilds only this file and the final
     startup assembly. *)
 
+From Glibc Require Import Unit_time_clock_gettime_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import HiAtexitTypedCL.
 From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -29,7 +29,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __GI___clock_gettime`. *)
-Definition start_clock_gettime_fn : func := hi_fn___GI___clock_gettime.
+Definition start_clock_gettime_fn : func := Unit_time_clock_gettime_os.fn___GI___clock_gettime.
 
 (** The image defines `c: __GI___clock_gettime` with that body. *)
 Lemma start_clock_gettime_defined :

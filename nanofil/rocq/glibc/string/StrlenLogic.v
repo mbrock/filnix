@@ -25,6 +25,7 @@
     index of the first zero byte by delegating later words to
     [loop_spec]. *)
 
+From Glibc Require Import Unit_string_strlen_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,14 +34,14 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic.
 From Glibc Require Import GlibcLogic StrlenBits.
-From Glibc Require StrlenCode GlibcLogic.
+From Glibc Require GlibcLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
 
 (** [glibc_strlen] is the decoded IR body of glibc's `__strlen`
     from the linked `string/strlen.os` fixture. *)
-Definition glibc_strlen : func := StrlenCode.glibc_strlen.
+Definition glibc_strlen : func := Unit_string_strlen_os.fn___strlen.
 
 (** [words_ps] builds the [[ghost-state|ghost pieces]] for a list of
     64-bit words ws starting at offset o of object b. *)

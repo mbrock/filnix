@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_iofputs_os.
 From Glibc Require Import GlibcProgram.
 (** Block `c: L107` of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c), `c: _IO_release_lock(fp)`: the stream's lock,
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioPutsCode LibioPutsInv LibioFputsLock.
+  LibioPutsInv LibioFputsLock.
 From Glibc Require FileInv LibioCloseSteps LibioFputsLock LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -28,7 +29,7 @@ Local Arguments Z.opp : simpl nomatch.
 (** Block `c: L107` of `c: fputs` after its phi, which releases the
     lock. *)
 Definition fp_L107 : block := Eval vm_compute in
-  match find_block (TAtom "L107") (fn_blocks glibc__IO_fputs) with
+  match find_block (TAtom "L107") (fn_blocks Unit_libio_iofputs_os.fn___GI__IO_fputs) with
   | Some b => b | None => mkBlock (TAtom "L107") [] [] JRetVoid end.
 
 
@@ -55,7 +56,7 @@ Lemma wp_fputs_unlock e r fb freg fl lb lbreg sb sreg Φ :
   lock_state lb lbreg 1 0 (ow_self w0) -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 0 0 null -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
+  WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
         : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hv2 Hc0 Hr Hrr Hfb Hfal Hfend Hfreg Hfl Hul. subst fp.

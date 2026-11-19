@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os.
 From Glibc Require Import GlibcProgram.
 (** Fclose takes the stream lock before closing its descriptor and releases
     it before unlinking the stream. These rules follow the single-threaded
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode LibioFcloseCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFinish LibioFcloseTail.
 From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioFinish LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -31,9 +32,9 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}.
-Context `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}.
-Context (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish).
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}.
+Context `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}.
+Context (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish).
 Context (Hunl_spec : unlink_spec w0 registry ge)
   (Hunl_unlinked : unlink_unlinked_spec w0 registry ge).
 
@@ -50,7 +51,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
     owner before execution reaches the descriptor-close branch. *)
 Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
   let fp := mkPtr fb (Obj fb) in
-  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofclose_os.fn__IO_new_fclose [WPtr fp] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= fl < 2 ^ 32 -> has fl io_user_lock = false ->
   single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗
@@ -59,7 +60,7 @@ Lemma wp_fclose_start fr fb freg fl lb lbreg sb sreg Φ :
   (∀ e from, ⌜lookup (TAtom "v0") e = Some (WPtr fp) /\ lookup (TAtom "chk0") e = Some (WPtr fp)⌝ -∗
      tcb_cleanup_inv (ow_self w0) -∗ live fb freg -∗ int_cell fb off_flags fl -∗
      pcell fb off_lock (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 1 0 (ow_self w0) -∗
-     WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
+     WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L13") (Some from))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Hext Hreg.
   apply (LibioFcloseAcquire.wp_fclose_start Hreg Hext).
@@ -95,7 +96,7 @@ Lemma wp_fclose_L101_static_output e p1 pre post fb freg fl lb lbreg sb sreg fcp
      int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
-  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
     {{ Φ }}.
 Proof using Hdf Hff Hunl Hunl_spec Hunl_unlinked.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hstatic Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd. subst fp.
@@ -154,7 +155,7 @@ Lemma wp_fclose_L101 e p1 pre post fb freg fl lb lbreg sb sreg fcp vb vreg pin m
      int_cell fb off_fileno (2 ^ 32 - 1) -∗ int_cell fb off_mode md -∗
      pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      pcell fb off_buf_base null -∗ pcell fb 80 null -∗ pcell fb 96 null -∗ Φ (Ret (WInt p1))) -∗
-  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L101") (Some (TAtom "L99")))) : sexpr)
     {{ Φ }}.
 Proof using Hdf Hff Hunl Hunl_spec Hunl_unlinked.
   intros fp Hv0 Hc0 Hp1 Hp1r Hgout Hgin Hin Hinr Hfc Hfcr Hfb Hfal Hfend Hfreg Hfl Hul Hlnk Hlb Hmd.

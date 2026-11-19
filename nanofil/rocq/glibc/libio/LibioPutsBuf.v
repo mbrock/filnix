@@ -21,7 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioGenCode LibioXsputnCode LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall LibioPutsMode.
+  WordString LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall LibioPutsMode.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.

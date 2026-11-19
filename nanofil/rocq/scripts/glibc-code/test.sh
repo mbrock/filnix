@@ -1,5 +1,5 @@
 #!/usr/bin/env bash
-# Exercise byte parity and fail-first checks with the real captured units.
+# Exercise exact regeneration and fail-first checks with the captured units.
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 capture=${1:?pass the glibc capture directory}
@@ -9,184 +9,34 @@ python3 -I "$here/test-blocks.py"
 python3 -I "$here/test-source.py"
 python3 -I "$here/test-block-facts.py"
 python3 -I "$here/test-image.py"
-# A formatter block that exceeds the packing budget cannot be split or omitted.
-python3 - "$here/slice.py" "$work" <<'PY'
-from pathlib import Path
-import subprocess
-import sys
-work = Path(sys.argv[2])
-source = work / 'oversized.v'
-source.write_text('''From Stdlib Require Import String ZArith List Ascii.
-From Nanofil Require Import Term.
-Definition formatter_term : term :=
-  TApp "module" [TList [
-    cap_fn{ "export" "f" [] -> "void"
-      {
-        @"start":
-''' + '          ("instruction");\n' * 501 + '''          ("instruction")
-          => ret void
-      } }
-  ]].
-''')
-out = work / 'oversized'
-out.mkdir()
-result = subprocess.run([sys.executable, '-I', sys.argv[1], source, out, 'formatter'],
-                        capture_output=True, text=True)
-assert result.returncode != 0 and 'AssertionError' in result.stderr, result
-assert not list(out.iterdir()), 'oversized block produced a partial fixture'
-PY
 python3 -I "$here/skeleton.py" string/Strcmp __GI_strcmp --capture "$capture" \
-  --rocq-function glibc_strcmp >"$work/strcmp-skeleton"
-grep -F 'WP (ERun (mkFrame glibc_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
+  --rocq-function Unit_string_strcmp_os.fn___GI_strcmp >"$work/strcmp-skeleton"
+grep -F 'WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.' \
   "$work/strcmp-skeleton"
 python3 -I "$here/generate.py" "$capture"
-python3 -I "$here/generate.py" "$capture" --form shared-prelude --output "$work/staged"
-python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged"
+python3 -I "$here/generate.py" "$capture" --output "$work/staged"
 
-# A wrong atom, a wrong proof, a missing file and a stale slice must all fail.
+# A changed shared body, a changed proof, a missing join part and a stale
+# file all fail comparison, including when checking only the Hello views.
 python3 - "$work/staged" <<'PY'
 from pathlib import Path
 import sys
+
 tree = Path(sys.argv[1])
-p = tree / 'stdio/PrintfStateCode.v'
-p.write_text(p.read_text().replace('cap_fn{ "export" "__printf_buffer_done"', 'cap_fn{ "export" "wrong_body"', 1))
-p = tree / 'stdio/PrintfBufferFileCode.v'
-p.write_text(p.read_text().replace('Proof. vm_compute. reflexivity. Qed.', 'Proof. exact I. Qed.', 1))
-(tree / 'stdio/PrintfBufferIoCode.v').unlink()
-(tree / 'getopt/GetoptCode99.v').write_text('stale\n')
-(tree / 'stdio/FormatterCode99.v').write_text('stale\n')
+path = tree / 'glibc/Unit_string_strlen_os.v'
+text = path.read_text()
+changed = text.replace('"__strlen"', '"wrong_body"', 1)
+assert changed != text
+path.write_text(changed)
+path = tree / 'hello/HelloImageCodeItems01.v'
+path.write_text(path.read_text().replace('Proof. reflexivity. Qed.', 'Proof. exact I. Qed.'))
+(tree / 'hello/HelloImageCodeItems03.v').unlink()
+(tree / 'hello/HelloImageCode999.v').write_text('stale\n')
 PY
-if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged" \
-    --directory stdio --directory getopt >"$work/rejected"; then
-  echo "generator accepted corrupt fixtures" >&2; exit 1
+if python3 -I "$here/generate.py" "$capture" --tree "$work/staged" --directory hello >"$work/rejected"; then
+  echo 'generator accepted corrupt fixtures' >&2
+  exit 1
 fi
-grep -E 'stdio: [0-9]+ files, 3 differ, 1 stale' "$work/rejected"
-grep -E 'getopt: [0-9]+ files, 0 differ, 1 stale' "$work/rejected"
-
-# The whole-image slices: a changed atom, a missing item group, a reordered
-# join and two stale slices must all fail.
-python3 - "$work/staged/hello" <<'PY'
-from pathlib import Path
-import re
-import sys
-hello = Path(sys.argv[1])
-p = hello / 'HelloImageTypedVE.v'
-p.write_text(re.sub(r'ir_fn\{ "([^"]+)" "([^"]+)"', r'ir_fn{ "\1" "\2_changed"', p.read_text(), count=1))
-(hello / 'HelloImageTypedItems03.v').unlink()
-p = hello / 'HelloImageCode.v'
-first, second = re.findall(r'hello_image_items_\d+', p.read_text().split('Definition hello_image_decoded')[1])[:2]
-p.write_text(p.read_text().replace(f'{first} ++ {second}', f'{second} ++ {first}', 1))
-(hello / 'HelloImageCode999.v').write_text('stale\n')
-(hello / 'HelloImageDec99.v').write_text('stale\n')
-PY
-if python3 -I "$here/generate.py" "$capture" --form shared-prelude --tree "$work/staged" \
-    --directory hello >"$work/rejected-hello"; then
-  echo "generator accepted corrupt whole-image slices" >&2; exit 1
-fi
-grep -E 'hello: [0-9]+ files, 3 differ, 2 stale' "$work/rejected-hello"
-
-# Exercise the style-sync CLI in an isolated copy, never in the real manifests.
-mkdir -p "$work/nanofil/rocq/scripts/glibc-code" "$work/nanofil/rocq/glibc/gen/string"
-cp "$here/sync-proof-styles.py" "$work/nanofil/rocq/scripts/glibc-code/"
-cp "$here/../../glibc/gen/string/code.toml" "$work/nanofil/rocq/glibc/gen/string/"
-mkdir -p "$work/styles/string"
-cp "$work/staged/string/"*Code.v "$work/styles/string/"
-python3 - "$work/styles/string" <<'PY'
-from pathlib import Path
-import re
-import sys
-# Keep this test's default-style control independent of main's conversions.
-for file in Path(sys.argv[1]).glob('*.v'):
-    file.write_text(re.sub(r'Proof\. vm_cast_no_check \(eq_refl .+\)\. Qed\.',
-                           'Proof. vm_compute. reflexivity. Qed.', file.read_text()))
-PY
-cat >"$work/styles/string/StrcmpCode.v" <<'COQ'
-(** Generated fixture. Do not edit. *)
-Lemma sample : Some true = Some true.
-Proof. vm_cast_no_check (eq_refl (Some true)). Qed.
-COQ
-python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
-grep -F '"StrcmpCode.v" = "vm_cast_no_check"' "$work/nanofil/rocq/glibc/gen/string/code.toml"
-cp "$work/nanofil/rocq/glibc/gen/string/code.toml" "$work/styles-before.toml"
-cp "$work/styles/string/StrcmpCode.v" "$work/Strcmp-valid.v"
-reject_sync() {
-  if python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" \
-      "$work/styles" >"$work/$1.log" 2>&1; then
-    echo "style sync accepted $1" >&2; exit 1
-  fi
-  grep -F "$2" "$work/$1.log"
-  cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
-}
-cat >>"$work/styles/string/StrcmpCode.v" <<'COQ'
-Lemma plain : Some false = Some false.
-Proof.
-  vm_compute. reflexivity.
-Qed.
-COQ
-reject_sync mixed-multiline 'mixed proof styles'
-cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
-cat >>"$work/styles/string/StrcmpCode.v" <<'COQ'
-Lemma unknown : True.
-Proof.
-  exact I.
-Qed.
-COQ
-reject_sync unknown-multiline 'unrecognized computed proof'
-cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
-printf '\nQed.\n' >>"$work/styles/string/StrcmpCode.v"
-reject_sync unmatched-proof 'unrecognized proof block'
-rm "$work/styles/string/StrcmpCode.v"
-reject_sync missing-converted 'missing fixture:'
-sed 's/Do not edit\.//' "$work/Strcmp-valid.v" >"$work/styles/string/StrcmpCode.v"
-reject_sync damaged-header 'unrecognized generated header'
-cp "$work/Strcmp-valid.v" "$work/styles/string/StrcmpCode.v"
-mv "$work/styles/string/StrncmpCode.v" "$work/Strncmp-valid.v"
-reject_sync missing-default 'missing fixture:'
-mv "$work/Strncmp-valid.v" "$work/styles/string/StrncmpCode.v"
-python3 -I "$work/nanofil/rocq/scripts/glibc-code/sync-proof-styles.py" "$work/styles"
-cmp "$work/styles-before.toml" "$work/nanofil/rocq/glibc/gen/string/code.toml"
-cp "$here/generate.py" "$here/prelude.py" "$here/typed.py" "$here/names.py" "$here/source.py" "$here/source.pl" "$here/select.pl" \
-   "$here/layout.py" "$here/layout.pl" "$here/block-facts.py" "$here/block-facts.pl" \
-   "$work/nanofil/rocq/scripts/glibc-code/"
-cp "$here"/../../glibc/{CodePrelude,IRNotation,IRBytes}.v "$work/nanofil/rocq/glibc/"
-for part in bin src survey bench; do ln -s "$here/../../../$part" "$work/nanofil/$part"; done
-for script in gallina.pl link.pl; do ln -s "$here/../$script" "$work/nanofil/rocq/scripts/$script"; done
-python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \
-  --output "$work/cast"
-grep -F 'Proof. vm_cast_no_check (eq_refl (Some strcmp_module)). Qed.' "$work/cast/string/StrcmpCode.v"
-grep -F 'Proof. vm_cast_no_check (eq_refl (Some (Defined glibc_strcmp))). Qed.' "$work/cast/string/StrcmpCode.v"
-grep -F 'Proof. vm_compute. reflexivity. Qed.' "$work/cast/string/StrncmpCode.v"
-
-# A row may name a real root but request a function those units do not define.
-# The string layout used to silently emit an empty fallback for that mistake.
-python3 - "$work/nanofil/rocq/glibc/gen/string/code.toml" <<'PY'
-from pathlib import Path
-import sys
-p = Path(sys.argv[1])
-p.write_text(p.read_text().replace(
-    'Strcmp|strcmp|string/strcmp.os|__GI_strcmp',
-    'Strcmp|strcmp|string/strcmp.os|__GI_strcmp absent_lane_function', 1))
-PY
-if python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" \
-    --output "$work/missing" >"$work/missing.log" 2>&1; then
-  echo 'generator accepted a manifest function absent from linked units' >&2; exit 1
-fi
-grep -F 'missing function in linked units: absent_lane_function' "$work/missing.log"
-grep -F 'fixture row Strcmp|strcmp|string/strcmp.os|__GI_strcmp absent_lane_function' "$work/missing.log"
-
-# The whole-image layout owns one fixture and selects nothing; a row that
-# names functions must stop before anything is linked.
-mkdir -p "$work/nanofil/rocq/glibc/gen/hello"
-cat >"$work/nanofil/rocq/glibc/gen/hello/code.toml" <<'TOML'
-layout = "linked_image"
-mode = "checked"
-fixtures = '''
-HelloImage|||main
-'''
-TOML
-if python3 -I "$work/nanofil/rocq/scripts/glibc-code/generate.py" "$capture" --directory hello \
-    --output "$work/linked-refused" >"$work/linked-refused.log" 2>&1; then
-  echo 'generator accepted a whole-image row that selects functions' >&2; exit 1
-fi
-grep -F 'linked_image layout owns the HelloImage fixture and selects no functions' "$work/linked-refused.log"
-echo 'code generator: byte parity, corrupt-fixture rejection, manifest proof styles and missing-function and whole-image row rejection passed'
+grep -E 'glibc: [0-9]+ files, 1 differ, 0 stale' "$work/rejected"
+grep -E 'hello: [0-9]+ files, 2 differ, 1 stale' "$work/rejected"
+echo 'code generator: byte parity and corrupt-fixture rejection passed'

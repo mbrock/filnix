@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the triple of `c: _IO_new_file_overflow` (LibioOverflowBase.v
     describes the function) on a stream that is already putting into
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -47,13 +48,13 @@ Context (HL18 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}).
 
 (** `c: _IO_new_file_overflow(fp, ch)` on a stream putting into its
     buffer: ch is stored after a flush of a full buffer, or `c: EOF`
     flushes the buffer. *)
 Lemma wp_glibc__IO_new_file_overflow fr fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (0 <= ch < 256 \/ ch = 2 ^ 32 - 1) ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->

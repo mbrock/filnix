@@ -12,8 +12,9 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   HelloModule HelloLeaf HelloClose.
+From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  SysCode LibioReadCode LibioDoWriteCode LibioGenCode LibioUnlinkCode LibioCloseItCode LibioFcloseCode
   FileInv FileIdle LibioLogic SysWrappers AllocLogic LibioCloseSteps LibioRead LibioPendingShort
   HelloClosedStdout HelloCloseIdle HelloCloseStreamRetain HelloCloseErrno.
 From Glibc Require LibioFcloseTail.
@@ -38,7 +39,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     the buffer, whose lifetime [buf_idle] owns, so the loads can check
     the pointers' capability. *)
 Lemma wp_fpending_idle fr fp vb self fd Φ :
-  call_frame glibc___fpending [WPtr fp] = Some fr ->
+  call_frame Unit_libio___fpending_os.fn___fpending [WPtr fp] = Some fr ->
   file_idle vb self fp fd -∗
   ▷ (∀ n, ⌜0 <= n < 2 ^ 64⌝ -∗ file_idle vb self fp fd -∗ Φ (Ret (WInt n))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -104,7 +105,7 @@ Qed.
     flags of an idle stream say that the stream needs no lock, so the
     call takes no lock and changes nothing. *)
 Lemma wp_ferror_idle fr fp vb self fd Φ :
-  call_frame glibc__IO_ferror [WPtr fp] = Some fr ->
+  call_frame Unit_libio_ferror_os.fn__IO_ferror [WPtr fp] = Some fr ->
   file_idle vb self fp fd -∗
   ▷ (∀ e, ⌜e = 0 \/ e = 1⌝ -∗ file_idle vb self fp fd -∗ Φ (Ret (WInt e))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -137,26 +138,26 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
   tcb_cleanup_inv stream_life closed_stdout file_idle : typeclass_instances.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__fpending" glibc___fpending}
-  `{!Defines ge "ferror" glibc__IO_ferror}
-  `{!Defines ge "fclose" glibc__IO_new_fclose}
-  `{!Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+Context `{!Defines ge "__fpending" Unit_libio___fpending_os.fn___fpending}
+  `{!Defines ge "ferror" Unit_libio_ferror_os.fn__IO_ferror}
+  `{!Defines ge "fclose" Unit_libio_iofclose_os.fn__IO_new_fclose}
+  `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
   `{!Defines ge "free" free_fn}
   (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None)
   (Hzg : lookup zgc_free_name (ge_globals ge) = None)
-  `{!Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{!Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{!Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
-  `{!Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}
-  `{!Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
-  `{!Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
-  `{!Defines ge "__GI__IO_un_link" glibc__IO_un_link}
-  `{!Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
-  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  `{!Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}
+  `{!Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{!Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
+  `{!Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}
+  `{!Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}
+  `{!Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}
+  `{!Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}
+  `{!Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}
+  (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish)
+  `{!Defines ge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink}
   `{!Defines ge "__errno_location" LeavesLogic.errno_location_fn}.
 
 (** Close_stream on idle stdout or stderr returns 0 or `c: EOF`. Both

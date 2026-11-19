@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** Hello's getopt proofs take two diagnostic rules as premises. Each
     rule says what happens when getopt translates a message and then
@@ -25,12 +26,12 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
 From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode StrchrCode.
-From Glibc Require Import PrintfStreamInv FileIdle FileTidy FxprintfCode FxprintfTidy FxprintfStream FxprintfCall.
+From Glibc Require Import TfindEmpty LocalenameLogic.
+From Glibc Require Import PrintfStreamInv FileIdle FileTidy FxprintfTidy FxprintfStream FxprintfCall.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextPreRules DcigettextRoute DcigettextSecure.
+From Glibc Require Import DcigettextPreRules DcigettextRoute DcigettextSecure.
 From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV HelloGettextLink.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -138,14 +139,14 @@ Qed.
     not wide. *)
 Definition dgx_premises (v : Z) : Prop :=
   hello_link ge ob /\ hello_gettext_link ge /\
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) /\
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) /\
   rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid /\ rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid /\ rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid /\
   locale_cells gb go greg lp lb lreg /\
   (0 < rb /\ 0 <= ro /\ (rb + ro) mod 8 = 0 /\ rb + ro + 8 <= r_end rreg /\ r_end rreg <= 2 ^ 48) /\
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec /\
   dci_bounds db dbreg nb ib ic ireg k sec secreg /\ 0 <= v < 2 ^ 32 /\
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) /\
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) /\
   ptr_addr (ow_self w0) <> 0 /\ 0 <= ptr_addr (ow_self w0) < 2 ^ 64 /\
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
   (forall x m, Q x m ⊢ ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ ∗ F).
@@ -283,14 +284,14 @@ Definition dgx_qe : Prop := forall x m, Q x m ⊢ ⌜m = 0 \/ m = 2 ^ 32 - 1⌝ 
     it must now hand errno back as well. *)
 Definition dgx_premises_e (v : Z) : Prop :=
   hello_link ge ob /\ hello_gettext_link ge /\
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) /\
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) /\
   rw_ready lk1 a1 ar1 tb tbreg r1 cw1 tid /\ rw_ready lk2 a2 ar2 tb tbreg r2 cw2 tid /\ rw_ready lkt a3 ar3 tb tbreg r3 cw3 tid /\
   locale_cells gb go greg lp lb lreg /\
   (0 < rb /\ 0 <= ro /\ (rb + ro) mod 8 = 0 /\ rb + ro + 8 <= r_end rreg /\ r_end rreg <= 2 ^ 48) /\
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec /\
   dci_bounds db dbreg nb ib ic ireg k sec secreg /\ 0 <= v < 2 ^ 32 /\
-  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) /\
+  find_fn ge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) /\
   ptr_addr (ow_self w0) <> 0 /\ 0 <= ptr_addr (ow_self w0) < 2 ^ 64 /\
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals ge) = Some dom /\ 0 <= ptr_addr fp < 2 ^ 64 /\
   dgx_qe.

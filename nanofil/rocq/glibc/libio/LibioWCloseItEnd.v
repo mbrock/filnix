@@ -2,21 +2,22 @@
     narrow one. The conversion descriptors stay in the wide data
     object: fclose will release their steps after it unlinks stdout. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioCloseItCode LibioReadCode
-  LibioSetb LibioWIdle LibioWAllocCode LibioWAllocSetb LibioCloseItEnd Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
+  LibioSetb LibioWIdle LibioWAllocSetb LibioCloseItEnd Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Section close_it.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{Hwsb : !Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}
-  `{Hsb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context `{Hwsb : !Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}
+  `{Hsb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 Context (Hfree : free_rule w0 registry ge) (B : Z -> Z -> ptr -> iProp Σ)
   (Hsetb : setb_spec_with w0 registry ge B).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
@@ -42,7 +43,7 @@ Lemma wp_wclose_it_L221 e from p3 k fb freg fl f2 fd off ob oe p8 p16 p24 p32 p4
      int_cell fb off_flags (closed_flags fl) -∗ int_cell fb off_fileno (2^32-1) -∗ icell fb off_offset (2^64-1) -∗
      pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 24 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗ pcell fb 48 null -∗
      pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗ Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
-  WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L221") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L221") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hv Hc Hc1 Hv2 Hp Hk Hfb Hfa Hfe Hfr Hfl Hp3 Hkr Hu.
   iIntros "Hl Hf2 Hwd Hdata Hfl Hfd Hoff H8 H16 H24 H32 H40 H48 Hbb Hbe HB HK".

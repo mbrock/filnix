@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** When glibc's `c: stpcpy` has aligned the destination but the source
     is still misaligned by v bytes, it cannot copy whole source words.
@@ -19,7 +20,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes WordString StrcmpBits StrcmpLoop.
-From Glibc Require Import StpcpyCode StpcpyBytes StpcpyTail .
+From Glibc Require Import StpcpyBytes StpcpyTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -99,7 +100,7 @@ Lemma stp_shift_loop e bd rd xs o q b reg ws dq s d v Q Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o d (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_2.L34") (b_insts blk_34) (b_jump blk_34))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "iw_2.L34") (b_insts blk_34) (b_jump blk_34))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B & S1 & M & P & K & E & R & N & C).
   pose proof (ss_words _ _ _ _ _ Hs) as F. pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (sbyte_agree _ _ _ _ _ Hs) as A.

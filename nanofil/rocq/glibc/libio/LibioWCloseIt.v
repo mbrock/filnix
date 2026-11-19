@@ -3,6 +3,7 @@
     outside put mode compares its wide read pointer and read end; both
     point to the base, so the close never seeks on that path. *)
 
+From Glibc Require Import Unit_io_close_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,8 +11,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry SysCode SysWrappers FileInv FileIdle LibioLogic
-  LibioCloseSteps LibioGenCode LibioCloseItCode LibioReadCode LibioSetb LibioWAllocCode LibioWIdle
+From Glibc Require Import OsWorld OsBlocks OsRegistry SysWrappers FileInv FileIdle LibioLogic
+  LibioCloseSteps LibioSetb LibioWIdle
   LibioWXsputnWindow LibioWXsputnRoom LibioWOverflowWrite LibioWCloseItMid Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -49,11 +50,11 @@ End view.
 Section close_it.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge)
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  `{Hwsb : !Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}
-  `{Hsb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hcn : !Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  `{Hwsb : !Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}
+  `{Hsb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}
   `{Hdw : !Defines ge "__GI__IO_wdo_write" wdo_write_fn}.
 Local Abbreviation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (fd vb fb : Z) (vr freg : region) (eb wd : Z) (tw tm : ptr) (E : iProp Σ).
@@ -79,14 +80,14 @@ Definition wclose_post lk (Φ : outcome -> iProp Σ) : iProp Σ := ∀ k st nb w
   wide_data vb tw tm wd WbNone -∗ Φ (Ret (WInt k)).
 
 Local Lemma after_flush e e' from r st nb w lk Φ :
-  (forall b, find_block (TAtom "L18") (fn_blocks glibc__IO_file_close_maybe_unlink) = Some b ->
+  (forall b, find_block (TAtom "L18") (fn_blocks Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink) = Some b ->
     phis_env ge (b_phis b) (Some from) e = Some e') ->
   reg e' "v0" (WPtr (objp fb)) -> reg e' "chk0" (WPtr (mkPtr (fb+off_fileno) (Obj fb))) ->
   reg e' "chk1" (WPtr (objp fb)) -> reg e' "v2" (WInt 0) -> reg e' "pr.3" (WInt r) ->
   (r = 0 \/ r = 2^32-1) -> fs_lock st = lk -> ok st nb w -> ow_errno w0 = Some (objp eb) ->
   vtables_ro ge vb vr -∗ wvtables_ro ge vb -∗ errno_any eb -∗ E -∗ live fb freg -∗ file_fields fb st -∗
   buf_idle nb -∗ wide_data vb tw tm wd w -∗ wclose_post lk Φ -∗
-  WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hphi Hv Hc Hc1 Hv2 Hp R Hlk H He. pose proof H as (_ & Hal & Hfb & Hend & Hfr & _ & I & Hm & Hvt & Hb & Hs & Hu & Hwd & _).
   unfold widle_ok, with_mode0, fs_ptr in I. cbn [fs_ptrs fs_flags2] in I.
@@ -101,7 +102,7 @@ Qed.
     descriptor close failed. The caller gets the closed fields even
     then, so it can unlock and report the failure. *)
 Lemma wp_wclose_it (Hwrite : wclose_write_rule) fr st nb w Φ :
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (objp fb); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (objp fb); WInt 0] = Some fr ->
   fd <> 0 -> ok st nb w -> ow_errno w0 = Some (objp eb) ->
   vtables_ro ge vb vr -∗ wvtables_ro ge vb -∗ errno_any eb -∗ E -∗ live fb freg -∗ file_fields fb st -∗
   buf_idle nb -∗ wide_data vb tw tm wd w -∗ ▷ wclose_post (fs_lock st) Φ -∗ WP (ERun fr : gexpr) {{ Φ }}.

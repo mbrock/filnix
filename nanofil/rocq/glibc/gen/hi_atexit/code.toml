@@ -2,11 +2,11 @@ layout = "hi_atexit"
 ctors = true
 roots = "main,__libc_start_main"
 units = '''
-glibc_malloc malloc/malloc.os
-glibc_cxa_atexit stdlib/cxa_atexit.os
-atexit stdlib/atexit.oS
-errno csu/errno.os
-errno_loc csu/errno-loc.os
+- malloc/malloc.os
+- stdlib/cxa_atexit.os
+- stdlib/atexit.oS
+- csu/errno.os
+- csu/errno-loc.os
 - libio/__fpending.os libio/ferror.os libio/filedoalloc.os libio/fileops.os libio/genops.os
 - libio/iofclose.os libio/iofputs.os libio/ioputs.os libio/stdfiles.os libio/stdio.os libio/vtables.os
 - termios/isatty_nostatus.os io/write.os io/write_nocancel.os io/lseek64.os io/fstat64.os

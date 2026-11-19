@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** One write of `c: _IO_new_file_write`'s loop (LibioWrite.v
     describes the function), from block `c: L9` to the return of its
@@ -26,7 +27,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit.
 From Glibc Require FileInv LibioLogic LibioWriteExit OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -46,7 +47,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -71,9 +72,9 @@ Lemma wp_file_write_call fb freg f2 fd b reg o xs eb t e Φ :
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ live b reg -∗ bytes b o xs -∗
      errno_any eb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None (Exec (TAtom "L15") [] (JGoto (To (TAtom "L16")))))
            : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hf2 Hf2r Hfd He Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp. unfold file_size in Hend.
   iIntros "Hl Hfl2 Hfd Hbl Hxs Herr HK".

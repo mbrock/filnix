@@ -3,6 +3,7 @@
     the same fallback, but only after glibc reads its terminator. The
     compiler inlines this test at each of the three lookups. *)
 
+From Glibc Require Import Unit_locale_findlocale_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic StepRules Symbolic HelloLeaf.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptBytes FindlocaleCode FindlocaleCResult FindlocaleEnv LocaleEnv Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptBytes FindlocaleCResult FindlocaleEnv LocaleEnv Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -30,8 +31,8 @@ Definition findlocale_search_regs e cat d slot :=
     first block calls getenv and stores its result before the reload. *)
 Definition findlocale_test_frame t e :=
   let l := match t with AfterAll => "L18" | AfterCategory => "L29" | AfterLang => "L38" end%string in
-  let b := hblk glibc_nl_find_locale l in
-  mkFrame glibc_nl_find_locale e [] None (Exec (TAtom l)
+  let b := hblk Unit_locale_findlocale_os.fn__nl_find_locale l in
+  mkFrame Unit_locale_findlocale_os.fn__nl_find_locale e [] None (Exec (TAtom l)
     (skipn (match t with AfterAll => 4 | _ => 0 end) (b_insts b)) (b_jump b)).
 
 (** Each copy has its own join block and its own fallback. A missing
@@ -42,7 +43,7 @@ Definition findlocale_test_next t (present : bool) e :=
     | AfterAll, true => "L29" | AfterAll, false => "iw_2.start"
     | AfterCategory, true => "L38" | AfterCategory, false => "L36"
     | AfterLang, true => "L20" | AfterLang, false => "L44" end%string in
-  mkFrame glibc_nl_find_locale e [] None (Enter (TAtom l) (Some (TAtom join))).
+  mkFrame Unit_locale_findlocale_os.fn__nl_find_locale e [] None (Enter (TAtom l) (Some (TAtom join))).
 
 Section present.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -63,8 +64,8 @@ Lemma findlocale_name_present t e cat d slot q Φ :
 Proof using Type*.
   intros (Hcat & Hslot & Hchk & Hdr & Hdc) Hz Hd Hda Hde. iIntros "Hvalue Hd Hq HK".
   Local Ltac setup_test t Hz := destruct t; unfold findlocale_test_frame;
-    lazymatch goal with |- context [hblk glibc_nl_find_locale ?l] =>
-      let B := eval vm_compute in (hblk glibc_nl_find_locale l) in change (hblk glibc_nl_find_locale l) with B end;
+    lazymatch goal with |- context [hblk Unit_locale_findlocale_os.fn__nl_find_locale ?l] =>
+      let B := eval vm_compute in (hblk Unit_locale_findlocale_os.fn__nl_find_locale l) in change (hblk Unit_locale_findlocale_os.fn__nl_find_locale l) with B end;
     cbn [skipn b_jump b_insts];
     try (destruct Hz as [Hbad|Hz]; [discriminate|]); check "Hd".
   Local Ltac finish_test hit := iApply ("HK" $! hit _ with "[%] Hd Hq");

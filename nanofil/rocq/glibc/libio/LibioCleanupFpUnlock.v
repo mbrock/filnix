@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The end of one pass of `c: _IO_unbuffer_all`'s loop in
     `c: _IO_cleanup` (LibioCleanupCode.v), from block `c: iw_1.L306`:
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioCleanupCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode.
 From Glibc Require FileInv LibioCleanupFpLock LibioCleanupMode LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
@@ -62,9 +63,9 @@ Lemma wp_cleanup_L306 e r fb freg lb lbreg rf rfreg sb sreg x cb nx nreg Φ :
      live fb freg -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 0 0 null -∗ live rf rfreg -∗ pcell rf 0 null -∗
      pcell fb off_chain nx -∗ live_cap (ptr_cap nx) nreg -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L301"))))
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e' [] None (Enter (TAtom "iw_1.L81") (Some (TAtom "iw_1.L301"))))
           : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L306") (Some (TAtom "iw_1.L291"))))
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L306") (Some (TAtom "iw_1.L291"))))
        : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hgrf Hp1 Hc13 Hv1 Hv2 Hnx Hfb Hfal Hfend Hfreg Hral Hrend. subst fp.

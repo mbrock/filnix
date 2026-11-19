@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** After a successful overflow call, printf selects its next buffer and
     returns. It uses available stream space when possible and its own staging
@@ -15,7 +16,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode PrintfBufferStage PrintfBufferDirect.
+  LibioCloseSteps PrintfBufferStage PrintfBufferDirect.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferDirect PrintfBufferStage SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -28,7 +29,7 @@ Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 
 (** Null stream pointers select printf's staging array without a stream write. *)
 Lemma wp_printf_overflow_switch_null e from bb breg fb freg oldbase oldptr oldend Φ :
@@ -43,7 +44,7 @@ Lemma wp_printf_overflow_switch_null e from bb breg fb freg oldbase oldptr olden
      pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 8 (mkPtr (bb + 48) (Obj bb)) -∗
      pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L88") from)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hv0.
@@ -77,7 +78,7 @@ Lemma wp_printf_overflow_switch_owned e from bb breg fb freg db dreg bo eo dqf d
      pcell bb 40 (mkPtr fb (Obj fb)) -∗
      pcell fb 40 (mkPtr (db + bo) (Obj db)) -∗ pcell fb 48 (mkPtr (db + eo) (Obj db)) -∗
      pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L88") from)) : sexpr) {{ Φ }}.
 Proof using Type*.
   cbn zeta. intros Hbb Hba Hbe Hbr Hfb Hfa Hfe Hfr Hdb Hbo Heo Hdp Hde Hdr Hv0.

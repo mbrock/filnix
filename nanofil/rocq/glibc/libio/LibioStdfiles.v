@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_stdfiles_os.
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_stdfiles_init` (LibioStdfilesCode.v,
     libio/stdfiles.c), the constructor that links glibc's three
@@ -30,8 +31,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioStdfilesCode.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -43,7 +43,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 (** The constructor, by a shorter name. *)
-Definition glibc_stdfiles_init : func := glibc_glibc_stdfiles__IO_stdfiles_init.
+Definition glibc_stdfiles_init : func := Unit_libio_stdfiles_os.fn_glibc_stdfiles'23_IO_stdfiles_init.
 
 (** Block `c: L2` of the constructor, the loop's head. *)
 Definition sf_L2 : block := Eval vm_compute in

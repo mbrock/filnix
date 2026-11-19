@@ -8,6 +8,7 @@
     narrow write as one step that hands back a wide stream with the same
     lock. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,8 +16,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode FileInv FileIdle LibioLogic LibioReadCode
-  LibioDoWriteCode LibioDoWrite LibioOverflowBase LibioOverflowShortWrite LibioXsputnHeap LibioWIdle LibioWDoWriteNarrow SysWrappers.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv FileIdle LibioLogic
+  LibioDoWrite LibioOverflowBase LibioOverflowShortWrite LibioXsputnHeap LibioWIdle LibioWDoWriteNarrow SysWrappers.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
@@ -73,8 +74,8 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 Context (fd vb fb : Z) (vr freg : region) (eb wd : Z) (w : wbuf) (tw tm : ptr).
 Context (Hfd : In fd (ow_fds w0)) (Herr : ow_errno w0 = Some (objp eb)).
 Local Abbreviation ok st nb := (wide_file_ok ge vb (objp fb) fd fb freg st nb wd w tw tm).
@@ -90,7 +91,7 @@ Local Abbreviation ok st nb := (wide_file_ok ge vb (objp fb) fd fb freg st nb wd
     the same lock whether the write succeeded or failed. *)
 Lemma wp_wnarrow_heap fr st bb sz breg db dreg o xs Φ :
   let n := Z.of_nat (length xs) in
-  call_frame glibc__IO_new_do_write [WPtr (objp fb); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (objp fb); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
   ok st (NbHeap bb sz) -> 0 < bb -> 0 < sz -> bb + sz <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < db -> 0 <= o -> db + o + n <= r_end dreg -> r_end dreg <= 2 ^ 63 -> (db = bb -> dreg = breg) ->
   Forall (fun x => 0 <= x < 256) xs ->
@@ -139,7 +140,7 @@ Qed.
     wide stream whose narrow buffer is the one-byte buffer. *)
 Lemma wp_wnarrow_short fr st db dreg o xs Φ :
   let n := Z.of_nat (length xs) in
-  call_frame glibc__IO_new_do_write [WPtr (objp fb); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (objp fb); WPtr (mkPtr (db + o) (Obj db)); WInt n] = Some fr ->
   ok st NbShort -> 0 < db -> 0 <= o -> db + o + n <= r_end dreg -> r_end dreg <= 2 ^ 63 ->
   Forall (fun x => 0 <= x < 256) xs ->
   vtables_ro ge vb vr -∗ wvtables_ro ge vb -∗ errno_any eb -∗ live fb freg -∗ file_fields fb st -∗

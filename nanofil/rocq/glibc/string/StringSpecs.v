@@ -6,11 +6,12 @@
     Importing those modules here makes their contracts available to callers
     without requiring callers to know the order of the proofs. *)
 
+From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Export GlibcSpec StrlenWord StrnlenLogic StrcmpLogic
   StrncmpLogic StrchrnulLogic StrrchrLogic MemFwdLogic.
 From Stdlib Require Import String.
 From Nanofil Require Import Term Syntax Values Semantics ExternalCalls Runtime.
-From Glibc Require Import GlibcProgram OsRegistry MemFwdCode LibioDefaultXsputnCopy.
+From Glibc Require Import GlibcProgram OsRegistry LibioDefaultXsputnCopy.
 
 Import ProgramAbbreviations.
 Section copies.
@@ -28,7 +29,7 @@ Definition mempcpy_spec := spec_choice (MemFwdLogic.copy_spec true)
   (LibioDefaultXsputnCopy.copy_in_spec true).
 
 (** The linked memcpy definition establishes both ownership alternatives. *)
-#[global] Instance memcpy_has_spec n `{!Defines ge n glibc_memcpy} :
+#[global] Instance memcpy_has_spec n `{!Defines ge n Unit_string_memcpy_os.fn___GI_memcpy} :
   HasSpec registry (os_wi w0) ge (TAtom n) memcpy_spec.
 Proof using Type*.
   apply has_spec_choice.
@@ -37,8 +38,8 @@ Proof using Type*.
 Qed.
 
 (** Mempcpy also requires the definition of the memcpy function it calls. *)
-#[global] Instance mempcpy_has_spec n `{!Defines ge n glibc_mempcpy,
-    !Defines ge "__GI_memcpy" glibc_memcpy} :
+#[global] Instance mempcpy_has_spec n `{!Defines ge n Unit_string_mempcpy_os.fn___GI___mempcpy,
+    !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} :
   HasSpec registry (os_wi w0) ge (TAtom n) mempcpy_spec.
 Proof using Type*.
   apply has_spec_choice.

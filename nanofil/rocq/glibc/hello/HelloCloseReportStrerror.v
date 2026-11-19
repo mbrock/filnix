@@ -4,7 +4,7 @@
     passes it and the original errno to snprintf. This proof runs both
     translations. Only the second path needs a proof of the print. *)
 
-From Glibc Require Import HelloImageTypedSN.
+From Glibc Require Import Unit_stdioZ2dcommon_errlist_os Unit_stdioZ2dcommon_snprintf_os Unit_string__strerror_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,11 +14,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalMachine Pieces StepRules Heap Language Logic MemLogic HelloLeaf.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString CodePrelude HelloGlibcProgCells
   StartImageEarly HelloImageModule HelloImageLoad HelloGetoptDiagImage HelloGetoptDiagTcb
-  StrerrorCode ErrlistCode HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale Fix.
+  HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
 
-Definition report_snprintf : func := hello_image_fn___GI___snprintf.
+Definition report_snprintf : func := Unit_stdioZ2dcommon_snprintf_os.fn___GI___snprintf.
 Definition unknown_fmt := Eval vm_compute in hello_sym "glibc__strerror#str.136".
 Definition unknown_prefix := Eval vm_compute in hello_sym "glibc__strerror#str.137".
 
@@ -32,9 +32,9 @@ Local Abbreviation eb := (img_a "__libc_errno").
 (** The image links the two callees that strerror selects. The caller
     of strerror uses the third link to enter the wrapper itself. *)
 Lemma report_strerror_links :
-  find_fn hge (TAtom "__get_errlist") = Some (Defined glibc_get_errlist) /\
+  find_fn hge (TAtom "__get_errlist") = Some (Defined Unit_stdioZ2dcommon_errlist_os.fn___get_errlist) /\
   find_fn hge (TAtom "__GI___snprintf") = Some (Defined report_snprintf) /\
-  find_fn hge (TAtom "__GI___strerror_r") = Some (Defined glibc_strerror_r).
+  find_fn hge (TAtom "__GI___strerror_r") = Some (Defined Unit_string__strerror_os.fn___GI___strerror_r).
 Proof. split_and!; vm_compute; reflexivity. Qed.
 
 (** A table message remains readable after translation. A missing
@@ -43,7 +43,7 @@ Proof. split_and!; vm_compute; reflexivity. Qed.
 Lemma wp_report_strerror (Herr : ow_errno w = Some (mkPtr eb (Obj eb)))
     tb tr v tid treg cf k buf len Φ :
   dtx_tcb_at tb tr -> 0 <= v < 2^32 -> 0 <= k < 2^32 -> 0 <= len < 2^64 ->
-  call_frame glibc_strerror_r [WInt k; WPtr buf; WInt len] = Some cf ->
+  call_frame Unit_string__strerror_os.fn___GI___strerror_r [WInt k; WPtr buf; WInt len] = Some cf ->
   let G := report_locale w R.free tb tr v tid treg in
   ptsq DfracDiscarded hello_errlist_ps -∗ G -∗
   ▷ (match err_at k with

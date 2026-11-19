@@ -5,6 +5,7 @@
     The wrapper delegates printing to another function. The caller must
     prove that function separately before using this rule to prove an
     error report. The captured wrapper does not take a stream lock. *)
+From Glibc Require Import Unit_misc_error_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,14 +22,14 @@ Import ErrorVL.
 
 (** The call frame retains all arguments in its read-only snapshot. *)
 Definition error_frame (status errnum : Z) (fmt : ptr) (ys : list word) : frame :=
-  mkFrame glibc_error
+  mkFrame Unit_misc_error_os.fn___error
     (put (TAtom "v4") (WPtr fmt) (put (TAtom "v2") (WInt errnum)
       (put (TAtom "v0") (WInt status) []))) [] None
     (Snapshot (WInt status :: WInt errnum :: WPtr fmt :: ys) (TAtom "start")).
 
 (** Binding the public arguments does not read the mutable errno cell. *)
 Lemma error_call_frame status errnum fmt ys :
-  call_frame glibc_error (WInt status :: WInt errnum :: WPtr fmt :: ys) =
+  call_frame Unit_misc_error_os.fn___error (WInt status :: WInt errnum :: WPtr fmt :: ys) =
     Some (error_frame status errnum fmt ys).
 Proof. reflexivity. Qed.
 
@@ -36,7 +37,7 @@ Proof. reflexivity. Qed.
     A larger program may replace it with a different definition. *)
 Lemma error_alias_found globals free :
   find_alias (TAtom "error") error_module = Some (TAtom "__error") /\
-  find_fn (mkGenv error_module globals free) (TAtom "error") = Some (Defined glibc_error).
+  find_fn (mkGenv error_module globals free) (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error).
 Proof. split; reflexivity. Qed.
 
 Section rules.
@@ -62,8 +63,8 @@ Lemma wp_error_wrapper status errnum fmt ys
     (internal_frame : ptr -> frame) (R Q E : iProp Σ) Φ :
   forallb snapshot_word ys = true ->
   0 <= status < 2 ^ 32 -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
-  (forall ap, call_frame glibc_error_internal
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
+  (forall ap, call_frame Unit_misc_error_os.fn___error_internal
     [WInt status; WInt errnum; WPtr fmt; WPtr ap; WInt 0] = Some (internal_frame ap)) ->
   (forall ap, ⊢ error_va ap (WInt status :: WInt errnum :: WPtr fmt :: ys) -∗ R -∗
     WP (ERun (internal_frame ap) : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Q }}) ->
@@ -114,11 +115,11 @@ Qed.
 Lemma wp_call_error_wrapper f e ls l args rest j status errnum fmt ys
     (internal_frame : ptr -> frame) (R Q E : iProp Σ) Φ :
   map_option (arg_x ge e) args = Some (WInt status :: WInt errnum :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error) ->
   forallb snapshot_word ys = true ->
   0 <= status < 2 ^ 32 -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
-  (forall ap, call_frame glibc_error_internal
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
+  (forall ap, call_frame Unit_misc_error_os.fn___error_internal
     [WInt status; WInt errnum; WPtr fmt; WPtr ap; WInt 0] = Some (internal_frame ap)) ->
   (forall ap, ⊢ error_va ap (WInt status :: WInt errnum :: WPtr fmt :: ys) -∗ R -∗
     WP (ERun (internal_frame ap) : gexpr) {{ v, ⌜v = RetVoid⌝ ∗ Q }}) ->

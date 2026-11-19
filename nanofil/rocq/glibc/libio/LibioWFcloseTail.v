@@ -4,6 +4,7 @@
     Fclose then releases the two converters, but keeps the static FILE
     and its wide data for a later flush during error reporting. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
-  LibioUnlinkCode LibioFcloseCode LibioFinish LibioFcloseTail LibioWIdle LibioWFwide LibioWRelease
+  LibioFinish LibioFcloseTail LibioWIdle LibioWFwide LibioWRelease
   LibioWFcloseRelease Mbrtowc HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs StartImageEarly Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -27,9 +28,9 @@ Local Arguments Z.mul : simpl nomatch.
 Section tail.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}
-  `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
-  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}
+  `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}
+  (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish)
   (Hunlink : unlink_spec w0 registry ge) (Hunlinked : unlink_unlinked_spec w0 registry ge).
 
 (** Error reporting can flush stdout after fclose returns. To keep the
@@ -77,7 +78,7 @@ Lemma wp_fclose_wide_L8 e from k pre post fb freg fl lb lr sb sr fcp vb vr wd pi
      live fb freg -∗ int_cell fb off_flags (Z.land fl 4294967167) -∗ pcell fb off_lock (objp lb) -∗ lock_state lb lr 0 0 null -∗
      pcell fb off_vtable (mkPtr (vb+vt_wfile) (Ro vb)) -∗ pcell fb off_wide (objp wd) -∗ wide_data vb tw tm wd WbNone -∗
      gconv_lock_free -∗ Φ (Ret (WInt k))) -∗
-  WP (ERun (mkFrame glibc__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_iofclose_os.fn__IO_new_fclose e [] None (Enter (TAtom "L8") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hv Hc Hk Hkr Hout Hin Hne Hpr Hfc Hfcr Hgl Hrel Hfb Hal He Hr Hlb Hfl Hul Hln.
   iIntros "#Hvt #Hwvt #Hs Ht Hl Hfl Hlp Hlk Hio Hlives Hfd Hmode Hvtp Hbb H80 H96 Hwd Hcv Hdata #Hmb #Hfw #Hwr Hgl HK".

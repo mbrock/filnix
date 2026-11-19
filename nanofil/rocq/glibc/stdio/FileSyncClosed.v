@@ -6,6 +6,7 @@
     Closing stdout leaves its static object in memory. To flush it safely,
     the caller must prove that this memory is still alive and that the
     pointer fields remain cleared. An address alone cannot prove either fact. *)
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FileSyncCode Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
@@ -27,7 +28,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     pointers. It preserves all other owned memory, so cancellation may stay
     disabled while this function runs. *)
 Lemma wp_file_sync_closed fr fb freg fl off (E : iProp Σ) Φ :
-  call_frame glibc__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 152 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 256 = 0 ->
   live fb freg -∗ int_cell fb 0 fl -∗

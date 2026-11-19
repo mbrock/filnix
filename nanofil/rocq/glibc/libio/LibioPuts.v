@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: puts(s)` (LibioPutsCode.v, libio/ioputs.c)
     over a string at any share and stdout as LibioPutsInv.v's
@@ -37,7 +38,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString StrlenLogic LibioGenCode LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsLock LibioPutsUnlock
+  WordString StrlenLogic LibioPutsInv LibioPutsLock LibioPutsUnlock
   LibioPutsCall LibioPutsMode LibioPutsBuf LibioPutsNl.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsBuf LibioPutsCall LibioPutsInv LibioPutsLock LibioPutsMode LibioPutsNl LibioPutsUnlock OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -83,7 +84,7 @@ Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w
 Context (HopenG : forall s fp mode held,
   G s fp mode held ⊢ file_lock_open (ow_self w0) fp (G s fp mode) held).
 Context (Hwide : forall s fp held, F fp 1 held ⊢ G s fp 1 held).
-Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (Hxs : xsputn_spec_for w0 registry ge F G Rx).
 
 
@@ -99,8 +100,8 @@ Context (Hnl : forall s e so soreg fb Φ,
   live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 fp -∗ G s fp (2 ^ 32 - 1) (Some 0) -∗ Rx -∗
-     WP (ERun (mkFrame glibc__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}).
+     WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}).
 
 (** The return block releases stdout's lock and preserves the caller's
     stream predicate. It needs only the lock view, not an exact mode
@@ -113,7 +114,7 @@ Lemma wp_puts_L103_for (G0 : ptr -> Z -> option Z -> iProp Σ)
   lookup (TAtom "pr.1") e = Some (WInt r) -> 0 <= r < 2 ^ 32 ->
   single_ro ge sb sreg -∗ G0 fp m (Some 0) -∗
   ▷ (G0 fp m None -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
+  WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Exec (TAtom "L103") (b_insts pu_L103) (b_jump pu_L103)))
         : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hv12 Hc1 Hr Hrr. subst fp. iIntros "#Hs Hf HK".
@@ -131,7 +132,7 @@ Qed.
     the stream predicate using facts about the input; newline handling
     and unlocking preserve that stronger postcondition. *)
 Lemma wp_glibc__IO_puts_for fr p dq s so soreg fp mode sb sreg Φ :
-  call_frame glibc__IO_puts [WPtr p] = Some fr ->
+  call_frame Unit_libio_ioputs_os.fn___GI__IO_puts [WPtr p] = Some fr ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr so (Obj so)) -> so mod 8 = 0 -> so + 8 <= r_end soreg ->
   ptr_addr (ow_self w0) <> 0 ->

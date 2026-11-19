@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_done_os.
 From Glibc Require Import GlibcProgram.
 (** Printf-buffer completion reports EOVERFLOW when its accumulated character
     count no longer fits a nonnegative C int. This rule follows the checked
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Interval
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers MemchrLast
-  PrintfStateCode PrintfCountBits.
+  PrintfCountBits.
 From Glibc Require FileInv LibioLogic MemchrLast OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -36,7 +37,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** A mathematical count beyond INT_MAX fails even when its low 64 bits look small.
     The caller gets the same buffer resources and errno set to EOVERFLOW. *)
 Lemma wp_printf_buffer_done_overflow fr bb breg db dreg bo used written mode dq1 dq2 eb ereg eo prior Φ :
-  call_frame glibc___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr (eb + eo) (Obj eb)) ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < db -> 0 <= bo -> 0 <= used -> db + bo + used <= r_end dreg -> r_end dreg <= 2 ^ 63 ->

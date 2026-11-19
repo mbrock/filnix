@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** After handling pending output, close_it discards markers and closes the
     descriptor through the stream's jump table. These blocks then reset the
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioCloseItCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioSetb LibioCloseSteps LibioCloseItEnd.
 From Glibc Require FileInv LibioCloseItEnd LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -41,7 +42,7 @@ Local Instance close_it_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition close_spec : Prop := forall fr fb freg fd eb Φ,
-  call_frame glibc__IO_file_close [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn___GI__IO_file_close [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   live fb freg -∗ int_cell fb off_fileno fd -∗ errno_any eb -∗
@@ -57,8 +58,8 @@ Definition unsave_spec (fum : func) : Prop := forall fb, exists fr,
 End rules_values.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
-Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close).
+Context `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 
 (** Expressions use the caller's linked program and registry. *)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -82,7 +83,7 @@ Context (Hum : (unsave_spec w0 registry ge) fum).
     flags, descriptor and offset, while preserving errno ownership. *)
 Lemma wp_close_it_L18_with e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 p24 p32 p40 p48 vb vreg eb Φ :
   let fp := mkPtr fb (Obj fb) in
-  (forall b, find_block (TAtom "L18") (fn_blocks glibc__IO_file_close_maybe_unlink) = Some b ->
+  (forall b, find_block (TAtom "L18") (fn_blocks Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink) = Some b ->
              phis_env ge (b_phis b) (Some from) e = Some e') ->
   lookup (TAtom "v0") e' = Some (WPtr fp) ->
   lookup (TAtom "chk0") e' = Some (WPtr (mkPtr a0 (Obj fb))) -> a0 = fb + off_fileno ->
@@ -105,7 +106,7 @@ Lemma wp_close_it_L18_with e e' from a0 p3 fb freg fl f2 fd off md ob oe p8 p16 
      pcell fb 48 null -∗ pcell fb off_buf_base null -∗ pcell fb off_buf_end null -∗
      pcell fb 80 null -∗ pcell fb 96 null -∗
      Φ (Ret (WInt (if k =? 0 then p3 else k)))) -∗
-  WP (ERun (mkFrame glibc__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink e [] None (Enter (TAtom "L18") (Some from))) : sexpr)
     {{ Φ }}.
 Proof using Type*.
   intros fp Hphi Hv0 Hc0 Ha0 Hc1 Hv2 Hp3 Hfb Hfal Hfend Hfreg Hfl Hf2r Hf2 Hmd Hp3r He. subst fp a0.
@@ -160,8 +161,8 @@ End rules.
 
 Section legacy.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close).
-Context `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close).
+Context `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 (** Existing callers still supply the original heap-buffer setb contract. *)
 Definition wp_close_it_L18 (Hclose : close_spec w0 registry ge)
     (Hsetb_spec : LibioCloseItEnd.setb_spec w0 registry ge) (fum : func)

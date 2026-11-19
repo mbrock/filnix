@@ -3,6 +3,7 @@
     These operations borrow the thread lifetime, errno and stderr from
     the same state that strerror used to translate its message. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,15 +13,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   Pieces Heap Language Logic MemLogic HelloLeaf.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
   WordString NarrowArgs PrintfSpec LibioFputsSpec LibioFflushSpec LibioFflushIdle LibioCleanupExit
-  FflushCode FileSyncCode LibioReadCode LibioDoWriteCode SysCode FxprintfNormalCode FxprintfNormalCall
-  ErrorCode ErrorEntry ErrorTail HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
+  FxprintfNormalCall
+  ErrorEntry ErrorTail HelloErrorOperand HelloVersionLits HelloEmitBug HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageEarly HelloStartFacts HelloGetoptDiagTcb
   HelloCloseReportLocale HelloCloseReportPrint Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
 
 Local Abbreviation hge := (mkGenv hello_image_module img_globals R.free).
-Lemma report_sync_link : ge_fn hge "_IO_new_file_sync" glibc__IO_new_file_sync.
+Lemma report_sync_link : ge_fn hge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync.
 Proof. exists (img_addr "_IO_new_file_sync"). split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]. Qed.
 
 Section finish.
@@ -41,11 +42,11 @@ Context `{Hvf : !HasSpec glibc_os_registry (os_wi w) hge (TAtom "__vfprintf_inte
 Local Lemma report_fflush (Hself : ptr_addr (ow_self w) <> 0) :
   HasSpec glibc_os_registry (os_wi w) hge (TAtom "__GI__IO_fflush") (fflush_spec (glibc_program := finish_program)).
 Proof using Type.
-  assert (Hfw : ge_fn hge "_IO_new_file_write" glibc__IO_new_file_write)
+  assert (Hfw : ge_fn hge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
     by (exists (img_addr "_IO_new_file_write"); split; [vm_compute; reflexivity|split; [vm_compute; reflexivity|split; vm_compute; congruence]]).
-  assert (Dw : Defines hge "__GI___write" glibc___libc_write) by (vm_compute; reflexivity).
-  assert (Dd : Defines hge "_IO_new_do_write" glibc__IO_new_do_write) by (vm_compute; reflexivity).
-  assert (Dff : Defines hge "__GI__IO_fflush" glibc__IO_fflush) by (vm_compute; reflexivity).
+  assert (Dw : Defines hge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by (vm_compute; reflexivity).
+  assert (Dd : Defines hge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by (vm_compute; reflexivity).
+  assert (Dff : Defines hge "__GI__IO_fflush" Unit_libio_iofflush_os.fn___GI__IO_fflush) by (vm_compute; reflexivity).
   exact (fflush_has_spec (glibc_program := finish_program) holds_os_glibc (hk_sys _ _ (hello_link_all _ R.free_succeeds))
     report_sync_link Hfw Hself).
 Qed.
@@ -55,7 +56,7 @@ Lemma wp_report_finish tb tr v tid treg e from k fmt ap cb Φ :
   let G := report_locale w R.free tb tr v tid treg in
   hello_ro hge ob -∗ G -∗ int_cell tb 792 1 -∗ live cb (mkRegion cb (cb+16) Heap Live) -∗ int_cell cb 0 0 -∗
   (G -∗ int_cell tb 792 0 -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Herr Hfd Hvf.
   intros (Hself & Htb & Hta & Hte & Htr) Hin G. change (ow_self w = mkPtr tb (Obj tb)) in Hself.
   unfold off_cancelhandling in Hte. assert (Ht796 : tb+796 <= r_end tr) by lia.
@@ -65,7 +66,7 @@ Proof using Herr Hfd Hvf.
   iPoseProof "Hro" as "(_ & _ & _ & _ & #Hsl & #Hsp & _)".
   iApply (wp_error_tail_lend (glibc_program := finish_program) holds_os_glibc (hk_sys _ _ (hello_link_all _ R.free_succeeds))
     (dqs := DfracDiscarded) tb tr 0 (ho_se ob) (ho_sereg ob) (ho_err ob)
-    nl glibc_fxprintf (fxprintf_normal_frame null nl []) gf cf St
+    nl Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf (fxprintf_normal_frame null nl []) gf cf St
     (errno_any eb ∗ hello_ro hge ob)%I (errno_any eb ∗ hello_ro hge ob)%I (errno_any eb)%I True%I
     e from 0 k fmt ap 0 cb with "Ht Hflag Hcl Hsave Hsl Hsp Herr [$He $Hro] [//]");
     [left; reflexivity|exact Hself|exact Htb|exact Hta|exact Ht796|exact Htr|vm_compute; reflexivity|

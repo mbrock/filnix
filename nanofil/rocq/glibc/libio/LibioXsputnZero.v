@@ -4,6 +4,7 @@
     It preserves arbitrary caller resources without requiring a usable
     stream buffer or an operating-system write contract. *)
 
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,6 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import LibioXsputnCode.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -33,7 +33,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The call reads neither pointer and preserves every caller resource.
     Its [[frame]] binds the stream, source and zero byte count. *)
 Lemma wp_xsputn_zero fr fp src (P : iProp Σ) Φ :
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
   P -∗ ▷ (P -∗ Φ (Ret (WInt 0))) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hfr. injection Hfr as <-. iIntros "HP HK".
@@ -45,7 +45,7 @@ Qed.
 
 (** The direct return form records both the zero result and unchanged resources. *)
 Lemma wp_xsputn_zero_returns fr fp src (P : iProp Σ) :
-  call_frame glibc__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr src; WInt 0] = Some fr ->
   P -∗ WP (ERun fr : sexpr) {{ r, ⌜r = Ret (WInt 0)⌝ ∗ P }}.
 Proof using SafepointStable0.
   intros Hfr. iIntros "HP".

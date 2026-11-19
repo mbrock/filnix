@@ -4,6 +4,7 @@
     Either stream call may fail. This proof returns the window on failure
     and hands it to buffer selection on success. *)
 
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules WordBits Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv FileTidy LibioLogic CStruct PrintfLayout PrintfOut
-  PrintfBufferFileCode PrintfBufferFileNames LibioXsputnCode LibioGenCode PrintfBufferFlushEmpty
+  PrintfBufferFileNames PrintfBufferFlushEmpty
   PrintfBufferXsputnCall PrintfBufferXsputnStaging PrintfBufferOverflowCall PrintfBufferOverflowStaging.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Import PrintfBufferFileNames.fn___printf_buffer_flush_to_file.
@@ -73,8 +74,8 @@ Section staging.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (vb : Z) (self : ptr) (fd flags2 : Z) (held : option Z) (E : iProp Σ).
 Let F fp := file_tidy vb self fp fd flags2 held.
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
-Context `{!Defines ge "__GI___overflow" glibc___overflow}.
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
+Context `{!Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hbulk : printf_xsputn_call_spec w0 registry ge F E)
         (Hchar : printf_overflow_call_spec w0 registry ge F E).
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
@@ -104,7 +105,7 @@ Local Ltac pack_stage bb Hlo :=
     control at that block rather than a promise that the stage stays
     selected. *)
 Lemma wp_flush_staged fr bb br fb vr n cap written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   bb+176 <= r_end br -> cap = 1 \/ cap = 128 ->
   let w := staged bb br n cap in
   let state m count := (printf_buf bb br w count m ∗ pcell bb 40 (mkPtr fb (Obj fb)) ∗ F (mkPtr fb (Obj fb)) ∗ E)%I in
@@ -112,7 +113,7 @@ Lemma wp_flush_staged fr bb br fb vr n cap written Φ :
   vtables_ro ge vb vr -∗ state 4 written -∗
   ((∀ m, ⌜m = mode_failed \/ (m = 4 /\ n = 0 /\ cap = 1)⌝ -∗ state m count -∗ Φ RetVoid) ∧
   (∀ l from e, ⌜(l = "L40" \/ l = "L88") /\ lookup ‹buf› e = Some (WPtr (mkPtr bb (Obj bb)))⌝ -∗
-    state 4 count -∗ WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None (Enter (TAtom l) from)) : sexpr) {{ Φ }})) -∗
+    state 4 count -∗ WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None (Enter (TAtom l) from)) : sexpr) {{ Φ }})) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
   cbn zeta. intros Hfr Hsize Hcap. iIntros "#Hvt (Hbuf & Hfp & HF & HE) HK".

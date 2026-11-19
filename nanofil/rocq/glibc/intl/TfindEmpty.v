@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_misc_tsearch_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: tfind` searches a binary tree whose root pointer lives in
     a cell that the caller names. The gettext lookup calls it to search
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic StrlenBits TfindCode.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic StrlenBits.
 From Nanofil Require Validate.
 From Glibc Require WordString.
 From Glibc Require Import Fix.
@@ -57,7 +58,7 @@ Lemma wp_glibc_tfind_empty e key rt rb ro rreg dq cmp Φ :
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   liveq dq rb rreg -∗ pcellq dq rb ro null -∗
   (liveq dq rb rreg -∗ pcellq dq rb ro null -∗ Φ (Ret (WPtr null))) -∗
-  WP (ERun (mkFrame glibc_tfind e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_misc_tsearch_os.fn___GI___tfind e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hv0 Hv2 Hv4 Hc Ha Hrb Hro Hal Hend Hreg. iIntros "Hl Hp HK".
   step. step. step. step. branch_symbolic.
@@ -76,7 +77,7 @@ Qed.
     null and the root cell. *)
 Lemma wp_call_glibc_tfind_empty f e ls l d g args rest j key rt rb ro rreg dq cmp Φ :
   map_option (arg_x ge e) args = Some [WPtr key; WPtr rt; WPtr cmp] ->
-  find_fn ge g = Some (Defined glibc_tfind) ->
+  find_fn ge g = Some (Defined Unit_misc_tsearch_os.fn___GI___tfind) ->
   (ptr_cap rt = Obj rb \/ ptr_cap rt = Ro rb) -> ptr_addr rt = rb + ro ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   liveq dq rb rreg -∗ pcellq dq rb ro null -∗
@@ -113,7 +114,7 @@ End rules.
 
 (** This definition finds the block named l in the captured function. *)
 Definition tblk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_tfind) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_misc_tsearch_os.fn___GI___tfind) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 (** These definitions list the temporaries a block reads, test whether it
     calls a function, and test whether it reads the temporary named x. *)
 Definition blk_uses (b : block) : list name :=

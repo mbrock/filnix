@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: _IO_new_do_write` (LibioDoWriteCode.v), which
     hands the n bytes from the write base to the jump table's write and
@@ -17,7 +18,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -71,7 +72,7 @@ Context (Hcall_spec : forall fb freg fl f2 fd tw off bb breg i xs rp rb wp we be
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      bytes fb off_column [0; 0] -∗ int_cell fb off_mode mode -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L9") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None (Enter (TAtom "iw_1.L9") (Some from))) : sexpr) {{ Φ }}).
 
 (** `c: _IO_new_do_write(fp, wb, n)` of the n bytes xs from the write
     base wb, offset i of the heap buffer bb, the stream's mode 0 or -1
@@ -85,7 +86,7 @@ Lemma wp_glibc__IO_new_do_write_mode fr fb freg fl f2 fd tw off bb breg i xs rp 
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -129,7 +130,7 @@ Lemma wp_glibc__IO_new_do_write fr fb freg fl f2 fd tw off bb breg i xs rp rb wp
   let n := Z.of_nat (length xs) in
   let wb := mkPtr (bb + i) (Obj bb) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr wb; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -162,7 +163,7 @@ Qed.
 Lemma wp_glibc__IO_new_do_write_base fr fb freg fl f2 fd tw off bb breg xs rp rb wp we be eb vb vreg mode Φ :
   let n := Z.of_nat (length xs) in
   let base := mkPtr bb (Obj bb) in
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr base; WInt n] = Some fr -> 0 < n ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr base; WInt n] = Some fr -> 0 < n ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> 0 <= fl < 2 ^ 32 -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
@@ -193,7 +194,7 @@ Qed.
 (** `c: _IO_new_do_write(fp, data, 0)`: nothing to write, so it
     returns 0 at once, touching nothing. *)
 Lemma wp_glibc__IO_new_do_write_zero fr fp data Φ :
-  call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.

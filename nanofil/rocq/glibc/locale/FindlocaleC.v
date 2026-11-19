@@ -3,6 +3,7 @@
     If none names a locale, it chooses "C". This proof follows the
     compiled lookups and returns the category's built-in locale data. *)
 
+From Glibc Require Import Unit_locale_findlocale_os Unit_stdlib_getenv_os Unit_string_strcmp_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,8 +11,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic StepRules Symbolic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes WordString GetenvCode GetenvEntry GetenvScan GetenvStatic
-  GetenvCall StartGetenv StrlenLogic StrncmpCode StrcmpBits StrcmpCode LocaleEnv FindlocaleCode FindlocaleEnv
+From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes WordString GetenvEntry GetenvScan GetenvStatic
+  GetenvCall StartGetenv StrlenLogic StrcmpBits LocaleEnv FindlocaleEnv
   FindlocaleCResult FindlocalePresent Fix.
 Module FL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic FL.
@@ -24,8 +25,8 @@ Local Abbreviation heap d := (mkRegion d (d+16) Heap Live).
 
 Section search.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{!Defines ge "__GI_getenv" glibc_getenv, !Defines ge "__GI_strlen" glibc_strlen,
-          !Defines ge "__GI_strncmp" glibc_strncmp}.
+Context `{!Defines ge "__GI_getenv" Unit_stdlib_getenv_os.fn___GI_getenv, !Defines ge "__GI_strlen" glibc_strlen,
+          !Defines ge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp}.
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (dq dqa dqt : dfrac) (bc : Z) (rc : region) (be : Z) (re : region) (counter : Z) (ep : ptr) (es : list getenv_entry)
   (Himage : getenv_image_ok ge bc rc be re) (Henv : c_locale_env (map entry_text es)).
@@ -39,8 +40,8 @@ Local Lemma locale_getenv e l d args rest j p s Φ :
   map_option (arg_x ge e) args = Some [WPtr p] -> In s locale_vars ->
   word_string DfracDiscarded p s -∗ globals -∗ storage -∗
   (∀ q, value q -∗ globals -∗ storage -∗
-    WP (ERun (mkFrame glibc_nl_find_locale (put d (WPtr q) e) [] None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_nl_find_locale e [] None (Exec l
+    WP (ERun (mkFrame Unit_locale_findlocale_os.fn__nl_find_locale (put d (WPtr q) e) [] None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_locale_findlocale_os.fn__nl_find_locale e [] None (Exec l
        (Call (CResult d P) (Global (TAtom "__GI_getenv")) args :: rest) j)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hx Hin. destruct Himage as (? & ? & ? & ? & ? & ? & ? & ? & ?). iIntros "#Hkey HG HS HK".
@@ -59,7 +60,7 @@ Context (ap lp : ptr) (cb ib nb idx cat : Z) (ir : region) (di dv : dfrac) (key 
   (Hix : 0 <= idx < 256) (Hkey : In key locale_vars).
 Local Notation keyptr := (mkPtr (nb+idx) (Ro nb)).
 Local Notation loans := (globals ∗ storage ∗ liveq di ib ir ∗ bytesq dv ib cat [idx])%I.
-Local Abbreviation enter e l pred := (ERun (mkFrame glibc_nl_find_locale e [] None (Enter (TAtom l) (Some pred))) : sexpr).
+Local Abbreviation enter e l pred := (ERun (mkFrame Unit_locale_findlocale_os.fn__nl_find_locale e [] None (Enter (TAtom l) (Some pred))) : sexpr).
 
 (** Each fallback joins the callers that already have a candidate and
     those that have just read one from the next variable. Both enter
@@ -125,10 +126,10 @@ Qed.
     The call only reads the environment, names and table, so their
     [[separation-logic|shares]] remain available for the next category. *)
 Lemma wp_findlocale_c fr b o reg p pb lb dqlo dqcell dqlife lr target tr Φ :
-  call_frame glibc_nl_find_locale [WPtr null; WInt 0; WInt cat; WPtr (mkPtr (b+o) (Obj b))] = Some fr ->
+  call_frame Unit_locale_findlocale_os.fn__nl_find_locale [WPtr null; WInt 0; WInt cat; WPtr (mkPtr (b+o) (Obj b))] = Some fr ->
   lookup (TAtom "_nl_POSIX_name") (ge_globals ge) = Some (rop pb) ->
   lookup (TAtom "_nl_C_locobj") (ge_globals ge) = Some (rop lb) ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   0 < b -> 0 <= o -> (b+o) mod 8 = 0 -> b+o+8 <= r_end reg -> r_end reg <= 2^48 ->
   0 < lb -> lb mod 8 = 0 -> lb+8*cat+8 <= r_end lr -> r_end lr <= 2^48 -> 0 <= ptr_addr target < 2^64 ->
   word_string DfracDiscarded p [] -∗ word_string DfracDiscarded (rop cb) (lit "C") -∗

@@ -2,6 +2,7 @@
     Only ENOMEM causes a mode check and possible wide fallback. This proof
     keeps the original error argument separate from that mutable errno.
     The fallback may change errno again before counting the report. *)
+From Glibc Require Import Unit_misc_error_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -9,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps ErrorCode ErrorEntry ErrorFallback Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps ErrorEntry ErrorFallback Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
@@ -44,9 +45,9 @@ Lemma wp_error_failure {dqs dqe : dfrac} e status errnum fmt ap mode cb sb sreg 
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
     liveq dqe eb ereg -∗ (∃ now, int_cell eb 0 now) -∗ error_mode_own fb freg en md -∗ R -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L22") (Some (TAtom "iw_2.start")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Herrno Heb Hee Her Hwide Hfn Hframe Hcall.

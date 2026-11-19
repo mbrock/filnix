@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The byte loop of `c: _IO_default_xsputn` (LibioGenCode.v), which
     copies a count of at most 20 bytes one at a time:
@@ -24,8 +25,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry MemFwdCode FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioDoWriteCode LibioDefaultXsputnCopy LibioDefaultXsputnBuf.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -38,7 +39,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** Block `c: L76` of `c: _IO_default_xsputn`, the byte loop's head. *)
 Definition dx_L76 : block := Eval vm_compute in
-  match find_block (TAtom "L76") (fn_blocks glibc__IO_default_xsputn) with
+  match find_block (TAtom "L76") (fn_blocks Unit_libio_genops_os.fn___GI__IO_default_xsputn) with
   | Some b => b | None => mkBlock (TAtom "L76") [] [] JRetVoid end.
 
 (** The names the byte loop binds. *)
@@ -77,9 +78,9 @@ Lemma wp_dx_bytes fb freg b reg sz k0 cnt dq b' reg' so c' ys j0 wp0 :
          length xs' = Z.to_nat sz /\ Forall (fun x => 0 <= x < 256) xs'⌝ -∗
        live fb freg -∗ pcell fb off_write_ptr (mkPtr (b + (k0 + cnt)) (Obj b)) -∗ live b reg -∗
        bytes b 0 xs' -∗ liveq dq b' reg' -∗ bytesq dq b' so ys -∗
-       WP (ERun (mkFrame glibc__IO_default_xsputn e' [] None (Enter (TAtom "L51") (Some (TAtom "L79"))))
+       WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_default_xsputn e' [] None (Enter (TAtom "L51") (Some (TAtom "L79"))))
              : sexpr) {{ Φ }}) -∗
-    WP (ERun (mkFrame glibc__IO_default_xsputn e [] None (Exec (TAtom "L76") (b_insts dx_L76) (b_jump dx_L76)))
+    WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_default_xsputn e [] None (Exec (TAtom "L76") (b_insts dx_L76) (b_jump dx_L76)))
           : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hfal Hfend Hfreg Hb Hbend Hbreg Hk0 Hkc Hc' Hso Hj0 Hjc Hyend Hyreg. unfold file_size in Hfend.

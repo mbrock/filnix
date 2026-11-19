@@ -3,7 +3,7 @@
     The function copies four bytes per character and returns the address
     just past the last one, which becomes the stream's write pointer. *)
 
-From Glibc Require Import HelloImageTypedWM.
+From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os Unit_wcsmbs_wmempcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv
-  LibioLogic LibioCloseSteps MemFwdCode LibioDefaultXsputnCopy WPrintfDispatch.
+  LibioLogic LibioCloseSteps LibioDefaultXsputnCopy WPrintfDispatch.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation at_obj b o := (mkPtr (b+o) (Obj b)).
@@ -20,14 +20,14 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 
-Definition wmempcpy_fn := hello_image_fn___wmempcpy.
+Definition wmempcpy_fn := Unit_wcsmbs_wmempcpy_os.fn___wmempcpy.
 
 Section copy.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hfn : find_fn ge (TAtom "zmemmove") = None) (Hsym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
-Context `{!Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI_mempcpy" glibc_mempcpy}.
+Context `{!Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}.
 
 (** The destination may start partway into the stream's buffer. The
     caller gets the whole buffer back at its original size, together

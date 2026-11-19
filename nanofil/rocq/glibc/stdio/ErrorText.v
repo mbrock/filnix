@@ -5,6 +5,7 @@
     The strerror contract owns the fresh buffer and supplies any borrowed
     result. A result that aliases the buffer uses its existing lifetime.
     Printing keeps these resources available to the reporting continuation. *)
+From Glibc Require Import Unit_misc_error_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  ErrorCode ErrorEntry Fix.
+  ErrorEntry Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -59,9 +60,9 @@ Lemma wp_error_text_loan e from status errnum fmt ap mode cb nb nreg count
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     live nb nreg -∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) -∗
     error_text_scratch borrowed errnum -∗ L -∗ (if decide (errnum = 0) then R else Q) -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Herrrange Hglobal Hnb Hne Hnr Htext Hstr Hfx Hstrcall Hfxcall.
@@ -112,9 +113,9 @@ Lemma wp_error_count_zero e from status fmt ap mode cb nb nreg count (E : iProp 
   live nb nreg -∗ int_cell nb 0 count -∗ E -∗
   (∀ e' predecessor, ⌜error_inputs e' status 0 fmt ap mode cb⌝ -∗
     live nb nreg -∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Hglobal Hnb Hne Hnr.
@@ -154,9 +155,9 @@ Lemma wp_error_text e from status errnum fmt ap mode cb nb nreg count
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     live nb nreg -∗ int_cell nb 0 ((count + 1) mod 2 ^ 32) -∗
     error_text_scratch borrowed errnum -∗ R -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.L92") (Some predecessor))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L19") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Herrrange Hglobal Hnb Hne Hnr Htext Hstr Hfx Hstrcall Hfxcall.

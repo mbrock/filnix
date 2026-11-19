@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** When a program runs in the C locale, glibc's message lookup returns
     the message it was given. This module proves the last block of that
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb DcigettextCode DcigettextFree.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb DcigettextFree.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -137,7 +138,7 @@ Lemma wp_dci_exit_fr e xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs
   r_kind xreg = Heap -> 0 < xd < 2 ^ 64 -> r_kind sreg = Heap -> 0 < sl < 2 ^ 64 ->
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ live sl sreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros [Hfn Hfl] Hge Hlk1 Hlk2 Hu1 Hu2 Hv17 Hc0 Hv232 Hv254 Hv69 Hs Hv6 Hv2
     Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd Hsk Hsl.
@@ -174,6 +175,6 @@ Lemma wp_dci_exit e xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs Φ
   r_kind xreg = Heap -> 0 < xd < 2 ^ 64 -> r_kind sreg = Heap -> 0 < sl < 2 ^ 64 ->
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ live sl sreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ U1' -∗ U2' -∗ errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L205") (Some (TAtom "L356")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros Hh. apply wp_dci_exit_fr, dci_free_rule_heap, Hh. Qed.
 End rules.

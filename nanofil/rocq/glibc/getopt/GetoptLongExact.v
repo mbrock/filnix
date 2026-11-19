@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** A caller of glibc's getopt_long passes a table of long options. Each
     entry is 32 bytes long and holds the option's name, whether it takes
@@ -18,7 +19,7 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrncmpCode StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
+  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
   GetoptDiag GetoptReqTail GetoptLongScan.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongScan GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop StrlenWord StrncmpLogic.
@@ -104,7 +105,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     their values from the caller's environment e. *)
 Lemma wp_long_exact_loop ks e (k : nat) cur s lo os b r Φ :
   avoids ks exact_names = true ->
-  find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp) ->
+  find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp) ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   lookup (TAtom "v12") e = Some (WPtr (mkPtr b (Obj b))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr (b + 32) (Obj b))) ->

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf's staged-byte overflow path either records failure or selects its
     next buffer and returns. A heap-backed stream supplies the storage needed
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode PrintfBufferFileCode PrintfBufferOverflowCaller
+  LibioCloseSteps PrintfBufferOverflowCaller
   PrintfBufferOverflowHeapSwitch.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowCaller PrintfBufferOverflowHeapSwitch PrintfStreamHeap SysWrappers.
 From Glibc Require Import Fix.
@@ -33,8 +34,8 @@ Context (vb : Z)
   (mode flags2 : Z)
   (held : option Z)
   (E : iProp Σ).
-Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{Hoverflow : !Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 Context (Hcall : PrintfBufferOverflowCall.printf_overflow_call_spec w0 registry ge
   (fun fp => printf_heap_stream w0 vb self fp mode flags2 held) E).
 
@@ -58,7 +59,7 @@ Lemma wp_printf_overflow_heap_caller e from bb breg fb ch bufmode oldbase oldptr
     live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 [ch] -∗
     int_cell bb 32 bufmode -∗ printf_heap_stream w0 vb self (mkPtr fb (Obj fb)) mode flags2 held -∗ E -∗
     pcell bb 0 start -∗ pcell bb 8 start -∗ pcell bb 16 stop -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hch Hv0 Hchk.

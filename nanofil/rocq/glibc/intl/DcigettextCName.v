@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** In the C locale glibc's `c: __dcigettext` copies the locale name "C"
     into a two-byte buffer before it tests that name. DcigettextC.v proves
@@ -16,7 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextCode DcigettextFree DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextFree DcigettextExit.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -86,8 +87,8 @@ Lemma wp_dci_c_name e cv sl sreg a0 a1 Φ :
   ▷ (∀ e', ⌜lookup (TAtom "pr.19") e' = Some (WPtr (mkPtr (sl + 1) (Obj sl))) /\
             lookup (TAtom "pr.9") e' = Some (WPtr (mkPtr (ptr_addr cv + 1) (ptr_cap cv))) /\ dci_c_kept e e'⌝ -∗
      live sl sreg -∗ ibyte sl 0 67 -∗ ibyte sl 1 a1 -∗
-     WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+     WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hcv Hsl Hsl0 Hslend Hslr.
   iIntros "#Hw Hl Hb0 Hb1 HK".

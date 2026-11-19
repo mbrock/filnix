@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** In the C locale glibc's `c: __dcigettext` copies the locale name "C"
     into a fresh buffer and then reads the privilege flag
@@ -21,8 +22,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextCode DcigettextFree DcigettextExit.
-From Glibc Require Import StrlenLogic MemFwdLogic StrchrCode StrchrnulLogic DcigettextCName.
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextFree DcigettextExit.
+From Glibc Require Import StrlenLogic MemFwdLogic StrchrnulLogic DcigettextCName.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -46,8 +47,8 @@ Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in
     strchrnul. This predicate says that the program links both names to
     the captured functions. *)
 Definition dci_strchr_links : Prop :=
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul).
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul).
 
 (** The privileged branch looks for a slash in the copied name. The
     captured strchr reads a whole word at a time, so the caller lends the
@@ -123,7 +124,7 @@ Lemma wp_dci_c_secure_tail e cv9 sl sreg a1 sec secreg dqs v xs xsreg xd xreg s 
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 v -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L298") (Some (TAtom "L304")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hv Hlinks Hp19 Hp9 Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2 Hv32
     Hsl0 Hsl8 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.
@@ -175,7 +176,7 @@ Lemma wp_dci_c_locale_v_fr e cv sl sreg a0 a1 sec secreg dqs v xs xsreg xd xreg 
   live xs xsreg -∗ pcell xs 0 null -∗ live xd xreg -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
   ▷ (live xs xsreg -∗ pcell xs 0 null -∗ liveq dqs sec secreg -∗ int_cellq dqs sec 0 v -∗ U1' -∗ U2' -∗
      errno_own eb (le_bytes s 4) -∗ Φ (Ret (WPtr msgid))) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "L263") (Some (TAtom "L235")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hsec Hsec0 Hsec4 Hsecend Hsecr Hv Hlinks Hcv Hsl Hv17 Hc0 Hv232 Hv69 Hs Hv6 Hv2 Hv32
     Hsl0 Hsl8 Hslend Hslr Hsk Hxs0 Hxs8 Hxsend Hxsr Hxk Hxd.

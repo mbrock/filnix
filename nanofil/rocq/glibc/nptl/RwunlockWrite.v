@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os.
 From Glibc Require Import GlibcProgram.
 (** After `c: setlocale` changes the global locale, it releases its
     lock with `c: pthread_rwlock_unlock`. The function sees that the
@@ -20,7 +21,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RwunlockCode RdlockLogic.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RdlockLogic.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -47,7 +48,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
     the state that taking it left, nobody may wait on it, and it must
     prefer readers. *)
 Lemma wp_glibc_rwunlock_write fr lb lreg wf sh tb treg dqt dqi tid Φ :
-  call_frame glibc_pthread_rwlock_unlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
+  call_frame Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + 724 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 56 <= r_end lreg -> r_end lreg <= 2 ^ 63 ->
   (wf = 0 \/ wf = 1) ->

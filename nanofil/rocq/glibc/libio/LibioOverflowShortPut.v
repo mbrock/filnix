@@ -3,6 +3,7 @@
     and then sets the write end to that same address. This leaves no
     room for a caller to write straight into the short buffer. *)
 
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic LibioDoWriteCode
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic
   LibioPutsInv LibioOverflowBase LibioOverflowShortWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -39,8 +40,8 @@ Lemma wp_short_put fb freg ch fl mode rb wb wp we from e Φ :
   ▷ (∀ e', ⌜lookup (TAtom "v0") e' = Some (WPtr (mkPtr fb (Obj fb))) /\
             lookup (TAtom "v2") e' = Some (WInt ch) /\ lookup (TAtom "chk0") e' = Some (WPtr (mkPtr fb (Obj fb)))⌝ -∗
     live fb freg -∗ int_cell fb off_flags (Z.lor fl 2048) -∗ int_cell fb off_mode mode -∗ short_ptrs fb sb sb -∗
-    WP (ERun (mkFrame glibc__IO_new_file_overflow e' [] None (Enter (TAtom "L18") (Some (TAtom "L155")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : gexpr) {{ Φ }}.
+    WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e' [] None (Enter (TAtom "L18") (Some (TAtom "L155")))) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hrend Hbk Hu Hmd Hv0 Hv2 Hc0 Hc6. cbn zeta.
   iIntros "Hl [%Hfl Hflags] [%Hm Hmode] Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HK".

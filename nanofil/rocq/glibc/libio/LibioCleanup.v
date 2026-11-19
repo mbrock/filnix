@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves `c: _IO_cleanup ()` (LibioCleanupCode.v,
     libio/genops.c), which `c: exit` calls after the atexit handlers
@@ -28,7 +29,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioCleanupCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
   LibioCleanupStart LibioCleanupLock LibioCleanupPass.
@@ -50,9 +51,9 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
-Context `{Hflush : !Defines ge "__GI__IO_flush_all" glibc__IO_flush_all}.
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
+Context `{Hflush : !Defines ge "__GI__IO_flush_all" Unit_libio_genops_os.fn___GI__IO_flush_all}.
 Context (Hpush_spec : push_spec w0 registry ge)
   (Hpop_spec : pop_spec w0 registry ge).
 
@@ -79,9 +80,9 @@ Lemma cleanup_loop rest prev e from r cb rf rfreg sb sreg Φ :
   (∀ e', ⌜lookup (TAtom "v1") e' = Some (WInt r) /\ lookup (TAtom "iw_1.v2") e' = Some (WPtr cb)⌝ -∗
      live rf rfreg -∗ pcell rf 0 null -∗ chain_links prev rest -∗
      ([∗ list] g ∈ rest, stream_life g ∗ exit_stream true g) -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e' [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81"))))
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e' [] None (Enter (TAtom "iw_1.L386") (Some (TAtom "iw_1.L81"))))
           : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L81") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L81") (Some from))) : sexpr) {{ Φ }}.
 Proof using Hext Hreg.
   intros Hgrf Hral Hrend Hsz. revert prev e from.
   induction rest as [|g rest IH]; intros prev e from Hph Hv1 Hv2; cbn [head_ptr] in Hph.
@@ -95,7 +96,7 @@ Proof using Hext Hreg.
     iDestruct (head_life with "Hfs") as (nreg Hnx) "[Hnl Hback]".
     iAssert (∀ e0, ⌜lookup (TAtom "iw_1.pr.1") e0 = Some (WPtr (mkPtr gb (Obj gb))) /\
                     lookup (TAtom "v1") e0 = Some (WInt r) /\ lookup (TAtom "iw_1.v2") e0 = Some (WPtr cb)⌝ -∗
-      WP (ERun (mkFrame glibc__IO_cleanup e0 [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81"))))
+      WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e0 [] None (Enter (TAtom "iw_1.L82") (Some (TAtom "iw_1.L81"))))
            : sexpr) {{ Φ }})%I with "[-]" as "Hpass".
     { iIntros (e0 (Hp1 & Hv1' & Hv2')).
       iApply (cleanup_pass Hreg Hext with "Hs Hl HX Hrl Hrc Hnc Hnl");
@@ -121,7 +122,7 @@ Qed.
     result, 0 or EOF, with the list as it was, every stream's mode -1,
     and the cleanup fields restored. *)
 Lemma wp_glibc__IO_cleanup fr (P : ptr -> iProp Σ) fs sb sreg fcp Φ :
-  flush_body w0 registry ge P (exit_stream false) -> call_frame glibc__IO_cleanup [] = Some fr ->
+  flush_body w0 registry ge P (exit_stream false) -> call_frame Unit_libio_genops_os.fn__IO_cleanup [] = Some fr ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge fs -∗
   ([∗ list] g ∈ fs, stream_life g ∗ P g) -∗

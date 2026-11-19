@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** Once glibc's `c: __dcigettext` has chosen the locale name, it builds
     the name of the catalog file that it would open. This module proves
@@ -19,7 +20,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import GetoptLongPfxAlloc DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
+From Glibc Require Import GetoptLongPfxAlloc DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -77,8 +78,8 @@ Lemma wp_dci_join_fr e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1
       obj xd (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Henv Hv7 Hv9 Hs Hxs0 Hxs8 Hxsend Hxsr Hheap Hmal Hge Hlk1 Hlk2 Hu1 Hu2.
   pose proof Henv as (Hv17 & Hc0 & Hv21 & Hv23 & Hpr1 & Hv2 & Hv6 & Hv10 & Hv32 & Hv69 & Hv90).
@@ -137,7 +138,7 @@ Lemma wp_dci_join e xs xreg rl sb dom msgid cv s cp cat dqc ds dqd lk1 lk2 U1 U1
       obj xd (heap_req 16 (Z.of_nat (length cat + length ds) + 5)) -∗
       word_string dqc cp cat -∗ word_string dqd dom ds -∗ M -∗
       live xs xreg -∗ pcell xs 0 null -∗ U1 -∗ U2 -∗ errno_own eb bs -∗
-      WP (ERun (mkFrame glibc_dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
+      WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e' [] None (Enter (TAtom "L235") (Some (TAtom "iw_3.join")))) : gexpr) {{ Φ }})) -∗
+  WP (ERun (mkFrame Unit_intl_dcigettext_os.fn___dcigettext e [] None (Enter (TAtom "iw_3.join") (Some (TAtom "iw_3.L16")))) : gexpr) {{ Φ }}.
 Proof using Type*. intros. eapply wp_dci_join_fr; eauto using dci_free_rule_heap. Qed.
 End rules.

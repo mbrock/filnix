@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf must locate its output stream before passing a character to it.
     It reads the FILE pointer stored in its buffer header without changing
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferFileCode PrintfBufferOverflowReturn.
+  LibioCloseSteps PrintfBufferOverflowReturn.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -39,10 +40,10 @@ Lemma wp_printf_overflow_prelude e from bb breg fb freg dqf Φ :
        lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (bb + 24) (Obj bb))) /\
        lookup (TAtom "v91") e' = Some (WPtr (mkPtr fb (Obj fb)))⌝ -∗
      live bb breg -∗ pcell bb 40 (mkPtr fb (Obj fb)) -∗ liveq dqf fb freg -∗
-     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+     WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
        (Exec (TAtom "L74") (skipn 3 (b_insts printf_overflow_block))
          (b_jump printf_overflow_block))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Enter (TAtom "L74") from)) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hbb Hba Hbe Hbr Hfb Hfr Hv0 Hchk. iIntros "Hb Hfp Hf HK".

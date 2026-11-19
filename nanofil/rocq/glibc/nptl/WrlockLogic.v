@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_pthread_rwlock_wrlock_os.
 From Glibc Require Import GlibcProgram.
 (** glibc's `c: setlocale` takes its global lock for writing before it
     changes the global locale. This module proves the captured
@@ -23,7 +24,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers WrlockCode RdlockLogic.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RdlockLogic.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -66,7 +67,7 @@ Local Ltac wr_start_phase :=
     the word 3. The write-phase futex becomes 1 when the call starts the
     write phase, and the thread's id becomes the writer. *)
 Lemma wp_glibc_wrlock_idle fr lb lreg r wp wf cw tb treg dqt dqi tid Φ :
-  call_frame glibc_pthread_rwlock_wrlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
+  call_frame Unit_nptl_pthread_rwlock_wrlock_os.fn____pthread_rwlock_wrlock [WPtr (mkPtr lb (Obj lb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + 724 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < lb -> lb mod 8 = 0 -> lb + 56 <= r_end lreg -> r_end lreg <= 2 ^ 63 ->
   (r = 0 \/ r = 1) -> cw <> tid ->

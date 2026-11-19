@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_memcmp_os Unit_string_memrchr_os.
 From Glibc Require Import GlibcProgram.
 (** This file packages the two proved searches needed by set_program_name.
     Sealing these results avoids substituting their internal proof modules
@@ -9,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld WordString MemchrLast StrrchrLogic MemrchrBits MemrchrCode MemrchrLogic MemcmpCode MemcmpLogic.
+From Glibc Require Import OsWorld WordString MemchrLast StrrchrLogic MemrchrBits MemrchrLogic MemcmpLogic.
 From Glibc Require MemcmpLogic MemrchrLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -25,7 +26,7 @@ Import ML.
 Section spec.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Reverse search returns the last matching byte while preserving the string. *)
-Parameter name_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined glibc_memrchr) ->
+Parameter name_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined Unit_string_memrchr_os.fn___GI___memrchr) ->
   exists F, find_fn ge (TAtom "__GI___memrchr") = Some (Defined F) /\
   (forall p c n, is_Some (call_frame F [WPtr p; WInt c; WInt n])) /\
   forall fr dq p s c Φ, 0 <= c < 2 ^ 32 ->
@@ -34,7 +35,7 @@ Parameter name_memrchr : find_fn ge (TAtom "__GI___memrchr") = Some (Defined gli
     (word_string dq p s -∗ Φ (Ret (WPtr (hit_ptr p (last_byte (c mod 256) (s ++ [0])))))) -∗
     WP (ERun fr : language.expr (nanofil_lang registry ge)) {{ Φ }}.
 (** Byte comparison returns zero exactly for equal small byte sequences. *)
-Parameter name_memcmp : find_fn ge (TAtom "memcmp") = Some (Defined glibc_memcmp) ->
+Parameter name_memcmp : find_fn ge (TAtom "memcmp") = Some (Defined Unit_string_memcmp_os.fn___GI_memcmp) ->
   exists F, find_fn ge (TAtom "memcmp") = Some (Defined F) /\
   (forall p q n, is_Some (call_frame F [WPtr p; WPtr q; WInt n])) /\
   forall fr dq1 dq2 b reg o c xs b' reg' o' c' ys Φ,

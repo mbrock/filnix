@@ -11,6 +11,7 @@
     rounds by induction and matches them with [dec_digits_from], which
     computes the same digits in the same order. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon__fitoa_word_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic PrintfSpec ItoaWordSpec ItoaWordCode.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic PrintfSpec ItoaWordSpec.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -57,7 +58,7 @@ Proof. cbn. lia. Qed.
     block of the compiled function with label l, and [iblk20] is the
     body of the loop. *)
 Definition iblk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_itoa_word) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 Definition iblk20 : block := Eval vm_compute in iblk "L20".
 
 (** ## The loop
@@ -123,7 +124,7 @@ Lemma itoa_loop (n : nat) u acc a b reg hi old tb treg e Φ :
   liveq DfracDiscarded tb treg -∗ bytesq DfracDiscarded tb 0 lower_digits_bytes -∗
   (live b reg -∗ bytes b (hi - 20) (take (20 - length (dec_digits_from n u acc)) old ++ dec_digits_from n u acc) -∗
    Φ (Ret (WPtr (mkPtr (b + hi - Z.of_nat (length (dec_digits_from n u acc))) (Obj b))))) -∗
-  WP (ERun (mkFrame glibc_itoa_word
+  WP (ERun (mkFrame Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word
       (put (TAtom "pr.1") (WInt u) (put (TAtom "pr.6") (WPtr (mkPtr a (Obj b))) e))
       [] None (Exec (TAtom "L20") (b_insts iblk20) (b_jump iblk20))) : sexpr) {{ Φ }}.
 Proof.
@@ -174,10 +175,10 @@ Qed.
     with the base ten, and it relies on this lemma for that call. The
     lemma holds for each name n under which the program defines the
     compiled function. *)
-Lemma itoa_word_has_spec (n : string) `{!Defines ge n glibc_itoa_word} :
+Lemma itoa_word_has_spec (n : string) `{!Defines ge n Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word} :
   HasSpec registry (os_wi w0) ge (TAtom n) itoa_word_spec.
 Proof.
-  intros [[[[v b] reg] hi] old]. exists glibc_itoa_word. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [[[[v b] reg] hi] old]. exists Unit_stdioZ2dcommon__fitoa_word_os.fn__itoa_word. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args itoa_word_spec].
   iIntros "[%Hp (Hl & Hbs & Hro)] HK". destruct Hp as (Hv & Hb & Hhi & Hend & Hmax & Hold).
   iDestruct "Hro" as (tb treg (Hg & Htb & Htend & Htmax)) "[#Htl #Htb]".

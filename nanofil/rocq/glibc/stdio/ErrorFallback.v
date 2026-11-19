@@ -2,6 +2,7 @@
     orientation. A positive signed mode selects the wide fallback message;
     zero and negative modes skip it. This proof follows both paths and
     leaves the wide printing call as a separate contract. *)
+From Glibc Require Import Unit_misc_error_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -9,7 +10,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps ErrorCode ErrorEntry Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps ErrorEntry Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
@@ -38,9 +39,9 @@ Lemma wp_error_fallback {dqs : dfrac} e status errnum fmt ap mode cb sb sreg fb 
   (∀ e' predecessor, ⌜error_inputs e' status errnum fmt ap mode cb⌝ -∗
     liveq dqs sb sreg -∗ pcellq dqs sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗
     int_cell fb 192 md -∗ R -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e' [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
       (Enter (TAtom "iw_2.L19") (Some predecessor))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L67") (Some (TAtom "iw_2.L23")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hinputs Hg Hsb Hsa Hse Hsr Hfb Hfe Hfr Hwide Hfn Hframe Hcall.

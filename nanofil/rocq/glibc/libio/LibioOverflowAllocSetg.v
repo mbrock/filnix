@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** A stream's first overflow allocates a buffer and points its read
     pointers at the buffer's base. This file proves that part of the
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioSetb LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -48,7 +49,7 @@ Context {write_ready : Z -> Prop}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The genv defines `c: _IO_doallocbuf`. *)
-Context `{Hdabf : !Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
+Context `{Hdabf : !Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
 (** The allocator's state, which `c: malloc` takes and gives back. *)
 Context (Mres : iProp Σ).
 
@@ -56,7 +57,7 @@ Context (Mres : iProp Σ).
     LibioDoAllocBuf.v's [wp_glibc__IO_doallocbuf_alloc] proves it with
     LibioDoAllocBase.v's [doalloc_k] and [new_buf] unfolded. *)
 Context (Hdab : forall fr fb freg fl fd eb oe vb vreg Φ,
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 -> Z.land fl io_unbuffered = 0 ->
   vtables_ro ge vb vreg -∗
@@ -91,7 +92,7 @@ Context (HL35 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off 
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = Z.lor fl 2048 \/ fl' = Z.lor (Z.lor fl 2048) io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L35") (Some from))) : sexpr) {{ Φ }}).
 
 (** Block `c: L33`: `c: _IO_doallocbuf` installs a buffer, and its
     base becomes every read pointer; then block `c: L35`. *)
@@ -115,7 +116,7 @@ Lemma wp_ovf_L33 fb freg ch f2 fd eb mode vb vreg fl tw off rp re rb wp0 we0 oe 
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      auxes bb 0 (replicate (Z.to_nat sz) CNone) -∗ Mres -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L33") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Hfd31 Happ Hnw Hnp Hbk Hub He Hmd Hv0 Hv2 Hc0 Hc6.
   iIntros "#Hvt Hl Hfx [%Hflr Hflb] Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend HM HK". unfold file_size in Hend.

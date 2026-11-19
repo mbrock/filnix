@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** A stream can ask glibc to write without changing thread cancellation
     state. Both write branches must preserve the same bytes and stream
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit LibioWriteCallDq.
 From Glibc Require FileInv LibioLogic LibioWriteCallDq LibioWriteExit OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -21,7 +22,7 @@ Open Scope Z_scope.
 
 (** The call branches join at this block before testing the result. *)
 Definition fw_L16 : block := Eval vm_compute in
-  match find_block (TAtom "L16") (fn_blocks glibc__IO_new_file_write) with
+  match find_block (TAtom "L16") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_write) with
   | Some b => b | None => mkBlock (TAtom "L16") [] [] JRetVoid end.
 
 
@@ -32,7 +33,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}.
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
 
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -44,7 +45,7 @@ Lemma wp_file_write_join_dq fb freg f2 fd dq b reg c o xs eb t e {src keep} Φ :
   write_source_life fb freg dq b reg src keep ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   (Z.land f2 2 = 0 \/
-    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+    Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> c = Obj b \/ c = Ro b ->
   0 < b -> 0 <= o -> b + o + Z.of_nat (length xs) <= r_end reg -> r_end reg <= 2 ^ 63 ->
@@ -60,9 +61,9 @@ Lemma wp_file_write_join_dq fb freg f2 fd dq b reg c o xs eb t e {src keep} Φ :
               ((0 <= k <= t /\ k < 2 ^ 31) \/ k = 2 ^ 64 - 1)⌝ -∗
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_fileno fd -∗ src -∗
      bytesq dq b o xs -∗ errno_any eb -∗
-     WP (ERun (mkFrame glibc__IO_new_file_write e' [] None
+     WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e' [] None
        (Exec (TAtom "L16") (b_insts fw_L16) (b_jump fw_L16))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_write e [] None
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_write e [] None
     (Enter (TAtom "L9") (Some (TAtom "L8")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hloan Hfb Hal Hend Hfreg Hcalls Hf2r Hfd He Hc Hb Ho Hbend Hreg' Hy Ht Hv0 Ht' Hp.

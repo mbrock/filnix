@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_io_close_nocancel_nostatus_os Unit_io_close_nocancel_os Unit_io_fstat64_os Unit_io_lseek64_os Unit_io_write_os.
+From Glibc Require Import Unit_posix__exit_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram.
 (** Glibc wraps runtime system calls in C functions that normalize their results.
     This module proves contracts for those wrappers over the OS state in
@@ -17,7 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsWrite OsFstat OsIoctl OsLseek OsClose OsExit OsThread
-  OsRegistry SysCode FileInv LibioLogic.
+  OsRegistry FileInv LibioLogic.
 From Glibc Require FileInv LibioLogic OsClose OsExit OsFstat OsIoctl OsLseek OsWorld OsWrite.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec LibioSpecs.
@@ -97,7 +99,7 @@ Ltac sides := try first [os_side | args_x | assumption].
 (** The exit wrapper calls the runtime's hard-exit operation, which halts.
     It therefore satisfies any postcondition without returning to its caller. *)
 Lemma wp_glibc__exit fr bits Φ :
-  call_frame glibc__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
+  call_frame Unit_posix__exit_os.fn___GI__exit [WInt bits] = Some fr -> ⊢ WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfr. injection Hfr as <-. step.
   iApply (OsExit.wp_zsys_exit_hard); sides.
@@ -108,7 +110,7 @@ Qed.
 (** The write wrapper accepts a known descriptor and a readable buffer.
     It returns a bounded byte count or minus one, preserving the buffer and errno ownership. *)
 Lemma wp_glibc___libc_write fr fd p n eb ps Φ :
-  call_frame glibc___libc_write [WInt fd; WPtr p; WInt n] = Some fr ->
+  call_frame Unit_io_write_os.fn___GI___libc_write [WInt fd; WPtr p; WInt n] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= n < 2 ^ 64 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   (forall m, all_agree m ps -> os_readable m p n) ->
@@ -129,7 +131,7 @@ Qed.
 (** The stat wrapper writes into an owned buffer for a known descriptor.
     It returns zero or minus one and restores ownership of the buffer's new bytes. *)
 Lemma wp_glibc___fstat64 fr fd b reg o eb Φ :
-  call_frame glibc___fstat64 [WInt fd; WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
+  call_frame Unit_io_fstat64_os.fn___GI___fstat64 [WInt fd; WPtr (mkPtr (b + o) (Obj b))] = Some fr ->
   0 <= fd < 2 ^ 32 -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   0 <= o -> b + o + stat_size <= r_end reg ->
   live b reg -∗ blk_any b o stat_size -∗ errno_any eb -∗
@@ -150,7 +152,7 @@ Qed.
 (** The seek wrapper changes the position of a known descriptor.
     It returns the new offset below 2^63, or minus one on failure. *)
 Lemma wp_glibc___lseek64 fr fd off wh eb Φ :
-  call_frame glibc___lseek64 [WInt fd; WInt off; WInt wh] = Some fr ->
+  call_frame Unit_io_lseek64_os.fn___lseek64 [WInt fd; WInt off; WInt wh] = Some fr ->
   0 <= fd < 2 ^ 32 -> 0 <= off < 2 ^ 64 -> 0 <= wh < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   errno_any eb -∗
@@ -171,7 +173,7 @@ Qed.
 (** The close wrapper returns zero or minus one and preserves errno ownership.
     It accepts any descriptor because the runtime does not require a registered descriptor for close. *)
 Lemma wp_glibc___close_nocancel fr fd eb Φ :
-  call_frame glibc___close_nocancel [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
+  call_frame Unit_io_close_nocancel_os.fn___GI___close_nocancel [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   errno_any eb -∗ ▷ (∀ k, ⌜k = 0 \/ k = 2 ^ 32 - 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt k))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -185,7 +187,7 @@ Qed.
 
 (** The no-status variant discards close's result and returns void. *)
 Lemma wp_glibc___close_nocancel_nostatus fr fd eb Φ :
-  call_frame glibc___close_nocancel_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
+  call_frame Unit_io_close_nocancel_nostatus_os.fn___GI___close_nocancel_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   errno_any eb -∗ ▷ (errno_any eb -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.
@@ -199,7 +201,7 @@ Qed.
 (** The terminal query allocates a temporary buffer and asks the kernel for terminal settings.
     It returns one when the query succeeds and zero otherwise, preserving errno ownership. *)
 Lemma wp_glibc___isatty_nostatus fr fd eb Φ :
-  call_frame glibc___isatty_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
+  call_frame Unit_termios_isatty_nostatus_os.fn___isatty_nostatus [WInt fd] = Some fr -> 0 <= fd < 2 ^ 32 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   errno_any eb -∗ ▷ (∀ r, ⌜r = 0 \/ r = 1⌝ -∗ errno_any eb -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -223,10 +225,10 @@ Proof using Type*.
 Qed.
 
 (** The linked close wrapper establishes the descriptor-close contract. *)
-#[global] Instance close_has_spec n `{!Defines ge n glibc___close_nocancel} :
+#[global] Instance close_has_spec n `{!Defines ge n Unit_io_close_nocancel_os.fn___GI___close_nocancel} :
   HasSpec registry (os_wi w0) ge (TAtom n) LibioSpecs.close_spec.
 Proof using Type*.
-  intros [fd eb]. exists glibc___close_nocancel. split; [apply defines|].
+  intros [fd eb]. exists Unit_io_close_nocancel_os.fn___GI___close_nocancel. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post LibioSpecs.close_spec]. iIntros "((%Hfd & %He) & Herr) HK".
   iApply (wp_glibc___close_nocancel fr fd eb with "Herr"); try assumption.
@@ -234,10 +236,10 @@ Proof using Type*.
 Qed.
 
 (** The linked terminal wrapper establishes the terminal-query contract. *)
-#[global] Instance isatty_has_spec n `{!Defines ge n glibc___isatty_nostatus} :
+#[global] Instance isatty_has_spec n `{!Defines ge n Unit_termios_isatty_nostatus_os.fn___isatty_nostatus} :
   HasSpec registry (os_wi w0) ge (TAtom n) isatty_spec.
 Proof using Type*.
-  intros [fd eb]. exists glibc___isatty_nostatus. split; [apply defines|].
+  intros [fd eb]. exists Unit_termios_isatty_nostatus_os.fn___isatty_nostatus. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post isatty_spec]. iIntros "((%Hfd & %He & %Hin) & Herr) HK".
   iApply (wp_glibc___isatty_nostatus fr fd eb with "Herr"); try assumption.
@@ -245,10 +247,10 @@ Proof using Type*.
 Qed.
 
 (** The linked stat wrapper establishes the stat-buffer contract. *)
-#[global] Instance fstat_has_spec n `{!Defines ge n glibc___fstat64} :
+#[global] Instance fstat_has_spec n `{!Defines ge n Unit_io_fstat64_os.fn___GI___fstat64} :
   HasSpec registry (os_wi w0) ge (TAtom n) fstat_spec.
 Proof using Type*.
-  intros [[[[fd b] reg] o] eb]. exists glibc___fstat64. split; [apply defines|].
+  intros [[[[fd b] reg] o] eb]. exists Unit_io_fstat64_os.fn___GI___fstat64. split; [apply defines|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr.
   cbn [fs_pre fs_post fstat_spec]. iIntros "((%Hfd & %He & %Hin & %Ho & %Hend) & Hl & Hb & Herr) HK".
   iApply (wp_glibc___fstat64 fr fd b reg o eb with "Hl Hb Herr"); try assumption.

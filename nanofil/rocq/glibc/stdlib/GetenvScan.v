@@ -10,8 +10,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules Symbolic.
+From Glibc Require Import Unit_stdlib_getenv_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString
-  GetoptBytes GetenvCode GetenvEntry GetenvName GetenvCompare StrncmpCode.
+  GetoptBytes GetenvEntry GetenvName GetenvCompare.
 Import ListNotations LG0 LG0.L ProgramAbbreviations GetoptBytes GetoptBytes.ML.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -105,10 +106,10 @@ Lemma getenv_scan_load e (first : bool) p cursor n old q b reg o qr dq dqt (G : 
   liveq dq b reg -∗ pcellq dq b o q -∗ live_capq dqt (ptr_cap q) qr -∗ G -∗
   (∀ e', ⌜getenv_scan_bindings e' p cursor n old /\ lookup (TAtom "v38") e' = Some (WPtr q)⌝ -∗
     liveq dq b reg -∗ pcellq dq b o q -∗ live_capq dqt (ptr_cap q) qr -∗ G -∗
-    WP (ERun (mkFrame glibc_getenv e' [] None
+    WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e' [] None
       (Enter (TAtom (if ptr_addr q =? 0 then "L35" else "L41")) (Some (TAtom "L32"))))
       : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
     (Enter (TAtom "L32") (Some (TAtom (if first then "L13" else "L34"))))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hp Hcursor Hn Hold Hz -> Hb Ho Hend Hspace Hal Hq.
@@ -131,7 +132,7 @@ Qed.
     marks the end and causes getenv to reread the counter before returning.
     The caller keeps all memory permissions across these iterations. *)
 Lemma getenv_scan e (first : bool) p s entries b reg o dq dqt bc rc dc counter (E : iProp Σ) Φ
-    `{!Defines ge "__GI_strncmp" glibc_strncmp} :
+    `{!Defines ge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp} :
   s <> [] ->
   lookup (TAtom "v0") e = Some (WPtr p) ->
   lookup (TAtom (if first then "v10" else "v81")) e = Some (WPtr (mkPtr (b + o) (Obj b))) ->
@@ -144,7 +145,7 @@ Lemma getenv_scan e (first : bool) p s entries b reg o dq dqt bc rc dc counter (
   liveq dc bc rc -∗ icellq dc bc 0 counter -∗ E -∗
   (getenv_vector dq dqt b reg o entries -∗ liveq dc bc rc -∗ icellq dc bc 0 counter -∗ E -∗
     Φ (Ret (WPtr (getenv_scan_result s entries)))) -∗
-  WP (ERun (mkFrame glibc_getenv e [] None
+  WP (ERun (mkFrame Unit_stdlib_getenv_os.fn___GI_getenv e [] None
     (Enter (TAtom "L32") (Some (TAtom (if first then "L13" else "L34"))))) : gexpr) {{ Φ }}.
 Proof using Type.
   revert e first o E. induction entries as [|x xs IH];

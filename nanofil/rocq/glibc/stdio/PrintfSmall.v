@@ -11,6 +11,7 @@
     of the helpers needs. Each helper is only a few instructions long,
     so its proof goes through the instructions in order. *)
 
+From Glibc Require Import Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,8 +19,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic WordString StrchrCode StrchrnulLogic
-  FormatterCode FormatterScan FormatterLiteral CStruct PrintfLayout PrintfOut PrintfSpec.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic WordString StrchrnulLogic
+  FormatterScan FormatterLiteral CStruct PrintfLayout PrintfOut PrintfSpec.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -59,7 +60,7 @@ Qed.
     that function too. *)
 Lemma find_spec_has_spec
     `{!Defines ge "glibc_vfprintf_internal#__find_specmb.gnu_inline" glibc_find_specmb}
-    `{!Defines ge "__GI___strchrnul" glibc_strchrnul} :
+    `{!Defines ge "__GI___strchrnul" Unit_string_strchrnul_os.fn___GI___strchrnul} :
   HasSpec registry (os_wi w0) ge (TAtom "glibc_vfprintf_internal#__find_specmb.gnu_inline") find_spec_spec.
 Proof using Type.
   intros [[dq p] s]. exists glibc_find_specmb. split; [exact defines|]. split; [eexists; reflexivity|].

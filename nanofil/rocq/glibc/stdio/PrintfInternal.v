@@ -12,6 +12,7 @@
     calls are hypotheses of this module, and each speaks of a buffer
     that prints to a stream. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,8 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy LibioLogic LibioFputsSpec AllocRo WordString FxprintfStream
-  NarrowFormat NarrowArgs DcigettextExit FormatterCode FormatterSrc FormatterNames
-  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfBufferFileCode PrintfFileInit PrintfFileOut
+  NarrowFormat NarrowArgs DcigettextExit FormatterSrc FormatterNames
+  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfFileInit PrintfFileOut
   PrintfFlushChoice PrintfFlush PrintfDone PrintfFileEntry.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
@@ -52,8 +53,8 @@ Local Ltac alloc_drop :=
 
 Section vfprintf.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context `{!Defines ge "__printf_buffer_to_file_init" glibc___printf_buffer_to_file_init}.
-Context `{!Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
+Context `{!Defines ge "__printf_buffer_to_file_init" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_init}.
+Context `{!Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
 (** The formatter and the function that finishes the buffer both write
     to the stream. A write needs the stream's descriptor to be open,
     and it needs errno to belong to the running thread. This section
@@ -141,7 +142,7 @@ Definition vfp_blocks : list bspec :=
 (** The entry block allocates the local variables and settles the
     stream's orientation. *)
 Lemma vfp_start_row :
-  ▷ blocks_hold glibc_vfprintf_internal vfp_blocks ⊢ block_triple glibc_vfprintf_internal
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal vfp_blocks ⊢ block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal
     (BSpec "start" None vfp_sig vfp_in vfp_vals (fs_pre vfprintf_spec) (fs_post vfprintf_spec)).
 Proof using Type.
   iIntros "#IH". iModIntro.
@@ -180,7 +181,7 @@ Qed.
     be written and that the format is not null. It then sets the
     buffer up, runs the formatter and finishes the buffer. *)
 Lemma vfp_mid_row :
-  ▷ blocks_hold glibc_vfprintf_internal vfp_blocks ⊢ block_triple glibc_vfprintf_internal
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal vfp_blocks ⊢ block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal
     (BSpec "L28" None mid_sig vfp_mid mid_vals mid_pre (fun m => fs_post vfprintf_spec (vm_in m))).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -257,7 +258,7 @@ Proof using Type*.
 Qed.
 
 (** The two rows together prove the table. *)
-Lemma vfp_table : ⊢ blocks_hold glibc_vfprintf_internal vfp_blocks.
+Lemma vfp_table : ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal vfp_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". iSplit; [iApply (vfp_start_row with "IH")|].
   iSplit; [iApply (vfp_mid_row with "IH")|done].
@@ -267,7 +268,7 @@ Qed.
     and gives the stream back tidy, with the format and errno. The
     compiled function meets this contract, because the entry block's
     contract in the table is the same one. *)
-Lemma vfprintf_has_spec `{!Defines ge "__vfprintf_internal" glibc_vfprintf_internal} :
+Lemma vfprintf_has_spec `{!Defines ge "__vfprintf_internal" Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___vfprintf_internal} :
   HasSpec registry (os_wi w0) ge (TAtom "__vfprintf_internal") vfprintf_spec.
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ vfp_blocks); [exact defines | reflexivity | reflexivity | | exact vfp_table].

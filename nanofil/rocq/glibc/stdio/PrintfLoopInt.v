@@ -9,6 +9,7 @@
     nothing, and the proof follows the padding code without counting
     what it writes. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +20,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec ItoaWordSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -137,8 +138,8 @@ Qed.
 
 (** The block `L1155` reads the argument of a `%d`. *)
 Lemma int_start_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1155" None int_sig pl_in (conv_vals 100) (conv_pre k R FmtInt) (pl_post k R)).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -186,8 +187,8 @@ Local Tactic Notation "explore_to" constr(l) :=
     `c: _itoa_word`, which writes them at the end of the work buffer.
     The code then measures the digits. *)
 Lemma number_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1290" None number_sig pi_in pi_vals (number_pre k R) (fun z => pl_post k R (pi_y z))).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -229,8 +230,8 @@ Qed.
 (** The block `L1442` takes the count of the digits from the width.
     The code then takes one more from the width for a sign. *)
 Lemma digits_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1442" None digits_sig pi_in pi_vals (digits_pre k R) (fun z => pl_post k R (pi_y z))).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -247,8 +248,8 @@ Qed.
 (** The block `L1498` pads on the left with spaces. The code then
     writes a minus sign for a negative number. *)
 Lemma pad_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1498" None pad_sig pi_in pi_vals (digits_pre k R) (fun z => pl_post k R (pi_y z))).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -275,8 +276,8 @@ Qed.
     appends the digits from the work buffer and goes to the end of the
     conversion. *)
 Lemma sign_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  block_triple glibc_printf_buffer
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  block_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
     (BSpec "L1508" None sign_sig pi_in pi_vals (digits_pre k R) (fun z => pl_post k R (pi_y z))).
 Proof using Type*.
   iIntros "#IH". iModIntro.
@@ -305,7 +306,7 @@ Qed.
 (** The five rows of a `%d` hold when the whole table holds one step
     later. *)
 Lemma int_rows_hold :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (int_rows k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (int_rows k R).
 Proof using Type*.
   iIntros "#IH". iSplit; [iApply (int_start_holds with "IH")|]. iSplit; [iApply (number_holds with "IH")|].
   iSplit; [iApply (digits_holds with "IH")|]. iSplit; [iApply (pad_holds with "IH")|].

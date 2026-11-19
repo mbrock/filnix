@@ -5,7 +5,7 @@
     private array. It writes four characters per iteration and checks the
     count before writing each of the last three. *)
 
-From Glibc Require Import HelloImageTypedWM.
+From Glibc Require Import Unit_wcsmbs_wmemset_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic WPrintfDisp
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition wprintf_fill_fn := hello_image_fn___GI___wmemset.
+Definition wprintf_fill_fn := Unit_wcsmbs_wmemset_os.fn___GI___wmemset.
 Local Definition loop_head := Eval vm_compute in
   default (mkBlock (TAtom "L8") [] [] JUnreachable) (find_block (TAtom "L8") (fn_blocks wprintf_fill_fn)).
 

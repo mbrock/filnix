@@ -3,7 +3,7 @@
     so the dispatcher need not set it again. It checks the jump table
     and calls its overflow slot with the original character. *)
 
-From Glibc Require Import HelloImageTypedIO HelloImageTypedWO.
+From Glibc Require Import Unit_libio_wfileops_os Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -18,8 +18,8 @@ Local Abbreviation obj b := (mkPtr b (Obj b)).
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 
-Definition woverflow_fn := hello_image_fn___GI___woverflow.
-Definition wfile_overflow_fn := hello_image_fn___GI__IO_wfile_overflow.
+Definition woverflow_fn := Unit_libio_wgenops_os.fn___GI___woverflow.
+Definition wfile_overflow_fn := Unit_libio_wfileops_os.fn___GI__IO_wfile_overflow.
 
 Section dispatch.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

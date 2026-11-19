@@ -3,14 +3,15 @@
     byte through the stream's own short buffer. Both a failed write
     and a successful one must leave the stream idle again. *)
 
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode SysWrappers FileInv FileIdle FileTidy
-  PrintfStreamInv LibioFputsSpec LibioLogic LibioReadCode LibioDoWriteCode LibioGenCode LibioSetb LibioOverflowGen
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy
+  PrintfStreamInv LibioFputsSpec LibioLogic LibioSetb LibioOverflowGen
   LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortSend LibioOverflowShortStart LibioOverflowShortIdle.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -18,22 +19,22 @@ Open Scope Z_scope.
 Section overflow.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge).
-Context `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
-Context `{!Defines ge "__GI__IO_setb" glibc__IO_setb}.
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context `{!Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write).
+Context `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
+Context `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context `{!Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A request to flush an empty stream returns zero. A request to
     write a byte returns that byte or EOF. Both cases return the same
     fields that the stream lent, including the flags2 and mode cells. *)
 Lemma wp_short_file_overflow fr fb freg ch f2 fd eb mode vb vreg fresh rb fl tw off byte Φ :
-  call_frame glibc__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_overflow [WPtr (mkPtr fb (Obj fb)); WInt ch] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2^63 ->
   (0 <= ch < 256 \/ ch = 2^32-1) -> Z.land fl 8 = 0 -> Z.land fl 256 = 0 -> Z.land fl 2 <> 0 ->
   (fresh = true -> Z.land fl 2048 = 0) -> Z.land fl io_is_appending = 0 ->
-  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land f2 2 = 0 \/ Z.land f2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   In fd (ow_fds w0) -> ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2^32-1) ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ short_input fb fresh rb -∗
   int_cell fb off_flags fl -∗ icell fb off_total_written tw -∗ icell fb off_offset off -∗ bytes fb off_shortbuf [byte] -∗
@@ -54,19 +55,19 @@ Proof using Type*.
   iApply ("HK" with "[%] Hl Hfix Hst"). split_and!; try assumption; [destruct Hrb' as [->| ->]; tauto | exists fl1; auto].
 Qed.
 
-Context (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
+Context (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow).
 
 (** The public overflow wrapper first orients the stream and then calls
     its overflow slot. The stream comes back tidy on the same descriptor,
     with its lock and its second flags word unchanged. *)
 Lemma wp_overflow_short fr vb self fb freg st nb flags2 held ch eb Φ :
   let fp := mkPtr fb (Obj fb) in let fd := fs_fileno st in
-  call_frame glibc___overflow [WPtr fp; WInt ch] = Some fr -> 0 <= ch < 256 ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt ch] = Some fr -> 0 <= ch < 256 ->
   fb mod 8 = 0 -> 0 < fb -> fb+file_size <= r_end freg -> r_end freg <= 2^63 -> flags_ok st ->
   idle_ok fd (fs_with_flags2 st 0) -> fs_flags2 st = flags2 -> fs_vtable st = mkPtr (vb+vt_file) (Ro vb) ->
   buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st -> has (fs_flags st) io_unbuffered = true ->
   has (fs_flags st) io_no_writes = false ->
-  (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land flags2 2 = 0 \/ Z.land flags2 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) ->
   fputs_ro vb -∗ live fb freg -∗ file_fields fb st -∗ lock_inv self (fs_lock st) held -∗ buf_idle nb -∗
   wide_idle vb (fs_wide st) (fs_codecvt st) -∗ errno_any eb -∗

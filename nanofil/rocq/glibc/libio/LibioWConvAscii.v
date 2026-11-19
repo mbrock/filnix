@@ -13,7 +13,7 @@
     functions are `c: __gconv_transform_internal_ascii` and
     `c: __gconv_transliterate`. *)
 
-From Glibc Require Import HelloImageTypedGC.
+From Glibc Require Import Unit_iconv_gconv_simple_os Unit_iconv_gconv_trans_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -33,10 +33,10 @@ Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
 
 (** This definition is the ASCII step as Hello's image holds it. *)
-Definition glibc_internal_ascii := hello_image_fn___gconv_transform_internal_ascii.
+Definition glibc_internal_ascii := Unit_iconv_gconv_simple_os.fn___gconv_transform_internal_ascii.
 
 (** When a character has no byte of its own, the step calls this function to find a replacement. *)
-Definition glibc_translit := hello_image_fn___GI___gconv_transliterate.
+Definition glibc_translit := Unit_iconv_gconv_trans_os.fn___GI___gconv_transliterate.
 
 (** The loop changes only its own temporaries, so a proof of it can
     keep every other value of the caller. The compiler copied the loop

@@ -6,14 +6,15 @@
     accepts. This file supplies such a predicate for an idle stream and
     proves the contract [fputs_spec] from it. *)
 
+From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofputs_os.
 From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic StringLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode SysWrappers FileInv FileIdle FileTidy LibioLogic
-  PrintfStreamInv LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioPutsCode LibioPutsInv
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic
+  PrintfStreamInv LibioPutsInv
   WordString StrlenLogic AllocRo LibioSetb LibioFputsSpec LibioFputs LibioStreamTidy HiAtexitStringBytes.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -91,17 +92,17 @@ End stream.
 Section has_spec.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge).
-Context `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
-Context `{!Defines ge "__GI__IO_setb" glibc__IO_setb}.
-Context `{!Defines ge "__GI___write" glibc___libc_write}.
-Context `{!Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
-Context (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow)
-  (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn)
+Context `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
+Context `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}.
+Context `{!Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
+Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow)
+  (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn)
   (Hxs_heap : xsputn_heap_rule).
 Context (Hstrlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen))
   (Herrno : lookup (TAtom "__libc_errno") (ge_globals ge) = ow_errno w0)
-  `{!Defines ge "fputs" glibc__IO_fputs}.
+  `{!Defines ge "fputs" Unit_libio_iofputs_os.fn___GI__IO_fputs}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The string writer accepts the idle stream with its lock held. It
@@ -132,7 +133,7 @@ Qed.
 Lemma fputs_has_spec (Hself : ptr_addr (ow_self w0) <> 0) :
   HasSpec registry (os_wi w0) ge (TAtom "fputs") fputs_spec.
 Proof using Type*.
-  intros [vb p dq s fp fd eb]. exists glibc__IO_fputs. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [vb p dq s fp fd eb]. exists Unit_libio_iofputs_os.fn___GI__IO_fputs. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_pre fs_post fs_args fputs_spec fi_vb fi_p fi_dq fi_s fi_fp fi_fd fi_eb].
   iIntros "([%He %Hin] & Hstr & Hf & Herr & #Hro & #Hm) HK".
   iPoseProof "Hro" as (vreg sb sreg) "[#Hvt #Hs]".

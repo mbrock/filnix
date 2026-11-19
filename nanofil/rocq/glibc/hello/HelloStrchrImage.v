@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcProgram.
 (** When the privilege flag is nonzero, glibc's `c: __dcigettext` calls
     strchr, and strchr calls strchrnul. DcigettextSecure.v proves that
@@ -15,15 +16,15 @@ From Glibc Require Import GlibcProgram.
     checks here that the selected bodies are the captured ones. *)
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Semantics.
-From Glibc Require Import StrchrCode HelloStrchrImageCode HelloGettextImage DcigettextSecure.
+From Glibc Require Import HelloStrchrImageCode HelloGettextImage DcigettextSecure.
 Import ListNotations.
 
 (** ## What Hello's link gives the privileged branch *)
 
 (** In the selection both names find the captured functions. *)
 Lemma hello_strchr_image_links gl fr :
-  find_fn (mkGenv hellostrchrimage_module gl fr) (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn (mkGenv hellostrchrimage_module gl fr) (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul).
+  find_fn (mkGenv hellostrchrimage_module gl fr) (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn (mkGenv hellostrchrimage_module gl fr) (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul).
 Proof. split; vm_compute; reflexivity. Qed.
 
 (** These are the names that the selection keeps. *)
@@ -46,8 +47,8 @@ Proof. repeat split; vm_compute; reflexivity. Qed.
     still state it. *)
 Lemma hello_strchr_links_of_agree ge :
   Forall (lookup_agrees (ge_module ge) hellostrchrimage_module) hello_strchr_names ->
-  find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul).
+  find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul).
 Proof.
   intros Hagree. rewrite Forall_forall in Hagree.
   destruct (hello_strchr_image_links (ge_globals ge) (ge_free ge)) as [Hs Hn].
@@ -77,8 +78,8 @@ Definition hello_strchr_extended : module :=
   [IAlias (TAtom "hello_unrelated_alias") (TAtom "weak") (TAtom "hello_unrelated")].
 
 Example hello_strchr_extended_links gl fr :
-  find_fn (mkGenv hello_strchr_extended gl fr) (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn (mkGenv hello_strchr_extended gl fr) (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul).
+  find_fn (mkGenv hello_strchr_extended gl fr) (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn (mkGenv hello_strchr_extended gl fr) (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul).
 Proof. apply hello_strchr_links_of_agree. repeat constructor; vm_compute; reflexivity. Qed.
 
 Example hello_strchr_extended_differs : hello_strchr_extended <> hellostrchrimage_module.
@@ -87,7 +88,7 @@ Proof. intros H. apply (f_equal (@length item)) in H. vm_compute in H. discrimin
 Definition hello_strchr_rebody : module :=
   map (fun i => match i with
                 | IFunc f => if name_eqb (fn_name f) (TAtom "__GI_strchr")
-                             then IFunc (mkFunc (fn_name f) (fn_linkage f) (fn_ret f) (fn_params f) (fn_blocks glibc_strchrnul))
+                             then IFunc (mkFunc (fn_name f) (fn_linkage f) (fn_ret f) (fn_params f) (fn_blocks Unit_string_strchrnul_os.fn___GI___strchrnul))
                              else i
                 | _ => i end) hellostrchrimage_module.
 
@@ -100,8 +101,8 @@ Definition hello_strchr_realias : module :=
 Example hello_strchr_changed gl fr :
   ~ Forall (lookup_agrees hello_strchr_rebody hellostrchrimage_module) hello_strchr_names /\
   ~ Forall (lookup_agrees hello_strchr_realias hellostrchrimage_module) hello_strchr_names /\
-  find_fn (mkGenv hello_strchr_rebody gl fr) (TAtom "__GI_strchr") <> Some (Defined glibc_strchr) /\
-  find_fn (mkGenv hello_strchr_realias gl fr) (TAtom "__GI_strchr") <> Some (Defined glibc_strchr).
+  find_fn (mkGenv hello_strchr_rebody gl fr) (TAtom "__GI_strchr") <> Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn (mkGenv hello_strchr_realias gl fr) (TAtom "__GI_strchr") <> Some (Defined Unit_string_strchr_os.fn___GI_strchr).
 Proof.
   repeat split; try (intros H; rewrite Forall_forall in H;
     destruct (H "__GI_strchr"%string ltac:(cbn; tauto)) as [Hd _]; vm_compute in Hd; discriminate Hd);

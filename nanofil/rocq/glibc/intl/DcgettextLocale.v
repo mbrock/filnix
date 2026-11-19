@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_string_memcpy_os.
+From Glibc Require Import Unit_string_mempcpy_os Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** When getopt reports an error, it first asks gettext to translate the
     message, and gettext asks which locale the thread uses for messages.
@@ -28,10 +30,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString.
-From Glibc Require Import LibioSetb StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic.
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString.
+From Glibc Require Import LibioSetb TfindEmpty LocalenameLogic.
 From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
 From Glibc Require Import DcgettextC.
 From Glibc Require Import DcgettextStpcpy DcgettextTfind.
 From Glibc Require Import Fix.
@@ -62,7 +64,7 @@ Definition locale_cells (gb go : Z) (greg : region) (lp : ptr) (lb : Z) (lreg : 
     shows that glibc's own query behaves that way. When the caller lends
     the two cells and the lifetimes that the query checks, the query
     returns the name cv that the second cell holds. *)
-Lemma dci_locale_rule_cur `{!Defines ge "__current_locale_name" glibc_current_locale_name}
+Lemma dci_locale_rule_cur `{!Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name}
     gb go greg dqg lp lb lreg dql dqn cv dqt treg :
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
   dci_locale_rule 5 (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) cv.
@@ -110,7 +112,7 @@ Definition dci_rest_l (lk1 lk2 lkt : ptr) (L1 L1' L1'' L2 L2' L2'' T T' T'' M : 
 (** The translation should not need a separate promise about the locale
     query. Once the caller describes the other functions and lends the
     two locale cells, nothing else is missing. *)
-Lemma dci_rest_cur `{!Defines ge "__current_locale_name" glibc_current_locale_name}
+Lemma dci_rest_cur `{!Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name}
     lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M gb go greg dqg lp lb lreg dql dqn cv dqt treg :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M ->
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
@@ -137,7 +139,7 @@ Lemma dci_rest_lf_of lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M :
 Proof using Type. intros (H1 & H2 & H3 & H4 & H). split_and!; try tauto. exact (dci_free_rule_heap H4). Qed.
 
 (** The real locale query answers here as well. *)
-Lemma dci_rest_cur_f `{!Defines ge "__current_locale_name" glibc_current_locale_name}
+Lemma dci_rest_cur_f `{!Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name}
     lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M gb go greg dqg lp lb lreg dql dqn cv dqt treg :
   dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M ->
   locale_cells gb go greg lp lb lreg -> 0 <= ptr_addr cv < 2 ^ 64 ->
@@ -168,10 +170,10 @@ Qed.
 Lemma wp_dcgettext_c_locf f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg
     gb go greg dqg lp lb lreg dql dqn dqt treg Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -196,10 +198,10 @@ Qed.
 Lemma wp_dcgettext_c_loc f e ls l d args rest j dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg
     sec dqs secreg mid lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg
     gb go greg dqg lp lb lreg dql dqn dqt treg Φ
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -219,10 +221,10 @@ Proof using Type*. intros Hr. eapply wp_dcgettext_c_locf; first [exact (dci_rest
     way. *)
 Lemma dcg_diag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -243,10 +245,10 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_diag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -263,10 +265,10 @@ Proof using Type*. intros Hr. eapply dcg_diag_translate_locf; first [exact (dci_
     way. *)
 Lemma dcg_ldiag_translate_locf dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_lf lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->
@@ -287,10 +289,10 @@ Qed.
 (** This corollary keeps the statement that assumed the model's heap functions. *)
 Lemma dcg_ldiag_translate_loc dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib ic dqi ireg sec dqs secreg
     lk1 lk2 lkt tc dd L1 L1' L1'' L2 L2' L2'' T T' T'' M bs dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg
-    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" glibc_mempcpy,
-      !Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI___dcgettext" glibc_dcgettext,
-      !Defines ge "__dcigettext" glibc_dcigettext, !Defines ge "__GI_stpcpy" glibc_stpcpy,
-      !Defines ge "__GI___tfind" glibc_tfind, !Defines ge "__current_locale_name" glibc_current_locale_name} :
+    `{!Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,
+      !Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI___dcgettext" Unit_intl_dcgettext_os.fn___GI___dcgettext,
+      !Defines ge "__dcigettext" Unit_intl_dcigettext_os.fn___dcigettext, !Defines ge "__GI_stpcpy" Unit_string_stpcpy_os.fn___GI___stpcpy,
+      !Defines ge "__GI___tfind" Unit_misc_tsearch_os.fn___GI___tfind, !Defines ge "__current_locale_name" Unit_locale_localename_os.fn___current_locale_name} :
   dci_rest_l lk1 lk2 lkt L1 L1' L1'' L2 L2' L2'' T T' T'' M -> locale_cells gb go greg lp lb lreg ->
   0 < rb -> 0 <= ro -> (rb + ro) mod 8 = 0 -> rb + ro + 8 <= r_end rreg -> r_end rreg <= 2 ^ 48 ->
   dci_globals eb lk1 lk2 lkt (mkPtr (rb + ro) (Obj rb)) tc dd db nb nc ib ic p276 p277 sec ->

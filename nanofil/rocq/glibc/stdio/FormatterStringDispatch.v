@@ -7,13 +7,14 @@
     proof covers that selection after glibc has read the letter s from
     the format. It does not cover reading or printing the string, flushing
     the output stream, or initializing the formatter's global variables. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic FormatterCode Fix
+From Glibc Require Import OsWorld FileInv LibioLogic Fix
   FormatterStringTable FormatterStringArg.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic.
 Import StringVL.
@@ -47,9 +48,9 @@ Lemma wp_formatter_string_dispatch e ls p9 p4 Φ :
   lookup (TAtom "v111") e = Some (WInt 115) ->
   lookup (TAtom "pr.9") e = Some (WPtr p9) ->
   lookup (TAtom "pr.4") e = Some (WPtr p4) ->
-  ▷ WP (ERun (mkFrame glibc_printf_buffer (string_dispatch_env e p9 p4) ls None
+  ▷ WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (string_dispatch_env e p9 p4) ls None
     (Enter (TAtom "L1825") (Some (TAtom "L2206")))) : gexpr) {{ Φ }} -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L114") (Some (TAtom "L113")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hr Hs H9 H4. iIntros "HK".
@@ -90,10 +91,10 @@ Lemma wp_formatter_table_string_arg e ls from jb jr tb tr dqj dqt p9 p4
     liveq dqt tb tr -∗ bytesq dqt tb 84 [21;0;0;0] -∗
     pts (va_cursor_ps cb cr (mkPtr (sb + off + 8) (Ro sb))) -∗
     live sb sr -∗ pcell sb off x -∗ pts ps -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (put (TAtom "v1828") (WPtr x) (string_dispatch_env (string_table_env e jb tb) p9 p4)) ls None
       (Enter (TAtom "L1695") (Some (TAtom "L1825")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L113") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs H9 H4 Hv Hj Ht Hjb Hje Hjr Htb Hte Htr Hcb Hsb Ho He Hr Ha Hx Htarget.

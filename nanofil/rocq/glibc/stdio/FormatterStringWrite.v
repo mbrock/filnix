@@ -6,6 +6,7 @@
     may be unaligned, and the write may fill the buffer exactly. The rule
     preserves one lifetime for the header and staging allocation; it
     does not cover empty strings, flushing, or the next format suffix. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  FormatterCode Fix WordString PrintfBufferIoCode MemFwdCode MemFwdLogic
+  Fix WordString MemFwdLogic
   PrintfStagingCopy PrintfBufferWriteWindow FormatterLiteralWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -38,8 +39,8 @@ Lemma wp_formatter_string_write e ls bb reg off xs cs dq p s Φ :
   lookup (TAtom "pr.36") e = Some (WPtr p) ->
   lookup (TAtom "pr.66") e = Some (WInt 0) ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr bb (Obj bb))) ->
-  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined glibc___printf_buffer_write) ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__printf_buffer_write") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end reg -> r_end reg <= 2 ^ 63 ->
   48 <= off -> 0 < Z.of_nat (length s) -> off + Z.of_nat (length s) <= 176 ->
   length xs = 128%nat -> length cs = length xs -> Forall (fun x => 0 <= x < 256) xs ->
@@ -50,9 +51,9 @@ Lemma wp_formatter_string_write e ls bb reg off xs cs dq p s Φ :
     pcell bb 8 (mkPtr (bb + off + Z.of_nat (length s)) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ window_after bb 48 xs off s -∗
     word_string dq p s -∗
-    WP (ERun (mkFrame glibc_printf_buffer (string_write_env e p (Z.of_nat (length s))) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (string_write_env e p (Z.of_nat (length s))) ls None
       (Enter (TAtom "L1150") (Some (TAtom "L1887")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L1831") (Some (TAtom "L1871")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hlen Hp Hwidth Hbuf Hwrite Hcpy Hb Ha He Hr Ho Hn Hroom Hxs Hcs Hx.

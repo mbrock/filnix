@@ -11,6 +11,7 @@
     two equal words contain a zero byte and more than eight bytes
     remain, the loop returns zero immediately via [word_zero_n]. *)
 
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrncmpCode StrcmpBits StrcmpLoop
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop
   StrncmpBits StrncmpLoop.
 From Glibc Require StrcmpLoop StrncmpLoop WordString.
 From Glibc Require Import Fix.
@@ -97,7 +98,7 @@ Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c r Q1 Q2 e Φ :
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
    Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp (put (TAtom "iw_1.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
+  WP (ERun (mkFrame Unit_string_strncmp_os.fn___GI_strncmp (put (TAtom "iw_1.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
        (put (TAtom "iw_1.pr.2") (WPtr (mkPtr (ptr_addr p2 + c + 8) (ptr_cap p2)))
        (put (TAtom "iw_1.pr.3") (WInt (wrd ws1 Q1)) (put (TAtom "iw_1.pr.4") (WInt r)
        (put (TAtom "iw_1.pr.5") (WInt (wrd ws2 Q2)) e))))) [] None
@@ -171,7 +172,7 @@ Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o r Q1 Q2 e �
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
    Φ (Ret (WInt (strncmp_res (c + r) s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strncmp (put (TAtom "iw_2.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
+  WP (ERun (mkFrame Unit_string_strncmp_os.fn___GI_strncmp (put (TAtom "iw_2.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
        (put (TAtom "iw_2.pr.2") (WPtr (mkPtr (wstart p2 + 8 * Q2 + 8) (ptr_cap p2)))
        (put (TAtom "iw_2.pr.4") (WInt (wrd ws1 Q1)) (put (TAtom "iw_2.pr.6") (WInt r)
        (put (TAtom "iw_2.pr.8") (WInt (wrd ws2 Q2)) e))))) [] None

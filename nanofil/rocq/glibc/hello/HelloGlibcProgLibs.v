@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** The "/.libs/" test of GNU Hello's `set_program_name` (HelloName.v's
     [set_program_name_fn]) linked with glibc, for HelloGlibcProgName.v's
@@ -14,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrncmpCode StrcmpBits
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrcmpBits
   StrncmpBits HelloGlibcProgCells.
 From Glibc Require HelloGlibcProgCells OsWorld.
 From Glibc Require Import Fix.
@@ -41,7 +42,7 @@ Section progname.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** Hello's callees: its own memeq, and glibc's strncmp. *)
 Context `{Hmemeq : !Defines ge "memeq" memeq_fn}
-  `{Hstrncmp : !Defines ge "strncmp" glibc_strncmp}.
+  `{Hstrncmp : !Defines ge "strncmp" Unit_string_strncmp_os.fn___GI_strncmp}.
 (** The globals: the three cells, each its own 8-aligned object, and
     the literals "/.libs/" and "lt-". *)
 Context (pb nb sb : Z)

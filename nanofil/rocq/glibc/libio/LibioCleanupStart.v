@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The start of `c: _IO_cleanup ()` (LibioCleanupCode.v,
     libio/genops.c), to the head of the loop of the
@@ -15,7 +16,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioFlushCode LibioCleanupCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv
   LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
   LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock.
 From Glibc Require FileInv LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupMode LibioCloseSteps LibioFlush LibioFlushBody LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushStart LibioFlushTail LibioLogic OsThread OsWorld SysWrappers.
@@ -36,9 +37,9 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}.
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
-Context `{Hflush : !Defines ge "__GI__IO_flush_all" glibc__IO_flush_all}.
+Context `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
+Context `{Hflush : !Defines ge "__GI__IO_flush_all" Unit_libio_genops_os.fn___GI__IO_flush_all}.
 Context (Hpush_spec : push_spec w0 registry ge)
   (Hpop_spec : pop_spec w0 registry ge).
 
@@ -61,7 +62,7 @@ Ltac self H := iApply (OsThread.wp_zthread_self_cookie); try self_side; [exact H
     buffer cb in `c: iw_1.v2` is pushed, and the thread's cookie is in
     `c: iw_1.v16`. *)
 Lemma wp_cleanup_start fr (P Q : ptr -> iProp Σ) fs sb sreg fcp Φ :
-  flush_body w0 registry ge P Q -> call_frame glibc__IO_cleanup [] = Some fr ->
+  flush_body w0 registry ge P Q -> call_frame Unit_libio_genops_os.fn__IO_cleanup [] = Some fr ->
   lookup (TAtom "glibc_genops#flush_cleanup") (ge_globals ge) = Some fcp -> 0 <= ptr_addr fcp < 2 ^ 64 ->
   single_ro ge sb sreg -∗ tcb_cleanup_inv (ow_self w0) -∗ io_list_inv ge fs -∗
   ([∗ list] g ∈ fs, stream_life g ∗ P g) -∗
@@ -78,7 +79,7 @@ Lemma wp_cleanup_start fr (P Q : ptr -> iProp Σ) fs sb sreg fcp Φ :
      live la lareg -∗ pcell la 0 (head_ptr fs) -∗ chain_links (mkPtr la (Obj la)) fs -∗
      lock_state lk lkreg 0 0 null -∗ live rf rfreg -∗ pcell rf 0 null -∗
      ([∗ list] g ∈ fs, stream_life g ∗ Q g) -∗
-     WP (ERun (mkFrame glibc__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn__IO_cleanup e [] None (Enter (TAtom "iw_1.L23") (Some (TAtom "start")))) : sexpr)
        {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.

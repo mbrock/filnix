@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Printf passes its staged character to the stream as an unsigned byte.
     This proof follows the byte load and overflow call in the captured
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioGenCode LibioOverflowBase PrintfBufferFileCode PrintfBufferOverflowReturn.
+  LibioCloseSteps LibioOverflowBase PrintfBufferOverflowReturn.
 From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -41,7 +42,7 @@ Local Instance call_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Definition printf_overflow_call_spec : Prop := forall fr fp ch Φ,
   0 <= ch < 256 ->
-  call_frame glibc___overflow [WPtr fp; WInt ch] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt ch] = Some fr ->
   F fp -∗ E -∗
   ▷ (∀ r, ⌜0 <= r < 2 ^ 32⌝ -∗ F fp -∗ E -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -56,7 +57,7 @@ Context (F : ptr -> iProp Σ)
 (** The backend must return its stream resources even when it returns EOF.
     The abstract resources may own errno, but need not preserve its value. *)
 
-Context `{Hoverflow : !Defines ge "__GI___overflow" glibc___overflow}.
+Context `{Hoverflow : !Defines ge "__GI___overflow" Unit_libio_genops_os.fn___GI___overflow}.
 Context (Hcall : (printf_overflow_call_spec w0 registry ge F E)).
 
 (** The staged byte is passed unchanged, including bytes above 127. The
@@ -73,10 +74,10 @@ Lemma wp_printf_overflow_call e bb breg fp ch Φ :
        lookup (TAtom "chk0") e' = Some (WPtr (mkPtr (bb + 24) (Obj bb))) /\
        lookup (TAtom "v96") e' = Some (WInt r)⌝ -∗
      live bb breg -∗ bytes bb 48 [ch] -∗ F fp -∗ E -∗
-     WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+     WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
        (Exec (TAtom "L74") (skipn 8 (b_insts printf_overflow_block))
          (b_jump printf_overflow_block))) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
     (Exec (TAtom "L74") (skipn 3 (b_insts printf_overflow_block))
       (b_jump printf_overflow_block))) : sexpr) {{ Φ }}.
 Proof using Type*.

@@ -12,6 +12,7 @@
     the caller keeps the rest of the stream. The proof of the narrow
     function in [LibioSetb](LibioSetb.v) is stated the same way. *)
 
+From Glibc Require Import Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,7 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioSetb LibioPutsInv
-  LibioWIdle LibioWAllocCode FxprintfStream.
+  LibioWIdle FxprintfStream.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -170,7 +171,7 @@ Lemma wp_wsetb_tail fb freg f2 wd wreg ob oe nb ne a e from Φ :
   live wd wreg -∗ pcell wd 48 ob -∗ pcell wd 56 oe -∗
   ▷ (live fb freg -∗ int_cell fb off_flags2 (wsetb_flags2 f2 a) -∗ pcell fb off_wide (mkPtr wd (Obj wd)) -∗
      live wd wreg -∗ pcell wd 48 nb -∗ pcell wd 56 ne -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_wsetb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_wgenops_os.fn___GI__IO_wsetb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Hwd Hwal Hwend Hwreg Ha Hv0 Hc0 Hv2 Hv4 Hv6.
   iIntros "Hl [%Hf Hfl] Hw Hwl Hb He HK".
@@ -203,7 +204,7 @@ Qed.
     same fields with the new base, the new end and the new owner
     bit. *)
 Lemma wp_glibc__IO_wsetb fr fb freg f2 wd wreg w oe nb ne a Φ :
-  call_frame glibc__IO_wsetb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wsetb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   wbuf_user_ok w f2 ->
@@ -250,7 +251,7 @@ Qed.
     function frees nothing. The first wide write of a stream calls
     `c: _IO_wsetb` in this state. *)
 Lemma wp_glibc__IO_wsetb_null fr fb freg f2 wd wreg oe nb ne a Φ :
-  call_frame glibc__IO_wsetb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wsetb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags2 f2 -∗ pcell fb off_wide (mkPtr wd (Obj wd)) -∗

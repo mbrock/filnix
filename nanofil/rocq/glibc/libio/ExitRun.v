@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcProgram.
 (** Triples for user glibc's `__run_exit_handlers` and `exit`
     (ExitRunCode.v), over user glibc's OS registry and world, for any
@@ -30,7 +31,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsThread OsRegistry ExitRunCode
+From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsThread OsRegistry
   ExitRunTail ExitRunLoop.
 From Glibc Require AtexitLogic ExitRunLoop ExitRunTail LeavesLogic OsExit OsThread OsWorld.
 From Glibc Require Import Fix.
@@ -40,15 +41,15 @@ Open Scope list_scope.
 (** The frame of a call of `__run_exit_handlers` on the status s, the
     list l and the flags a and d. *)
 Lemma run_exit_frame s l a d :
-  call_frame glibc___run_exit_handlers [WInt s; WPtr l; WInt a; WInt d] =
-  Some (mkFrame glibc___run_exit_handlers [(TAtom "v6", WInt d); (TAtom "v4", WInt a); (TAtom "v2", WPtr l);
+  call_frame Unit_stdlib_exit_os.fn___run_exit_handlers [WInt s; WPtr l; WInt a; WInt d] =
+  Some (mkFrame Unit_stdlib_exit_os.fn___run_exit_handlers [(TAtom "v6", WInt d); (TAtom "v4", WInt a); (TAtom "v2", WPtr l);
           (TAtom "v0", WInt s)] [] None (Enter (TAtom "start") None)).
 Proof. reflexivity. Qed.
 
 
 Import ExitRunLoop ExitRunTail ExitRunTail.L ExitRunTail.LG AtexitLogic.ML LeavesLogic AtexitLogic OsWorld OsExit OsThread.
 
-Local Opaque glibc___run_exit_handlers glibc_exit.
+Local Opaque Unit_stdlib_exit_os.fn___run_exit_handlers Unit_stdlib_exit_os.fn___GI_exit.
 
 Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -106,7 +107,7 @@ Lemma wp_glibc_run_exit_handlers x el elr ents c status (P : iProp Σ) (R : nat 
   exit_funcs_inv x ents c -∗ exit_lock_free el elr -∗ P -∗ dtors_rule P (R (List.length ents)) -∗
   ([∗ list] i ↦ en ∈ ents, exit_handler w0 ge (status mod 2 ^ 32) en (R (S i)) (R i)) -∗
   cleanup_rule w0 ge (R 0%nat) -∗
-  WP (ERun (mkFrame glibc___run_exit_handlers [(TAtom "v6", WInt 1); (TAtom "v4", WInt 1);
+  WP (ERun (mkFrame Unit_stdlib_exit_os.fn___run_exit_handlers [(TAtom "v6", WInt 1); (TAtom "v4", WInt 1);
        (TAtom "v2", WPtr (mkPtr (xo_funcs x) (Obj (xo_funcs x)))); (TAtom "v0", WInt status)] [] None
        (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using Type.
@@ -180,11 +181,11 @@ Qed.
     ends: any postcondition. *)
 Lemma wp_glibc_exit x el elr ents c status (P : iProp Σ) (R : nat -> iProp Σ) Φ :
   loop_env w0 ge x -> exit_lock_env el elr ->
-  find_fn ge (TAtom "__run_exit_handlers") = Some (Defined glibc___run_exit_handlers) ->
+  find_fn ge (TAtom "__run_exit_handlers") = Some (Defined Unit_stdlib_exit_os.fn___run_exit_handlers) ->
   exit_funcs_inv x ents c -∗ exit_lock_free el elr -∗ P -∗ dtors_rule P (R (List.length ents)) -∗
   ([∗ list] i ↦ en ∈ ents, exit_handler w0 ge (status mod 2 ^ 32) en (R (S i)) (R i)) -∗
   cleanup_rule w0 ge (R 0%nat) -∗
-  WP (ERun (mkFrame glibc_exit [(TAtom "v0", WInt status)] [] None (Enter (TAtom "start") None)) : gexpr)
+  WP (ERun (mkFrame Unit_stdlib_exit_os.fn___GI_exit [(TAtom "v0", WInt status)] [] None (Enter (TAtom "start") None)) : gexpr)
     {{ Φ }}.
 Proof using Type.
   intros Henv Hlk Hrun. pose proof Henv as (_ & (_ & _ & _ & Hgfs) & _).

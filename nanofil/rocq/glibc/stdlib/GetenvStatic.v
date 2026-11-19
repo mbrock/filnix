@@ -9,8 +9,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules Symbolic.
+From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString
-  GetoptBytes GetenvCode GetenvEntry GetenvName GetenvScan StrlenLogic StrlenWord StrncmpCode.
+  GetoptBytes GetenvEntry GetenvName GetenvScan StrlenLogic StrlenWord.
 Import ListNotations LG0 LG0.L ProgramAbbreviations GetoptBytes GetoptBytes.ML.
 Open Scope Z_scope.
 
@@ -48,7 +49,7 @@ End storage.
 Section static.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{!Defines ge "__GI_strlen" glibc_strlen}.
-Context `{!Defines ge "__GI_strncmp" glibc_strncmp}.
+Context `{!Defines ge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp}.
 Local Instance getenv_static_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 

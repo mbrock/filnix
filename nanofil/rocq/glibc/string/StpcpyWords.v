@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** After glibc's `c: stpcpy` has aligned the destination, it copies the
     string a word at a time. If the source is aligned too, it loads and
@@ -17,7 +18,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes WordString StrcmpBits StrcmpLoop.
-From Glibc Require Import StpcpyCode StpcpyBytes StpcpyTail StpcpyShift.
+From Glibc Require Import StpcpyBytes StpcpyTail StpcpyShift.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -51,7 +52,7 @@ Lemma stp_align e bd rd xs o q b reg ws dq s k Q Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o k (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "iw_1.L5") (b_insts blk_a) (b_jump blk_a))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "iw_1.L5") (b_insts blk_a) (b_jump blk_a))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B & S1 & M & P & K & E & R & N & C).
   pose proof (ss_words _ _ _ _ _ Hs) as F. pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (sbyte_agree _ _ _ _ _ Hs) as A.
@@ -123,7 +124,7 @@ Lemma stp_shift e bd rd xs o q b reg ws dq s c v Q Φ :
   live bd rd -∗ bytes bd 0 (stp_dst xs o c (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
   (live bd rd -∗ bytes bd 0 (stp_dst xs o (Z.of_nat (length s) + 1) (s ++ [0])) -∗ wwin dq b reg (wstart q - b) ws -∗
      Φ (Ret (WPtr (mkPtr (bd + o + Z.of_nat (length s)) (Obj bd))))) -∗
-  WP (ERun (mkFrame glibc_stpcpy e [] None (Exec (TAtom "L37") (b_insts blk_37) (b_jump blk_37))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_stpcpy_os.fn___GI___stpcpy e [] None (Exec (TAtom "L37") (b_insts blk_37) (b_jump blk_37))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hs. destruct (shape_facts _ _ _ _ _ Hs) as (B & S1 & M & P & K & E & R & N & C).
   pose proof (ss_words _ _ _ _ _ Hs) as F. pose proof (ss_chars _ _ _ _ _ Hs) as Hch. pose proof (sbyte_agree _ _ _ _ _ Hs) as A.

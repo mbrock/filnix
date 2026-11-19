@@ -6,6 +6,7 @@
     proof that the stdout object is alive and that flushing its closed state
     is safe. The global cells of stdout and the callback may be shared,
     and a null callback needs no contract for the function it would call. *)
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  SysWrappers PrintfStateCode CancelState ErrorCode Fix.
+  SysWrappers CancelState Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps
   OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -32,12 +33,12 @@ Definition error_inputs e status errnum fmt ap mode cb : Prop :=
 
 (** Binding the internal function does not copy or advance the cursor. *)
 Definition error_internal_frame status errnum fmt ap mode :=
-  mkFrame glibc_error_internal
+  mkFrame Unit_misc_error_os.fn___error_internal
     (put (TAtom "v8") (WInt mode) (put (TAtom "v6") (WPtr ap)
       (put (TAtom "v4") (WPtr fmt) (put (TAtom "v2") (WInt errnum)
         (put (TAtom "v0") (WInt status) []))))) [] None (Enter (TAtom "start") None).
 Lemma error_internal_call_frame status errnum fmt ap mode :
-  call_frame glibc_error_internal [WInt status;WInt errnum;WPtr fmt;WPtr ap;WInt mode] =
+  call_frame Unit_misc_error_os.fn___error_internal [WInt status;WInt errnum;WPtr fmt;WPtr ap;WInt mode] =
     Some (error_internal_frame status errnum fmt ap mode).
 Proof. reflexivity. Qed.
 
@@ -50,7 +51,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** Both supported cancellation states save their actual old value.
     Other flag combinations, including asynchronous cancellation, are excluded. *)
 Lemma error_disable fr tb treg cb creg state Φ :
-  call_frame glibc___pthread_setcancelstate [WInt 1;WPtr (mkPtr cb (Obj cb))] = Some fr ->
+  call_frame Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate [WInt 1;WPtr (mkPtr cb (Obj cb))] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   0 < cb -> cb + 4 <= r_end creg -> r_end creg <= 2 ^ 63 -> state = 0 \/ state = 1 ->
@@ -85,7 +86,7 @@ Lemma wp_error_internal_entry_lend {dqs dqp : dfrac} status errnum fmt ap mode t
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 <= ptr_addr stdout < 2 ^ 64 ->
@@ -122,7 +123,7 @@ Lemma wp_error_internal_entry_lend {dqs dqp : dfrac} status errnum fmt ap mode t
     liveq dqs ob oreg -∗ pcellq dqs ob 0 stdout -∗ O -∗
     liveq dqp pb preg -∗ pcellq dqp pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
     live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ Q -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
 Proof using Type*.
@@ -197,7 +198,7 @@ Lemma wp_error_internal_entry {dqs dqp : dfrac} status errnum fmt ap mode tb tre
   ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 <= ptr_addr stdout < 2 ^ 64 ->
@@ -234,7 +235,7 @@ Lemma wp_error_internal_entry {dqs dqp : dfrac} status errnum fmt ap mode tb tre
     liveq dqs ob oreg -∗ pcellq dqs ob 0 stdout -∗ live_capq dqo (ptr_cap stdout) outr -∗
     liveq dqp pb preg -∗ pcellq dqp pb 0 callback -∗ live_capq dqc (ptr_cap callback) cbr -∗
     live nb nreg -∗ pcell nb 0 pname -∗ live_capq dqn (ptr_cap pname) namer -∗ Q -∗ E -∗
-    WP (ERun (mkFrame glibc_error_internal e [] None
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
       (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}) -∗
   WP (ERun (error_internal_frame status errnum fmt ap mode) : gexpr) {{ Φ }}.
 Proof using Type*.

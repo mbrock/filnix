@@ -13,16 +13,17 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString GetenvCode.
+From Glibc Require Import Unit_stdlib_getenv_os.
+From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString.
 Import ListNotations LG0 LG0.L ProgramAbbreviations.
 Open Scope Z_scope.
 
 (** The checked function accepts exactly one pointer argument. *)
 Definition getenv_frame p :=
-  mkFrame glibc_getenv [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
+  mkFrame Unit_stdlib_getenv_os.fn___GI_getenv [(TAtom "v0", WPtr p)] [] None (Enter (TAtom "start") None).
 
 (** This frame is the actual result of binding the captured call's arguments. *)
-Lemma getenv_call_frame p : call_frame glibc_getenv [WPtr p] = Some (getenv_frame p).
+Lemma getenv_call_frame p : call_frame Unit_stdlib_getenv_os.fn___GI_getenv [WPtr p] = Some (getenv_frame p).
 Proof. reflexivity. Qed.
 
 Section entry.

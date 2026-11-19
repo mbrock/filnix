@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L198` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function): the byte goes to
@@ -12,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -49,7 +50,7 @@ Context (HL264 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl t
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜(r = ch \/ r = 2 ^ 32 - 1) /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L264") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L264") (Some from))) : sexpr) {{ Φ }}).
 
 (** Block `c: L198`: the byte ch stored at the write pointer of a
     buffer with room, then the flush when one is due. *)
@@ -66,7 +67,7 @@ Lemma wp_ovf_L198 fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off 
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜(r = ch \/ r = 2 ^ 32 - 1) /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L198") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L198") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hk Hf2 Hf2r Hfd Happ He Hmd Hv0 Hv2 Hc0 Hc47.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.

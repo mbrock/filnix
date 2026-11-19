@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofputs_os.
 From Glibc Require Import GlibcProgram.
 (** The triple of `c: fputs(s, fp)` (LibioPutsCode.v,
     libio/iofputs.c) over a string at any share and a stream as
@@ -36,7 +37,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString StrlenLogic LibioXsputnCode LibioPutsCode LibioPutsInv LibioPutsMode LibioFputsLock
+  WordString StrlenLogic LibioPutsInv LibioPutsMode LibioFputsLock
   LibioFputsUnlock LibioFputsCall.
 From Glibc Require FileInv LibioCloseSteps LibioFputsCall LibioFputsLock LibioFputsUnlock LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -59,7 +60,7 @@ Context (Hreg : holds_os registry)
 Context (vb : Z)
   (vreg : region)
   (Rx : iProp Σ).
-Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hxs_fn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (F : ptr -> Z -> option Z -> iProp Σ).
 Context (Hopen : forall fp mode held, F fp mode held ⊢ file_open vb (ow_self w0) F fp mode held).
 Context (Hxs : xsputn_spec_for w0 registry ge F (fun _ fp _ held => ∃ mode', F fp mode' held)%I Rx).
@@ -77,7 +78,7 @@ Lemma wp_fputs_L107 e r fb m sb sreg Φ :
   lookup (TAtom "pr.1") e = Some (WInt r) -> 0 <= r < 2 ^ 32 ->
   single_ro ge sb sreg -∗ F fp m (Some 0) -∗
   ▷ (F fp m None -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
+  WP (ERun (mkFrame Unit_libio_iofputs_os.fn___GI__IO_fputs e [] None (Exec (TAtom "L107") (b_insts fp_L107) (b_jump fp_L107)))
         : sexpr) {{ Φ }}.
 Proof using Hopen.
   intros fp Hv2 Hc0 Hr Hrr. subst fp. iIntros "#Hs Hf HK".
@@ -95,7 +96,7 @@ Qed.
     stream come back, the stream at some mode and its lock free, and the result is 1 when the whole string was written, else
     `c: EOF`. *)
 Lemma wp_glibc__IO_fputs fr p dq s fp mode sb sreg Φ :
-  call_frame glibc__IO_fputs [WPtr p; WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofputs_os.fn___GI__IO_fputs [WPtr p; WPtr fp] = Some fr ->
   find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen) ->
   ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ single_ro ge sb sreg -∗ word_string dq p s -∗

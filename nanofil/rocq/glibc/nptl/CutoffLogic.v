@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_alloca_cutoff_os.
 From Glibc Require Import GlibcProgram.
 (** Before glibc puts a buffer on the stack with alloca, it asks
     `c: __libc_alloca_cutoff(size)` whether the request is small enough.
@@ -34,7 +35,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic.
-From Glibc Require Import OsWorld OsThread WordString FileInv CutoffCode CutoffLayout.
+From Glibc Require Import OsWorld OsThread WordString FileInv CutoffLayout.
 From Glibc Require OsThread WordString FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -128,7 +129,7 @@ Local Notation cexpr := (language.expr (nanofil_lang registry ge)).
     sz is the value of the calling thread's `c: stackblock_size`. The
     region's end follows from the shares, so only the address must fit. *)
 Lemma wp_glibc_alloca_cutoff_cell fr n dq1 dq2 tb treg sz Φ :
-  call_frame glibc_libc_alloca_cutoff [WInt n] = Some fr ->
+  call_frame Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff [WInt n] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + off_stackblock_size + 8 <= 2 ^ 64 ->
   liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗
   ▷ (liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗ Φ (Ret (WInt (cutoff_bit n sz)))) -∗
@@ -185,7 +186,7 @@ Qed.
 
 (** The same holds when the caller also states the region's end. *)
 Lemma wp_glibc_alloca_cutoff fr n dq1 dq2 tb treg sz Φ :
-  call_frame glibc_libc_alloca_cutoff [WInt n] = Some fr ->
+  call_frame Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff [WInt n] = Some fr ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + off_stackblock_size + 8 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗
   ▷ (liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗ Φ (Ret (WInt (cutoff_bit n sz)))) -∗
@@ -194,7 +195,7 @@ Proof using Type*. intros Hfr Hown Htb Hend Hreg. apply wp_glibc_alloca_cutoff_c
 
 (** A call site that binds the result to d continues with that answer. *)
 Lemma wp_call_alloca_cutoff f e ls l d args rest j n dq1 dq2 tb treg sz Φ :
-  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff) ->
   map_option (arg_x ge e) args = Some [WInt n] ->
   ow_self w0 = mkPtr tb (Obj tb) -> 0 < tb -> tb + off_stackblock_size + 8 <= r_end treg -> r_end treg <= 2 ^ 63 ->
   liveq dq1 tb treg -∗ icellq dq2 tb off_stackblock_size sz -∗
@@ -231,7 +232,7 @@ Proof using Type. rewrite /thread_stack_ro /liveq /icellq /ptsq. apply _. Qed.
 (** With the read-only share, the call returns a 32-bit answer for any
     request, which is the form the parser's rule asks for. *)
 Lemma wp_call_alloca_cutoff_ro f e ls l d args rest j n Φ :
-  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff) ->
   map_option (arg_x ge e) args = Some [WInt n] ->
   thread_stack_ro -∗
   ▷ (∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : cexpr) {{ Φ }}) -∗
@@ -292,7 +293,7 @@ Qed.
 (** A call borrows the cleanup lifetime and the stack-size bytes and
     returns both, binding d to the function's answer. *)
 Lemma wp_call_alloca_cutoff_tcb f e ls l d args rest j n dq sz Φ :
-  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff) ->
   map_option (arg_x ge e) args = Some [WInt n] ->
   tcb_cleanup_inv (ow_self w0) -∗ stack_size_cell (ow_self w0) dq sz -∗
   ▷ (tcb_cleanup_inv (ow_self w0) -∗ stack_size_cell (ow_self w0) dq sz -∗
@@ -321,7 +322,7 @@ Definition cutoff_loan (dq : dfrac) : iProp Σ :=
 (** With the loan, the call returns the loan and a 32-bit answer for any
     request, which is the form the parser's rule asks for. *)
 Lemma wp_call_alloca_cutoff_loan f e ls l d args rest j n dq Φ :
-  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined glibc_libc_alloca_cutoff) ->
+  find_fn ge (TAtom "__GI___libc_alloca_cutoff") = Some (Defined Unit_nptl_alloca_cutoff_os.fn___GI___libc_alloca_cutoff) ->
   map_option (arg_x ge e) args = Some [WInt n] ->
   cutoff_loan dq -∗
   ▷ (cutoff_loan dq -∗ ∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗

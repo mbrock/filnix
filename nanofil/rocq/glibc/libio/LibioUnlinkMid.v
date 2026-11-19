@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The middle of `c: _IO_un_link` (LibioUnlinkCode.v): the stream
     leaves the list. [chain_split] finds, in [io_list_inv]'s
@@ -15,7 +16,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkTail OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -125,7 +126,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 
 (** Expressions of the language. *)
@@ -158,7 +159,7 @@ Lemma wp_unlink_L185 e from fb freg fl lb lbreg qb qo qreg nx cb creg lk lkreg r
      pcell fb off_prevchain qp -∗ pcell fb off_chain nx -∗ live qb qreg -∗ pcell qb qo nx -∗ next_link nx qp -∗
      live rf rfreg -∗ pcell rf 0 null -∗ lock_state lk lkreg 0 0 null -∗ tcb_cleanup_inv (ow_self w0) -∗
      live cb creg -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L185") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_un_link e [] None (Enter (TAtom "L185") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros qp fp Hglk Hgrf Hv0 Hc0 Hv10 Hv183 Hfb Hfal Hfend Hfreg Hfl Hul Hqo Hqal Hqend Hcb Hcal Hcend Hcreg
     Hral Hrend.

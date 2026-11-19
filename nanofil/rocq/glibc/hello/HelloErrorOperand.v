@@ -10,6 +10,7 @@
     takes the object's lifetime out of that idle state for the read and
     puts it back before the call. *)
 
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,7 +20,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloClose.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle LibioLogic LibioCloseSteps
   WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec LibioFflushSpec FxprintfStream
-  FxprintfNormalCode FxprintfNormalCall VfxprintfSelect PrintfStateCode ErrorCode ErrorCall ErrorEntry
+  FxprintfNormalCall VfxprintfSelect ErrorCall ErrorEntry
   ErrorFailure ErrorFallback ErrorText ErrorTail HelloErrorCall HelloCloseErrno HelloVfxprintfIdle
   HelloErrorOpen Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
@@ -116,9 +117,9 @@ Proof using Type. rewrite /op_ro /liveq /pcellq. apply _. Qed.
     the thread's cancellation state. *)
 Lemma wp_error_internal_operand vb ob oreg fo sb sreg fe pb preg nb nreg pname pbytes
     prefix newline wide widefn wideframe fmt fbytes ds ys cnb cnreg count ap Φ :
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
-  find_fn ge (TAtom "__fxprintf") = Some (Defined glibc_fxprintf) ->
-  find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__fxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf) ->
+  find_fn ge (TAtom "__vfxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
@@ -162,7 +163,7 @@ Proof using Type*.
   iApply (wp_error_internal_entry_lend Hregistry Hext (dqs := DfracDiscarded) (dqp := DfracDiscarded) 0 0 fmt ap 0 tb treg 0
     ob oreg (mkPtr fo (Obj fo)) (file_idle vb (ow_self w0) (mkPtr fo (Obj fo)) 1)
     pb preg null DfracDiscarded (mkRegion 0 0 Heap Live) nb nreg pname DfracDiscarded namer prefix
-    gf ffo glibc_fxprintf (fxprintf_normal_frame null prefix [WPtr pname]) (TAtom "error") glibc_error ffo
+    gf ffo Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf (fxprintf_normal_frame null prefix [WPtr pname]) (TAtom "error") Unit_misc_error_os.fn___error ffo
     (errno_any eb ∗ file_idle vb (ow_self w0) (mkPtr fe (Obj fe)) 2 ∗ op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes)%I
     (errno_any eb ∗ file_idle vb (ow_self w0) (mkPtr fe (Obj fe)) 2 ∗ op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes)%I
     (errno_any eb ∗ file_idle vb (ow_self w0) (mkPtr fe (Obj fe)) 2)%I
@@ -209,14 +210,14 @@ Proof using Type*.
   iNext. iIntros (n) "Herr He _". resume. step.
   iAssert (∀ e2 pred, ⌜error_inputs e2 0 0 fmt ap 0 cb⌝ -∗ file_idle vb (ow_self w0) (mkPtr fe (Obj fe)) 2 -∗
     errno_any eb -∗
-    WP (ERun (mkFrame glibc_error_internal e2 [] None (Enter (TAtom "iw_2.L19") (Some pred))) : gexpr) {{ Φ }})%I
+    WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e2 [] None (Enter (TAtom "iw_2.L19") (Some pred))) : gexpr) {{ Φ }})%I
     with "[Ht Hflag Hcbl Hsaved Hout Hnl Hnp Hcf Hcl Hcnt HK]" as "HL19".
   { iIntros (e2 pred Hin2) "Herr He".
     iApply (wp_error_count_zero e2 pred 0 fmt ap 0 cb cnb cnreg count True%I with "Hcl Hcnt [//]"); try assumption.
     iIntros (e3 pred3 Hin3) "Hcl Hcnt _".
     destruct (Hff (FflushIn vb (mkPtr fe (Obj fe)) 2 eb)) as (gf2 & Hgf2 & [ffe Hffe] & Hfte).
     iApply (wp_error_tail_lend Hregistry Hext (dqs := DfracDiscarded) tb treg 0 sb sreg (mkPtr fe (Obj fe))
-      newline glibc_fxprintf (fxprintf_normal_frame null newline []) gf2 ffe
+      newline Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf (fxprintf_normal_frame null newline []) gf2 ffe
       (file_idle vb (ow_self w0) (mkPtr fe (Obj fe)) 2)
       (errno_any eb ∗ op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes)%I
       (errno_any eb ∗ op_ro vb sb sreg fe prefix newline pname pbytes fmt fbytes)%I (errno_any eb)%I True%I
@@ -287,11 +288,11 @@ Qed.
     runs with that cursor. *)
 Lemma wp_error_operand vb ob oreg fo sb sreg fe pb preg nb nreg pname pbytes
     prefix newline wide widefn wideframe fmt fbytes ds ys cnb cnreg count Φ :
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
   forallb snapshot_word ys = true ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
-  find_fn ge (TAtom "__fxprintf") = Some (Defined glibc_fxprintf) ->
-  find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__fxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf) ->
+  find_fn ge (TAtom "__vfxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->

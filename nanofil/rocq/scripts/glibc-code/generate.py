@@ -18,13 +18,22 @@ HERE = Path(__file__).resolve().parent
 NF = HERE.parents[2]
 GLIBC = NF / "rocq/glibc"
 GEN = GLIBC / "gen"
-shared = runpy.run_path(str(HERE / "prelude.py"))["shared"]
 source_tables = runpy.run_path(str(HERE / "source.py"))["source_tables"]
 layout_tables = runpy.run_path(str(HERE / "layout.py"))["layout_tables"]
 block_definitions = runpy.run_path(str(HERE / "block-facts.py"))["block_definitions"]
 name_tables = runpy.run_path(str(HERE / "names.py"))["name_tables"]
-typed_image = runpy.run_path(str(HERE / "typed.py"))["typed_image"]
+typed = runpy.run_path(str(HERE / "typed.py"))
 PRELUDES = ("CodePrelude.v", "IRNotation.v", "IRBytes.v")
+IMAGE_LAYOUTS = ("image", "linked_image", "hi_atexit")
+
+
+def fixture_entry(layout, roots, prefix, program):
+    if program or layout in ("getopt", *IMAGE_LAYOUTS):
+        return roots
+    return {
+        "libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots",
+        "stdlib": "stdlib_root",
+    }.get(layout, prefix + "_roots")
 
 
 def run(args, *, cwd=NF, data=None, env=None):
@@ -68,115 +77,6 @@ def fixture_prefix(name):
             "PrintfBufferIo": "printf_buffer_io", "PrintfBufferFile": "printf_buffer_file"}.get(name, name.lower())
 
 
-def decoded(prefix, fns, layout):
-    text = f'''
-From Nanofil Require Import Syntax Transport Semantics.
-
-(** {"The module, decoded." if layout == "string" else "The functions, decoded as a module."} *)
-Definition {prefix}_module : module := Eval vm_compute in
-  match decode_module {prefix}_term with Some md => md | None => [] end.
-
-(** The term decodes to the module. *)
-Lemma {prefix}_decodes : decode_module {prefix}_term = Some {prefix}_module.
-Proof. vm_compute. reflexivity. Qed.
-
-(** The function named n of the module, or an empty one. *)
-Definition {prefix}_fn (n : string) : func :=
-  match find_direct (TAtom n) {prefix}_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
-  end.
-'''
-    for fn in fns.split():
-        # A unit-private function is linked as UNIT#NAME; its constant is named after NAME alone.
-        stem = re.sub(r"^__GI_", "", fn.split("#", 1)[-1] if layout == "string" else fn)
-        g = ("glibc" + re.sub(r"^_*", "_", re.sub(r"[^A-Za-z0-9_]", "_", stem)) if layout == "string"
-             else "glibc_" + stem.replace("#", "_"))
-        text += f'''
-(** glibc's `{fn}`. *)
-Definition {g} : func := Eval vm_compute in {prefix}_fn "{fn}".
-'''
-        if layout == "string":
-            text += f'''(** The module defines `{fn}` as [{g}]. *)
-Lemma {g}_found : find_direct (TAtom "{fn}") {prefix}_module = Some (Defined {g}).
-Proof. vm_compute. reflexivity. Qed.
-'''
-    return text
-
-
-def stdio(text, prefix, fns, layout):
-    buffer = layout == "buffer"
-    _, body = text.split("*)", 1)
-    body = body.replace("(** The one-character atom with code n. *)",
-                        "(** This helper constructs the atom containing one character with code n. *)")
-    body = body.replace("(** The module term. *)",
-                        "(** This term contains the selected checked function bodies. *)")
-    header = '''(** These checked bodies implement cancellation-state changes and printf-buffer
-    completion in user-glibc 2.44. The fixture supports instruction proofs
-    without treating either function as an external contract.
-
-    rocq/glibc/stdio/code.sh reproduces these terms from the pinned capture
-    with gallina.pl. Do not edit. *)'''
-    if buffer:
-        header = '''(** These checked bodies implement printf-buffer operations in user-glibc 2.44.
-    They retain the source's failure paths and calls into stream operations;
-    decoding these bodies does not establish contracts for those calls.
-
-    rocq/glibc/stdio/buffer-code.sh reproduces these terms from the pinned
-    capture with gallina.pl. Do not edit. *)'''
-    tail = f'''
-From Nanofil Require Import Syntax Transport Semantics.
-
-(** {"Decoding gives the actual checked bodies used by instruction proofs." if buffer else "Decoding gives the actual checked function bodies, not their specifications."} *)
-Definition {prefix}_module : module := Eval vm_compute in
-  match decode_module {prefix}_term with Some md => md | None => [] end.
-
-(** {"Computation rules out the empty fallback in the decoded module." if buffer else "Computation checks that decoding did not take the empty fallback."} *)
-Lemma {prefix}_decodes : decode_module {prefix}_term = Some {prefix}_module.
-Proof. vm_compute. reflexivity. Qed.
-
-(** {"Function lookup selects a checked body without supplying its specification." if buffer else "Function lookup selects a decoded body for the subsequent instruction proofs."} *)
-Definition {prefix}_fn (n : string) : func :=
-  match find_direct (TAtom n) {prefix}_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "export") (RClass W) [] []
-  end.
-'''
-    functions = fns.split()
-    if not buffer:
-        # The original state fixture presents cancellation before completion.
-        functions = sorted(functions, key=lambda f: f != "__GI___pthread_setcancelstate")
-    witnesses = []
-    for fn in functions:
-        short = fn.removeprefix("__GI_").lstrip("_")
-        g = "glibc___" + short
-        comment = {
-            "__GI___pthread_setcancelstate": "This body changes the thread's cancellation flag and optionally saves its old value.",
-            "__printf_buffer_done": "This body returns the accumulated count or reports failure and integer overflow.",
-        }.get(fn, f"This definition selects the checked body of [{fn}].")
-        tail += f'''
-(** {comment} *)
-Definition {g} : func := Eval vm_compute in
-  {prefix}_fn "{fn}".
-'''
-        label, comment = {
-            "__GI___pthread_setcancelstate": ("cancel", "Lookup finds the cancellation body rather than the empty fallback."),
-            "__printf_buffer_done": ("done", "Lookup finds the completion body rather than the empty fallback."),
-        }.get(fn, (short, "Computation checks that lookup found the body rather than its fallback."))
-        rhs = f"{prefix}_module = Some (Defined {g})." if buffer else f"{prefix}_module =\n  Some (Defined {g})."
-        witness = f'''
-(** {comment} *)
-Lemma {prefix}_find_{label} :
-  find_direct (TAtom "{fn}") {rhs}
-Proof. vm_compute. reflexivity. Qed.
-'''
-        if buffer:
-            tail += witness
-        else:
-            witnesses.append(witness)
-    return header + body + tail + "".join(witnesses)
-
-
 class Generator:
     def __init__(self, capture, work, sources=False):
         self.capture = capture
@@ -193,8 +93,12 @@ class Generator:
         self.survey = importlib.util.module_from_spec(spec)
         spec.loader.exec_module(self.survey)
         self.compiled = {}
+        self.unit_names = {}
         self.layout_files = {}
         self.built = {}
+        self.linked = {}
+        self.printed = {}
+        self.code = typed["TypedCode"]()
         self.model = self.env.get("MODEL")
 
     def layout_file(self, source, captured=True):
@@ -271,11 +175,9 @@ class Generator:
         unit_terms = [(unit, self.compiled[(str(self.capture / (unit + ".i")), cfg.get("mode", "checked"), True)])
                       for _, unit in units(unit_rows)]
         checks = "".join(f"    - {line}\n" for line in report.splitlines()) if report is not None else ""
-        selection = '''    The image is too large to decode here, so the fixture keeps only the
-    items below. On the whole image, the producer checked that each of
-    these names has exactly one item, and that the item is the same term
-    as in the image of the `{compare}` fixture. Rocq sees only the
-    selection and does not check these facts.
+        selection = '''    The producer selected the items below from the full linked image.
+    It checked that each selected name has one item and that its term
+    agrees with the term in the `{compare}` fixture.
 
 '''.format(compare=cfg.get("compare")) if report is not None else '''    The extracted module decoder reads the linked term. Its OCaml printer
     writes the resulting constructors as Gallina, and the generator assembles
@@ -301,47 +203,77 @@ class Generator:
     def prolog(self, script, args, data=None):
         return run([self.swipl, NF / "rocq/scripts" / script, *args], data=data, env=self.env)
 
-    def link(self, cfg, name, roots, paths, source):
+    def link(self, cfg, name, roots, paths, source, origins=None):
         """Link a manifest fixture before selecting or printing any bodies."""
         lower, layout = fixture_prefix(name), cfg["layout"]
         mode = cfg.get("mode", "checked")
         specs = []
+        owners = {}
+
+        def add(obj, term, owner):
+            if str(term) in owners:
+                raise ValueError(f'{name}: repeated linker input {term}')
+            specs.append(f"{obj}={term}")
+            owners[str(term)] = owner
+
         access_units = []
         if cfg.get("objects"):
-            specs.extend(f"{obj}={term}" for obj, term in self.objects(cfg))
+            for obj, term in self.objects(cfg):
+                add(obj, term, (None, obj))
         if source:
             compiled = self.compile(NF / source, mode, False)
-            specs.append(f"{lower}={compiled}")
+            add(lower, compiled, (None, lower))
             if self.sources:
                 access_units.extend(['--unit', f'{lower}={compiled}={self.layout_file(NF / source, False)}'])
         for obj, unit in units(paths):
+            previous = self.unit_names.setdefault(unit, obj)
+            if previous != obj:
+                raise ValueError(f"{unit}: inconsistent linker names {previous} and {obj}")
             unit_source = self.capture / (unit + '.i')
             compiled = self.compile(unit_source, mode)
-            specs.append(f"{obj}={compiled}")
+            add(obj, compiled, (unit, obj))
             if self.sources and layout not in ("image", "linked_image"):
                 access_units.extend(['--unit', f'{obj}={compiled}={self.layout_file(unit_source)}'])
-        entry = roots
-        if not source and layout not in ("getopt", "image", "linked_image"):
-            entry = {"libio": "libio_roots", "stdio": "stdio_roots", "buffer": "buffer_roots", "stdlib": "stdlib_root"}.get(layout, lower + "_roots")
+        entry = fixture_entry(layout, roots, lower, source)
+        if not source and layout not in ("getopt", *IMAGE_LAYOUTS):
             items = ",".join(f"item(p,sym('{r}',0))" for r in roots.split())
             root = self.work / "roots.term"
             root.write_text(f"module([data({entry},ro(export),8,[{items}])]).\n")
-            specs.insert(0, f"{'root' if layout == 'stdlib' else 'roots'}={root}")
-        linked = self.prolog("link.pl", (["--context"] if self.sources and layout not in ("image", "linked_image") else []) +
-                             (["--ctors"] if cfg.get("ctors") else []) + [entry, *specs])
-        return linked, access_units
+            obj = 'root' if layout == 'stdlib' else 'roots'
+            add(obj, root, (None, 'roots'))
+            specs.insert(0, specs.pop())
+        flags = (["--context"] if self.sources and layout not in ("image", "linked_image") else []) + (
+            ["--ctors"] if cfg.get("ctors") else [])
+        if origins is not None:
+            flags += ['--origins', origins]
+        linked = self.prolog("link.pl", [*flags, entry, *specs])
+        if origins is None:
+            return linked, access_units
+        rows = json.loads(origins.read_text())
+        return linked, access_units, {symbol.encode(): owners[path] for path, symbol in rows}
 
-    def generate(self, manifest, output, cfg=None):
+    def records(self, linked):
+        if linked not in self.printed:
+            if not self.model:
+                self.model = str(Path(run(
+                    ["nix", "build", "--no-link", "--print-out-paths",
+                     f"{NF.parent}#checks.x86_64-linux.nanofil-rocq.model.driver"]
+                ).strip()) / "bin/nanofil-model")
+            self.printed[linked] = list(typed['records'](run([self.model, "--gallina"], data=linked)))
+        return self.printed[linked]
+
+    def generate(self, manifest, output, views, cfg=None):
         if cfg is None:
             cfg = tomllib.loads(manifest.read_text())
             for batch in cfg.pop("batch", []):
-                self.generate(manifest, output, batch)
+                self.generate(manifest, output, views, batch)
         layout = cfg["layout"]
         rel = manifest.parent.relative_to(GEN)
-        checker = str(Path("rocq/glibc") / rel / ("buffer-code.sh" if layout == "buffer" else "code.sh"))
+        dest = output / rel
+        if views:
+            dest.mkdir(parents=True, exist_ok=True)
         if layout in ("stdio", "buffer", "formatter"):
             run(["sha256sum", "-c", manifest.parent / ("buffer-fixtures.sha256" if layout == "buffer" else "fixtures.sha256")], cwd=self.capture)
-        linked_cache = {}
         for row in rows(cfg["fixtures"]):
             fields = row.split("|")
             if len(fields) not in (4, 5):
@@ -349,33 +281,71 @@ class Generator:
             name, roots, paths, fns, *program = fields
             if layout == "formatter" and name != "Formatter":
                 raise ValueError("formatter layout owns the Formatter fixture")
-            if layout == "linked_image" and (name != "HelloImage" or fns.split()):
-                raise ValueError("linked_image layout owns the HelloImage fixture and selects no functions")
+            if layout == "linked_image" and fns.split():
+                raise ValueError(f"{manifest}: linked_image fixture {name} cannot select functions")
             roots = roots or cfg.get("roots", "")
             unit_rows = "- " + paths if paths else manifest_units(cfg)
             lower = fixture_prefix(name)
             source = program[0] if program else ""
-            if self.sources and cfg.get('layouts', False):
+            if views and cfg.get('layouts', False):
                 layouts = self.layouts(unit_rows, fns.split())
-                (output / (name + 'Layout.v')).write_text(layout_tables(name, layouts))
+                (dest / (name + 'Layout.v')).write_text(layout_tables(name, layouts))
                 tags = {r['tag'] for r in layouts if not r.get('missing', False)}
                 missing = sorted({r['tag'] for r in layouts if r.get('missing', False)} - tags)
                 print(f'{name}Layout: {len(tags)} record entries; unavailable {missing}', flush=True)
-            cache_key = (roots, unit_rows, source)
+            entry = fixture_entry(layout, roots, lower, source)
+            cache_key = (entry, roots, unit_rows, source, cfg.get("objects"), cfg.get("object_prefix"),
+                         cfg.get("mode", "checked"), cfg.get("ctors", False))
             if layout in ("image", "linked_image"):
                 check_units(self.capture, f"{manifest}: fixture row {row}", unit_rows)
-            if cache_key not in linked_cache:
-                linked_cache[cache_key] = self.link(cfg, name, roots, unit_rows, source)
-            linked, access_units = linked_cache[cache_key]
-            if self.sources and layout not in ("image", "linked_image"):
+            if cache_key not in self.linked:
+                self.linked[cache_key] = self.link(cfg, name, roots, unit_rows, source, self.work / "origins.json")
+            linked, access_units, owners = self.linked[cache_key]
+            provenance = ""
+            if layout == "image":
+                whole, report = self.work / "image.term", self.work / "image.report"
+                whole.write_text(linked)
+                try:
+                    selection = run([self.swipl, HERE / "image.pl", whole, self.reference(cfg["compare"]),
+                                     report, *fns.split()], env=self.env)
+                except subprocess.CalledProcessError as error:
+                    raise ValueError(f"{manifest}: fixture row {row}: image selection failed") from error
+                provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, report.read_text())
+                linked = selection
+            elif layout == "linked_image":
+                provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, None)
+
+            records = self.records(linked)
+            names = fns.split()
+            defined = {r.symbol.decode() for r in records if r.is_function}
+            missing = set(names) - defined if layout != "image" else set()
+            if missing:
+                raise ValueError(f"{manifest}: fixture row {row}: missing function in linked units: {sorted(missing)}")
+            if layout in ("libio", "stdio", "buffer"):
+                records = [r for r in records if r.is_function and r.symbol.decode() in names]
+            items = []
+            for record in records:
+                unit, obj = owners[record.symbol]
+                if unit:
+                    file = typed['unit_file'](unit)
+                    description = f'This file defines checked IR from glibc’s `{unit}` object.'
+                else:
+                    file = rel / (name + '_' + typed['file_identifier'](obj))
+                    description = f'This file defines checked IR from the `{obj}` object of {name}.'
+                items.append(self.code.add(file, description, record))
+            if views:
+                module = {"HiAtexit": "hi_linked", "HelloImage": "hello_image_linked"}.get(name, lower + "_module")
+                self.code.write_view(output, rel / (name + "Code"), module, items, provenance, name == "HelloImage")
+
+            if views and layout not in ("image", "linked_image"):
                 term = self.work / "source.term"
                 term.write_text(linked)
-                facts = json.loads(run([self.swipl, HERE / "source.pl", term, *fns.split()], env=self.env))
+                facts = json.loads(run([self.swipl, HERE / "source.pl", term, *names], env=self.env))
                 block_facts = json.loads(run([NF / 'bin/nanofil', '--script', HERE / 'block-facts.pl',
-                                              term, *fns.split(), *access_units], env=self.env))
-                for filename, text in source_tables(name, lower, facts, "libio" if layout == "formatter" else layout, NF,
-                                                    block_definitions(block_facts)).items():
-                    (output / filename).write_text(text)
+                                              term, *names, *access_units], env=self.env))
+                functions = {r.symbol.decode(): (file.name, r.identifier) for file, r in items if r.is_function}
+                for filename, text in source_tables(name, facts, functions, NF, block_definitions(block_facts)).items():
+                    (dest / filename).write_text(text)
                 bs = [b for r in block_facts for b in r['blocks']]
                 accesses = [a for b in bs for a in b['footprint']]
                 print(f'{name}Blocks: functions {len(block_facts)}; blocks {len(bs)}; '
@@ -399,88 +369,11 @@ class Generator:
                           f'addresses {k["address"]}; derived {k["derived"]}; fallback {k["raw"]}', flush=True)
                 if cfg.get("names", False):
                     text, counts = name_tables(name, facts, block_facts)
-                    (output / (name + "Names.v")).write_text(text)
+                    (dest / (name + "Names.v")).write_text(text)
                     print(f"{name}Names: functions {len(counts)}", flush=True)
                     for fn, k in counts.items():
                         print(f'  {fn}: named {k["named"]}; derived {k["derived"]}; '
                               f'suffixed {k["suffixed"]}; unnamed {k["raw"]}', flush=True)
-            if layout == "image":
-                whole, report = self.work / "image.term", self.work / "image.report"
-                whole.write_text(linked)
-                try:
-                    selection = run([self.swipl, HERE / "image.pl", whole, self.reference(cfg["compare"]),
-                                     report, *fns.split()], env=self.env)
-                except subprocess.CalledProcessError as error:
-                    raise ValueError(f"{manifest}: fixture row {row}: image selection failed") from error
-                provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, report.read_text())
-                linked = selection
-            elif layout == "linked_image":
-                provenance = self.provenance(cfg, self.objects(cfg), unit_rows, linked, None)
-            elif fns.split():
-                selected = self.work / "linked.term"
-                selected.write_text(linked)
-                try:
-                    functions = run([self.swipl, HERE / "select.pl", selected, *fns.split()], env=self.env)
-                except subprocess.CalledProcessError as error:
-                    raise ValueError(f"{manifest}: fixture row {row}: function selection failed") from error
-                if layout in ("libio", "stdio", "buffer"):
-                    linked = functions
-            if layout in ("hi_atexit", "linked_image"):
-                if not self.model:
-                    self.model = str(Path(run(
-                        ["nix", "build", "--no-link", "--print-out-paths",
-                         f"{NF.parent}#checks.x86_64-linux.nanofil-rocq.model.driver"]
-                    ).strip()) / "bin/nanofil-model")
-                records = run([self.model, "--gallina"], data=linked)
-                typed_image(output, name, records, provenance if layout == "linked_image" else "")
-                continue
-            unit_names = [re.sub(r"\.o[sS]$", "", Path(unit).name) for _, unit in units(unit_rows)]
-            unit_description = " and ".join([", ".join(unit_names[:-1]), unit_names[-1]]) if len(unit_names) > 1 else "".join(unit_names)
-            description = {
-                "program": f"{source} with user glibc's {paths}, linked by rocq/scripts/link.pl",
-                "string": f"user glibc's {paths}, linked from {roots} by rocq/scripts/link.pl",
-                "libio": f"user glibc's narrow libio and exit units (rocq/glibc/libio/code.sh), linked from {roots} by rocq/scripts/link.pl, its functions {fns}",
-                "stdlib": f"user glibc's {unit_description} units from the roots " + ",".join(roots.split()) + ", linked by rocq/scripts/link.pl",
-                "getopt": f"user glibc's {unit_description} units linked from {roots}",
-                "stdio": "the pinned user-glibc 2.44 cancellation and printf-buffer completion units",
-                "buffer": "the pinned user-glibc 2.44 printf-buffer units",
-                "formatter": "the complete linked pinned user-glibc 2.44 vfprintf unit",
-                "image": f"GNU Hello linked with its {len(unit_names)} user glibc units from {roots}, "
-                         f"restricted to {fns} and their alias targets by rocq/scripts/glibc-code/image.pl",
-            }[layout]
-            text = self.prolog("gallina.pl", ([] if layout in ("program", "stdlib") else ["--chunk"]) +
-                               [lower, description, checker], linked)
-            if layout in ("getopt", "formatter"):
-                whole = self.work / "whole.v"
-                whole.write_text(text)
-                run(["python3", "-I", HERE / "slice.py", whole, output, layout])
-                if layout == "formatter":
-                    text = '''(** This module decodes the complete captured formatter, including its
-    unsupported paths. The decoding equality is not a formatting contract.
-    stdio/code.sh regenerates this file from the pinned capture. Do not edit. *)
-From Stdlib Require Import String ZArith List.
-From Glibc Require Import CodePrelude FormatterTerm.
-Import ListNotations.
-Open Scope string_scope.
-Open Scope Z_scope.
-'''
-                    definitions = decoded(lower, fns, "string").replace(
-                        "The function named n of the module, or an empty one.",
-                        "Lookup selects the named function, with an empty fallback when it is absent.")
-                    (output / (name + "Code.v")).write_text(text + definitions)
-            else:
-                if layout in ("string", "libio"):
-                    text += decoded(lower, fns, layout)
-                elif layout == "image":
-                    text += provenance + decoded(lower, "", "string")
-                elif layout in ("stdio", "buffer"):
-                    text = stdio(text, lower, fns, layout)
-                if self.sources and layout in ("libio", "stdio", "buffer"):
-                    text = text.replace("From Stdlib Require Import String ZArith List Ascii.",
-                                        "From Glibc Require Import GlibcTactics.\n"
-                                        "From Stdlib Require Import String ZArith List Ascii.")
-                (output / (name + "Code.v")).write_text(text)
-
 
 def main():
     parser = argparse.ArgumentParser(description=__doc__)
@@ -489,8 +382,6 @@ def main():
     parser.add_argument("--tree", type=Path, default=GEN, help="tree to compare or update")
     parser.add_argument("--output", type=Path, help="write generated files to a separate tree")
     parser.add_argument("--update", action="store_true")
-    parser.add_argument("--form", choices=("shared-prelude",), default="shared-prelude",
-                        help="output form (shared-prelude)")
     args = parser.parse_args()
     if args.output and args.update:
         parser.error("choose --output or --update")
@@ -500,10 +391,10 @@ def main():
             args.capture = Path(run(["nix", "build", "--no-link", "--print-out-paths", "-f",
                                      NF / "survey/glibc/capture.nix"]).strip())
     manifests = sorted(GEN.rglob("code.toml"))
-    if args.directory:
-        manifests = [m for m in manifests if str(m.parent.relative_to(GEN)) in args.directory]
-        if len(manifests) != len(set(args.directory)):
-            parser.error("unknown directory")
+    directories = {m.parent.relative_to(GEN) for m in manifests}
+    selected = set(map(Path, args.directory)) if args.directory else directories
+    if not selected <= directories | {Path("glibc")}:
+        parser.error("unknown directory")
     status = 0
     prelude_dir = args.output or (GLIBC if args.tree.resolve() == GEN.resolve() else args.tree)
     for name in PRELUDES:
@@ -519,41 +410,19 @@ def main():
     with tempfile.TemporaryDirectory(prefix="glibc-code-") as tmp:
         work = Path(tmp)
         generator = Generator(args.capture.resolve(), work, sources=True)
+        out = work / "output"
         for manifest in manifests:
-            styles = tomllib.loads(manifest.read_text()).get("proof_styles", {})
-            rel = manifest.parent.relative_to(GEN)
-            out = work / "output" / rel
-            out.mkdir(parents=True, exist_ok=True)
-            generator.generate(manifest, out)
-            generated = sorted(out.glob("*.v"))
-            unknown = set(styles) - {p.name for p in generated}
-            if unknown:
-                raise ValueError(f"proof styles name nonexistent fixtures in {manifest}: {sorted(unknown)}")
-            target = args.tree / rel
-            stale = set()
-            if not args.output and args.form == 'shared-prelude':
-                for pattern in ('*Src[0-9]*.v', '*SrcFiles.v', '*Blocks[0-9]*.v'):
-                    stale.update(p for p in target.glob(pattern) if not (out / p.name).exists())
-                # A names file is the generator's when its header says so.
-                stale.update(p for p in target.glob('*Names.v') if not (out / p.name).exists()
-                             and 'The code generator reproduces this file' in p.read_text()[:1000])
-                for path in out.glob('*Src.v'):
-                    old = target / (path.name.removesuffix('Src.v') + 'Blocks.v')
-                    if old.exists():
-                        stale.add(old)
-            # These names belong to the generator, including retired raw-term slices.
-            for prefix in (() if args.output else ("HiAtexit", "Getopt", "Formatter", "HelloImage")):
-                if any(p.name.startswith(prefix + "Code") for p in generated):
-                    patterns = ["Code[0-9]*.v", "Dec[0-9]*.v"]
-                    if prefix in ("HelloImage", "HiAtexit"):
-                        patterns += ["Term.v", "Typed*.v"]
-                    for pattern in patterns:
-                        stale.update(p for p in target.glob(prefix + pattern) if not (out / p.name).exists())
+            generator.generate(manifest, out, manifest.parent.relative_to(GEN) in selected)
+        for file in sorted(generator.code.units):
+            if file.parent == Path("glibc") or file.parent in selected:
+                generator.code.write_unit(out, file)
+        for rel in sorted(selected | {Path("glibc")}):
+            target = (args.output or args.tree) / rel
+            generated = {p.name: p for p in (out / rel).glob("*.v")}
+            stale = sorted(p for p in target.glob("*.v") if p.name not in generated)
             different = 0
-            for path in generated:
-                text = computed_proofs(path.read_text(), styles.get(path.name, "vm_compute"))
-                path.write_text(shared(text))
-                destination = (args.output / rel if args.output else target) / path.name
+            for name, path in sorted(generated.items()):
+                destination = target / name
                 if args.output or args.update:
                     destination.parent.mkdir(parents=True, exist_ok=True)
                     destination.write_bytes(path.read_bytes())
@@ -561,32 +430,15 @@ def main():
                     different += 1
                     print("".join(difflib.unified_diff(
                         destination.read_text().splitlines(True) if destination.exists() else [],
-                        path.read_text().splitlines(True), str(destination), "regenerated/" + str(rel / path.name))), end="")
-            for path in sorted(stale):
+                        path.read_text().splitlines(True), str(destination), "regenerated/" + str(rel / name))), end="")
+            for path in stale:
                 print(f"stale fixture: {path}")
-            if different or stale:
+                if args.update:
+                    path.unlink()
+            if different or (stale and not args.update):
                 status = 1
-            if args.output or args.update:
-                print(f"{rel}: {len(generated)} files written, {len(stale)} stale", flush=True)
-            else:
-                print(f"{rel}: {len(generated)} files, {different} differ, {len(stale)} stale", flush=True)
+            print(f"{rel}: {len(generated)} files, {different} differ, {len(stale)} stale", flush=True)
     raise SystemExit(status)
-
-
-def computed_proofs(text, style):
-    """Emit the manifest's closed-equality style, without reading the target."""
-    if style == "vm_compute":
-        return text
-    if style != "vm_cast_no_check":
-        raise ValueError(f"unknown computed proof style: {style}")
-    lemma = re.compile(
-        r"(^Lemma \w+\b.*?=\s*)(Some [^\n]+)\.\n"
-        r"Proof\. vm_compute\. reflexivity\. Qed\.", re.M | re.S)
-    result = lemma.sub(lambda m: m[1] + m[2] + ".\nProof. vm_cast_no_check (eq_refl (" +
-                       m[2] + ")). Qed.", text)
-    if "Proof. vm_compute. reflexivity. Qed." in result:
-        raise ValueError("unrecognized generated computed equality")
-    return result
 
 
 if __name__ == "__main__":

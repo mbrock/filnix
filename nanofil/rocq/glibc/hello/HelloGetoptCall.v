@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strcmp_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
 (** Hello calls getopt_long once per option, and glibc remembers its
     place between calls in a private object. Hello's main loop lets each
@@ -30,7 +31,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloMain.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv StrchrCode StrcmpCode StrncmpCode StrlenLogic
+From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
   GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
   GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr
   AtexitLogic HelloGlibcLibsT HelloGetoptTable GetoptInitial HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop.
@@ -57,10 +58,10 @@ Context (Hgl : find_fn ge (TAtom "getopt_long") = Some (Defined glibc_getopt_lon
   (Hgi : find_fn ge (TAtom "_getopt_internal") = Some (Defined glibc_getopt_internal))
   (Hgr : find_fn ge (TAtom "_getopt_internal_r") = Some (Defined glibc_getopt_internal_r))
   (Hplo : find_fn ge (TAtom "glibc_getopt#process_long_option") = Some (Defined glibc_process_long_option))
-  (Hcmp : find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp))
-  (Hchr : find_fn ge (TAtom "__GI_strchr") = Some (Defined glibc_strchr))
-  (Hchrn : find_fn ge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul))
-  (Hncmp : find_fn ge (TAtom "__GI_strncmp") = Some (Defined glibc_strncmp))
+  (Hcmp : find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp))
+  (Hchr : find_fn ge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr))
+  (Hchrn : find_fn ge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul))
+  (Hncmp : find_fn ge (TAtom "__GI_strncmp") = Some (Defined Unit_string_strncmp_os.fn___GI_strncmp))
   (Hlen : find_fn ge (TAtom "__GI_strlen") = Some (Defined glibc_strlen)).
 
 (** The parser keeps its progress in the object gb with region greg. *)

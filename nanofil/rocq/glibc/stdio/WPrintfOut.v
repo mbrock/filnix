@@ -2,7 +2,7 @@
     already staged. It lends both to the buffer operations. Each call gives
     back a valid buffer, even when the stream accepted only a prefix. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,12 +10,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
-  LibioCloseSteps LibioPutsInv LibioWIdle MemFwdCode PrintfOut WPrintfFileFlush WPrintfDispatch
+  LibioCloseSteps LibioPutsInv LibioWIdle PrintfOut WPrintfFileFlush WPrintfDispatch
   WPrintfFill WPrintfPad WPrintfCopy WPrintfWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
-Definition wprintf_failed_fn := hello_image_fn_glibc_vfwprintf_internal'23__wprintf_buffer_has_failed.
+Definition wprintf_failed_fn := Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.fn_glibc_vfwprintf_internal'23__wprintf_buffer_has_failed.
 
 Section out.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -36,7 +36,7 @@ Class WideBufferCalls : Prop := {
   wbc_move : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world));
   wbc_move_fn : find_fn ge (TAtom "zmemmove") = None;
   wbc_move_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None;
-  wbc_memcpy : Defines ge "__GI_memcpy" glibc_memcpy;
+  wbc_memcpy : Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy;
   wbc_copy : Defines ge "__wmemcpy" wprintf_copy_fn;
   wbc_fill : Defines ge "__GI___wmemset" wprintf_fill_fn;
   wbc_pad : Defines ge "__wprintf_buffer_pad_1" wprintf_pad_fn;

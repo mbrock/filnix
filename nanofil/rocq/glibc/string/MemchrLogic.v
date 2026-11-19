@@ -11,6 +11,7 @@
     higher-level proofs such as [StrnlenLogic] can invoke `__memchr` on
     borrowed or shared strings. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrchrCode MemchrLast MemchrLoop
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLoop
   MemchrFirst.
 From Glibc Require MemchrFirst MemchrLast MemchrLoop WordString.
 From Glibc Require Import Fix.
@@ -66,7 +67,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** Block `iw_2.L6` receives the saturated end address E, aligns it to an
     8-byte boundary, and tests the first word starting at byte offset k. *)
 Definition memchr_blk_end : block := Eval vm_compute in
-  match find_block (TAtom "iw_2.L6") (fn_blocks glibc_memchr) with
+  match find_block (TAtom "iw_2.L6") (fn_blocks Unit_string_memchr_os.fn___memchr) with
   | Some b => b | None => mkBlock (TAtom "iw_2.L6") [] [] JUnreachable end.
 
 
@@ -85,7 +86,7 @@ Lemma memchr_first dq b reg w ws a c0 (k : nat) e from c E r Φ :
   loop_hit (drop k (wbytes (w :: ws))) (c mod 256) a E r ->
   liveq dq b reg -∗ ptsq dq (words_ps b (a - Z.of_nat k - b) (w :: ws)) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (a - Z.of_nat k - b) (w :: ws)) -∗ Φ (Ret (WPtr (hit_ptr (mkPtr a c0) r)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "iw_2.L6") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "iw_2.L6") from)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   intros Hc Hb0 Hb8 Hba Hk Hend Hreg Hr HE Hphi H0 H16 H25 H7 H19 Hchk Hhit. iIntros "Hl Hps HK".
   apply Forall_cons_1 in Hr as [Hw0 Hr]. cbn [List.length] in Hend. rewrite Nat2Z.inj_succ in Hend.
@@ -170,7 +171,7 @@ Qed.
 
 
 (** To verify `c: memchr` at any ownership share, [wp_glibc_memchr_dq]
-    steps through [glibc_memchr] on n bytes starting at p. It returns
+    steps through [Unit_string_memchr_os.fn___memchr] on n bytes starting at p. It returns
     the earliest matching pointer or null, and restores the live
     [[region]] and word pieces. *)
 Lemma wp_glibc_memchr_dq dq p c n b reg ws r e Φ :
@@ -183,7 +184,7 @@ Lemma wp_glibc_memchr_dq dq p c n b reg ws r e Φ :
   lookup (TAtom "v4") e = Some (WInt n) ->
   liveq dq b reg -∗ ptsq dq (words_ps b (wstart p - b) ws) -∗
   (liveq dq b reg -∗ ptsq dq (words_ps b (wstart p - b) ws) -∗ Φ (Ret (WPtr (hit_ptr p r)))) -∗
-  WP (ERun (mkFrame glibc_memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_string_memchr_os.fn___memchr e [] None (Enter (TAtom "start") None)) : gexpr) {{ Φ }}.
 Proof using SafepointStable0.
   destruct p as [a c0]. unfold wstart. cbn [ptr_addr ptr_cap]. intros Hc Hb0 Hb8 Hba Hend Hreg Hr Hcr Hn Hhit H0 H2 H4.
   iIntros "Hl Hps HK".

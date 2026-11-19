@@ -5,6 +5,7 @@
     A nonzero status instead calls exit, which must run its normal cleanup.
     That call still needs a separate proof. The earlier message printing
     and errno lookup also remain outside this proof. *)
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode ErrorCode ErrorEntry ErrorRestore Fix.
+  ErrorEntry ErrorRestore Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -33,7 +34,7 @@ Lemma wp_error_tail_lend {dqs : dfrac} tb treg old sb sreg stderr
     e from status errnum fmt ap mode cb Φ :
   old = 0 \/ old = 1 -> ow_self w0 = mkPtr tb (Obj tb) ->
   0 < tb -> tb mod 8 = 0 -> tb + 796 <= r_end treg -> r_end treg <= 2 ^ 63 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)) ->
   0 < sb -> sb mod 8 = 0 -> sb + 8 <= r_end sreg ->
   0 <= ptr_addr stderr < 2 ^ 64 ->
@@ -58,9 +59,9 @@ Lemma wp_error_tail_lend {dqs : dfrac} tb treg old sb sreg stderr
       live tb treg -∗ int_cell tb 792 1 -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
       liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ O -∗ Q -∗ E -∗
-      WP (ERun (mkFrame glibc_error_internal e' [] None
+      WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hext Hreg.
   intros Hold Hself Htb Hta Hte Htr Hcancel Hgstderr Hsb Hsa Hse Hptr Hnewline Hfx Hfxframe
@@ -105,7 +106,7 @@ Context (tb : Z) (treg : region) (old : Z)
 Context {dqs : dfrac}.
 Context (Hold : old = 0 \/ old = 1) (Hself : ow_self w0 = mkPtr tb (Obj tb))
   (Htb : 0 < tb) (Hta : tb mod 8 = 0) (Hte : tb + 796 <= r_end treg) (Htr : r_end treg <= 2 ^ 63)
-  (Hcancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate))
+  (Hcancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate))
   (Hgstderr : lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
   (Hsb : 0 < sb) (Hsa : sb mod 8 = 0) (Hse : sb + 8 <= r_end sreg) (Hsr : r_end sreg <= 2 ^ 63)
   (Hptr : 0 <= ptr_addr stderr < 2 ^ 64)
@@ -143,9 +144,9 @@ Lemma wp_error_tail_loan
       live tb treg -∗ int_cell tb 792 1 -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
       liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
-      WP (ERun (mkFrame glibc_error_internal e' [] None
+      WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Hstatusrange.
@@ -168,9 +169,9 @@ Lemma wp_error_tail e from status errnum fmt ap mode cb Φ :
       live tb treg -∗ int_cell tb 792 1 -∗
       live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
       liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗
-      WP (ERun (mkFrame glibc_error_internal e' [] None
+      WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e' [] None
         (Enter (TAtom "iw_2.L100") (Some (TAtom "iw_2.L92")))) : gexpr) {{ Φ }})) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs Hrange. iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".
@@ -189,7 +190,7 @@ Lemma wp_error_tail_zero e from errnum fmt ap mode cb Φ :
   (live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
     liveq dqs sb sreg -∗ pcellq dqs sb 0 stderr -∗ live_capq dq (ptr_cap stderr) rreg -∗ Q -∗ E -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.L92") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hta Htb Hte Htr.
   intros Hinputs. iIntros "Ht Hflag Hcl Hsaved Hsl Hsp Hr HR HE HK".

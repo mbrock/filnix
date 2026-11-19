@@ -13,6 +13,9 @@
     it before the error report runs. The write of the converted bytes
     is assumed here, because its own proof has not landed yet. *)
 
+From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os.
+From Glibc Require Import Unit_posix__exit_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,15 +24,14 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   Pieces Heap Language Logic MemLogic HelloLeaf HelloClose HelloConvDefs.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString PrintfSpec LibioCleanupExit ErrorCode ErrorCall HelloGlibcDebts HelloGlibcLibsT
+  WordString PrintfSpec LibioCleanupExit ErrorCall HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageCpu HelloStartFacts HelloStartHdGetopt
   HelloErrorOperandCall HelloClosedStdout HelloImageCloseObjs HelloLocaleState LeavesLogic AllocLogic
-  SysCode LibioReadCode LibioDoWriteCode LibioGenCode LibioUnlinkCode LibioCloseItCode LibioFcloseCode
   LibioWOverflowWrite LibioWCloseIt LibioWConvAscii LibioWFwide LibioWRelease Mbrtowc
   HelloImageWideObjs HelloImageWFwideObjs HelloImageWReleaseObjs HelloImageWConvObjs HelloConvObjects
   DcgettextRealV HelloGetoptDiagLock HelloGetoptDiagTcb HelloGetoptDiagGettext HelloStartGetoptRules
   HelloWClosedStdout HelloWideState HelloCloseStdoutWide HelloGetoptDiagImage HelloCloseReport HiAtexitSetb StartCtypeInitSpec StartImageEarly HelloImageEarly
-  RdlockLogic DcgettextRwlock LibioWIdle LibioSetb LibioWAllocCode Fix.
+  RdlockLogic DcgettextRwlock LibioWIdle LibioSetb Fix.
 From Glibc Require LibioFcloseTail LibioFlushBody.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
@@ -215,28 +217,28 @@ Proof using Herr Hfd1 Hfd2 Hvf Hwrite.
   pose proof Hc as (Hn & Hna & Hne & Hnr).
   destruct (hk_frees _ _ L) as (Hfh & Hzf & Hzg).
   pose proof (hi_free_rule (glibc_program := close_call_program) (Hfree_fn := hk_free _ _ L) Hfh Hzf Hzg) as Hfree.
-  assert (D0 : Defines hge "__fpending" glibc___fpending) by image_defines.
-  assert (D1 : Defines hge "ferror" glibc__IO_ferror) by image_defines.
-  assert (D2 : Defines hge "fclose" glibc__IO_new_fclose) by image_defines.
-  assert (D3 : Defines hge "__GI___write" glibc___libc_write) by image_defines.
+  assert (D0 : Defines hge "__fpending" Unit_libio___fpending_os.fn___fpending) by image_defines.
+  assert (D1 : Defines hge "ferror" Unit_libio_ferror_os.fn__IO_ferror) by image_defines.
+  assert (D2 : Defines hge "fclose" Unit_libio_iofclose_os.fn__IO_new_fclose) by image_defines.
+  assert (D3 : Defines hge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by image_defines.
   assert (D4 : Defines hge "free" free_fn) by image_defines.
-  assert (D5 : Defines hge "__GI___close_nocancel" glibc___close_nocancel) by image_defines.
-  assert (D6 : Defines hge "__GI__IO_setb" glibc__IO_setb) by image_defines.
-  assert (D7 : Defines hge "_IO_new_do_write" glibc__IO_new_do_write) by image_defines.
-  assert (D8 : Defines hge "__GI__IO_unsave_markers" glibc__IO_unsave_markers) by image_defines.
-  assert (D9 : Defines hge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer) by image_defines.
-  assert (D10 : Defines hge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore) by image_defines.
-  assert (D11 : Defines hge "__GI__IO_un_link" glibc__IO_un_link) by image_defines.
-  assert (D12 : Defines hge "__GI__IO_default_finish" glibc__IO_default_finish) by image_defines.
-  assert (D13 : Defines hge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink) by image_defines.
-  assert (D14 : Defines hge "__GI__IO_wsetb" glibc__IO_wsetb) by image_defines.
+  assert (D5 : Defines hge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel) by image_defines.
+  assert (D6 : Defines hge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb) by image_defines.
+  assert (D7 : Defines hge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by image_defines.
+  assert (D8 : Defines hge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers) by image_defines.
+  assert (D9 : Defines hge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer) by image_defines.
+  assert (D10 : Defines hge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore) by image_defines.
+  assert (D11 : Defines hge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link) by image_defines.
+  assert (D12 : Defines hge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish) by image_defines.
+  assert (D13 : Defines hge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink) by image_defines.
+  assert (D14 : Defines hge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb) by image_defines.
   assert (D15 : Defines hge "__GI__IO_wdo_write" wdo_write_fn) by image_defines.
   assert (D16 : Defines hge "__errno_location" LeavesLogic.errno_location_fn) by image_defines.
   assert (D17 : Defines hge "close_stream" close_stream_fn) by image_defines.
-  assert (D18 : Defines hge "_exit" glibc__exit) by image_defines.
-  assert (Hfw : ge_fn hge "_IO_new_file_write" glibc__IO_new_file_write) by image_fn "_IO_new_file_write".
-  assert (Hfc : ge_fn hge "__GI__IO_file_close" glibc__IO_file_close) by image_fn "__GI__IO_file_close".
-  assert (Hff : ge_fn hge "_IO_new_file_finish" glibc__IO_new_file_finish) by image_fn "_IO_new_file_finish".
+  assert (D18 : Defines hge "_exit" Unit_posix__exit_os.fn___GI__exit) by image_defines.
+  assert (Hfw : ge_fn hge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write) by image_fn "_IO_new_file_write".
+  assert (Hfc : ge_fn hge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close) by image_fn "__GI__IO_file_close".
+  assert (Hff : ge_fn hge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish) by image_fn "_IO_new_file_finish".
   set (M := fun fb freg lb lr wd count =>
     report_state_for w tb fb freg (closed_wide_fields fb (ho_vb ob) lb lr tw tm wd) cb creg count).
   set (R := (hello_ro hge ob ∗ pts hello_close_ro_ps ∗ ptsq dq HelloCloseReportImage.hello_errlist_ps ∗
@@ -251,7 +253,7 @@ Proof using Herr Hfd1 Hfd2 Hvf Hwrite.
     (ho_out ob) (ho_err ob) (ho_in ob) (ho_fcp ob) (ho_vb ob) (ho_vreg ob) (ho_sb ob) (ho_sreg ob) eb
     (ho_so ob) (ho_soreg ob) (ho_se ob) (ho_sereg ob)
     (img_a "exit_failure") (img_gd "exit_failure") 1 (img_a "closeout#ignore_EPIPE") (img_gd "closeout#ignore_EPIPE") 0
-    (img_a "closeout#file_name") (img_gd "closeout#file_name") fmt text (hello_sym "closeout#str.52") glibc_error
+    (img_a "closeout#file_name") (img_gd "closeout#file_name") fmt text (hello_sym "closeout#str.52") Unit_misc_error_os.fn___error
     (fun k => error_frame 0 k fmt [WPtr text]) (wconv_ro ∗ wlocale (DfracOwn 1))%I R Q E Φ
     with "Hvt Hwv Hsg Htcb Hol Hop Hsl Hsp Hxl Hxc Hil Hib Hnl Hnp Hout Hse He HL Hmb Hwf Hwr Hlk Hio [Hin]
       [Hinx Hcro Wg Hnames Hcl Hcnt] [HK]").

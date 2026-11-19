@@ -6,6 +6,7 @@
     Cancellation may be enabled or disabled before this call. The call
     disables it and remembers its old value. The existing cleanup invariant
     supplies the enabled case without adding ownership. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode ErrorCode ErrorCall ErrorEntry FflushCode FileSyncCode HelloErrorClosed Fix.
+  ErrorCall ErrorEntry HelloErrorClosed Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic
   LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -50,7 +51,7 @@ Let loan := error_stdout_loan fb freg ob oreg.
 Let private := error_private_cells pb preg callback dqc cbr nb nreg pname dqn namer.
 Let report := error_closed_report fb freg ob oreg pb preg callback dqc cbr nb nreg pname dqn namer.
 Context (Hreg : holds_os registry) (Hext : sys_external ge)
-  (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
+  (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
 
 (** Replacing error with another definition does not preserve this rule:
     its public name must resolve to the captured function. Message reporting
@@ -62,11 +63,11 @@ Lemma wp_call_error_closed f e ls l args rest j status errnum fmt ys state
     (D Q Done E : iProp Σ) Φ :
   let flush := error_closed_flush fb vb lb lbreg vbreg sb sreg D in
   map_option (arg_x ge e) args = Some (WInt status :: WInt errnum :: WPtr fmt :: ys) ->
-  find_fn ge (TAtom "error") = Some (Defined glibc_error) ->
+  find_fn ge (TAtom "error") = Some (Defined Unit_misc_error_os.fn___error) ->
   forallb snapshot_word ys = true -> 0 <= status < 2 ^ 32 -> 0 <= errnum < 2 ^ 32 ->
-  find_fn ge (TAtom "__error_internal") = Some (Defined glibc_error_internal) ->
+  find_fn ge (TAtom "__error_internal") = Some (Defined Unit_misc_error_os.fn___error_internal) ->
   state = 0 \/ state = 1 ->
-  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate) ->
+  find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate) ->
   lookup (TAtom "stdout") (ge_globals ge) = Some (mkPtr ob (Obj ob)) ->
   0 < ob -> ob mod 8 = 0 -> ob + 8 <= r_end oreg -> r_end oreg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
@@ -77,7 +78,7 @@ Lemma wp_call_error_closed f e ls l args rest j status errnum fmt ys state
   0 < nb -> nb mod 8 = 0 -> nb + 8 <= r_end nreg -> r_end nreg <= 2 ^ 63 ->
   0 <= ptr_addr pname < 2 ^ 64 ->
   lookup (TAtom "glibc_error#str.255") (ge_globals ge) = Some prefix ->
-  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined glibc__IO_fflush) ->
+  find_fn ge (TAtom "__GI__IO_fflush") = Some (Defined Unit_libio_iofflush_os.fn___GI__IO_fflush) ->
   find_fn ge (TAtom "__fxprintf") = Some (Defined prefixfn) ->
   call_frame prefixfn [WPtr null;WPtr prefix;WPtr pname] = Some prefixframe ->
   (⊢ live_capq dqn (ptr_cap pname) namer -∗ flush -∗

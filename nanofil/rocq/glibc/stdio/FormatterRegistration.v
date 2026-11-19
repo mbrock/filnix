@@ -1,13 +1,14 @@
 (** The formatter uses its built-in parser only when all three extension
     tables are null. These checks read genuine linked global cells;
     importing their names does not establish their values or ownership. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioCloseSteps LibioLogic FormatterCode Fix.
+From Glibc Require Import OsWorld FileInv LibioCloseSteps LibioLogic Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioCloseSteps LibioLogic.
 Open Scope Z_scope.
 
@@ -41,9 +42,9 @@ Lemma wp_formatter_registration e ls from fb fr mb mr ab ar Φ :
   live ab ar -∗ pcell ab 0 null -∗
   ▷ (live fb fr -∗ pcell fb 0 null -∗ live mb mr -∗ pcell mb 0 null -∗
     live ab ar -∗ pcell ab 0 null -∗
-    WP (ERun (mkFrame glibc_printf_buffer (registration_env e fb mb ab) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (registration_env e fb mb ab) ls None
       (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hf Hm Ha Hfb Hfa Hfe Hfr Hmb Hma Hme Hmr Hab Haa Hae Har.

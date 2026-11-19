@@ -7,6 +7,7 @@
     them. This module opens that state the way a warning does, lends
     the two cells to the query, and closes the state again. *)
 
+From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,7 +16,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString LocalenameLogic
-  SetlocaleCode SetlocaleQuery StartCtypeInitSpec StartImageEarly HelloGlibcDebts HelloGetoptDiagLock
+  SetlocaleQuery StartCtypeInitSpec StartImageEarly HelloGlibcDebts HelloGetoptDiagLock
   HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloImageDiagObjs
   HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
@@ -38,7 +39,7 @@ Local Abbreviation cv := (mkPtr cb (Ro cb)).
 Context (tb : Z) (Hfd2 : In 2 (ow_fds w)).
 
 (** The image links `c: setlocale` to glibc's function. *)
-Lemma hello_setlocale_found : find_fn hge (TAtom "setlocale") = Some (Defined glibc_setlocale).
+Lemma hello_setlocale_found : find_fn hge (TAtom "setlocale") = Some (Defined Unit_locale_setlocale_os.fn___GI_setlocale).
 Proof using Type. vm_compute. reflexivity. Qed.
 
 (** Startup leaves the C locale in place, so the query returns the
@@ -51,7 +52,7 @@ Lemma hello_setlocale_query (N X priv : iProp Σ) :
     (hello_ro hge ob ∗ hello_stdio w hge ob ∗ priv)%I
     (fun r => ∃ q, ⌜r = Ret (WPtr q)⌝ ∗ hello_stdio w hge ob ∗ priv ∗ (⌜ptr_addr q = 0⌝ ∨ str_ro q))%I.
 Proof using Hfd2.
-  intros Hpriv. exists glibc_setlocale. split; [exact hello_setlocale_found|]. split; [eexists; reflexivity|].
+  intros Hpriv. exists Unit_locale_setlocale_os.fn___GI_setlocale. split; [exact hello_setlocale_found|]. split; [eexists; reflexivity|].
   intros f Φ Hf. iIntros "(_ & Hio & Hp) HK". iDestruct (Hpriv with "Hp") as "Hp".
   iDestruct (hello_hd_lend w fr tb Hfd2 N X with "[$Hio $Hp]") as "[[HN (%x & %Hx & HG)] Hback]".
   rewrite /hello_dgx /hello_dg_G.

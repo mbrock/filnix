@@ -5,6 +5,8 @@
     `c: _IO_file_close_maybe_unlink` closes an idle stream in every one
     of these states. *)
 
+From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os.
+From Glibc Require Import Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,9 +14,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode SysWrappers LibioReadCode LibioDoWriteCode
-  LibioCloseItCode LibioGenCode FileInv FileIdle LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
-  LibioPutsInv LibioFflushIdle LibioGenLeaves LibioUnlinkCode LibioFcloseCode LibioFcloseTail LibioFcloseLock
+From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers
+  FileInv FileIdle LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
+  LibioPutsInv LibioFflushIdle LibioGenLeaves LibioFcloseTail LibioFcloseLock
   LibioFclose LibioUnlink HelloClosedStdout LibioCloseItShort AllocLogic HiAtexitBase HiAtexitDoWrite
   HiAtexitSetb HiAtexitCloseIt.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld
@@ -29,9 +31,9 @@ Open Scope Z_scope.
 
 Section quiet.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-Context (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+Context (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 Local Ltac load_buf H :=
@@ -50,7 +52,7 @@ Local Ltac load_buf H :=
 Lemma wp_close_it_quiet (B : Z -> Z -> ptr -> iProp Σ) (Hclose : close_spec w0 registry ge)
     (Hsb : setb_spec_with w0 registry ge B)
     fr fb freg fl f2 fd off md nb p p24 p32 p40 p48 bp be vb vreg eb Φ :
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 <= f2 < 2 ^ 32 -> Z.land f2 32 = 0 -> 0 <= fd < 2 ^ 31 ->
   0 <= fl < 2 ^ 32 -> Z.land fl io_no_writes = 0 -> Z.land fl io_currently_putting = 0 ->
@@ -106,7 +108,7 @@ Proof using Type*.
   iAssert (int_cell fb off_fileno fd) with "[Hfd]" as "Hfd"; [iSplit; [done | iExact "Hfd"]|].
   iAssert (int_cell fb off_mode md) with "[Hmode]" as "Hmode"; [iSplit; [done | iExact "Hmode"]|].
   iApply (LibioCloseItMid.wp_close_it_L18_with Hfc Hclose B Hsb
-    glibc__IO_unsave_markers LibioGenLeaves.unsave_spec_holds
+    Unit_libio_genops_os.fn___GI__IO_unsave_markers LibioGenLeaves.unsave_spec_holds
     with "Hvt Hl Hfl Hfl2 Hfd Hoff Hmode Hvtp Herr Hrp Hre Hrb Hwb Hwp Hwe Hbase Hbend [Hb HB] H80 H96");
     first [intros blk Hblk; vm_compute in Hblk; injection Hblk as <-; reflexivity | try close_side; try exact Hmd].
   { iApply ("HB" with "Hb"). }
@@ -138,12 +140,12 @@ Definition closed_it `{!gen_heapGS piece pval Σ} (fb vb md f2 fl : Z) : iProp �
 Section fclose.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}
-  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
-  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
-  `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
-  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}.
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}
+  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}
+  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}
+  `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}
+  (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish)
+  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Hello closes stdout and stderr, which are static objects, so fclose
@@ -154,7 +156,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     flags only by setting the write-error bit, so the linked bit stays. *)
 Lemma wp_fclose_with fr pre post fb freg fl md lb lbreg sb sreg fcp pin pout vb vreg (R R' : iProp Σ) Φ :
   let fp := mkPtr fb (Obj fb) in
-  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofclose_os.fn__IO_new_fclose [WPtr fp] = Some fr ->
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
   (pout = fp \/ (ptr_addr pout <> fb /\ 0 <= ptr_addr pout < 2 ^ 64 /\
     lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp)) ->
@@ -168,7 +170,7 @@ Lemma wp_fclose_with fr pre post fb freg fl md lb lbreg sb sreg fcp pin pout vb 
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
   lock_state lb lbreg 0 0 null -∗
   io_list_inv ge (pre ++ fp :: post) -∗ ([∗ list] g ∈ pre ++ post, stream_life g) -∗ R -∗
-  (∀ fr' Ψ, ⌜call_frame glibc__IO_file_close_maybe_unlink [WPtr fp; WInt 0] = Some fr'⌝ -∗
+  (∀ fr' Ψ, ⌜call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr fp; WInt 0] = Some fr'⌝ -∗
      live fb freg -∗ int_cell fb off_flags fl -∗ R -∗
      ▷ (∀ k fl' f2, ⌜(k = 0 \/ k = 2 ^ 32 - 1) /\ Z.land fl' 128 = Z.land fl 128⌝ -∗
         live fb freg -∗ closed_it fb vb md f2 fl' -∗ R' -∗ Ψ (Ret (WInt k))) -∗
@@ -223,17 +225,17 @@ End fclose.
 Section idle.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+Context `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
   `{Hfree_fn : !Defines ge "free" free_fn}
   (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None)
   (Hzg : lookup zgc_free_name (ge_globals ge) = None)
-  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
-  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+  `{Hcn : !Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The close function closes an idle stream that writes to a standard
@@ -241,7 +243,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     the descriptor and drops the buffer. Its flags change only by the
     write-error bit, and errno comes back. *)
 Lemma wp_close_it_idle fr fb freg st nb fd vb vreg eb Ψ :
-  call_frame glibc__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink [WPtr (mkPtr fb (Obj fb)); WInt 0] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   flags_ok st -> idle_ok fd st -> fd <> 0 -> In fd (ow_fds w0) ->
   fs_vtable st = mkPtr (vb + vt_file) (Ro vb) -> buf_ptrs_ok fb nb (fs_ptrs st) -> short_idle nb st ->
@@ -360,23 +362,23 @@ End idle.
 Section fclose_idle.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context `{Hunl : !Defines ge "__GI__IO_un_link" glibc__IO_un_link}
-  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
-  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
-  `{Hdf : !Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
-  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}
-  `{Hwrite : !Defines ge "__GI___write" glibc___libc_write}
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
+Context `{Hunl : !Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}
+  `{Hpush : !Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}
+  `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}
+  `{Hdf : !Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}
+  (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish)
+  `{Hcif : !Defines ge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink}
+  `{Hwrite : !Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write}
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
   `{Hfree_fn : !Defines ge "free" free_fn}
   (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None)
   (Hzg : lookup zgc_free_name (ge_globals ge) = None)
-  `{Hcn : !Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  `{Hsetb : !Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}
-  `{Hfum : !Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}.
+  `{Hcn : !Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  `{Hsetb : !Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}
+  `{Hfum : !Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A call `c: fclose (fp)` on idle stdout or stderr writes what its
@@ -385,7 +387,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     errno. The closed object keeps the fields that [closed_stdout]
     describes, so error reporting can still flush it. *)
 Lemma wp_fclose_idle fr pre post fp fd pin pout fcp vb vreg sb sreg eb Φ :
-  call_frame glibc__IO_new_fclose [WPtr fp] = Some fr ->
+  call_frame Unit_libio_iofclose_os.fn__IO_new_fclose [WPtr fp] = Some fr ->
   lookup (TAtom "_IO_2_1_stdout_") (ge_globals ge) = Some pout ->
   (pout = fp \/ (ptr_addr pout <> ptr_addr fp /\ 0 <= ptr_addr pout < 2 ^ 64 /\
     lookup (TAtom "_IO_2_1_stderr_") (ge_globals ge) = Some fp)) ->

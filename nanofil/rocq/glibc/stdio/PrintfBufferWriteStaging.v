@@ -8,6 +8,7 @@
     the header fields. Unaligned destinations, including those left by a
     variable-length string, and writes needing a flush remain outside this
     rule. Copying into staging does not claim that the stream emitted bytes. *)
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_string_memcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +16,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  LibioPutsInv PrintfBufferIoCode MemFwdCode MemFwdLogic Fix.
+  LibioPutsInv MemFwdLogic Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
@@ -36,9 +37,9 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     destination slice. Memcpy may change that slice's capability slots.
     FILE fields, errno and the variadic cursor stay in the caller's [[frame]]. *)
 Lemma wp_printf_buffer_write_staging_aligned fr bb reg off xs cs dq sb sreg so sc ys Φ :
-  call_frame glibc___printf_buffer_write
+  call_frame Unit_stdioZ2dcommon_printf_buffer_write_os.fn___printf_buffer_write
     [WPtr (mkPtr bb (Obj bb)); WPtr (mkPtr (sb + so) sc); WInt (Z.of_nat (length xs))] = Some fr ->
-  find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy) ->
+  find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end reg -> r_end reg <= 2 ^ 63 ->
   48 <= off -> off mod 8 = 0 -> 0 < Z.of_nat (length xs) -> off + Z.of_nat (length xs) <= 176 ->
   sb mod 8 = 0 -> 0 <= so -> sb + so + Z.of_nat (length xs) <= r_end sreg ->

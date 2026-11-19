@@ -3,6 +3,7 @@
     reads the first name pointer in `c: _nl_global_locale` without
     taking the locale lock. *)
 
+From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic SetlocaleCode.
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic.
 From Glibc Require FileInv LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -28,7 +29,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     lend different [[separation-logic|shares]] of the two objects' lifetime
     tokens and of the cell that holds the pointer. *)
 Lemma wp_setlocale_ctype_query fr gb greg dql dqc cn treg dqt Φ :
-  call_frame glibc_setlocale [WInt 0; WPtr null] = Some fr ->
+  call_frame Unit_locale_setlocale_os.fn___GI_setlocale [WInt 0; WPtr null] = Some fr ->
   lookup (TAtom "_nl_global_locale") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->
   0 < gb -> gb mod 8 = 0 -> gb + 136 <= r_end greg -> r_end greg <= 2 ^ 48 -> 0 <= ptr_addr cn < 2 ^ 64 ->
   liveq dql gb greg -∗ pcellq dqc gb 128 cn -∗ live_capq dqt (ptr_cap cn) treg -∗

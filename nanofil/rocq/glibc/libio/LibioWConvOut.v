@@ -33,7 +33,7 @@
     makes it run as the last step of its chain. This file proves the
     function against a rule for that run of the step. *)
 
-From Glibc Require Import HelloImageTypedLI.
+From Glibc Require Import Unit_libio_iofwide_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -55,7 +55,7 @@ Local Abbreviation tmb := (img_a "glibc_wcsmbsload#to_mb").
 Local Abbreviation fct := (mkPtr (img_a "__gconv_transform_internal_ascii") (Fn (TAtom "__gconv_transform_internal_ascii"))).
 
 (** This definition is the conversion function as Hello's image holds it. *)
-Definition glibc_codecvt_out := hello_image_fn___libio_codecvt_out.
+Definition glibc_codecvt_out := Unit_libio_iofwide_os.fn___libio_codecvt_out.
 
 Section out.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

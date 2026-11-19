@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** `c: _IO_setb` (LibioReadCode.v) sets a stream's buffer. It frees
     the old buffer when the stream owns it, stores the new base and
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -155,7 +156,7 @@ Lemma wp_setb_tail fb freg fl ob oe nb ne a e from Φ :
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗
   ▷ (live fb freg -∗ int_cell fb off_flags (setb_flags fl a) -∗ pcell fb off_buf_base nb -∗
      pcell fb off_buf_end ne -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_setb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_setb e [] None (Enter (TAtom "L10") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hfreg Ha Hv0 Hc0 Hv2 Hv4 Hv6.
   iIntros "Hl [%Hf Hfl] Hb He HK". step. setb_tail a fl.
@@ -165,7 +166,7 @@ Qed.
     buffer freed if the stream owned it, the new base and end stored,
     and the flags [setb_flags]. *)
 Lemma wp_glibc__IO_setb fr fb freg fl ob oe nb ne a Φ :
-  call_frame glibc__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_setb [WPtr (mkPtr fb (Obj fb)); WPtr nb; WPtr ne; WInt a] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= a < 2 ^ 32 ->
   live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_buf_base ob -∗ pcell fb off_buf_end oe -∗
   old_base fl ob -∗

@@ -13,10 +13,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   HelloModule HelloLeaf HelloClose.
+From Glibc Require Import Unit_io_close_nocancel_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os Unit_libio_genops_os.
+From Glibc Require Import Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  SysCode LibioReadCode FileInv FileIdle LibioLogic SysWrappers LibioCloseSteps LibioRead
+  FileInv FileIdle LibioLogic SysWrappers LibioCloseSteps LibioRead
   LibioWIdle LibioWXsputnWindow LibioWXsputnRoom LibioWOverflowWrite LibioWCloseIt LibioSetb
-  LibioFcloseCode LibioCloseItCode LibioGenCode LibioUnlinkCode LibioWAllocCode LibioWFwide LibioWFcloseTail
+  LibioWFwide LibioWFcloseTail
   LibioWRelease Mbrtowc HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs HelloWClosedStdout
   HelloFcloseWide HelloCloseStreamRetain HelloCloseErrno Fix.
 From Glibc Require LibioFcloseTail.
@@ -45,7 +47,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     buffer, so the proof borrows them with [close_cursors] and puts
     them back after the loads. *)
 Lemma wp_fpending_wide fr fp vb self fd Φ :
-  call_frame glibc___fpending [WPtr fp] = Some fr ->
+  call_frame Unit_libio___fpending_os.fn___fpending [WPtr fp] = Some fr ->
   file_wide ge vb self fp fd -∗
   ▷ (∀ n, ⌜0 <= n < 2 ^ 64⌝ -∗ file_wide ge vb self fp fd -∗ Φ (Ret (WInt n))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -76,7 +78,7 @@ Qed.
     stream between calls needs no lock, as [wflags_ok] says, so the
     call takes no lock and changes nothing. *)
 Lemma wp_ferror_wide fr fp vb self fd Φ :
-  call_frame glibc__IO_ferror [WPtr fp] = Some fr ->
+  call_frame Unit_libio_ferror_os.fn__IO_ferror [WPtr fp] = Some fr ->
   file_wide ge vb self fp fd -∗
   ▷ (∀ e, ⌜e = 0 \/ e = 1⌝ -∗ file_wide ge vb self fp fd -∗ Φ (Ret (WInt e))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
@@ -113,20 +115,20 @@ Local Abbreviation tm := (rop (img_a "glibc_wcsmbsload#to_mb")).
   wvtables_ro tcb_cleanup_inv stream_life closed_wide file_wide gconv_lock_free : typeclass_instances.
 
 Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hfree : free_rule w0 registry ge)
-  (Hfc : ge_fn ge "__GI__IO_file_close" glibc__IO_file_close)
-  (Hff : ge_fn ge "_IO_new_file_finish" glibc__IO_new_file_finish)
-  `{!Defines ge "__fpending" glibc___fpending}
-  `{!Defines ge "ferror" glibc__IO_ferror}
-  `{!Defines ge "fclose" glibc__IO_new_fclose}
-  `{!Defines ge "__GI__IO_un_link" glibc__IO_un_link}
-  `{!Defines ge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer}
-  `{!Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}
-  `{!Defines ge "__GI__IO_default_finish" glibc__IO_default_finish}
-  `{!Defines ge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink}
-  `{!Defines ge "__GI___close_nocancel" glibc___close_nocancel}
-  `{!Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}
-  `{!Defines ge "__GI__IO_setb" glibc__IO_setb}
-  `{!Defines ge "__GI__IO_unsave_markers" glibc__IO_unsave_markers}
+  (Hfc : ge_fn ge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close)
+  (Hff : ge_fn ge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish)
+  `{!Defines ge "__fpending" Unit_libio___fpending_os.fn___fpending}
+  `{!Defines ge "ferror" Unit_libio_ferror_os.fn__IO_ferror}
+  `{!Defines ge "fclose" Unit_libio_iofclose_os.fn__IO_new_fclose}
+  `{!Defines ge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link}
+  `{!Defines ge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer}
+  `{!Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}
+  `{!Defines ge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish}
+  `{!Defines ge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink}
+  `{!Defines ge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel}
+  `{!Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}
+  `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}
+  `{!Defines ge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers}
   `{!Defines ge "__GI__IO_wdo_write" wdo_write_fn}
   `{!Defines ge "__errno_location" LeavesLogic.errno_location_fn}.
 

@@ -12,6 +12,7 @@
     buffer back as they got it, so the caller can take the stream out
     of the buffer's invariant afterwards. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,8 +21,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Interval
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers MemchrLast DcigettextExit
-  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfStateCode PrintfCountBits
-  PrintfBufferDone PrintfBufferCount PrintfBufferFileCode PrintfBufferFileSrc PrintfBufferFileNames PrintfFlush.
+  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCountBits
+  PrintfBufferDone PrintfBufferCount PrintfBufferFileSrc PrintfBufferFileNames PrintfFlush.
 Import ListNotations ProgramAbbreviations SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
@@ -99,7 +100,7 @@ Qed.
     EOVERFLOW to errno and returns -1. The store is safe because the
     errno cell of a thread is alive as long as the thread runs. *)
 Lemma wp_buffer_done_overflow fr bb breg db dreg bo used written mode dq1 dq2 eb bs Φ :
-  call_frame glibc___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb mod 8 = 0 -> bb + 36 <= r_end breg -> r_end breg <= 2 ^ 63 ->
@@ -174,10 +175,10 @@ Qed.
 (** The compiled function meets its contract. A failed buffer returns
     at once. Otherwise the sum of the two counts either fits an int or
     it does not, and the two rules above cover the two cases. *)
-Lemma buffer_done_has_spec `{!Defines ge "__printf_buffer_done" glibc___printf_buffer_done} :
+Lemma buffer_done_has_spec `{!Defines ge "__printf_buffer_done" Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_done") buffer_done_spec.
 Proof using Type.
-  intros [bb breg w written mode eb]. exists glibc___printf_buffer_done. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [bb breg w written mode eb]. exists Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. cbn [fs_args fs_pre fs_post buffer_done_spec bd_buf bd_breg bd_win bd_written bd_mode bd_eb] in *.
   iIntros "((%Hwr & %Herr & %Hge) & Hbuf & Herrno) HK".
   destruct (Z.eq_dec mode 0) as [->|Hmode].
@@ -238,7 +239,7 @@ Definition done_blocks : list bspec :=
     that has not failed. On the second path it calls the flush and then
     the count, and the count borrows errno from the buffer's
     invariant. *)
-Lemma done_table : ⊢ blocks_hold glibc___printf_buffer_to_file_done done_blocks.
+Lemma done_table : ⊢ blocks_hold Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done done_blocks.
 Proof using Type*.
   apply blocks_close. iIntros "#IH". iSplit; [|done]. iModIntro.
   iIntros ([bb eb] e from Φ) "_ %He H HK"; cbn [bs_sig bs_vals bs_label bs_post bs_pre fs_pre fs_post file_done_spec fst snd] in *; c_env_open He.
@@ -263,7 +264,7 @@ Proof using Type*.
     iExists br', w', written', mode'. iFrame "Hbuf HR". iPureIntro. destruct Hmd' as [-> | (-> & _)]; [by left | by right].
 Qed.
 
-Lemma file_done_has_spec `{!Defines ge "__printf_buffer_to_file_done" glibc___printf_buffer_to_file_done} :
+Lemma file_done_has_spec `{!Defines ge "__printf_buffer_to_file_done" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_to_file_done") file_done_spec.
 Proof using Type*.
   eapply (blocks_has_spec _ _ _ done_blocks); [exact defines | reflexivity | reflexivity | | exact done_table].

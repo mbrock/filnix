@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** A full direct buffer can leave printf using a one-character staging area.
     If no character has entered that area, flushing it does not call the
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+  LibioCloseSteps LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -39,7 +40,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** An empty one-character staging area needs only its pointer and count cells.
     Adding its zero pending bytes preserves every canonical 64-bit count. *)
 Lemma wp_printf_buffer_flush_empty fr bb breg written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 <= written < 2 ^ 64 ->
   live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗

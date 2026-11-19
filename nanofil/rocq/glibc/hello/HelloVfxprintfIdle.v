@@ -5,6 +5,7 @@
     runs the proof of [VfxprintfCall](../stdio/VfxprintfCall.v), and lets
     the formatter's proved contract do the printing. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic LibioCloseSteps
-  WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec FxprintfStream FxprintfTidy FxprintfNormalCode
+  WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec FxprintfStream FxprintfTidy
   VfxprintfNarrow VfxprintfSelect VfxprintfCall FxprintfNormalCall Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
@@ -210,7 +211,7 @@ Qed.
 (** A run of `c: __fxprintf (NULL, fmt, ...)` prints to stderr and
     returns it idle. Error makes three such calls. *)
 Lemma wp_fxprintf_idle_null vb fd fb gb greg fmt fmtreg bytes ds ys Φ :
-  find_fn ge (TAtom "__vfxprintf") = Some (Defined glibc_vfxprintf) ->
+  find_fn ge (TAtom "__vfxprintf") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf) ->
   forallb snapshot_word ys = true -> parse_narrow bytes = Some ds -> narrow_fits ds ys [] ->
   In fd (ow_fds w0) -> 0 <= ptr_addr fmt < 2 ^ 64 ->
   lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr gb (Obj gb)) ->

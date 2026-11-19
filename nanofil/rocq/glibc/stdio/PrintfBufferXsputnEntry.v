@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Flushing printf's staging array first adds its pending bytes to the
     accumulated count. The flush then recognizes the staging array by its end
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioPutsInv PrintfBufferFileCode.
+  LibioCloseSteps LibioPutsInv.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -39,7 +40,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The update counts every staged byte, including an empty or full array.
     The continuation receives the checked addresses needed by the L14 pointer reads. *)
 Lemma wp_printf_xsputn_entry fr bb breg n written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 <= n <= 128 -> 0 <= written < 2 ^ 64 ->
   live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
@@ -51,7 +52,7 @@ Lemma wp_printf_xsputn_entry fr bb breg n written Φ :
     live bb breg -∗ pcell bb 0 (mkPtr (bb + 48) (Obj bb)) -∗
     pcell bb 8 (mkPtr (bb + 48 + n) (Obj bb)) -∗
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ icell bb 24 ((written + n) mod 2 ^ 64) -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e [] None
       (Enter (TAtom "L14") (Some (TAtom "start")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.

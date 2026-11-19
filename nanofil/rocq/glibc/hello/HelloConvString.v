@@ -3,6 +3,7 @@
     for the terminating NUL. When it reaches NUL, it clears the
     caller's source pointer and returns the number of characters. *)
 
+From Glibc Require Import Unit_string_memchr_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic HelloLeaf HelloConvDefs.
 From Glibc Require Import HelloImageModule HelloImageLoad OsWorld OsRegistry FileInv LibioLogic WordString
-  GetoptBytes StrchrCode Mbrtowc HelloConvByte HelloConvWindow HelloGlibcDebts Fix.
+  GetoptBytes Mbrtowc HelloConvByte HelloConvWindow HelloGlibcDebts Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -68,7 +69,7 @@ Lemma conv_loop dq dn bd rd b4 b6 g Φ :
          (b_jump (mbs_block "L28")))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hbd Hdr Hb4 H4a H4e Hb6 H6e. iIntros "#Htab #Hcn #Hlit".
-  assert (Hmem : Defines hge "memchr" glibc_memchr) by (vm_compute; reflexivity).
+  assert (Hmem : Defines hge "memchr" Unit_string_memchr_os.fn___memchr) by (vm_compute; reflexivity).
   assert (Hstr : find_fn hge (TAtom "strnlen1") = Some (Defined strnlen1_fn)) by (vm_compute; reflexivity).
   assert (Hrpl : find_fn hge (TAtom "rpl_mbrtowc") = Some (Defined rpl_fn)) by (vm_compute; reflexivity).
   iLöb as "IH". iIntros (e q s i xs (Hregs & Lxs & Hroom)) "#Hs Hcells H6 Hzero H4 Hcell Hd Hxs HK".

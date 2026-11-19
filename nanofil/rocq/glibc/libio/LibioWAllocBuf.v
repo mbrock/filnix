@@ -10,6 +10,7 @@
     asks `c: _IO_doallocbuf` for that buffer, and this file proves that
     function for a wide stream as well. *)
 
+From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_genops_os Unit_libio_wfiledoalloc_os Unit_libio_wgenops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioSetb LibioPutsInv
-  LibioReadCode LibioDoAllocBase LibioWIdle LibioWAllocCode LibioWAllocSetb LibioWAllocFile.
+  LibioDoAllocBase LibioWIdle LibioWAllocSetb LibioWAllocFile.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -50,10 +51,10 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
     [free_rule] of [LibioSetb](LibioSetb.v) states. *)
 Context (Hfree : free_rule w0 registry ge).
 (** The genv defines `c: _IO_wsetb`. *)
-Context `{Hwsetbf : !Defines ge "__GI__IO_wsetb" glibc__IO_wsetb}.
+Context `{Hwsetbf : !Defines ge "__GI__IO_wsetb" Unit_libio_wgenops_os.fn___GI__IO_wsetb}.
 (** The genv defines `c: _IO_wfile_doallocate` at the symbol that the
     allocation slot of the wide jump table holds. *)
-Context (Hwdaf : ge_fn ge "_IO_wfile_doallocate" glibc__IO_wfile_doallocate).
+Context (Hwdaf : ge_fn ge "_IO_wfile_doallocate" Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate).
 
 (** ## A stream without a wide buffer
 
@@ -67,7 +68,7 @@ Context (Hwdaf : ge_fn ge "_IO_wfile_doallocate" glibc__IO_wfile_doallocate).
     last argument, so the owner bit of `c: _flags2` is set and a later
     close does not free the buffer. *)
 Lemma wp_glibc__IO_wdoallocbuf_short fr fb freg fl f2 wd wreg oe Φ :
-  call_frame glibc__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   Z.land fl io_unbuffered <> 0 ->
@@ -105,11 +106,11 @@ Qed.
     stream's flags, the wide buffer's base and some further memory R.
     The call must return 1 and give back the memory Q. *)
 Lemma wp_glibc__IO_wdoallocbuf_alloc fr fb freg fl wd wreg vb vreg (R Q : iProp Σ) Φ :
-  call_frame glibc__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   Z.land fl io_unbuffered = 0 ->
-  (forall cfr Ψ, call_frame glibc__IO_wfile_doallocate [WPtr (mkPtr fb (Obj fb))] = Some cfr ->
+  (forall cfr Ψ, call_frame Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate [WPtr (mkPtr fb (Obj fb))] = Some cfr ->
      live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_wide (mkPtr wd (Obj wd)) -∗
      live wd wreg -∗ pcell wd 48 null -∗ R -∗
      ▷ (Q -∗ Ψ (Ret (WInt 1))) -∗ WP (ERun cfr : sexpr) {{ Ψ }}) ->
@@ -162,7 +163,7 @@ Qed.
     whole lives, because the short buffer lies inside the stream object
     itself, so its caller splits the stream's life in two. *)
 Lemma wp_glibc__IO_doallocbuf_have fr fb freg x reg' dq1 dq3 Φ :
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < ptr_addr x < 2 ^ 64 ->
   liveq dq1 fb freg -∗ pcell fb off_buf_base x -∗ live_capq dq3 (ptr_cap x) reg' -∗
@@ -185,9 +186,9 @@ Qed.
     that the call is safe when it owns the memory R, and that the call
     returns 1 and gives back the memory Q. *)
 Lemma wp_glibc__IO_doallocbuf_wide fr fb freg fl vb vreg (R Q : iProp Σ) Φ :
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
-  (forall cfr Ψ, call_frame glibc__IO_wfile_doallocate [WPtr (mkPtr fb (Obj fb))] = Some cfr ->
+  (forall cfr Ψ, call_frame Unit_libio_wfiledoalloc_os.fn__IO_wfile_doallocate [WPtr (mkPtr fb (Obj fb))] = Some cfr ->
      live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode 1 -∗ pcell fb off_buf_base null -∗
      pcell fb off_vtable (mkPtr (vb + vt_wfile) (Ro vb)) -∗ R -∗
      ▷ (Q -∗ Ψ (Ret (WInt 1))) -∗ WP (ERun cfr : sexpr) {{ Ψ }}) ->
@@ -242,7 +243,7 @@ Qed.
     can then apply one lemma for each of these streams. *)
 
 (** The genv defines `c: _IO_file_doallocate`. *)
-Context `{Hdaf : !Defines ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate}.
+Context `{Hdaf : !Defines ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate}.
 (** The proposition Mres stands for the allocator's state. A call of
     `c: malloc` takes it and gives it back. *)
 Context (Mres : iProp Σ).
@@ -262,7 +263,7 @@ Context (Hmalloc : forall f e ls lab d v rest j n Φ,
     safe on a wide stream and that it installs a fresh buffer, as
     [LibioWAllocFile](LibioWAllocFile.v) also assumes. *)
 Context (Hda_wide : forall fr fb freg fl fd eb oe vb vreg Φ,
-  call_frame glibc__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
   vtables_ro ge vb vreg -∗ wvtables_ro ge vb -∗
@@ -276,7 +277,7 @@ Context (Hda_wide : forall fr fb freg fl fd eb oe vb vreg Φ,
     `c: _IO_wdoallocbuf`: a fresh narrow buffer of sz bytes and a wide
     heap buffer for sz characters. *)
 Lemma wp_glibc__IO_wdoallocbuf_from_null fr fb freg fl fd eb noe vb vreg f2 wd wreg oe Φ :
-  call_frame glibc__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 ->
@@ -317,7 +318,7 @@ Qed.
     bytes keeps it, and `c: _IO_wdoallocbuf` gives it a wide heap
     buffer for [wide_count] fl sz characters. *)
 Lemma wp_glibc__IO_wdoallocbuf_from_heap fr fb freg fl vb vreg f2 wd wreg oe bb sz breg Φ :
-  call_frame glibc__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   0 < bb -> 0 < sz < 2 ^ 62 -> bb + sz < 2 ^ 64 -> Z.land fl io_unbuffered = 0 ->
@@ -353,7 +354,7 @@ Qed.
     one character. A stream is in this state when it was unbuffered
     while it got its narrow buffer and became buffered afterwards. *)
 Lemma wp_glibc__IO_wdoallocbuf_from_short fr fb freg fl vb vreg f2 wd wreg oe Φ :
-  call_frame glibc__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_wgenops_os.fn___GI__IO_wdoallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   Z.land fl io_unbuffered = 0 ->
@@ -391,7 +392,7 @@ Qed.
     unbuffered stream, and `c: _IO_wsetb` then replaces it without a
     call of `c: free`. *)
 Lemma wp_glibc__IO_doallocbuf_wide_null fr fb freg fl fd eb noe vb vreg f2 wd wreg w oe Φ :
-  call_frame glibc__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI__IO_doallocbuf [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 ->
   0 < wd -> wd mod 8 = 0 -> wd + 232 <= r_end wreg -> r_end wreg <= 2 ^ 63 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd (ow_fds w0) -> 0 <= fd < 2 ^ 31 -> wbuf_user_ok w f2 ->

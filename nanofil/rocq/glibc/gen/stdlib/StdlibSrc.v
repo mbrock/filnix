@@ -2,7 +2,7 @@
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -11,8 +11,8 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_malloc_malloc_os Unit_stdlib_atexit_oS Unit_stdlib_cxa_atexit_os Unit_wcsmbs_mbsinit_os Unit_wctype_wcfuncs_os.
 
-From Glibc Require Import StdlibCode.
 Module StdlibSrc.
 
 Definition file_0 : string := "../include/ctype.h".
@@ -34,9 +34,6 @@ Definition file_7 : string := "mb_cur_max.c".
 Definition file_8 : string := "mbsinit.c".
 
 Definition file_9 : string := "wcfuncs.c".
-
-(** Decoding once lets all source tables share the same checked function bodies. *)
-Definition source_module : module := Eval vm_compute in code_module stdlib_term.
 
 Module fn_glibc_malloc___libc_malloc2.
 
@@ -627,12 +624,8 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 End fn___ctype_get_mb_cur_max.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) source_module with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) ["glibc_malloc#__libc_malloc2"; "__GI___libc_malloc"; "__GI___libc_free"; "__libc_calloc"; "glibc_malloc#malloc_printerr"; "__internal_atexit"; "__GI___cxa_atexit"; "__new_exitfn"; "atexit"; "__GI___errno_location"; "__mbsinit"; "__iswprint"; "__ctype_b_loc"; "__ctype_get_mb_cur_max"].
+Definition source_blocks : list (string * list name) := Eval lazy in
+  [("glibc_malloc#__libc_malloc2", map b_label (fn_blocks Unit_malloc_malloc_os.fn_glibc_malloc'23__libc_malloc2)); ("__GI___libc_malloc", map b_label (fn_blocks Unit_malloc_malloc_os.fn___GI___libc_malloc)); ("__GI___libc_free", map b_label (fn_blocks Unit_malloc_malloc_os.fn___GI___libc_free)); ("__libc_calloc", map b_label (fn_blocks Unit_malloc_malloc_os.fn___libc_calloc)); ("glibc_malloc#malloc_printerr", map b_label (fn_blocks Unit_malloc_malloc_os.fn_glibc_malloc'23malloc_printerr)); ("__internal_atexit", map b_label (fn_blocks Unit_stdlib_cxa_atexit_os.fn___internal_atexit)); ("__GI___cxa_atexit", map b_label (fn_blocks Unit_stdlib_cxa_atexit_os.fn___GI___cxa_atexit)); ("__new_exitfn", map b_label (fn_blocks Unit_stdlib_cxa_atexit_os.fn___new_exitfn)); ("atexit", map b_label (fn_blocks Unit_stdlib_atexit_oS.fn_atexit)); ("__GI___errno_location", map b_label (fn_blocks Unit_csu_errnoZ2dloc_os.fn___GI___errno_location)); ("__mbsinit", map b_label (fn_blocks Unit_wcsmbs_mbsinit_os.fn___mbsinit)); ("__iswprint", map b_label (fn_blocks Unit_wctype_wcfuncs_os.fn___iswprint)); ("__ctype_b_loc", map b_label (fn_blocks Unit_ctype_ctypeZ2dinfo_os.fn___ctype_b_loc)); ("__ctype_get_mb_cur_max", map b_label (fn_blocks Unit_locale_mb_cur_max_os.fn___ctype_get_mb_cur_max))].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -642,7 +635,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false

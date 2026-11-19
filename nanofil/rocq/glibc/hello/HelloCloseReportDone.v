@@ -3,7 +3,7 @@
     window pointers, not the bytes. This lets the caller keep the
     terminator even when the count overflows and sets errno. *)
 
-From Glibc Require Import HelloImageTypedPR.
+From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,12 +11,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct PrintfLayout PrintfOut PrintfSpec
-  PrintfDone PrintfBufferDone PrintfBufferCount PrintfStateCode PrintfFlushStage WordString CodePrelude
+  PrintfDone PrintfBufferDone PrintfBufferCount PrintfFlushStage WordString CodePrelude
   HelloImageModule HelloCloseReportWindow HelloCloseReportFlush.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_done := hello_image_fn___printf_buffer_snprintf_done.
+Definition report_done := Unit_libio_vsnprintf_os.fn___printf_buffer_snprintf_done.
 
 Section done.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -29,7 +29,7 @@ Context (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb)))
     its bytes. When both pointers name the discard array, it borrows
     permission to read that array from the buffer that contains it. *)
 Local Lemma wp_report_count cf bb br w written mode Φ :
-  call_frame glibc___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some cf ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done [WPtr (mkPtr bb (Obj bb))] = Some cf ->
   pwin_ok w -> 0 < bb -> bb mod 8 = 0 -> bb+40 <= r_end br -> r_end br <= 2^63 ->
   live bb br -∗ win_live bb br w -∗ int_cell bb 32 mode -∗
   pcell bb 0 (mkPtr (pw_base w) (Obj (pw_obj w))) -∗ pcell bb 8 (mkPtr (pw_ptr w) (Obj (pw_obj w))) -∗
@@ -88,7 +88,7 @@ Qed.
 (** The terminator belongs at the write pointer if it is before the
     end, or at the preceding byte if the window is full. Both windows
     have positive length, so neither case needs a store outside it. *)
-Lemma wp_report_done `{!Defines ge "__printf_buffer_done" glibc___printf_buffer_done} cf bb Φ :
+Lemma wp_report_done `{!Defines ge "__printf_buffer_done" Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done} cf bb Φ :
   call_frame report_done [WPtr (mkPtr bb (Obj bb))] = Some cf ->
   printf_out 2 (snprintf_R db dr eb) bb -∗
   ▷ (∀ n s, ⌜0 <= n < 2^32⌝ -∗ errno_any eb -∗ word_string (DfracOwn 1) (mkPtr db (Obj db)) s -∗

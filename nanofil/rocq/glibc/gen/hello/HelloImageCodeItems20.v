@@ -1,0 +1,82 @@
+(** This module assembles the selected IR items in link order.
+    The glibc code generator reproduces this file. Do not edit. *)
+
+From Stdlib Require Import String ZArith List Ascii.
+From Nanofil Require Import Term Syntax.
+From Glibc Require Import HelloImageEraseMem Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os Unit_stdioZ2dcommon_errlist_os Unit_stdioZ2dcommon_errname_os Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_funlockfile_os Unit_stdioZ2dcommon_fxprintf_os Unit_stdioZ2dcommon_grouping_iterator_os.
+From Glibc Require Import Unit_stdioZ2dcommon_itoaZ2ddigits_os Unit_stdioZ2dcommon_itoaZ2dudigits_os Unit_stdioZ2dcommon_itowaZ2ddigits_os Unit_stdioZ2dcommon_printfZ2dparsemb_os Unit_stdioZ2dcommon_printfZ2dparsewc_os Unit_stdioZ2dcommon_printf_buffer_as_file_os Unit_stdioZ2dcommon_printf_os.
+Import ListNotations.
+Open Scope string_scope.
+Open Scope Z_scope.
+Open Scope list_scope.
+Local Abbreviation a := TAtom.
+Local Notation "'t' s" := (Tmp (TAtom s)) (at level 10, s at next level).
+
+Definition hello_image_linked_items_20 : module :=
+  [Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e341;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e342;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e343;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e344;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e345;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e346;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e347;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e348;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e349;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e350;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e351;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e352;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e353;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e354;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e355;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e356;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e357;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e358;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e359;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e360;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e361;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e362;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e363;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e364;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e365;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e366;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e367;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e368;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e369;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e370;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e371;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e372;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e373;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e374;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e375;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e376;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e377;
+  Unit_stdioZ2dcommon_errlistZ2ddataZ2dgen_os.item_glibc_errlist_data_gen'23str'2e378;
+  IFunc Unit_stdioZ2dcommon_errlist_os.fn___get_errlist;
+  IFunc Unit_stdioZ2dcommon_errname_os.fn___get_errname;
+  Unit_stdioZ2dcommon_errname_os.item_glibc_errname'23_sys_errname;
+  Unit_stdioZ2dcommon_errname_os.item_glibc_errname'23_sys_errnameidx;
+  IFunc Unit_stdioZ2dcommon_fprintf_os.fn___fprintf;
+  Unit_stdioZ2dcommon_fprintf_os.item_fprintf;
+  IFunc Unit_stdioZ2dcommon_funlockfile_os.fn___GI___funlockfile;
+  Unit_stdioZ2dcommon_funlockfile_os.item__IO_funlockfile;
+  IFunc Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf;
+  IFunc Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf;
+  IFunc Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel;
+  IFunc Unit_stdioZ2dcommon_grouping_iterator_os.fn___grouping_iterator_init_none;
+  IFunc Unit_stdioZ2dcommon_grouping_iterator_os.fn___grouping_iterator_init;
+  IFunc Unit_stdioZ2dcommon_grouping_iterator_os.fn___grouping_iterator_next;
+  Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e41;
+  Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e42;
+  Unit_stdioZ2dcommon_grouping_iterator_os.item_glibc_grouping_iterator'23str'2e43;
+  Unit_stdioZ2dcommon_itoaZ2ddigits_os.item___GI__itoa_lower_digits;
+  Unit_stdioZ2dcommon_itoaZ2dudigits_os.item___GI__itoa_upper_digits;
+  Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_lower_digits;
+  Unit_stdioZ2dcommon_itowaZ2ddigits_os.item__itowa_upper_digits;
+  IFunc Unit_stdioZ2dcommon_printfZ2dparsemb_os.fn___parse_one_specmb;
+  IFunc Unit_stdioZ2dcommon_printfZ2dparsewc_os.fn___parse_one_specwc;
+  IFunc Unit_stdioZ2dcommon_printf_os.fn___printf;
+  Unit_stdioZ2dcommon_printf_os.item_printf;
+  IFunc Unit_stdioZ2dcommon_printf_buffer_as_file_os.fn___printf_buffer_as_file_overflow].
+
+Lemma hello_image_linked_items_20_zero : zero_nonneg hello_image_linked_items_20 = true.
+Proof. reflexivity. Qed.

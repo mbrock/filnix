@@ -3,7 +3,7 @@
     zero. When wprintf returns, the greeting and the bytes after that
     zero are unchanged. *)
 
-From Glibc Require Import HelloImageTypedWP.
+From Glibc Require Import Unit_libio_wprintf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,7 +20,7 @@ Open Scope Z_scope.
 Local Abbreviation obj b := (mkPtr b (Obj b)).
 Local Abbreviation ro b := (mkPtr b (Ro b)).
 
-Definition wprintf_fn := hello_image_fn___wprintf.
+Definition wprintf_fn := Unit_libio_wprintf_os.fn___wprintf.
 
 Section wrap.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

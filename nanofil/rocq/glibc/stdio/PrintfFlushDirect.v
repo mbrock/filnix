@@ -3,6 +3,7 @@
     A full window ends that loan. Otherwise printf keeps writing into
     the remaining room and gives back only the prefix it no longer owns. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv CStruct PrintfLayout PrintfOut PrintfSpec PrintfFileOut
-  PrintfBufferFileCode PrintfFlush PrintfFlushStage PrintfFlushPublish.
+  PrintfFlush PrintfFlushStage PrintfFlushPublish.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv.
 Open Scope Z_scope.
 
@@ -22,7 +23,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     and keeps the next byte in its own staging array. When room remains,
     printf returns only the complete eight-byte slots before its cursor. *)
 Lemma flush_direct_post fr a bb br w written Φ :
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr -> pw_obj w <> bb ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr -> pw_obj w <> bb ->
   printf_buf bb br w written 4 -∗ file_R a bb br (pw_place w) -∗
   (fs_post (flush_to_file_spec (file_R a)) bb RetVoid -∗ Φ RetVoid) -∗ WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type.

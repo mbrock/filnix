@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** The locked middle of `c: _IO_un_link` (LibioUnlinkCode.v), from
     block `c: L22`, with `c: list_all_lock` taken and the cleanup
@@ -14,7 +15,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode LibioUnlinkCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail LibioUnlinkMid.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkMid LibioUnlinkTail OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -34,7 +35,7 @@ Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
-Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore}.
+Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore}.
 
 
 (** Expressions of the language. *)
@@ -78,7 +79,7 @@ Lemma wp_unlink_L22 e from pre post fb freg fl lb lbreg la lareg lk lkreg rf rfr
      lock_state lk lkreg 0 0 null -∗ live rf rfreg -∗ pcell rf 0 null -∗
      ([∗ list] g ∈ pre ++ post, stream_life g) -∗
      (∃ c p, pcell fb off_chain c ∗ pcell fb off_prevchain p) -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc__IO_un_link e [] None (Enter (TAtom "L22") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_un_link e [] None (Enter (TAtom "L22") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hgla Hglk Hgrf Hv0 Hc0 Hv10 Hsz Hfb Hfal Hfend Hfreg Hfl Hul Hlaal Hlaend Hral Hrend Hcb Hcal8 Hcend
     Hcreg.

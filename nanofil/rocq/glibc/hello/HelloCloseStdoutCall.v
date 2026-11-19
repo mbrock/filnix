@@ -7,6 +7,8 @@
     the private state, so the contract holds for every private state
     that has the shape startup builds. *)
 
+From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os Unit_posix__exit_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,10 +17,9 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   Pieces Heap Language Logic MemLogic HelloLeaf HelloClose.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString PrintfSpec LibioCleanupExit ErrorCode ErrorCall HelloGlibcDebts HelloGlibcLibsT
+  WordString PrintfSpec LibioCleanupExit ErrorCall HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageCpu HelloStartFacts HelloStartHdGetopt
   HelloErrorOperandCall HelloClosedStdout HelloImageCloseObjs HelloLocaleState LeavesLogic AllocLogic
-  SysCode LibioReadCode LibioDoWriteCode LibioGenCode LibioUnlinkCode LibioCloseItCode LibioFcloseCode
   HelloCloseStdoutIdle HelloGetoptDiagImage HelloCloseReport Fix.
 From Glibc Require LibioFcloseTail LibioFlushBody.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
@@ -90,28 +91,28 @@ Proof using Herr Hfd1 Hfd2 Hvf.
   iDestruct "Hec" as (cb creg n Hc) "[Hcl Hcnt]".
   iPoseProof "Hro" as "(#Hvt & #Hsg & #Hol & #Hop & #Hsl & #Hsp & _)".
   pose proof Hc as (Hn & Hna & Hne & Hnr).
-  assert (D0 : Defines hge "__fpending" glibc___fpending) by (vm_compute; reflexivity).
-  assert (D1 : Defines hge "ferror" glibc__IO_ferror) by (vm_compute; reflexivity).
-  assert (D2 : Defines hge "fclose" glibc__IO_new_fclose) by (vm_compute; reflexivity).
-  assert (D3 : Defines hge "__GI___write" glibc___libc_write) by (vm_compute; reflexivity).
+  assert (D0 : Defines hge "__fpending" Unit_libio___fpending_os.fn___fpending) by (vm_compute; reflexivity).
+  assert (D1 : Defines hge "ferror" Unit_libio_ferror_os.fn__IO_ferror) by (vm_compute; reflexivity).
+  assert (D2 : Defines hge "fclose" Unit_libio_iofclose_os.fn__IO_new_fclose) by (vm_compute; reflexivity).
+  assert (D3 : Defines hge "__GI___write" Unit_io_write_os.fn___GI___libc_write) by (vm_compute; reflexivity).
   assert (D4 : Defines hge "free" free_fn) by (vm_compute; reflexivity).
-  assert (D5 : Defines hge "__GI___close_nocancel" glibc___close_nocancel) by (vm_compute; reflexivity).
-  assert (D6 : Defines hge "__GI__IO_setb" glibc__IO_setb) by (vm_compute; reflexivity).
-  assert (D7 : Defines hge "_IO_new_do_write" glibc__IO_new_do_write) by (vm_compute; reflexivity).
-  assert (D8 : Defines hge "__GI__IO_unsave_markers" glibc__IO_unsave_markers) by (vm_compute; reflexivity).
-  assert (D9 : Defines hge "__GI___libc_cleanup_push_defer" glibc___libc_cleanup_push_defer) by (vm_compute; reflexivity).
-  assert (D10 : Defines hge "__GI___libc_cleanup_pop_restore" glibc___libc_cleanup_pop_restore) by (vm_compute; reflexivity).
-  assert (D11 : Defines hge "__GI__IO_un_link" glibc__IO_un_link) by (vm_compute; reflexivity).
-  assert (D12 : Defines hge "__GI__IO_default_finish" glibc__IO_default_finish) by (vm_compute; reflexivity).
-  assert (D13 : Defines hge "_IO_file_close_maybe_unlink" glibc__IO_file_close_maybe_unlink) by (vm_compute; reflexivity).
+  assert (D5 : Defines hge "__GI___close_nocancel" Unit_io_close_nocancel_os.fn___GI___close_nocancel) by (vm_compute; reflexivity).
+  assert (D6 : Defines hge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb) by (vm_compute; reflexivity).
+  assert (D7 : Defines hge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write) by (vm_compute; reflexivity).
+  assert (D8 : Defines hge "__GI__IO_unsave_markers" Unit_libio_genops_os.fn___GI__IO_unsave_markers) by (vm_compute; reflexivity).
+  assert (D9 : Defines hge "__GI___libc_cleanup_push_defer" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer) by (vm_compute; reflexivity).
+  assert (D10 : Defines hge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore) by (vm_compute; reflexivity).
+  assert (D11 : Defines hge "__GI__IO_un_link" Unit_libio_genops_os.fn___GI__IO_un_link) by (vm_compute; reflexivity).
+  assert (D12 : Defines hge "__GI__IO_default_finish" Unit_libio_genops_os.fn___GI__IO_default_finish) by (vm_compute; reflexivity).
+  assert (D13 : Defines hge "_IO_file_close_maybe_unlink" Unit_libio_fileops_os.fn__IO_file_close_maybe_unlink) by (vm_compute; reflexivity).
   assert (D14 : Defines hge "__errno_location" LeavesLogic.errno_location_fn) by (vm_compute; reflexivity).
   assert (D15 : Defines hge "close_stream" close_stream_fn) by (vm_compute; reflexivity).
-  assert (D16 : Defines hge "_exit" glibc__exit) by (vm_compute; reflexivity).
-  assert (Hfw : ge_fn hge "_IO_new_file_write" glibc__IO_new_file_write) by (exists (img_addr "_IO_new_file_write");
+  assert (D16 : Defines hge "_exit" Unit_posix__exit_os.fn___GI__exit) by (vm_compute; reflexivity).
+  assert (Hfw : ge_fn hge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write) by (exists (img_addr "_IO_new_file_write");
     split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
-  assert (Hfc : ge_fn hge "__GI__IO_file_close" glibc__IO_file_close) by (exists (img_addr "__GI__IO_file_close");
+  assert (Hfc : ge_fn hge "__GI__IO_file_close" Unit_libio_fileops_os.fn___GI__IO_file_close) by (exists (img_addr "__GI__IO_file_close");
     split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
-  assert (Hff : ge_fn hge "_IO_new_file_finish" glibc__IO_new_file_finish) by (exists (img_addr "_IO_new_file_finish");
+  assert (Hff : ge_fn hge "_IO_new_file_finish" Unit_libio_fileops_os.fn__IO_new_file_finish) by (exists (img_addr "_IO_new_file_finish");
     split; [vm_compute; reflexivity | split; [vm_compute; reflexivity | split; vm_compute; congruence]]).
   assert (Hzf : find_fn hge zgc_free_name = None) by (vm_compute; reflexivity).
   assert (Hzg : lookup zgc_free_name (ge_globals hge) = None) by (vm_compute; reflexivity).
@@ -127,7 +128,7 @@ Proof using Herr Hfd1 Hfd2 Hvf.
     (ho_out ob) (ho_err ob) (ho_in ob) (ho_fcp ob) (ho_vb ob) (ho_vreg ob) (ho_sb ob) (ho_sreg ob) eb
     (ho_so ob) (ho_soreg ob) (ho_se ob) (ho_sereg ob)
     (img_a "exit_failure") (img_gd "exit_failure") 1 (img_a "closeout#ignore_EPIPE") (img_gd "closeout#ignore_EPIPE") 0
-    (img_a "closeout#file_name") (img_gd "closeout#file_name") fmt text (hello_sym "closeout#str.52") glibc_error
+    (img_a "closeout#file_name") (img_gd "closeout#file_name") fmt text (hello_sym "closeout#str.52") Unit_misc_error_os.fn___error
     (fun k => error_frame 0 k fmt [WPtr text]) R Q E Φ
     with "Hvt Hsg Htcb Hol Hop Hsl Hsp Hxl Hxc Hil Hib Hnl Hnp Hout Hse He Hio [Hin] [Hinx Hcro Hg Hnames Hcl Hcnt] [HK]").
   1-23, 25-38: try first [exact Herr | exact Hfd1 | exact Hfd2 | (intros; reflexivity) | (vm_compute; reflexivity) |

@@ -21,6 +21,7 @@
     the formatter accepts. After the call it shows that the stream is
     unlocked as before. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -30,7 +31,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle LibioLogic LibioCloseSteps LibioFputsSpec WordString
-  FxprintfStream FileTidy NarrowFormat NarrowArgs FprintfCode PrintfCode PrintfSpec.
+  FxprintfStream FileTidy NarrowFormat NarrowArgs PrintfSpec.
 Module WrapVL := VariadicLogicOn R LG0.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic
   LibioCloseSteps WrapVL.
@@ -99,10 +100,10 @@ Ltac cursor_alloc cb :=
     afterwards. The program may know the function under either of its
     two names, so the lemma holds for any name n that the program
     gives this code. *)
-Lemma fprintf_has_spec (n : string) `{!Defines ge n glibc_fprintf} :
+Lemma fprintf_has_spec (n : string) `{!Defines ge n Unit_stdioZ2dcommon_fprintf_os.fn___fprintf} :
   HasSpec registry (os_wi w0) ge (TAtom n) fprintf_spec.
 Proof using Hvf.
-  intros x. exists glibc_fprintf. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros x. exists Unit_stdioZ2dcommon_fprintf_os.fn___fprintf. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args fprintf_spec].
   iIntros "[%Hfit Hpre] HK".
   destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd & Hge).
@@ -136,10 +137,10 @@ Qed.
     what `c: fprintf` does. Loading the pointer to the stream needs the
     stream's object to be alive, so the proof borrows the stream's
     lifetime for that one instruction. *)
-Lemma printf_has_spec (n : string) `{!Defines ge n glibc_printf} :
+Lemma printf_has_spec (n : string) `{!Defines ge n Unit_stdioZ2dcommon_printf_os.fn___printf} :
   HasSpec registry (os_wi w0) ge (TAtom n) printf_spec.
 Proof using Hvf.
-  intros [dqo x]. exists glibc_printf. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros [dqo x]. exists Unit_stdioZ2dcommon_printf_os.fn___printf. split; [exact defines|]. split; [eexists; reflexivity|].
   intros fr Φ Hfr. injection Hfr as <-. cbn [fs_pre fs_post fs_args printf_spec].
   iIntros "(%Hfit & Hso & Hpre) HK".
   destruct x as [vb fp fd fmt dq bytes ds ys rest eb]. destruct Hfit as (Hp & Hfits & Hys & Herr & Hfd & Hge).

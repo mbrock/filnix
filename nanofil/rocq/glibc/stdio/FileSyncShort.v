@@ -2,13 +2,14 @@
     adjustment. The actual sync function loads its four equal pointers
     using the stream's own lifetime, resets the offset and returns zero.
     It does not read the descriptor, errno or the short byte. *)
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioPutsInv FileSyncCode Fix.
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioPutsInv Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
@@ -24,7 +25,7 @@ Definition short_sync_fields fb off : iProp Σ :=
   pcell fb 8 buf ∗ pcell fb 16 buf ∗ pcell fb 32 buf ∗ pcell fb 40 buf ∗ icell fb 144 off.
 
 Lemma wp_file_sync_short_empty fr fb freg fl off (E : iProp Σ) Φ :
-  call_frame glibc__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_file_sync [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 152 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 256 = 0 ->
   live fb freg -∗ int_cell fb 0 fl -∗ short_sync_fields fb off -∗ E -∗

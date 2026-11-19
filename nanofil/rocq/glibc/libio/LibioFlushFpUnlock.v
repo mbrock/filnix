@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The end of one pass of `c: _IO_flush_all`'s loop
     (LibioFlushCode.v), from block `c: L182`: the pass releases the
@@ -18,7 +19,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock.
 From Glibc Require FileInv LibioCloseSteps LibioFlushFpLock LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -61,9 +62,9 @@ Lemma wp_flush_L182 e r1 fb freg fl lb lbreg rf rfreg sb sreg x cb nx nreg Φ :
      live fb freg -∗ int_cell fb off_flags fl -∗ pcell fb off_lock (mkPtr lb (Obj lb)) -∗
      lock_state lb lbreg 0 0 null -∗ live rf rfreg -∗ pcell rf 0 null -∗
      pcell fb off_chain nx -∗ live_cap (ptr_cap nx) nreg -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L82") (Some (TAtom "L329")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L82") (Some (TAtom "L329")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
     {{ Φ }}.
 Proof using Type.
   intros fp Hgrf Hp5 Hc13 Hp2 Hv3 Hr1 Hnx Hfb Hfal Hfend Hfreg Hfl Hul Hral Hrend. subst fp.

@@ -3,6 +3,7 @@
     one-character buffer or a heap allocation. A copy of more than
     twenty characters always targets a heap allocation. *)
 
+From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps LibioWIdle
   LibioDefaultXsputnBuf LibioDefaultXsputnCopy CBlocks WPrintfDispatch WPrintfFileFlush
-  LibioWXsputnWindow LibioWXsputnWords LibioWXsputnCopy MemFwdCode.
+  LibioWXsputnWindow LibioWXsputnWords LibioWXsputnCopy.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation size cs := (Z.of_nat (length cs)).
@@ -88,7 +89,7 @@ Qed.
 
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hfn : find_fn ge (TAtom "zmemmove") = None) (Hsym : lookup (TAtom "zmemmove") (ge_globals ge) = None).
-Context `{!Defines ge "__GI_memcpy" glibc_memcpy, !Defines ge "__GI_mempcpy" glibc_mempcpy}.
+Context `{!Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}.
 
 (** A bulk copy also leaves the old cursor cell intact. Its return
     value points just past the copied characters, including when the

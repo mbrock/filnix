@@ -5,6 +5,7 @@
     The stream backend remains a supplied contract, with arbitrary framed
     resources and errno that may change. This rule restores the stream after
     borrowing the selected lifetime. It does not prove that output succeeds. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -12,8 +13,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
-  PrintfStreamHeap PrintfBufferFileCode PrintfStateCode PrintfBufferXsputnCall
-  LibioXsputnCode PrintfFileSelect PrintfFileDone PrintfFileFlush Fix.
+  PrintfStreamHeap PrintfBufferXsputnCall
+  PrintfFileSelect PrintfFileDone PrintfFileFlush Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Section completion.
@@ -22,8 +23,8 @@ Context (B : Z -> Z -> iProp Σ) (vb : Z) (self : ptr)
   (mode flags2 : Z) (held : option Z) (E : iProp Σ) (eb : Z) (er : region).
 Let F fp := printf_heap_stream_with B w0 vb self fp mode flags2 held.
 Let Ex := (E ∗ ∃ prior, live eb er ∗ int_cell eb 0 prior)%I.
-Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" glibc___printf_buffer_to_file_switch}.
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context `{Hswitch : !Defines ge "__printf_buffer_to_file_switch" Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_switch}.
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (Hcall : printf_xsputn_call_spec w0 registry ge F Ex).
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
@@ -33,9 +34,9 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Lemma wp_printf_file_staging_done fr bb br fb vr xs written prior Φ :
   let n := Z.of_nat (length xs) in
   let total := (written+n) mod 2^64 in
-  call_frame glibc___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
-  find_fn ge (TAtom "__printf_buffer_flush_to_file") = Some (Defined glibc___printf_buffer_flush_to_file) ->
-  find_fn ge (TAtom "__printf_buffer_done") = Some (Defined glibc___printf_buffer_done) ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_to_file_done [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  find_fn ge (TAtom "__printf_buffer_flush_to_file") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file) ->
+  find_fn ge (TAtom "__printf_buffer_done") = Some (Defined Unit_stdioZ2dcommon_printf_buffer_done_os.fn___printf_buffer_done) ->
   lookup (TAtom "__libc_errno") (ge_globals ge) = Some (mkPtr eb (Obj eb)) ->
   0 < bb -> bb mod 8 = 0 -> bb+176 <= r_end br -> r_end br <= 2^63 ->
   0 < fb -> fb mod 8 = 0 -> n <= 128 -> Forall (fun x => 0 <= x < 256) xs ->

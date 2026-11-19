@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
 (** Triples for user glibc's `c: __libc_cleanup_push_defer` here and
     `c: __libc_cleanup_pop_restore` in SysCleanupPop.v (SysCode.v,
@@ -19,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry SysCode FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -55,7 +56,7 @@ Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_
     null, `c: __canceltype` is 0 (deferred, since `c: cancelhandling`
     is 0), and the thread's `c: cleanup` is the buffer. *)
 Lemma wp_glibc___libc_cleanup_push_defer fr bb breg bo pv xs Φ :
-  call_frame glibc___libc_cleanup_push_defer [WPtr (mkPtr (bb + bo) (Obj bb))] = Some fr ->
+  call_frame Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer [WPtr (mkPtr (bb + bo) (Obj bb))] = Some fr ->
   0 < bb -> 0 <= bo -> (bb + bo) mod 8 = 0 -> bb + bo + 32 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   length xs = 4%nat ->
   tcb_cleanup_inv (ow_self w0) -∗ live bb breg -∗ pcell bb (bo + 24) pv -∗ bytes bb (bo + 16) xs -∗

@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** After a write, the stream resets its write pointers and tests its mode.
     One symbolic run covers the pointer stores and the mode test.
@@ -10,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioDoWriteCode FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers.
 From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -24,7 +25,7 @@ Local Arguments Z.opp : simpl nomatch.
 (** The reset block first restores the read pointers, then resets the write pointers.
     LibioDoWriteTail.v proves the first sixteen instructions of this block. *)
 Definition dw_L70 : block := Eval vm_compute in
-  match find_block (TAtom "iw_1.L70") (fn_blocks glibc__IO_new_do_write) with
+  match find_block (TAtom "iw_1.L70") (fn_blocks Unit_libio_fileops_os.fn__IO_new_do_write) with
   | Some b => b | None => mkBlock (TAtom "iw_1.L70") [] [] JRetVoid end.
 
 
@@ -52,7 +53,7 @@ Context (Hend_spec : forall fb freg fl bb breg we be n r e from Φ,
      pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None (Enter (TAtom "iw_1.L122") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None (Enter (TAtom "iw_1.L122") (Some from))) : sexpr) {{ Φ }}).
 
 
 (** Both write pointers return to the buffer's base after the read pointers have been reset.
@@ -76,7 +77,7 @@ Lemma wp_do_write_setp fb freg fl bb breg wb wp we be n r e mode Φ :
      pcell fb off_write_end (if Z.land fl 514 =? 0 then be else base) -∗
      pcell fb off_buf_base base -∗ pcell fb off_buf_end be -∗
      Φ (Ret (WInt (if r =? n then 0 else 2 ^ 32 - 1)))) -∗
-  WP (ERun (mkFrame glibc__IO_new_do_write e [] None
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_do_write e [] None
               (Exec (TAtom "iw_1.L70") (skipn 16 (b_insts dw_L70)) (b_jump dw_L70))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros base Hfb Hal Hend Hfreg Hfl Hbb Hbe Hbec Hr Hn Hmd Hv0 Hc0 Hc16 Hv94 Hv4 Hv67. unfold file_size in Hend.

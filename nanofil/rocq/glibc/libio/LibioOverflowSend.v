@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves block `c: L18` of `c: _IO_new_file_overflow`
     (LibioOverflowBase.v describes the function), reached once the
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -32,7 +33,7 @@ Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 (** The genv defines `c: _IO_new_do_write`. *)
-Context `{Hdwf : !Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
+Context `{Hdwf : !Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
 
 Context (write_ready : Z -> Prop).
 
@@ -41,13 +42,13 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** `c: _IO_new_do_write` of no bytes, as LibioDoWrite.v proves it
     ([wp_glibc__IO_new_do_write_zero]). *)
 Context (Hzero : forall fr fp data Φ,
-  call_frame glibc__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr fp; WPtr data; WInt 0] = Some fr ->
   ▷ Φ (Ret (WInt 0)) -∗
   WP (ERun fr : sexpr) {{ Φ }}).
 (** The flush of the pending bytes, as LibioOverflowCall.v proves it
     ([wp_ovf_do_write]). *)
 Context (Hovdw : forall fr fb freg f2 fd eb mode vb vreg bb breg sz k we xs fl tw off Φ,
-  call_frame glibc__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr bb (Obj bb)); WInt k] = Some fr ->
+  call_frame Unit_libio_fileops_os.fn__IO_new_do_write [WPtr (mkPtr fb (Obj fb)); WPtr (mkPtr bb (Obj bb)); WInt k] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 < k ->
   write_ready f2 -> 0 <= f2 < 2 ^ 32 -> In fd (ow_fds w0) -> Z.land fl io_is_appending = 0 ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> (mode = 0 \/ mode = 2 ^ 32 - 1) ->
@@ -71,7 +72,7 @@ Context (HL198 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl t
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜(r = ch \/ r = 2 ^ 32 - 1) /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L198") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L198") (Some from))) : sexpr) {{ Φ }}).
 (** Block `c: L196`, as LibioOverflowFull.v proves it ([wp_ovf_L196]). *)
 Context (HL196 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz we xs fl tw off from e Φ,
   0 < fb -> fb mod 8 = 0 -> fb + file_size <= r_end freg -> r_end freg <= 2 ^ 63 -> 0 <= ch < 256 ->
@@ -85,7 +86,7 @@ Context (HL196 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz we xs fl tw 
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜(r = ch \/ r = 2 ^ 32 - 1) /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L196") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L196") (Some from))) : sexpr) {{ Φ }}).
 
 (** Block `c: L18`: `c: EOF` flushes and returns the flush's result;
     a byte is stored after a flush when the buffer is full. *)
@@ -101,7 +102,7 @@ Lemma wp_ovf_L18 fb freg ch f2 fd eb mode vb vreg bb breg sz k we xs fl tw off f
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L18") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ He Hmd Hv0 Hv2 Hc0.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.

@@ -14,6 +14,7 @@
     entailments. Those wrappers consume the [[later-modality|later
     modality]] at each step so goals stay flat. *)
 
+From Glibc Require Import Unit_string_strcmp_os.
 From Glibc Require Import LibioTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,7 +22,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpCode StrcmpBits.
+From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits.
 From Glibc Require WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
@@ -267,7 +268,7 @@ Ltac fin_tac x y j :=
 Lemma fin_a Δ e z a b x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_1.v15") z (put (TAtom "iw_1.pr.1") a (put (TAtom "iw_1.pr.2") b
+  ent Δ (WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "iw_1.v15") z (put (TAtom "iw_1.pr.1") a (put (TAtom "iw_1.pr.2") b
          (put (TAtom "iw_1.pr.3") (WInt x) (put (TAtom "iw_1.pr.4") (WInt y) e))))) [] None
          (Enter (TAtom "iw_1.iw_2.start") (Some (TAtom "iw_1.L10")))) : gexpr) {{ Φ }}).
 Proof using SafepointStable0. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK. Qed.
@@ -277,7 +278,7 @@ Proof using SafepointStable0. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK
 Lemma fin_b Δ e z1 z2 z3 z4 z5 z6 z7 z8 x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_2.v54") z1 (put (TAtom "iw_2.v48") (WInt y)
+  ent Δ (WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "iw_2.v54") z1 (put (TAtom "iw_2.v48") (WInt y)
          (put (TAtom "iw_2.v47") z2 (put (TAtom "iw_2.v44") z3 (put (TAtom "iw_2.v41") z4 (put (TAtom "chk7") z5
          (put (TAtom "iw_2.v40") z6 (put (TAtom "iw_2.pr.1") z7 (put (TAtom "iw_2.pr.2") z8
          (put (TAtom "iw_2.pr.4") (WInt x) e)))))))))) [] None
@@ -286,7 +287,7 @@ Proof using SafepointStable0. intros Hj Hst Hs HK. step. fin_tac x y j. exact HK
 
 (** Function [blk] looks up basic block l in `__GI_strcmp`. *)
 Definition blk (l : string) : block :=
-  match find_block (TAtom l) (fn_blocks glibc_strcmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+  match find_block (TAtom l) (fn_blocks Unit_string_strcmp_os.fn___GI_strcmp) with Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
 (** Constant [blk30] holds the basic block for the trailing-bytes exit
     of an unaligned second string. *)
 Definition blk30 : block := Eval vm_compute in blk "iw_2.L30".
@@ -296,7 +297,7 @@ Definition blk30 : block := Eval vm_compute in blk "iw_2.L30".
 Lemma fin_c Δ e x y j Φ :
   0 <= j < 8 -> stop_at (byte_of x) (byte_of y) j -> same_upto (byte_of x) (byte_of y) j ->
   ent Δ (Φ (Ret (WInt ((byte_of x j - byte_of y j) mod 2 ^ 32)))) ->
-  ent Δ (WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_2.pr.3") (WInt x) (put (TAtom "iw_2.pr.6") (WInt y) e)) [] None
+  ent Δ (WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "iw_2.pr.3") (WInt x) (put (TAtom "iw_2.pr.6") (WInt y) e)) [] None
          (Exec (TAtom "iw_2.L30") (b_insts blk30) (b_jump blk30))) : gexpr) {{ Φ }}).
 Proof using SafepointStable0. intros Hj Hst Hs HK. cbn [blk30 b_insts b_jump]. fin_tac x y j. exact HK. Qed.
 
@@ -321,7 +322,7 @@ Lemma aligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c Q1 Q2 e Φ :
   ptr_addr p1 mod 8 + c = 8 * Q1 -> ptr_addr p2 mod 8 + c = 8 * Q2 -> same_upto (sbyte p1 ws1) (sbyte p2 ws2) c ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_1.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "iw_1.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
        (put (TAtom "iw_1.pr.2") (WPtr (mkPtr (ptr_addr p2 + c + 8) (ptr_cap p2)))
        (put (TAtom "iw_1.pr.3") (WInt (wrd ws1 Q1)) (put (TAtom "iw_1.pr.4") (WInt (wrd ws2 Q2)) e)))) [] None
        (Exec (TAtom "iw_1.L10") (b_insts blk10a) (b_jump blk10a))) : gexpr) {{ Φ }}.
@@ -379,7 +380,7 @@ Lemma unaligned_loop dq1 dq2 p1 p2 b1 b2 reg1 reg2 ws1 ws2 s1 s2 c o Q1 Q2 e Φ 
   lookup (TAtom "iw_2.v14") e = Some (WInt (8 * o)) -> lookup (TAtom "iw_2.v18") e = Some (WInt (64 - 8 * o)) ->
   wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗
   (wwin dq1 b1 reg1 (wstart p1 - b1) ws1 -∗ wwin dq2 b2 reg2 (wstart p2 - b2) ws2 -∗ Φ (Ret (WInt (strcmp_res s1 s2)))) -∗
-  WP (ERun (mkFrame glibc_strcmp (put (TAtom "iw_2.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
+  WP (ERun (mkFrame Unit_string_strcmp_os.fn___GI_strcmp (put (TAtom "iw_2.pr.1") (WPtr (mkPtr (ptr_addr p1 + c + 8) (ptr_cap p1)))
        (put (TAtom "iw_2.pr.2") (WPtr (mkPtr (wstart p2 + 8 * Q2 + 8) (ptr_cap p2)))
        (put (TAtom "iw_2.pr.4") (WInt (wrd ws1 Q1)) (put (TAtom "iw_2.pr.5") (WInt (wrd ws2 Q2)) e)))) [] None
        (Exec (TAtom "iw_2.L36") (b_insts blk36) (b_jump blk36))) : gexpr) {{ Φ }}.

@@ -6,6 +6,7 @@
     The caller must reconnect the resources returned by message handling
     to the resources lent to the remaining calls. That exchange accounts
     for errno ownership on both successful and failed formatter paths. *)
+From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  PrintfStateCode ErrorCode ErrorEntry ErrorText ErrorTextTail ErrorMessage Fix.
+  ErrorEntry ErrorText ErrorTextTail ErrorMessage Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -29,7 +30,7 @@ Context (tb : Z) (treg : region) (old : Z)
   (R S Q T E : iProp Σ).
 Context (Hold : old = 0 \/ old = 1) (Hself : ow_self w0 = mkPtr tb (Obj tb))
   (Htb : 0 < tb) (Hta : tb mod 8 = 0) (Hte : tb + 796 <= r_end treg) (Htr : r_end treg <= 2 ^ 63)
-  (Hcancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined glibc___pthread_setcancelstate))
+  (Hcancel : find_fn ge (TAtom "__GI___pthread_setcancelstate") = Some (Defined Unit_nptl_pthread_setcancelstate_os.fn___GI___pthread_setcancelstate))
   (Hgstderr : lookup (TAtom "stderr") (ge_globals ge) = Some (mkPtr sb (Obj sb)))
   (Hsb : 0 < sb) (Hsa : sb mod 8 = 0) (Hse : sb + 8 <= r_end sreg) (Hsr : r_end sreg <= 2 ^ 63)
   (Hptr : 0 <= fb < 2 ^ 64)
@@ -90,7 +91,7 @@ Lemma wp_error_report_zero_loans (RP RQ : iProp Σ)
     live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hready Hfmtfn Hfmtframe Hformat.
@@ -142,7 +143,7 @@ Lemma wp_error_report_zero_loan
     live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hexchange Hext Hfframe Hflush Hflushcall Hfx Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hfmtfn Hfmtframe Hformat.
@@ -184,7 +185,7 @@ Lemma wp_error_report_zero e from errnum fmt ap mode cb nb nreg count
     live tb treg -∗ int_cell tb 792 old -∗
     live cb (mkRegion cb (cb + 16) Heap Live) -∗ int_cell cb 0 old -∗
     live sb sreg -∗ pcell sb 0 (mkPtr fb (Obj fb)) -∗ liveq dq fb freg -∗ V ap -∗ Q -∗ E -∗ Φ RetVoid) -∗
-  WP (ERun (mkFrame glibc_error_internal e [] None
+  WP (ERun (mkFrame Unit_misc_error_os.fn___error_internal e [] None
     (Enter (TAtom "iw_2.start") (Some from))) : gexpr) {{ Φ }}.
 Proof using Hcancel Hexchange Hext Hfframe Hflush Hflushcall Hfx Hfxcall Hfxframe Hgstderr Hnewline Hold Hptr Hreg Hsa Hsb Hse Hself Hsr Hta Htb Hte Htr Hwide Hwidecall Hwidefn Hwideframe.
   intros Hinputs Herr Hcount Hnb Hne Hnr Htext Hstr Hstrcall Htextcall Hfmtfn Hfmtframe Hformat.

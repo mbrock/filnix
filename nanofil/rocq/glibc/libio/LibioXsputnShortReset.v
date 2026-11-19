@@ -3,13 +3,14 @@
     write leaves nothing buffered. Both paths return the number of bytes
     that the stream actually wrote. *)
 
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioPutsInv LibioXsputnCode LibioOverflowBase LibioOverflowShortWrite.
+From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioPutsInv LibioOverflowBase LibioOverflowShortWrite.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
@@ -33,7 +34,7 @@ Lemma wp_xs_short_reset fb freg fl mode rb n r e from Φ :
   live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗ short_ptrs fb rb (short_ptr fb) -∗
   ▷ (live fb freg -∗ int_cell fb off_flags fl -∗ int_cell fb off_mode mode -∗
      short_ptrs fb (short_ptr fb) (short_ptr fb) -∗ Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L70") (Some from))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_xsputn e [] None (Enter (TAtom "iw_2.L70") (Some from))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hfb Hal Hend Hrend Hub Hmd Hr Hn Hv0 Hc0 Hc15 Hv4 Hp5 Hv175 Hr67. unfold file_size in Hend.
   iIntros "Hl [%Hfl Hfl] [%Hm Hmode] (Hrp & Hre & Hrb & Hwb & Hwp & Hwe & Hbase & Hbend) HK".

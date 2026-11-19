@@ -4,6 +4,7 @@
     thread and single-thread flag; it does not identify that state with
     the untouched loader image or prove process startup. *)
 
+From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv AtexitLogic ExitRun ExitRunCode
+From Glibc Require Import OsWorld OsRegistry FileInv AtexitLogic ExitRun
   HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitCloseStdout
   HiAtexitStdout HiAtexitStdoutClose HiAtexitCleanup HiAtexitExitEnv.
 From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv LibioGenLeaves.
@@ -107,7 +108,7 @@ Lemma hi_exit_after_puts s Φ :
   exit_funcs_inv hi_exit_objs [(hi_close_ptr, null, null)] 1 -∗
   exit_lock_free 76160 (mkRegion 76160 76176 GlobalData Live) -∗
   hi_exit_callback_state w0 s -∗
-  WP (ERun (mkFrame glibc_exit [(TAtom "v0", WInt 0)] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdlib_exit_os.fn___GI_exit [(TAtom "v0", WInt 0)] [] None (Enter (TAtom "start") None)) : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hs Heb Henv Hlock. iIntros "Hinv Hlock HP".
   iApply (wp_glibc_exit w0 hge hi_exit_objs 76160 (mkRegion 76160 76176 GlobalData Live)

@@ -2,6 +2,7 @@
     validates its narrow vtable and calls the actual sync function.
     The call resets the offset and releases the lock without inspecting
     the descriptor or errno. Pending output and unread input are excluded. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -9,7 +10,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
-  FflushCode FileSyncCode FileSyncShort FflushAcquire FflushUnlock Fix.
+  FileSyncShort FflushAcquire FflushUnlock Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -17,7 +18,7 @@ Open Scope Z_scope.
 Section flush.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
+Context (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The sync slot is supplied separately from the existing vtable resource.
@@ -25,7 +26,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     The mode is not read on this route, but this endpoint requires the
     actual narrow mode rather than claiming support for a wide stream. *)
 Lemma wp_fflush_short_empty fr fb freg fl off md lb lbreg sb sreg vb vreg (E : iProp Σ) Φ :
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 32768 = 0 -> Z.land fl 256 = 0 -> ptr_addr (ow_self w0) <> 0 ->
   md = 0 \/ md = 2 ^ 32 - 1 ->

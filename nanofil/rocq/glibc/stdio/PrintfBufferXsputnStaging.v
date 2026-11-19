@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
 From Glibc Require Import GlibcProgram.
 (** Flushing the staging array updates printf's count before sending its
     bytes through the stream's jump table. A returned count that differs from
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioXsputnCode PrintfBufferFileCode PrintfBufferXsputnEntry
+  LibioCloseSteps PrintfBufferXsputnEntry
   PrintfBufferXsputnCaller.
 From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferXsputnCall PrintfBufferXsputnCaller PrintfBufferXsputnEntry SysWrappers.
 From Glibc Require Import Fix.
@@ -30,7 +31,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 Context (F : ptr -> iProp Σ)
   (E : iProp Σ).
-Context (Hfn : ge_fn ge "_IO_new_file_xsputn" glibc__IO_new_file_xsputn).
+Context (Hfn : ge_fn ge "_IO_new_file_xsputn" Unit_libio_fileops_os.fn__IO_new_file_xsputn).
 Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F E).
 
 (** Both continuations receive the updated unsigned count and the original bytes.
@@ -38,7 +39,7 @@ Context (Hcall : PrintfBufferXsputnCall.printf_xsputn_call_spec w0 registry ge F
     original printf mode and the stream resources returned by the call. *)
 Lemma wp_printf_xsputn_staging fr bb breg fb vb vreg xs mode written Φ :
   let n := Z.of_nat (length xs) in
-  call_frame glibc___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
+  call_frame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file [WPtr (mkPtr bb (Obj bb))] = Some fr ->
   0 < bb -> bb mod 8 = 0 -> bb + 176 <= r_end breg -> r_end breg <= 2 ^ 63 ->
   0 < fb -> fb mod 8 = 0 -> n <= 128 -> Forall (fun y => 0 <= y < 256) xs ->
   0 <= written < 2 ^ 64 ->
@@ -64,7 +65,7 @@ Lemma wp_printf_xsputn_staging fr bb breg fb vb vreg xs mode written Φ :
     pcell bb 16 (mkPtr (bb + 176) (Obj bb)) -∗ icell bb 24 ((written + n) mod 2 ^ 64) -∗
     pcell bb 40 (mkPtr fb (Obj fb)) -∗ bytes bb 48 xs -∗ int_cell bb 32 mode -∗
     F (mkPtr fb (Obj fb)) -∗ E -∗
-    WP (ERun (mkFrame glibc___printf_buffer_flush_to_file e' [] None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_printf_buffer_to_file_os.fn___printf_buffer_flush_to_file e' [] None
       (Enter (TAtom "L40") (Some (TAtom "iw_1.join")))) : sexpr) {{ Φ }}) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type*.

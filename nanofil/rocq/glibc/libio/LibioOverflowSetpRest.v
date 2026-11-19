@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves the second half of block `c: L113` of
     `c: _IO_new_file_overflow` (LibioOverflowSetp.v proves the first),
@@ -13,7 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioOverflowBase.
 From Glibc Require FileInv LibioLogic LibioOverflowBase OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -27,7 +28,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** Block `c: L113` of `c: _IO_new_file_overflow`. *)
 Definition ovf_b113 : block := Eval vm_compute in
-  match find_block (TAtom "L113") (fn_blocks glibc__IO_new_file_overflow) with
+  match find_block (TAtom "L113") (fn_blocks Unit_libio_fileops_os.fn__IO_new_file_overflow) with
   | Some b => b | None => mkBlock (TAtom "L113") [] [] JRetVoid end.
 
 
@@ -55,7 +56,7 @@ Context (HL162 : forall fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = fl \/ fl' = Z.lor fl io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Enter (TAtom "L162") (Some from))) : sexpr) {{ Φ }}).
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Enter (TAtom "L162") (Some from))) : sexpr) {{ Φ }}).
 
 (** The rest of block `c: L113` after its seventeenth instruction,
     the store of the write end: the read pointers, the flags, and the
@@ -77,7 +78,7 @@ Lemma wp_ovf_L113_rest fb freg ch f2 fd eb mode vb vreg bb breg sz xs fl tw off 
   ▷ (∀ r k' we' xs' fl' tw' off', ⌜ovf_ret ch r /\ (fl' = Z.lor fl 2048 \/ fl' = Z.lor (Z.lor fl 2048) io_err_seen)⌝ -∗
      live fb freg -∗ ovf_fixed fb f2 fd eb mode vb -∗ ovf_state fb bb breg sz k' we' xs' fl' tw' off' -∗
      Φ (Ret (WInt r))) -∗
-  WP (ERun (mkFrame glibc__IO_new_file_overflow e [] None (Exec (TAtom "L113") rest j)) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_fileops_os.fn__IO_new_file_overflow e [] None (Exec (TAtom "L113") rest j)) : sexpr) {{ Φ }}.
 Proof using Type*.
   intros Hfb Hal Hend Hfreg Hch Hf2 Hf2r Hfd Happ He Hmd -> -> Hv0 Hv2 Hc0 Hc24 Hv133 Hc30 Hc34.
   iIntros "#Hvt Hl Hfx Hst HK". unfold file_size in Hend.

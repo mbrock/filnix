@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_string_strcmp_os.
 From Glibc Require Import GlibcProgram.
 (** In permuting mode, glibc's scanner skips nonoptions and then asks
     whether the argument at the public index is "--", which ends the
@@ -15,7 +16,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpCode StrcmpBits StrcmpLogic
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpBits StrcmpLogic
   GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptPermute GetoptExchangeTwo GetoptExchangeThree GetoptIdleThree GetoptDash.
 From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDash GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptIdleThree GetoptInitialize GetoptState LibioLogic OsWorld StrcmpLogic.
@@ -65,7 +66,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     paths keep the index field and the argument vector. *)
 Lemma wp_dash_test ks e i n b r av ar ps pdd sdd Φ :
   avoids ks dash_test_names = true ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   lookup (TAtom "v0") e = Some (WInt n) ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->
@@ -120,7 +121,7 @@ Qed.
 Lemma wp_getopt_dash_end ks e i n f l b r av ar ps pdd sdd Φ :
   avoids ks (x3_outer ++ x3_edges) = true -> avoids ks dash_names = true ->
   avoids ks dash_test_names = true ->
-  find_fn ge (TAtom "__GI_strcmp") = Some (Defined glibc_strcmp) ->
+  find_fn ge (TAtom "__GI_strcmp") = Some (Defined Unit_string_strcmp_os.fn___GI_strcmp) ->
   lookup (TAtom "glibc_getopt#str.146") (ge_globals ge) = Some pdd ->
   lookup (TAtom "v0") e = Some (WInt n) ->
   lookup (TAtom "v2") e = Some (WPtr (mkPtr av (Obj av))) ->

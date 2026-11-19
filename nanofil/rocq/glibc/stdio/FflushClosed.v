@@ -8,6 +8,7 @@
     require keeping that memory and the lock available. The proof also needs
     the sync pointer stored in the vtable. The existing vtables_ro assertion
     omits that slot, so the caller supplies it separately. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,7 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
-  FflushCode FileSyncCode FileSyncClosed FflushAcquire FflushUnlock Fix.
+  FileSyncClosed FflushAcquire FflushUnlock Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -24,7 +25,7 @@ Open Scope Z_scope.
 Section closed.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync).
+Context (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync).
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A closed stream still points at a jump table, and fflush calls that
@@ -35,8 +36,8 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     the closed stream. The rule then unlocks the stream and returns
     zero. *)
 Lemma wp_fflush_closed_dispatch_with vo sn f fr e fb freg fl lb lbreg sb sreg vb vreg (S T : iProp Σ) Φ :
-  ge_fn ge sn f -> fn_params f = fn_params glibc__IO_new_file_sync ->
-  fn_ret f = fn_ret glibc__IO_new_file_sync -> variadic_func f = false ->
+  ge_fn ge sn f -> fn_params f = fn_params Unit_libio_fileops_os.fn__IO_new_file_sync ->
+  fn_ret f = fn_ret Unit_libio_fileops_os.fn__IO_new_file_sync -> variadic_func f = false ->
   call_frame f [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   lookup (TAtom "v0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
   lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb))) ->
@@ -50,7 +51,7 @@ Lemma wp_fflush_closed_dispatch_with vo sn f fr e fb freg fl lb lbreg sb sreg vb
     ▷ (live fb freg -∗ int_cell fb 0 fl -∗ T -∗ Ψ (Ret (WInt 0))) -∗ WP (ERun fr : gexpr) {{ Ψ }}) -∗
   ▷ (live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 216 (mkPtr (vb + vo) (Ro vb)) -∗
     pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ T -∗ Φ (Ret (WInt 0))) -∗
-  WP (ERun (mkFrame glibc__IO_fflush e [] None
+  WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None
     (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hf Hfp Hfr Hvar Hcf Hv0 Hc0 Hfb Hal Hend Hregion Huser Hvo.
@@ -107,7 +108,7 @@ Lemma wp_fflush_closed_dispatch e fb freg fl off lb lbreg sb sreg vb vreg (E : i
     pcell fb 8 null -∗ pcell fb 16 null -∗ pcell fb 32 null -∗ pcell fb 40 null -∗
     icell fb 144 (2 ^ 64 - 1) -∗ pcell fb 216 (mkPtr (vb + vt_file) (Ro vb)) -∗
     pcell fb 136 (mkPtr lb (Obj lb)) -∗ lock_state lb lbreg 0 0 null -∗ E -∗ Φ (Ret (WInt 0))) -∗
-  WP (ERun (mkFrame glibc__IO_fflush e [] None
+  WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None
     (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}.
 Proof.
   intros Hv0 Hc0 Hfb Hal Hend Hregion Huser Hbackup.
@@ -129,7 +130,7 @@ Qed.
     cancellation flag in E, without reconstructing enabled cleanup state.
     Retaining these exact resources after fclose remains a separate task. *)
 Lemma wp_fflush_closed fr fb freg fl off lb lbreg sb sreg vb vreg (E : iProp Σ) Φ :
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 32768 = 0 -> Z.land fl 256 = 0 -> ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ pcellq DfracDiscarded vb (vt_file + 96) (sym_ptr ge "_IO_new_file_sync") -∗
@@ -155,10 +156,10 @@ Qed.
     the sync slot share and the sync function's rule, as in
     [wp_fflush_closed_dispatch_with]. *)
 Lemma wp_fflush_closed_with vo sn f sfr fr fb freg fl lb lbreg sb sreg vb vreg (S T : iProp Σ) Φ :
-  ge_fn ge sn f -> fn_params f = fn_params glibc__IO_new_file_sync ->
-  fn_ret f = fn_ret glibc__IO_new_file_sync -> variadic_func f = false ->
+  ge_fn ge sn f -> fn_params f = fn_params Unit_libio_fileops_os.fn__IO_new_file_sync ->
+  fn_ret f = fn_ret Unit_libio_fileops_os.fn__IO_new_file_sync -> variadic_func f = false ->
   call_frame f [WPtr (mkPtr fb (Obj fb))] = Some sfr ->
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 32768 = 0 -> ptr_addr (ow_self w0) <> 0 -> vo = vt_file \/ vo = vt_wfile ->
   vtables_ro ge vb vreg -∗ pcellq DfracDiscarded vb (vo + 96) (sym_ptr ge sn) -∗

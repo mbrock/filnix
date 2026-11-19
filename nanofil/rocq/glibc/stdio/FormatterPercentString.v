@@ -5,13 +5,14 @@
     A second rule first checks that no custom conversions are registered.
     The caller must supply the three null pointers that glibc checks.
     Neither rule initializes those pointers or proves startup behavior. *)
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps FormatterCode
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
   Fix WordString MemFwdLogic FormatterRegistration.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
@@ -42,9 +43,9 @@ Lemma wp_formatter_percent_string e ls cb cr wb p9 p dq Φ :
   0 < cb -> cb mod 8 = 0 -> cb + 8 <= r_end cr -> r_end cr <= 2^63 ->
   live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
   ▷ (live cb cr -∗ pcell cb 0 (ptr_add p 1) -∗ word_string dq p [37;115] -∗
-    WP (ERun (mkFrame glibc_printf_buffer (percent_string_env e cb p wb p9) ls None
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (percent_string_env e cb p wb p9) ls None
       (Enter (TAtom "L113") (Some (TAtom "L118")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None
     (Enter (TAtom "L79") (Some (TAtom "L67")))) : gexpr) {{ Φ }}.
 Proof using Type.
   intros H9 Hw Hv Hchk Hwb Hwe Hcb Hca Hce Hcr. iIntros "Hl Hcell Hs HK".
@@ -92,10 +93,10 @@ Lemma wp_formatter_registered_string e ls from rb rr mb mr ab ar cb cr wb p9 p d
   live cb cr -∗ pcell cb 0 p -∗ word_string dq p [37;115] -∗
   ▷ (live rb rr -∗ pcell rb 0 null -∗ live mb mr -∗ pcell mb 0 null -∗ live ab ar -∗ pcell ab 0 null -∗
     live cb cr -∗ pcell cb 0 (ptr_add p 1) -∗ word_string dq p [37;115] -∗
-    WP (ERun (mkFrame glibc_printf_buffer
+    WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer
       (percent_string_env (registration_env e rb mb ab) cb p wb p9) ls None
       (Enter (TAtom "L113") (Some (TAtom "L118")))) : gexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc_printf_buffer e ls None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer e ls None (Enter (TAtom "L44") from)) : gexpr) {{ Φ }}.
 Proof using Type.
   intros Hrf Hmf Haf H9 Hw Hv Hchk Hrb Hra Hre Hrr Hmb Hma Hme Hmr Hab Haa Hae Har
     Hwb Hwe Hcb Hca Hce Hcr.

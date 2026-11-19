@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The newline in puts calls an overflow wrapper when stdout has
     no room. The wrapper chooses byte output and calls the stream's
@@ -12,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioGenCode LibioOverflowGen LibioXsputnBase LibioDefaultXsputnBuf AllocLogic
+  LibioOverflowGen LibioXsputnBase LibioDefaultXsputnBuf AllocLogic
   HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitSetb HiAtexitAlloc HiAtexitXsputnOverflow
   HiAtexitOutputState HiAtexitStdout HiAtexitOverflowRules.
 From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioOverflowGen LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
@@ -53,7 +54,7 @@ Definition hge_output_overflow :=
     flush an existing one. A failed write still returns the buffer
     and all the fields that the close callback needs. *)
 Lemma hi_puts_overflow s fr fp eb vb vreg Φ :
-  call_frame glibc___overflow [WPtr fp; WInt 10] = Some fr ->
+  call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt 10] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro hge vb vreg -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
   hi_malloc_state dq mp tc dummy mpr tcr dr -∗

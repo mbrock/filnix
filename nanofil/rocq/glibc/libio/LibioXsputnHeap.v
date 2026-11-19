@@ -7,15 +7,17 @@
     gives that proof a tidy stream and takes a tidy stream back, so that
     `c: fputs` and the formatter's flush can call it on stdout. *)
 
+From Glibc Require Import Unit_io_fstat64_os Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_filedoalloc_os Unit_libio_fileops_os.
+From Glibc Require Import Unit_libio_genops_os Unit_misc_makedev_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysCode SysWrappers FileInv FileIdle FileTidy LibioLogic
-  LibioGenCode LibioReadCode LibioDoWriteCode LibioXsputnCode LibioOverflowBase LibioStreamTidy
-  LibioFputsSpec PrintfStreamInv AllocRo AllocLogic MemFwdCode LibioDefaultXsputnBuf LibioXsputnBase LibioXsputn LibioWriteDq
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic
+  LibioOverflowBase LibioStreamTidy
+  LibioFputsSpec PrintfStreamInv AllocRo AllocLogic LibioDefaultXsputnBuf LibioXsputnBase LibioXsputn LibioWriteDq
   LibioOverflowHeapBuffer LibioOverflowHeapIdle.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
@@ -228,29 +230,29 @@ End tidy.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hstat : ge_fn ge "__GI__IO_file_stat" glibc__IO_file_stat)
-  `{!Defines ge "__GI___fstat64" glibc___fstat64} `{!Defines ge "__gnu_dev_major" glibc___gnu_dev_major}
-  `{!Defines ge "__isatty_nostatus" glibc___isatty_nostatus} `{!Defines ge "__GI__IO_setb" glibc__IO_setb}.
+Context (Hstat : ge_fn ge "__GI__IO_file_stat" Unit_libio_fileops_os.fn___GI__IO_file_stat)
+  `{!Defines ge "__GI___fstat64" Unit_io_fstat64_os.fn___GI___fstat64} `{!Defines ge "__gnu_dev_major" Unit_misc_makedev_os.fn___gnu_dev_major}
+  `{!Defines ge "__isatty_nostatus" Unit_termios_isatty_nostatus_os.fn___isatty_nostatus} `{!Defines ge "__GI__IO_setb" Unit_libio_genops_os.fn___GI__IO_setb}.
 Context `{!Defines ge "free" free_fn} (Hfh : frees_heap (ge_free ge))
   (Hzf : find_fn ge zgc_free_name = None) (Hzg : lookup zgc_free_name (ge_globals ge) = None).
 Context `{!Defines ge "malloc" malloc_fn} `{!Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn}.
-Context (Hda : ge_fn ge "__GI__IO_file_doallocate" glibc__IO_file_doallocate)
-  `{!Defines ge "__GI__IO_doallocbuf" glibc__IO_doallocbuf}.
-Context `{!Defines ge "__GI___write" glibc___libc_write} (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  `{!Defines ge "_IO_new_do_write" glibc__IO_new_do_write}.
-Context (Hov : ge_fn ge "_IO_new_file_overflow" glibc__IO_new_file_overflow).
+Context (Hda : ge_fn ge "__GI__IO_file_doallocate" Unit_libio_filedoalloc_os.fn___GI__IO_file_doallocate)
+  `{!Defines ge "__GI__IO_doallocbuf" Unit_libio_genops_os.fn___GI__IO_doallocbuf}.
+Context `{!Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write} (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  `{!Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write}.
+Context (Hov : ge_fn ge "_IO_new_file_overflow" Unit_libio_fileops_os.fn__IO_new_file_overflow).
 Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract os_world)))
   (Hmove_fn : find_fn ge (TAtom "zmemmove") = None)
   (Hmove_sym : lookup (TAtom "zmemmove") (ge_globals ge) = None)
-  `{!Defines ge "__GI_memcpy" glibc_memcpy} `{!Defines ge "__GI_mempcpy" glibc_mempcpy}
-  `{!Defines ge "__GI__IO_default_xsputn" glibc__IO_default_xsputn}.
+  `{!Defines ge "__GI_memcpy" Unit_string_memcpy_os.fn___GI_memcpy} `{!Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy}
+  `{!Defines ge "__GI__IO_default_xsputn" Unit_libio_genops_os.fn___GI__IO_default_xsputn}.
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The direct write may use the noncanceling system call only when the
     program has it. The stream keeps the second flags word it started
     with, so the caller's fact about that word covers every write. *)
 Lemma tidy_fwq f20 fd0 :
-  (Z.land f20 2 = 0 \/ Z.land f20 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land f20 2 = 0 \/ Z.land f20 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   xs_fwq_spec (XF := tidy_xs f20 fd0) w0 registry ge.
 Proof using Type*.
   intros Hready. split.
@@ -267,7 +269,7 @@ Qed.
     flags fact, and it leaves a buffer behind on every path. *)
 Lemma tidy_overflow f20 fd0 eb :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> In fd0 (ow_fds w0) ->
-  (Z.land f20 2 = 0 \/ Z.land f20 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined glibc___write_nocancel)) ->
+  (Z.land f20 2 = 0 \/ Z.land f20 2 = 2 /\ find_fn ge (TAtom "__GI___write_nocancel") = Some (Defined Unit_io_write_nocancel_os.fn___GI___write_nocancel)) ->
   overflow_spec w0 registry ge (xos (XF := tidy_xs f20 fd0) w0 eb (fun _ _ => malloc_ro)).
 Proof using Type*.
   intros He Hin Hready fr fb freg nb wp we ch vb vreg Φ Hfr Hch Hfb Hal Hend Hr.

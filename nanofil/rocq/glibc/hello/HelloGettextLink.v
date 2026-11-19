@@ -1,3 +1,5 @@
+From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
+From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_string_stpcpy_os.
 From Glibc Require Import GlibcProgram.
 (** When getopt reports an error in Hello, gettext translates the
     message. DcgettextReal.v proves that translation in any program that
@@ -44,15 +46,15 @@ Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
     which body one such name runs, spelled as gettext spells it. The last
     field says that the program leaves memmove to the runtime. *)
 Record hello_gettext_link (ge : genv) : Prop := mkHelloGettextLink {
-  hg_mempcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined glibc_mempcpy);
-  hg_memcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined glibc_memcpy);
-  hg_dcgettext : find_fn ge (TAtom "__GI___dcgettext") = Some (Defined glibc_dcgettext);
-  hg_dcigettext : find_fn ge (TAtom "__dcigettext") = Some (Defined glibc_dcigettext);
-  hg_stpcpy : find_fn ge (TAtom "__GI_stpcpy") = Some (Defined glibc_stpcpy);
-  hg_tfind : find_fn ge (TAtom "__GI___tfind") = Some (Defined glibc_tfind);
-  hg_locale : find_fn ge (TAtom "__current_locale_name") = Some (Defined glibc_current_locale_name);
-  hg_rdlock : find_fn ge (TAtom "__GI___pthread_rwlock_rdlock") = Some (Defined glibc_pthread_rwlock_rdlock);
-  hg_unlock : find_fn ge (TAtom "__GI___pthread_rwlock_unlock") = Some (Defined glibc_pthread_rwlock_unlock);
+  hg_mempcpy : find_fn ge (TAtom "__GI_mempcpy") = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy);
+  hg_memcpy : find_fn ge (TAtom "__GI_memcpy") = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy);
+  hg_dcgettext : find_fn ge (TAtom "__GI___dcgettext") = Some (Defined Unit_intl_dcgettext_os.fn___GI___dcgettext);
+  hg_dcigettext : find_fn ge (TAtom "__dcigettext") = Some (Defined Unit_intl_dcigettext_os.fn___dcigettext);
+  hg_stpcpy : find_fn ge (TAtom "__GI_stpcpy") = Some (Defined Unit_string_stpcpy_os.fn___GI___stpcpy);
+  hg_tfind : find_fn ge (TAtom "__GI___tfind") = Some (Defined Unit_misc_tsearch_os.fn___GI___tfind);
+  hg_locale : find_fn ge (TAtom "__current_locale_name") = Some (Defined Unit_locale_localename_os.fn___current_locale_name);
+  hg_rdlock : find_fn ge (TAtom "__GI___pthread_rwlock_rdlock") = Some (Defined Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock);
+  hg_unlock : find_fn ge (TAtom "__GI___pthread_rwlock_unlock") = Some (Defined Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock);
   hg_zmemmove : find_fn ge (TAtom "zmemmove") = None /\ lookup (TAtom "zmemmove") (ge_globals ge) = None
 }.
 
@@ -173,15 +175,15 @@ End rules.
     under the spelling that the route calls, and the two lock names are
     aliases of the captured lock functions. *)
 Example gettext_link_spellings :
-  find_direct (TAtom "__GI_memcpy") memfwd_module = Some (Defined glibc_memcpy) /\
-  find_direct (TAtom "__GI___dcgettext") dcgettext_module = Some (Defined glibc_dcgettext) /\
-  find_direct (TAtom "__dcigettext") dcigettext_module = Some (Defined glibc_dcigettext) /\
-  find_direct (TAtom "__GI___tfind") tfind_module = Some (Defined glibc_tfind) /\
-  find_direct (TAtom "__current_locale_name") localename_module = Some (Defined glibc_current_locale_name) /\
+  find_direct (TAtom "__GI_memcpy") memfwd_module = Some (Defined Unit_string_memcpy_os.fn___GI_memcpy) /\
+  find_direct (TAtom "__GI___dcgettext") dcgettext_module = Some (Defined Unit_intl_dcgettext_os.fn___GI___dcgettext) /\
+  find_direct (TAtom "__dcigettext") dcigettext_module = Some (Defined Unit_intl_dcigettext_os.fn___dcigettext) /\
+  find_direct (TAtom "__GI___tfind") tfind_module = Some (Defined Unit_misc_tsearch_os.fn___GI___tfind) /\
+  find_direct (TAtom "__current_locale_name") localename_module = Some (Defined Unit_locale_localename_os.fn___current_locale_name) /\
   find_alias (TAtom "__GI___pthread_rwlock_rdlock") rdlock_module = Some (TAtom "___pthread_rwlock_rdlock") /\
-  find_direct (TAtom "___pthread_rwlock_rdlock") rdlock_module = Some (Defined glibc_pthread_rwlock_rdlock) /\
+  find_direct (TAtom "___pthread_rwlock_rdlock") rdlock_module = Some (Defined Unit_nptl_pthread_rwlock_rdlock_os.fn____pthread_rwlock_rdlock) /\
   find_alias (TAtom "__GI___pthread_rwlock_unlock") rwunlock_module = Some (TAtom "___pthread_rwlock_unlock") /\
-  find_direct (TAtom "___pthread_rwlock_unlock") rwunlock_module = Some (Defined glibc_pthread_rwlock_unlock).
+  find_direct (TAtom "___pthread_rwlock_unlock") rwunlock_module = Some (Defined Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock).
 Proof. repeat split; vm_compute; reflexivity. Qed.
 
 (** This function lists the names that a function calls directly, in
@@ -196,14 +198,14 @@ Definition gettext_calls (f : func) : list name :=
     drops aliases that nothing uses. The hi_atexit image, which never
     calls stpcpy, keeps only the mempcpy alias. *)
 Example gettext_link_gaps :
-  In (TAtom "__GI_stpcpy") (gettext_calls glibc_dcigettext) /\
-  In (TAtom "__GI_mempcpy") (gettext_calls glibc_dcigettext) /\
-  find_direct (TAtom "__GI___stpcpy") stpcpy_module = Some (Defined glibc_stpcpy) /\
+  In (TAtom "__GI_stpcpy") (gettext_calls Unit_intl_dcigettext_os.fn___dcigettext) /\
+  In (TAtom "__GI_mempcpy") (gettext_calls Unit_intl_dcigettext_os.fn___dcigettext) /\
+  find_direct (TAtom "__GI___stpcpy") stpcpy_module = Some (Defined Unit_string_stpcpy_os.fn___GI___stpcpy) /\
   find_alias (TAtom "stpcpy") stpcpy_module = Some (TAtom "__GI___stpcpy") /\
   find_direct (TAtom "__GI_stpcpy") stpcpy_module = None /\ find_alias (TAtom "__GI_stpcpy") stpcpy_module = None /\
   find_direct (TAtom "__GI_mempcpy") memfwd_module = None /\ find_alias (TAtom "__GI_mempcpy") memfwd_module = None /\
   find_alias (TAtom "__GI_mempcpy") hi_module = Some (TAtom "__GI___mempcpy") /\
-  find_direct (TAtom "__GI___mempcpy") hi_module = Some (Defined glibc_mempcpy) /\
+  find_direct (TAtom "__GI___mempcpy") hi_module = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy) /\
   find_direct (TAtom "__GI_stpcpy") hi_module = None /\ find_alias (TAtom "__GI_stpcpy") hi_module = None.
 Proof. repeat split; vm_compute; first [reflexivity | tauto]. Qed.
 

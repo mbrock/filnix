@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The test in one pass of `c: _IO_flush_all`'s loop
     (LibioFlushCode.v), from block `c: L94` to block `c: L182`, for a
@@ -23,7 +24,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry LibioFlushCode FileInv LibioLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock.
 From Glibc Require FileInv LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
@@ -80,9 +81,9 @@ Lemma wp_flush_L192 e from r2 fb freg md fd c breg arp are cb a31 Φ :
             lookup (TAtom "pr.2") e' = Some (WInt r2) /\ lookup (TAtom "v3") e' = Some (WPtr cb)⌝ -∗
      live fb freg -∗ int_cell fb off_mode md -∗ int_cell fb off_fileno fd -∗
      pcell fb 8 (mkPtr arp c) -∗ pcell fb 16 (mkPtr are c) -∗ live_cap c breg -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L192") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L192") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hp5 Hc13 Hc31 Hv3 Hph Hr Hfb Hfal Hfend Hfreg Hmd Hfd Hrd Hrp. subst fp.
   unfold file_size in Hfend.
@@ -121,9 +122,9 @@ Lemma wp_flush_L94_clean e from fb freg f2 md fd c breg arp are awb awp r cb Φ 
      live fb freg -∗ int_cell fb off_flags2 f2 -∗ int_cell fb off_mode md -∗ int_cell fb off_fileno fd -∗
      pcell fb 8 (mkPtr arp c) -∗ pcell fb 16 (mkPtr are c) -∗ pcell fb 32 (mkPtr awb c) -∗
      pcell fb 40 (mkPtr awp c) -∗ live_cap c breg -∗
-     WP (ERun (mkFrame glibc__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
+     WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e' [] None (Enter (TAtom "L182") (Some (TAtom "L257")))) : sexpr)
        {{ Φ }}) -∗
-  WP (ERun (mkFrame glibc__IO_flush_all e [] None (Enter (TAtom "L94") (Some from))) : sexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_libio_genops_os.fn___GI__IO_flush_all e [] None (Enter (TAtom "L94") (Some from))) : sexpr) {{ Φ }}.
 Proof using Type.
   intros fp Hp5 Hc13 Hp4 Hv3 Hr Hfb Hfal Hfend Hfreg Hf2 Hmd Hfd Hw Hwb Hrd Hrp. subst fp.
   unfold file_size in Hfend.

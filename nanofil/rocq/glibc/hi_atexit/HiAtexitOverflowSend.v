@@ -1,3 +1,4 @@
+From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** A full stdout buffer must be flushed before another byte can be
     stored. A newline also flushes a line-buffered stream. This file
@@ -11,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry SysCode LibioReadCode LibioDoWriteCode FileInv
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioOverflowCall LibioOverflowFlush LibioOverflowPut
   LibioOverflowFull LibioOverflowSend HiAtexitBase HiAtexitDoWrite.
 From Glibc Require LibioDoWrite LibioOverflowCall LibioOverflowFlush LibioOverflowFull LibioOverflowPut LibioOverflowSend.
@@ -28,9 +29,9 @@ Section rules.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
 Context (w0 : os_world) (registry : name -> option (contract os_world)) (ge : genv).
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
-Context (Hwrite : Defines ge "__GI___write" glibc___libc_write)
-  (Hfw : ge_fn ge "_IO_new_file_write" glibc__IO_new_file_write)
-  (Hdwf : Defines ge "_IO_new_do_write" glibc__IO_new_do_write).
+Context (Hwrite : Defines ge "__GI___write" Unit_io_write_os.fn___GI___libc_write)
+  (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_file_write)
+  (Hdwf : Defines ge "_IO_new_do_write" Unit_libio_fileops_os.fn__IO_new_do_write).
 Existing Instances Hwrite Hdwf.
 
 (** A flush of pending bytes uses the proved write from the buffer base. *)
@@ -57,7 +58,7 @@ Definition hi_ovf_L18 :=
 (* Both write branches retain flags2; the set-bit branch resolves the captured wrapper. *)
 Local Definition nocancel_ready (f2 : Z) : Prop :=
   Z.land f2 2 = 0 \/
-  Z.land f2 2 = 2 /\ Defines ge "__GI___write_nocancel" glibc___write_nocancel.
+  Z.land f2 2 = 2 /\ Defines ge "__GI___write_nocancel" Unit_io_write_nocancel_os.fn___GI___write_nocancel.
 
 (** A pending-byte flush also supports a stream that disables cancellation.
     The write returns the exact flags2 value and retains the buffer bytes on failure. *)

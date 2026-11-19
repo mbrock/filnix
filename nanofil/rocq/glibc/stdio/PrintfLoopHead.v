@@ -8,6 +8,7 @@
     each letter that the proof covers. It proves the rows of the block
     `L79` in the table of [PrintfLoopState](PrintfLoopState.v). *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,7 +19,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
   StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterCode FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
+  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
 Open Scope string_scope.
@@ -94,8 +95,8 @@ Local Notation blocks := (loop_blocks k R).
     sign. It leaves `c: f` at the letter and goes to the first block
     of the conversion that the letter names. *)
 Lemma head_body_holds :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢
-  body_triple glibc_printf_buffer "L79" head_body pl_in pl_vals (head_pre k R) (pl_post k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢
+  body_triple Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L79" head_body pl_in pl_vals (head_pre k R) (pl_post k R).
 Proof using Type*.
   iIntros "#IH". iModIntro. iIntros ([[bb [fa fc] dq bytes ds0 ap skip xs rest eb] fb wb pre tl ds i n] e Φ) "%He H HK".
   row_simpl. c_env_open He.
@@ -107,7 +108,7 @@ Proof using Type*.
   assert (Hlen : length bytes = (length pre + S (S (length tail)))%nat) by (rewrite Hbytes length_app; reflexivity).
   assert (Hx : (bytes ++ [0]) !! S (length pre) = Some x).
   { rewrite Hbytes -app_assoc lookup_app_r; [|lia]. replace (S (length pre) - length pre)%nat with 1%nat by lia. reflexivity. }
-  body_start glibc_printf_buffer "L79". step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs". step. check "Hfl". store "Hfl" "Hfc".
+  body_start Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer "L79". step. check "Hfl". load_fmt "Hfl" "Hfc" "Hs". step. check "Hfl". store "Hfl" "Hfc".
   cbn [ptr_add ptr_addr ptr_cap]. unwrap2.
   destruct (conv_letter x d Hd) as [[-> ->] | [[-> ->] | [[-> ->] | [-> ->]]]].
   - read_byte "Hs" (S (length pre)) 115 Hx. letter_dispatch 83%nat 84%nat 4.
@@ -136,7 +137,7 @@ Qed.
     uses the body. The step sets the count of conversions, which is
     zero before the first round. *)
 Lemma head_rows_hold :
-  ▷ blocks_hold glibc_printf_buffer blocks ⊢ blocks_hold glibc_printf_buffer (head_rows k R).
+  ▷ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer blocks ⊢ blocks_hold Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.fn___printf_buffer (head_rows k R).
 Proof using Type*.
   iIntros "#IH". iPoseProof (head_body_holds with "IH") as "#Hhead". repeat iSplit; [| | done]; iModIntro.
   - iIntros (y e from Φ) "%Hfrom %He H HK". row_simpl. iDestruct "H" as "[%Hn0 H]". c_env_open He.

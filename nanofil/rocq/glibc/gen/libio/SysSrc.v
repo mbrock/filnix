@@ -2,7 +2,7 @@
     Names and locations support annotations and diagnostic messages, not soundness premises.
     Natural-loop headers provide optional cuts for symbolic execution; any cut list is sound.
     Live sets and memory footprints guide execution but cannot justify a memory access.
-    Computation checks that every recorded block label belongs to the decoded function.
+    Computation checks that every recorded block label belongs to its function.
     The code generator reproduces this file from the capture; do not edit it. *)
 
 From Stdlib Require Import String List Bool NArith ZArith.
@@ -11,8 +11,8 @@ Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
 
+From Glibc Require Import Unit_io_close_nocancel_nostatus_os Unit_io_close_nocancel_os Unit_io_fstat64_os Unit_io_lseek64_os Unit_io_write_nocancel_os Unit_io_write_os Unit_nptl_libcZ2dcleanup_os Unit_posix__exit_os Unit_termios_isatty_nostatus_os.
 
-From Glibc Require Import SysCode.
 Module SysSrc.
 
 Definition file_0 : string := "../nptl/descr.h".
@@ -458,12 +458,8 @@ Definition footprint : list (name * list (N * term * Z * option Z * bool * bool 
 End fn___GI___write_nocancel.
 
 (** Projection keeps instruction bodies out of the VM code used by the membership check. *)
-Definition source_blocks : list (string * option (list name)) := Eval lazy in
-  map (fun n => (n,
-    match find_direct (TAtom n) sys_module with
-    | Some (Defined f) => Some (map b_label (fn_blocks f))
-    | _ => None
-    end)) ["__isatty_nostatus"; "__GI___libc_write"; "__lseek64"; "__GI___fstat64"; "__GI___close_nocancel"; "__GI___close_nocancel_nostatus"; "__GI__exit"; "__GI___libc_cleanup_push_defer"; "__GI___libc_cleanup_pop_restore"; "__GI___write_nocancel"].
+Definition source_blocks : list (string * list name) := Eval lazy in
+  [("__isatty_nostatus", map b_label (fn_blocks Unit_termios_isatty_nostatus_os.fn___isatty_nostatus)); ("__GI___libc_write", map b_label (fn_blocks Unit_io_write_os.fn___GI___libc_write)); ("__lseek64", map b_label (fn_blocks Unit_io_lseek64_os.fn___lseek64)); ("__GI___fstat64", map b_label (fn_blocks Unit_io_fstat64_os.fn___GI___fstat64)); ("__GI___close_nocancel", map b_label (fn_blocks Unit_io_close_nocancel_os.fn___GI___close_nocancel)); ("__GI___close_nocancel_nostatus", map b_label (fn_blocks Unit_io_close_nocancel_nostatus_os.fn___GI___close_nocancel_nostatus)); ("__GI__exit", map b_label (fn_blocks Unit_posix__exit_os.fn___GI__exit)); ("__GI___libc_cleanup_push_defer", map b_label (fn_blocks Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer)); ("__GI___libc_cleanup_pop_restore", map b_label (fn_blocks Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore)); ("__GI___write_nocancel", map b_label (fn_blocks Unit_io_write_nocancel_os.fn___GI___write_nocancel))].
 
 (** Projection keeps live sets and memory access records out of the membership computation. *)
 Definition table_labels : list (string * list name) := Eval lazy in
@@ -473,7 +469,7 @@ Definition table_labels : list (string * list name) := Eval lazy in
 Lemma labels_valid :
   forallb (fun row =>
   match find (fun entry => String.eqb (fst entry) (fst row)) source_blocks with
-  | Some (_, Some labels) =>
+  | Some (_, labels) =>
       forallb (fun l => existsb (name_eqb l) labels)
         (snd row)
   | _ => false

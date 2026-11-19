@@ -3,6 +3,7 @@
     both stores before entering the narrow formatter. It excludes user
     locks, recursive ownership and contention rather than assuming that
     those paths succeed. *)
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry SysWrappers FileInv LibioLogic
-  LibioCloseSteps FxprintfNormalCode VfxprintfNarrow Fix.
+  LibioCloseSteps VfxprintfNarrow Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -38,7 +39,7 @@ Lemma wp_vfxprintf_acquire e fb freg fl lb lbreg fmt ap flags md dqf fmtreg sb s
     live fb freg' -∗ int_cell fb 0 fl' -∗ pcell fb 136 (mkPtr lb' (Obj lb')) -∗
     lock_state lb' lbreg' 0 0 null -∗ live_capq dqf (ptr_cap fmt) fmtreg -∗ V ap -∗ Q r fl' freg' lb' lbreg' -∗ E -∗
     Φ (Ret (WInt (r mod 2 ^ 32)))) -∗
-  WP (ERun (mkFrame glibc_vfxprintf e [] None (Enter (TAtom "L24") (Some (TAtom "L10")))) : gexpr) {{ Φ }}.
+  WP (ERun (mkFrame Unit_stdioZ2dcommon_fxprintf_os.fn___vfxprintf e [] None (Enter (TAtom "L24") (Some (TAtom "L10")))) : gexpr) {{ Φ }}.
 Proof using Type*.
   intros Hpr Hchk Hz Hfmt Hap Hflags Hfb Hal Hend Hreg Huser Hfmtr Hmd Hself Hselfr Hcall.
   iIntros "#Hs Hl Hfl Hlp Hlk Hmd Hfmt HV HR HE HK".

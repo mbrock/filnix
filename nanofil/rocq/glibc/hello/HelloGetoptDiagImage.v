@@ -7,13 +7,14 @@
     parts that do not depend on the image: the cells of the current
     locale, and what the formatter returns after a print. *)
 
+From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os Unit_string_strchr_os Unit_string_strchrnul_os.
 From Glibc Require Import GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic.
-From Glibc Require Import OsWorld OsRegistry FileInv StrchrCode FxprintfCode DcigettextRoute HelloGettextLink
+From Glibc Require Import OsWorld OsRegistry FileInv DcigettextRoute HelloGettextLink
   HelloImageGettextLink HelloImageModule HelloImageLoad StartPtmallocInitSpec HelloImageEarly HelloGetoptDiagLock.
 Import ListNotations.
 Open Scope Z_scope.
@@ -79,8 +80,8 @@ Local Abbreviation P := (program_of w glibc_os_registry hge).
 Lemma hello_dlk_image k fp :
   0 <= k < 256 -> 0 <= ptr_addr fp < 2 ^ 64 ->
   hello_gettext_link hge /\
-  find_fn hge (TAtom "__GI_strchr") = Some (Defined glibc_strchr) /\
-  find_fn hge (TAtom "__GI___strchrnul") = Some (Defined glibc_strchrnul) /\
+  find_fn hge (TAtom "__GI_strchr") = Some (Defined Unit_string_strchr_os.fn___GI_strchr) /\
+  find_fn hge (TAtom "__GI___strchrnul") = Some (Defined Unit_string_strchrnul_os.fn___GI___strchrnul) /\
   dlk_place (lock_ptr hello_lk1) hello_lk1.1 hello_lk1.2 /\
   dlk_place (lock_ptr hello_lk2) hello_lk2.1 hello_lk2.2 /\
   dlk_place (lock_ptr hello_lkt) hello_lkt.1 hello_lkt.2 /\
@@ -91,7 +92,7 @@ Lemma hello_dlk_image k fp :
     (ptr_addr hello_nb) (ptr_cap hello_nb) hello_ib.1 (Ro hello_ib.1) hello_p276 hello_p277 hello_sec.1 /\
   dci_bounds hello_db.1 hello_db.2 (ptr_addr hello_nb) hello_ib.1 (Ro hello_ib.1) hello_ib.2 k
     hello_sec.1 hello_sec.2 /\
-  find_fn hge (TAtom "__fxprintf_nocancel") = Some (Defined glibc_fxprintf_nocancel) /\
+  find_fn hge (TAtom "__fxprintf_nocancel") = Some (Defined Unit_stdioZ2dcommon_fxprintf_os.fn___fxprintf_nocancel) /\
   lookup (TAtom "__GI__libc_intl_domainname") (ge_globals hge) = Some hello_dom /\
   0 <= ptr_addr fp < 2 ^ 64.
 Proof using Type.

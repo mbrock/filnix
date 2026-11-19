@@ -2,6 +2,7 @@
     still acquire the stream's free lock: it records the current thread as
     owner without reading the cancellation flag or cleanup chain. This rule
     covers a single-threaded process and requires a nonnull thread identifier. *)
+From Glibc Require Import Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,7 +11,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry SysWrappers FileInv LibioLogic
-  LibioCloseSteps FflushCode Fix.
+  LibioCloseSteps Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -26,7 +27,7 @@ Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity |
     owner and count zero. Null streams, user locks and contended locks are
     outside this rule, rather than being replaced by the free-lock route. *)
 Lemma wp_fflush_acquire fr fb freg fl lb lbreg sb sreg Φ :
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   Z.land fl 32768 = 0 -> ptr_addr (ow_self w0) <> 0 ->
   single_ro ge sb sreg -∗ live fb freg -∗ int_cell fb 0 fl -∗
@@ -35,7 +36,7 @@ Lemma wp_fflush_acquire fr fb freg fl lb lbreg sb sreg Φ :
           lookup (TAtom "chk0") e = Some (WPtr (mkPtr fb (Obj fb)))⌝ -∗
     live fb freg -∗ int_cell fb 0 fl -∗ pcell fb 136 (mkPtr lb (Obj lb)) -∗
     lock_state lb lbreg 1 0 (ow_self w0) -∗
-    WP (ERun (mkFrame glibc__IO_fflush e [] None
+    WP (ERun (mkFrame Unit_libio_iofflush_os.fn___GI__IO_fflush e [] None
       (Enter (TAtom "L22") (Some (TAtom "L32")))) : gexpr) {{ Φ }}) -∗
   WP (ERun fr : gexpr) {{ Φ }}.
 Proof using Type*.

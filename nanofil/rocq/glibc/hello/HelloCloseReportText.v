@@ -3,13 +3,14 @@
     array, which snprintf has just filled. Both paths leave a string
     that the next formatter can read. *)
 
+From Glibc Require Import Unit_string__strerror_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine ExternalCalls Pieces Heap Language Logic MemLogic HelloLeaf.
-From Glibc Require Import Fix FileInv OsWorld OsRegistry LibioLogic WordString PrintfOut PrintfSpec StrerrorCode
+From Glibc Require Import Fix FileInv OsWorld OsRegistry LibioLogic WordString PrintfOut PrintfSpec
   HelloImageLoad HelloImageModule StartImageEarly HelloGetoptTable HelloGetoptDiagImage HelloGetoptDiagTcb
   HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale HelloCloseReportStrerror HelloCloseReportSnprintf.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
@@ -51,7 +52,7 @@ Lemma wp_report_message_string (Herr : ow_errno w = Some (mkPtr eb (Obj eb)))
     tb tr v tid treg cf k db Φ :
   dtx_tcb_at (glibc_program := text_program) tb tr -> 0 <= v < 2^32 -> 0 <= k < 2^32 ->
   0 < db -> db mod 16 = 0 -> db+1024 <= 2^48 ->
-  call_frame glibc_strerror_r [WInt k; WPtr (mkPtr db (Obj db)); WInt 1024] = Some cf ->
+  call_frame Unit_string__strerror_os.fn___GI___strerror_r [WInt k; WPtr (mkPtr db (Obj db)); WInt 1024] = Some cf ->
   let G := report_locale w R.free tb tr v tid treg in
   ptsq dq hello_errlist_ps -∗ printf_ro -∗ obj db (heap_req 4 1024) -∗ G -∗
   ▷ (∀ p s, word_string dq p s -∗ G -∗ Φ (Ret (WPtr p))) -∗ WP (ERun cf : sexpr) {{ Φ }}.

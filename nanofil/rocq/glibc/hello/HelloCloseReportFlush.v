@@ -3,7 +3,7 @@
     further output to its own discard buffer. Later flushes reset the
     discard buffer without touching the caller's string. *)
 
-From Glibc Require Import HelloImageTypedPR.
+From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_flush_os.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
@@ -11,11 +11,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct PrintfLayout PrintfOut PrintfSpec
-  PrintfFlushStage PrintfBufferIoCode WordString CodePrelude HelloImageModule HelloCloseReportWindow.
+  PrintfFlushStage WordString CodePrelude HelloImageModule HelloCloseReportWindow.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
-Definition report_flush := hello_image_fn___printf_buffer_flush_snprintf.
+Definition report_flush := Unit_libio_vsnprintf_os.fn___printf_buffer_flush_snprintf.
 
 Section flush.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -90,10 +90,10 @@ Qed.
     mode 2 it calls the snprintf flush, checks that the new write
     pointer has room, and returns one. *)
 Lemma report_flush_has_spec `{!Defines ge "__printf_buffer_flush_snprintf" report_flush}
-    `{!Defines ge "__printf_buffer_flush" glibc___printf_buffer_flush} :
+    `{!Defines ge "__printf_buffer_flush" Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush} :
   HasSpec registry (os_wi w0) ge (TAtom "__printf_buffer_flush") (flush_spec 2 snprintf_R).
 Proof using Type*.
-  intros bb. exists glibc___printf_buffer_flush. split; [exact defines|]. split; [eexists; reflexivity|].
+  intros bb. exists Unit_stdioZ2dcommon_printf_buffer_flush_os.fn___printf_buffer_flush. split; [exact defines|]. split; [eexists; reflexivity|].
   intros cf Φ Hcf. injection Hcf as <-. iIntros "(%br & %w & %written & %mode & %Hmd & Hbuf & HR) HK".
   buf_open "Hbuf". step. step. check "Hl". load_mode "Hl" "Hmode". step. destruct Hmd as [-> | ->]; branch.
   - step. iApply wp_ret; [reflexivity|vx|]. iNext. iApply "HK".

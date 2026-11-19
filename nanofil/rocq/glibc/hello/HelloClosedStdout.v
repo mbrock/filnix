@@ -6,6 +6,7 @@
     The flush rule does not read cancellation state. A caller that disabled
     cancellation keeps its flag and saved old value separately; this rule
     does not recreate the enabled cleanup invariant. *)
+From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,7 +15,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
-  LibioCloseItEnd FflushCode FileSyncCode FflushClosed Fix.
+  LibioCloseItEnd FflushClosed Fix.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
@@ -47,9 +48,9 @@ Definition closed_stdout fb freg vb lb lbreg : iProp Σ :=
     the separate sync slot and links it to the actual checked function.
     This rule does not implement the rest of error reporting. *)
 Lemma wp_closed_stdout_fflush (Hreg : holds_os registry) (Hext : sys_external ge)
-    (Hsync : ge_fn ge "_IO_new_file_sync" glibc__IO_new_file_sync)
+    (Hsync : ge_fn ge "_IO_new_file_sync" Unit_libio_fileops_os.fn__IO_new_file_sync)
     fr fb freg vb lb lbreg sb sreg vreg (E : iProp Σ) :
-  call_frame glibc__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
+  call_frame Unit_libio_iofflush_os.fn___GI__IO_fflush [WPtr (mkPtr fb (Obj fb))] = Some fr ->
   0 < fb -> fb mod 8 = 0 -> fb + 224 <= r_end freg -> r_end freg <= 2 ^ 63 ->
   ptr_addr (ow_self w0) <> 0 ->
   vtables_ro ge vb vreg -∗ pcellq DfracDiscarded vb (vt_file + 96) (sym_ptr ge "_IO_new_file_sync") -∗
