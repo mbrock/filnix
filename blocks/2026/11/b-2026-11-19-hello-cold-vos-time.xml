@@ -1,0 +1,55 @@
+<block id="b-2026-11-19-hello-cold-vos-time" kind="bench" actor="Codex" created="2026-11-19T10:40:04Z" in-reply-to="b-2026-11-19-hello-rq-open-time">
+  <title>Rocq spends most of Hello’s cold interface build loading imports</title>
+  <about path="nanofil/rocq/glibc/hello/HelloStartNeverPanics.v"/>
+  <about path="nanofil/rocq/glibc/hello/HelloGlibcMainLibs.v"/>
+  <about path="nanofil/rocq/glibc/getopt/GetoptLongPfxSet.v"/>
+  <about path="nanofil/rocq/scripts/glibc-tools/rq/interfaces.py"/>
+  <tag name="formal"/>
+  <p>On swa, a cold <code>rq open</code> of <code>hello_never_panics</code>
+    builds 1,092 glibc interfaces. With twelve jobs it took 159.8 s to
+    reach the theorem. Each file starts a fresh Rocq compiler that loads its
+    imports. Together the compilers spent 789 of 1,082 worker-seconds
+    on <code>Require</code> and <code>Load</code> commands.</p>
+  <p>To account for the wall time, we traced the last interface to finish
+    back through the last prerequisite to finish at each step. Along that
+    chain, Rocq spent 90.8 s loading imports and 26.6 s on the rest of
+    compilation. Another 40.3 s elapsed between an interface becoming
+    ready and its compiler starting. Opening the proof and preparing the
+    build took 2.1 s in total.</p>
+  <p>A separate system-call trace shows what one process loads to build its
+    interface. <code>GetoptLongPfxSet</code> read 57.6 MiB from 559 compiled
+    input files and wrote a 17 KiB interface. Only 8.4 MiB of those reads
+    came from glibc. Later, <code>HelloStartWp</code> read 115.0 MiB from
+    1,564 compiled inputs. The filesystem cache was warm for both traces.
+    CPU samples from both compilers showed time in OCaml allocation,
+    deserialization and map updates.</p>
+  <p>The longest chain by compile time contains 49 getopt files followed
+    by 25 Hello files. The slowest single compilation,
+    <code>HelloImageCpu</code>, took 31.4 s and finished 62 s before
+    the build ended, on a different branch. The 25 Hello files on the
+    longest chain account for most of the earlier
+    functor refactor’s cold-load saving. Their combined compile time,
+    estimated from the original build logs and output timestamps,
+    fell from 55.3 to 44.8 s. The full chain fell from 124.3 to 112.4 s.</p>
+  <table>
+    <tr><th>Theorem</th><th>Build order</th><th>Jobs</th><th>Cold open</th></tr>
+    <tr><td><code>hello_never_panics</code></td><td>Usual Make order</td><td>12</td><td>159.8 s</td></tr>
+    <tr><td><code>hello_never_panics</code></td><td>Usual Make order</td><td>24</td><td>144.6 s</td></tr>
+    <tr><td><code>hello_never_panics</code></td><td>Ready files ranked by remaining chain</td><td>12</td><td>129.7 s</td></tr>
+    <tr><td><code>hello_never_panics</code></td><td>Make goals reordered by chain length</td><td>12</td><td>159.1 s</td></tr>
+    <tr><td><code>hello_libs</code></td><td>Usual Make order</td><td>12</td><td>25.6 s</td></tr>
+  </table>
+  <p>The scheduling experiment used timings from the earlier run to put
+    the ready file with the longest remaining chain first. This cut
+    queue time on the chain that finished last from 40.3 to 1.1 s. Its
+    compilation time rose from 117.4 to 126.6 s. Reordering
+    the goals passed to Make alone left the open time at 159 seconds.
+    All four safety-theorem builds produced the same set of interfaces
+    and reached the named proof. The smaller <code>hello_libs</code>
+    opening needed 176 interfaces. Their compilers spent 92 of 123
+    worker-seconds loading imports.</p>
+  <p>Each row records one run on the same machine with Rocq 9.3,
+    a fresh glibc interface cache, prebuilt Nanofil and Iris libraries,
+    and a warm filesystem cache. Rocq timed each source command and
+    skipped opaque proof bodies under <code>-vos</code>.</p>
+</block>
