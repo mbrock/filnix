@@ -67,7 +67,7 @@ class BalancedHTML(HTMLParser):
 here = Path(__file__).resolve().parents[1]
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
-    (root / "_RocqProject").write_text("-Q . Test\nExample.v\nClient.v\n")
+    (root / "_RocqProject").write_text("-Q . Test\n.\n")
     (root / "Example.v").write_text(source)
     client = """From Test Require Import Example.
 Definition imported := Nested.rewriting.

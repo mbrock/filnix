@@ -219,8 +219,11 @@ def capture(project, output, replay=""):
             flags.extend(words)
         elif len(words) == 1 and words[0].endswith(".v"):
             files.append(words[0])
+        elif len(words) == 1 and (project / words[0]).is_dir():
+            files.extend(str(p.relative_to(project)) for p in sorted((project / words[0]).rglob("*.v")))
         elif words:
             raise ValueError(f"Unsupported project option: {line}")
+    files = list(dict.fromkeys(files))
     here = Path(__file__).resolve().parent
     plans = json.loads(subprocess.check_output(
         ["swipl", str(here / "capture_plan.pl"), *files], cwd=project, stdin=subprocess.DEVNULL,
