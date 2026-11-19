@@ -1,0 +1,33 @@
+<block id="b-2026-11-19-hello-proof-import-boundaries" kind="bench" actor="Codex" created="2026-11-19T14:46:10Z" in-reply-to="b-2026-11-19-glibc-proof-layers">
+  <title>Hello checks its option table independently of the parser</title>
+  <about path="nanofil/rocq/glibc/hello/HelloGetoptTable.v"/>
+  <about path="nanofil/rocq/glibc/getopt/LongOptionTable.v"/>
+  <about path="nanofil/rocq/glibc/ARCHITECTURE.md"/>
+  <tag name="formal"/>
+  <p>Hello passes four long options to getopt. Checking their names, fields
+    and return codes used to load the proof that runs the entire parser.
+    The parser and the image check now both import the table description.
+    An edit to the exact-match loop reaches 39 dependent files, down from 119.</p>
+  <p>The image layout now imports the record of Hello's objects directly.
+    It takes 292 glibc interfaces to check the layout, down from 588.
+    The read-only formatter tables and the program name offsets also have
+    their own modules. Main's library contracts can refer to these without
+    loading the proofs that run the formatter and select the program name.</p>
+  <p>On swa, each theorem opened once with an empty interface cache, a
+    prebuilt worker and <sh>RQ_JOBS=12</sh> at commits <c>be9168624323</c>
+    and <c>6d52d9c004de</c>. The warm column gives the median of three
+    more opens on the new tree. Each started a fresh worker with the
+    interfaces already built.</p>
+  <table>
+    <tr><th>Theorem</th><th>Interfaces before → after</th><th>Cold before</th><th>Cold after</th><th>Warm after</th></tr>
+    <tr><td><c>hello_getopt_allocatable</c></td><td>184 → 42</td><td>51.29 s</td><td>9.20 s</td><td>2.54 s</td></tr>
+    <tr><td><c>hello_image_kept</c></td><td>586 → 301</td><td>66.20 s</td><td>19.60 s</td><td>4.96 s</td></tr>
+    <tr><td><c>hello_libs</c></td><td>181 → 164</td><td>20.32 s</td><td>18.89 s</td><td>1.68 s</td></tr>
+    <tr><td><c>hello_never_panics</c></td><td>1,045 → 1,053</td><td>112.78 s</td><td>111.64 s</td><td>2.20 s</td></tr>
+  </table>
+  <p>The whole-program theorem still needs the parser, startup and the
+    library implementations. Its longest import chain fell from 71
+    files to 41. In both runs the last prerequisite of startup assembly
+    was the CPU image check. Generating <c>HelloImageCpu.vos</c> took
+    29.0 s on the previous tree and 26.3 s on the new tree.</p>
+</block>
