@@ -1,12 +1,10 @@
 From Glibc Require Import Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram.
-(** The "/.libs/" test of GNU Hello's `set_program_name` (HelloName.v's
-    [set_program_name_fn]) linked with glibc, for HelloGlibcProgName.v's
-    triple over the [os_world] of [OsWorld](../zsys/OsWorld.v): from L8,
-    once the base name is found, [spn_L8] compares the seven bytes
-    before it with "/.libs/" by Hello's `memeq` over a [memcmp_spec]
-    (HelloGlibcProgCells.v's [memeq_call]) and goes on to the "lt-"
-    test ([spn_L16]) or to the stores ([spn_L18]). *)
+(** This file proves the "/.libs/" test in GNU Hello's `set_program_name`
+    for the triple in HelloGlibcProgName.v. Once the function has found
+    the base name, block L8 uses `memeq` to compare the seven preceding
+    bytes with "/.libs/". It then goes to the "lt-" test or straight to
+    the stores. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -14,7 +12,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
+  StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
+From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrcmpBits
   StrncmpBits HelloGlibcProgCells.
 From Glibc Require HelloGlibcProgCells OsWorld.

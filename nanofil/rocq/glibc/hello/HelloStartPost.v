@@ -27,7 +27,8 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
-From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic HelloName.
+From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic StringLogic MemLogic.
+From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld FileInv FileIdle LibioWIdle WordString LibioStdfiles HelloGlibcDebts HelloVersionLits
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.

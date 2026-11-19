@@ -9,8 +9,9 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
-  ExternalCalls Pieces Heap Language Logic MemLogic HelloLeaf.
-From Nanofil Require HelloClose.
+  ExternalCalls Pieces Heap Language Logic MemLogic.
+From Glibc Require Import IRFrames HelloBodies.
+
 From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunTail ExitRun
   HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsSys HelloGlibcLibsCleanup.
 From Glibc Require ExitRun ExitRunTail.
@@ -119,8 +120,8 @@ Proof using Hk Hos.
   - cbn [Q]. iApply hello_dtors.
   - cbn [Q]. iSplitL; [|done].
     destruct (hk_cp _ _ Hk) as (Hcap & Hcheck & Haddr).
-    iApply (ExitRun.exit_handler_void w0 ge _ (ho_cp o) null (TAtom "close_stdout") HelloClose.close_stdout_fn
-      (invocation HelloClose.close_stdout_fn []) P (D.exit_io w0 ge o));
+    iApply (ExitRun.exit_handler_void w0 ge _ (ho_cp o) null (TAtom "close_stdout") close_stdout_fn
+      (invocation close_stdout_fn []) P (D.exit_io w0 ge o));
       [exact Hcap | exact Hcheck | exact (hk_close_stdout _ _ Hk) | lia | reflexivity | reflexivity |
        reflexivity | reflexivity |].
     destruct Hclose as (gf & Hgf & Hcall & Hspec).

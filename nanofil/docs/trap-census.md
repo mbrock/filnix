@@ -227,11 +227,7 @@ extraction driver's parser did not accept them. The driver now accepts
 both, with [strings.ir](../rocq/tests/strings.ir) as a regression.
 No Gallina/model verdict was changed to get Hello accepted.
 
-Next is still Campaign 7's closed-module proof (step 1), and Campaign
-4's external-call/trace contracts before `hi.c` (step 2). This census
-does not prove UB/unreachable absent, discharge any checks, link the
-81 modules in Rocq, or supply the native libc-contract probe suite.
-
-The subsequent [libc contracts and native probes](libc-contracts.md)
-state that trusted boundary separately; they do not change these census
-counts or establish trap-freedom.
+This census did not discharge checks, prove the absence of undefined
+behavior, or link the modules in Rocq. The later [GNU Hello proof](hello-glibc.md)
+uses an image linked with compiled glibc. Its trusted contracts describe
+calls into [the runtime](zsys.md), not into glibc.

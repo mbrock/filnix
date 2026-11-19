@@ -18,7 +18,8 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic Language HelloLeaf HelloMain.
+From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic Language.
+From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts HelloGlibcLibsT HelloGlibcMainLoop HelloGlibcMainFull.
 Import ListNotations.
 Open Scope Z_scope.

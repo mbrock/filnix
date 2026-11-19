@@ -1,9 +1,8 @@
 From Glibc Require Import Unit_string_strncmp_os Unit_string_strrchr_os.
 From Glibc Require Import GlibcProgram.
-(** GNU Hello's `set_program_name` (HelloName.v's
-    [set_program_name_fn], Hello's own IR from HelloCode.v) linked with
-    glibc, over the [os_world] of [OsWorld](../zsys/OsWorld.v), with no
-    premise about the world: [set_program_name_glibc].
+(** This file proves a triple for GNU Hello's `set_program_name` linked
+    with glibc. The triple uses the [os_world] of
+    [OsWorld](../zsys/OsWorld.v) without a separate world premise.
 
     gnulib's progname.c finds the last `/` of argv[0] with glibc's own
     strrchr ([wp_call_glibc_strrchr]); if seven bytes precede the base
@@ -15,14 +14,12 @@ From Glibc Require Import GlibcProgram.
     libc's `program_invocation_name` and
     `program_invocation_short_name` ([spn_L18]).
 
-    Unlike HelloProgName.v's triple, the callees are glibc's code, not
-    contracts with ghost names, so the answer is exact: the cells end up
-    pointing at argv[0]'s bytes [name_idx] and [short_idx]. The cells
-    are ordinary objects of the memory, and a store into one keeps
-    [os_wi] ([os_keeps]), so no premise about the world is needed.
-    argv[0] is a [word_string] at any fraction, or read-only; HelloName.v
-    explains why the compiled code has no null check (gnulib declares
-    the parameter nonnull, and `argc >= 1` makes `argv[0]` a string).
+    The triple identifies the exact byte indices in `argv[0]` where the
+    cells point. The cells are ordinary objects of memory, so stores
+    into them preserve [os_wi]. The program logic gives `argv[0]` a
+    [word_string] at any fraction or as read-only. The compiled function
+    does not check for null because gnulib declares the parameter nonnull;
+    the caller has `argc >= 1`, so `argv[0]` points to a string.
     The literals are read-only [word_string]s. *)
 
 From Glibc Require Import GlibcTactics.
@@ -31,7 +28,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic HelloLeaf HelloName.
+  StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
+From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld MemchrLast StrlenWord
   StrrchrLogic HelloGlibcProgCells HelloGlibcProgLibs.
 From Glibc Require HelloGlibcProgCells HelloGlibcProgLibs OsWorld StrrchrLogic.

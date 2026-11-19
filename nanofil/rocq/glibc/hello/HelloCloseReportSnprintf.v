@@ -11,7 +11,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
-  ExternalMachine Pieces Heap Language Logic MemLogic VariadicLogic HelloLeaf.
+  ExternalMachine Pieces Heap Language Logic MemLogic VariadicLogic.
+From Glibc Require Import IRFrames.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks OsRegistry LibioLogic WordString NarrowFormat NarrowArgs
   FxprintfStream PrintfLayout PrintfOut PrintfSpec PrintfWrap CodePrelude StartImageEarly HelloImageLoad HelloImageModule
   HelloCloseReportStrerror HelloCloseReportFormat HelloCloseReportFlush HelloCloseReportInit HelloCloseReportDone.

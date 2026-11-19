@@ -18,7 +18,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Nanofil Require HelloVersion.
+From Glibc Require Import HelloBodies.
+
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo HelloVersionLits HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require Import HelloImageModule HelloImageLoad.
@@ -40,7 +41,7 @@ Open Scope Z_scope.
     body copies without using, has a symbol. *)
 Record emit_link (ge : genv) : Prop := mkEmitLink {
   el_fn : find_fn ge (TAtom "emit_bug_reporting_address") =
-    Some (Defined HelloVersion.emit_bug_reporting_address_fn);
+    Some (Defined emit_bug_reporting_address_fn);
   el_lits : forall ns, In ns version_lits -> lookup (TAtom ns.1) (ge_globals ge) = Some (sym_ptr ge ns.1);
   el_domain : is_Some (lookup (TAtom "version-etc#str.43") (ge_globals ge))
 }.
@@ -196,11 +197,11 @@ Lemma emit_bug_triple (R : iProp Σ) :
     (hello_ro ge o ∗ out_idle ∗ errno_any (ho_eb o) ∗ R)
     (fun r => ⌜r = RetVoid⌝ ∗ out_idle ∗ errno_any (ho_eb o) ∗ R)%I.
 Proof using Type*.
-  exists HelloVersion.emit_bug_reporting_address_fn. split; [exact (el_fn _ Hl)|].
+  exists emit_bug_reporting_address_fn. split; [exact (el_fn _ Hl)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-.
   iIntros "(#Hro & Hout & He & HR) HK".
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
-  cbn [b_insts b_jump HelloVersion.emit_bug_reporting_address_start].
+  cbn [b_insts b_jump emit_bug_reporting_address_start].
   destruct (el_domain _ Hl) as [p43 L43].
   step_global (lit_lookup "version-etc#str.45" [10] ltac:(lit_in)). step_global (hy_so _ _ Hy).
   iApply (wp_out_load with "Hro Hout"); [lk_prove|]. iIntros "Hout".

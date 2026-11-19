@@ -2,7 +2,8 @@
     every premise of [hello_never_panics]. From that one state, the safety
     theorem rules out both a panic and a normal return to the runtime for
     every [[fuel]] budget. *)
-From Nanofil Require Import Runtime HelloLeaf.
+From Nanofil Require Import Runtime.
+From Glibc Require Import IRFrames.
 From Glibc Require Import Fix StartState HelloImageModule OsRegistry StartLibcStartMain
   HelloStartWitness HelloStartNeverPanics.
 

@@ -73,17 +73,11 @@ skip != "" { if ($0 ~ "^End " skip "\\.") skip = ""; next }
     assert not scan(p)
     p.write_text('Module Type Other.\nParameter state : Type.\nEnd Other.')
     assert scan(p)
-    p = Path(d) / 'theories/hello_contracts/HelloJoinInterface.v'
-    p.parent.mkdir(parents=True)
-    p.write_text('Module Type HelloJoinBase (R : Runtime).\nDeclare Module LG0 : LogicSig R.\nParameter p : False.\nEnd HelloJoinBase.')
-    assert not scan(p), scan(p)
-    p.write_text('Module Type HelloMainBase (R : Runtime).\nParameter p : False.\nEnd HelloMainBase.')
-    assert scan(p)
     p = Path(d) / 'glibc/hello/HelloGlibcMainLibsCalls.v'
     for field, sig in [('ST', 'HelloLibsStrSig'), ('NM', 'HelloLibsNameSig')]:
         p.write_text(f'Module Type HelloLibsCallsSig. Declare Module {field} : {sig} D. End HelloLibsCallsSig.')
         assert not scan(p), scan(p)
         p.write_text(f'Module Type Other. Declare Module {field} : {sig} D. End Other.')
         assert scan(p)
-    print('PASS exact Runtime, Hello bases, 16 fields, and two submodule sites; new sites refused')
+    print('PASS exact Runtime, 16 fields, and two submodule sites; new sites refused')
 print(f'{len(bad)} negative and {len(good)} positive scanner fixtures passed')

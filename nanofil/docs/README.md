@@ -48,9 +48,8 @@ about it.
   CertiRocq's λANF directly to nanofil IR over a 32-bit integer arena,
   so pure Gallina modules share the checked IR and backend without C++
   or per-cell capabilities.
-- [Campaign 7: trap-obligation census](trap-census.md) and
-  [native libc contracts](libc-contracts.md): what a whole program
-  (Hello) needs proved, and the libc boundary it relies on.
+- [Campaign 7: trap-obligation census](trap-census.md): what the compiler
+  left for the proof to check in GNU Hello.
 - [Contracts at the zsys_ boundary](zsys.md): an exploration of
   libpizlo's pizlonated system calls as the boundary instead of libc,
   what Hello reaches through user glibc, how much of user glibc

@@ -10,7 +10,7 @@ A campaign is one numbered stage of nanofil's formal plan in formal.md, from Cam
 | 1 | the core model in Rocq, agreeing with the [[interpreter]] | [rocq.md](../rocq.md) |
 | 2 | the [[runtime]] as axioms | [runtime-axioms.md](../runtime-axioms.md) |
 | 3 | [[soundness|soundness of checking]], [valid_no_unchecked] | [rocq.md](../rocq.md#campaign-3-the-machine-of-a-runtime) |
-| 4 | observations, refinement, libc [[external-call|contracts]] | [libc-contracts.md](../libc-contracts.md) |
+| 4 | observations, refinement, and [[external-call|contracts]] | [formal.md](../formal.md#campaign-4-observations-refinement-and-the-environment) |
 | 5 | static discharge by certificate | not started |
 | 6 | integration with Filnix | not started |
 | 7 | trap-freedom of one pinned program | [trap-census.md](../trap-census.md) |

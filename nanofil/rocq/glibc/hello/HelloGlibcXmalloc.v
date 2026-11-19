@@ -2,9 +2,7 @@ From Glibc Require Import GlibcProgram.
 (** This file proves GNU Hello's `xmalloc` when it is linked with
     glibc's own `malloc`, with no premise about either function.
 
-    HelloJoin.v proves `xmalloc` from a contract for `malloc` that has
-    no null return. Here `malloc` is glibc's compiled code, and
-    AllocLogic.v's [wp_glibc_malloc] proves that it returns a fresh
+    AllocLogic.v's [wp_glibc_malloc] proves that glibc's `malloc` returns a fresh
     16-aligned heap object at a positive base while the tcache prelude
     stays idle ([tcache_idle]). When the runtime refuses an allocation,
     the run stops cleanly as a resource ending before `malloc` returns,
@@ -20,7 +18,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  StepRules Symbolic ExternalCalls Pieces Heap Language Logic MemLogic HelloModule HelloLeaf HelloJoin.
+  StepRules Symbolic ExternalCalls Pieces Heap Language Logic MemLogic.
+From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld LeavesLogic AllocLogic.
 From Glibc Require AllocLogic OsWorld.
 From Glibc Require Import Fix.

@@ -5,10 +5,10 @@
 % dropped. Transport.v's decode_module turns it into the module.
 %
 %   (cd src && ../bin/nanofil -O outcomes FILE.ir </dev/null) |
-%     swipl rocq/scripts/gallina.pl [--chunk] NAME SOURCE [CHECKER] >rocq/theories/programs/NAMECode.v
+%     swipl rocq/scripts/gallina.pl [--chunk] NAME SOURCE [CHECKER] >NAMECode.v
 %
-% The output is a fixture: rocq/scripts/programs.sh regenerates it and fails
-% when nanofil's checked module has changed.
+% The output is a fixture. For example, rocq/scripts/programs.sh checks that
+% CtLtCode.v matches the checked module for ct_lt.c.
 %
 % With --chunk, a list of more than 64 terms inside an item (a data
 % item's initializer, such as a locale table's thousands) is printed as

@@ -15,10 +15,9 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic
-  HelloModule HelloLeaf.
+From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import FileInv WordString StrlenLogic GetoptModule GetoptLongExact GetoptLongSite
-  GetoptLongStr GetoptInitial GetoptInitialize.
+  GetoptLongStr GetoptInitial GetoptInitialize HelloImage_hello.
 From Glibc Require FileInv GetoptLongExact GetoptLongStr GetoptInitial.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -132,41 +131,35 @@ Qed.
 
 (** ## Agreement with the loader image
 
-    The pieces must hold the bytes that the loader writes, or a startup
-    proof could not hand them over. The facts below compute the addresses
-    in the loader image of Hello and check every piece against it. *)
+    The standalone fixture loads just the table and the five strings
+    from the generated Hello object. This check exercises their bytes
+    and relocations without loading the full glibc image. The startup
+    proof checks the same pieces separately at the linked addresses. *)
 
-(** The loader builds this image of Hello's memory. *)
-Definition hello_image : mem :=
-  match initial_memory hello_module with Some (_, m) => m | None => empty_mem end.
-
-(** The loader puts the table and the five strings at these read-only
-    objects. *)
-Lemma hello_getopt_layout :
-  Term.lookup (TAtom "hello#parse_options.longopts.64") hello_globals = Some (mkPtr 68672 (Ro 68672)) /\
-  Term.lookup (TAtom "hello#str.65") hello_globals = Some (mkPtr 69456 (Ro 69456)) /\
-  Term.lookup (TAtom "hello#str.66") hello_globals = Some (mkPtr 69488 (Ro 69488)) /\
-  Term.lookup (TAtom "hello#str.67") hello_globals = Some (mkPtr 69520 (Ro 69520)) /\
-  Term.lookup (TAtom "hello#str.68") hello_globals = Some (mkPtr 69552 (Ro 69552)) /\
-  Term.lookup (TAtom "hello#str.69") hello_globals = Some (mkPtr 69584 (Ro 69584)).
-Proof. vm_compute. split_and!; reflexivity. Qed.
+(** The loader resolves the table's name pointers to the generated strings. *)
+Local Definition hello_image : mem :=
+  match initial_memory [item_hello'23parse_options'2elongopts'2e64;
+    item_hello'23str'2e65; item_hello'23str'2e66; item_hello'23str'2e67;
+    item_hello'23str'2e68; item_hello'23str'2e69] with
+  | Some (_, m) => m | None => empty_mem
+  end.
 
 (** A data object of the image starting at b lives in region reg. *)
 Definition gd (b e : Z) : region := mkRegion b e GlobalData Live.
 
 (** This is Hello's table with its names at the loader's addresses. *)
 Definition hello_fixture_los : list lopt :=
-  hello_los (mkPtr 69456 (Ro 69456)) (mkPtr 69488 (Ro 69488)) (mkPtr 69520 (Ro 69520)) (mkPtr 69552 (Ro 69552)).
+  hello_los (mkPtr 65712 (Ro 65712)) (mkPtr 65744 (Ro 65744)) (mkPtr 65776 (Ro 65776)) (mkPtr 65808 (Ro 65808)).
 
 (** These are all the pieces that the call reads, at the loader's
     addresses. *)
 Definition hello_getopt_ps : list (piece * pval) :=
-  table_ps 68672 (gd 68672 68832) hello_fixture_los ++
-  lit_ps 69456 (gd 69456 69472) (lit_words s_greeting) ++
-  lit_ps 69488 (gd 69488 69504) (lit_words s_traditional) ++
-  lit_ps 69520 (gd 69520 69528) (lit_words s_help) ++
-  lit_ps 69552 (gd 69552 69560) (lit_words s_version) ++
-  lit_ps 69584 (gd 69584 69592) (lit_words s_optstring).
+  table_ps 65536 (gd 65536 65696) hello_fixture_los ++
+  lit_ps 65712 (gd 65712 65728) (lit_words s_greeting) ++
+  lit_ps 65744 (gd 65744 65760) (lit_words s_traditional) ++
+  lit_ps 65776 (gd 65776 65784) (lit_words s_help) ++
+  lit_ps 65808 (gd 65808 65816) (lit_words s_version) ++
+  lit_ps 65840 (gd 65840 65848) (lit_words s_optstring).
 
 (** These definitions list the same pieces at any bases. The table lies at
     tb, the four names lie at b1 to b4 and the option string lies at b5. *)
@@ -175,11 +168,6 @@ Definition hello_tab_ps (tb : Z) (treg : region) (b1 b2 b3 b4 b5 : Z) (r1 r2 r3 
   table_ps tb treg (hello_los (mkPtr b1 (Ro b1)) (mkPtr b2 (Ro b2)) (mkPtr b3 (Ro b3)) (mkPtr b4 (Ro b4))) ++
   lit_ps b1 r1 (lit_words s_greeting) ++ lit_ps b2 r2 (lit_words s_traditional) ++
   lit_ps b3 r3 (lit_words s_help) ++ lit_ps b4 r4 (lit_words s_version) ++ lit_ps b5 r5 (lit_words s_optstring).
-
-(** The loader's pieces are the general ones at the loader's addresses. *)
-Lemma hello_getopt_tab_ps : hello_getopt_ps = hello_tab_ps 68672 (gd 68672 68832) 69456 69488 69520 69552 69584
-  (gd 69456 69472) (gd 69488 69504) (gd 69520 69528) (gd 69552 69560) (gd 69584 69592).
-Proof. reflexivity. Qed.
 
 (** Every piece agrees with the loader image. *)
 Lemma hello_getopt_agrees : all_agree hello_image hello_getopt_ps.
@@ -192,16 +180,6 @@ Proof.
     | PLive b => 4 * 512 * b | PByte b o => 4 * (512 * b + o) + 1
     | PAux b o => 4 * (512 * b + o) + 2 | _ => 3 end)).
   apply (bool_decide_unpack _). vm_compute. exact I.
-Qed.
-
-(** A genv that links Hello puts the table and the strings at the loader's
-    addresses. *)
-Lemma hello_getopt_linked ge : hello_linked ge ->
-  Term.lookup (TAtom "hello#parse_options.longopts.64") (Semantics.ge_globals ge) = Some (mkPtr 68672 (Ro 68672)) /\
-  Term.lookup (TAtom "hello#str.69") (Semantics.ge_globals ge) = Some (mkPtr 69584 (Ro 69584)).
-Proof.
-  intros (_ & Hg & _). pose proof hello_getopt_layout as (H64 & _ & _ & _ & _ & H69).
-  split; apply Hg; assumption.
 Qed.
 
 (** ## Literals at glibc's addresses
@@ -409,7 +387,7 @@ Qed.
     and the option string. *)
 Lemma hello_getopt_own :
   pts hello_getopt_ps ==∗
-  opt_table (mkPtr 68672 (Ro 68672)) hello_fixture_los ∗ word_string DfracDiscarded (mkPtr 69584 (Ro 69584)) s_optstring.
+  opt_table (mkPtr 65536 (Ro 65536)) hello_fixture_los ∗ word_string DfracDiscarded (mkPtr 65840 (Ro 65840)) s_optstring.
 Proof using Type.
   rewrite /hello_getopt_ps. iIntros "H".
   iDestruct (pts_app with "H") as "[Ht H]". iDestruct (pts_app with "H") as "[H1 H]".
@@ -443,8 +421,8 @@ End own.
     program's ownership. *)
 Lemma hello_getopt_allocatable Σ `{!gen_heapGpreS piece pval Σ} :
   ⊢ |==> ∃ Hh : gen_heapGS piece pval Σ,
-    @opt_table Σ Hh (mkPtr 68672 (Ro 68672)) hello_fixture_los ∗
-    @word_string Σ Hh DfracDiscarded (mkPtr 69584 (Ro 69584)) s_optstring.
+    @opt_table Σ Hh (mkPtr 65536 (Ro 65536)) hello_fixture_los ∗
+    @word_string Σ Hh DfracDiscarded (mkPtr 65840 (Ro 65840)) s_optstring.
 Proof.
   iMod (gen_heap_init (list_to_map hello_getopt_ps : gmap piece pval)) as (Hh) "(_ & Hpts & _)".
   iExists Hh. iApply hello_getopt_own.

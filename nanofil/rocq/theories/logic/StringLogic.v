@@ -1,8 +1,6 @@
 (** C strings occupy consecutive bytes through a terminating NUL.
     These ownership assertions track those bytes and their enclosing object,
-    and let callers borrow individual bytes or suffixes.
-    The earlier libc calling rules live in
-    [LibcStringLogic](../hello_contracts/LibcStringLogic.v). *)
+    and let callers borrow individual bytes or suffixes. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.

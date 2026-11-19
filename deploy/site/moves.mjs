@@ -12,10 +12,8 @@
 const rocqLayers = {
   core: "Cfg Extract Ieee Maps Memory Ops Run Runtime Semantics Syntax Term Transport ValidFast Validate Values",
   soundness: "Ahead Chain Coverage Dominance Doomed Evidence Guard Identity Interval Invariant Machine Persistence Renew Single Sites Soundness Steps Walk",
-  external: "ExternalCalls ExternalMachine Libio Shutdown Startup Stdio",
+  external: "ExternalCalls ExternalMachine Startup",
   logic: "ContractFrame Heap Language Logic MemLogic Panics Pieces StepRules StringLogic Symbolic",
-  programs: "Buffer BufferCode BufferLogic Composition CountCode CountLogic Cycle CycleCode Hi HiArtifact HiCode HiLogic Program ScanCode ScanLogic Selected SlotCode SlotLogic Sum SumCode",
-  hello_contracts: "CallbackLogic Diagnostics Ending ExitMemory Formatting Getopt GetoptLogic HelloClose HelloCode HelloConv HelloConvDefs HelloDiagnosticChecks HelloJoin HelloLeaf HelloLocale HelloMain HelloModule HelloName HelloProgName HelloReach HelloStdio HelloVersion HelloWorld LentLogic Libc LibcDiagnosticLogic LibcErrnoLogic LibcExit LibcStreamAdapter LibcStreamLogic LibcStreamTokens LibcStreams Linked Locale LocaleLogic Streams",
 };
 const rocqLayer = new Map(Object.entries(rocqLayers).flatMap(
   ([layer, names]) => names.split(" ").map(name => [name, layer])));
@@ -40,17 +38,16 @@ const moves = [
   // 2026: each page goes to the nearest current one. The theories' pages
   // follow the layer move above first.
   path => ({
-    "/nanofil/rocq/rocq-theories-external-Libio.html": "/nanofil/rocq/rocq-theories-external-Stdio.html",
-    "/nanofil/rocq/rocq-theories-programs-Selected.html": "/nanofil/rocq/rocq-theories-programs-HiArtifact.html",
     "/nanofil/rocq/rocq-spikes-IrisLang.html": "/nanofil/rocq/rocq-theories-logic-Language.html",
     "/nanofil/rocq/rocq-spikes-IrisHeap.html": "/nanofil/rocq/rocq-theories-logic-Heap.html",
     "/nanofil/rocq/rocq-spikes-IrisListSum.html": "/nanofil/rocq/rocq-spikes-ListSumLogic.html",
     "/nanofil/rocq/rocq-backend-certirocq-CertiExtract.html": "/nanofil/rocq/rocq-backend-Extract.html",
   })[path],
-  // The legacy libc-contract protocols moved beside Hello in November 2026.
+  // The constant-time proofs moved beside the poison logic when the
+  // standalone examples were removed in November 2026.
   path => ({
-    "/nanofil/rocq/rocq-theories-external-Stdio.html": "/nanofil/rocq/rocq-theories-hello_contracts-Stdio.html",
-    "/nanofil/rocq/rocq-theories-external-Shutdown.html": "/nanofil/rocq/rocq-theories-hello_contracts-Shutdown.html",
+    "/nanofil/rocq/rocq-theories-programs-CtLt.html": "/nanofil/rocq/rocq-theories-logic-CtLt.html",
+    "/nanofil/rocq/rocq-theories-programs-PoisonHeap.html": "/nanofil/rocq/rocq-theories-logic-PoisonHeap.html",
   })[path],
 ];
 

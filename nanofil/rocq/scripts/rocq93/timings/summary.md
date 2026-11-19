@@ -1,3 +1,6 @@
+These measurements compare Rocq versions on a historical tree. File paths
+and totals describe that tree, not the current model.
+
 | Part | Files | Old pass | New pass | Old seconds | New seconds | Change | Old peak MB | New peak MB |
 | --- | --- | --- | --- | --- | --- | --- | --- | --- |
 | theories | 116 | 116 | 116 | 1236 | 1075 | -13.0% | 6010 | 6801 |

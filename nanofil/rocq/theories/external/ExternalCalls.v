@@ -21,9 +21,7 @@
     the bounded string scan predicates, the thread-local [errno_cell]
     predicate, and the memory-fill and memory-copy contracts
     [memset_contract], [memcpy_contract], [mempcpy_contract], and
-    [memmove_contract] shared with the glibc verification campaign. The
-    older C standard library specifications for the standalone hello
-    proofs live in [LibcCalls](../hello_contracts/LibcCalls.v). *)
+    [memmove_contract] shared with the glibc verification campaign. *)
 
 From Stdlib Require Import String ZArith List Bool Lia Relations.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Machine Identity.

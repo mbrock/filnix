@@ -1,8 +1,6 @@
 (** Buffers contain data bytes and hidden pointer capabilities.
     These ownership assertions track both kinds of storage, and the
-    instruction rules cover integer loads, stores, and compare-and-swap.
-    The earlier libc calling rules live in
-    [LibcMemLogic](../hello_contracts/LibcMemLogic.v). *)
+    instruction rules cover integer loads, stores, and compare-and-swap. *)
 
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.

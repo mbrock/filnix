@@ -8,8 +8,9 @@
     malloc's parameter object has a symbol in the loaded image. *)
 
 From Stdlib Require Import String ZArith List.
-From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap HelloLeaf HelloName.
-From Nanofil Require HelloClose HelloMain.
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Heap.
+From Glibc Require Import HelloBodies.
+
 From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
 From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
 From Glibc Require Import SysWrappers StrlenLogic
@@ -24,15 +25,15 @@ Import ListNotations.
     program's main is the body that the proof runs. In the whole image,
     the name main finds exactly the body main_fn. *)
 Lemma hello_image_main g fr :
-  find_fn (mkGenv hello_image_module g fr) (TAtom "main") = Some (Defined HelloMain.main_fn).
+  find_fn (mkGenv hello_image_module g fr) (TAtom "main") = Some (Defined main_fn).
 Proof. vm_compute. reflexivity. Qed.
 
 (** If the check accepted any main, it would prove nothing. So we build
     a copy of the image whose main lacks its last block, and the check
     refuses that copy. *)
 Local Definition changed_main : func :=
-  mkFunc (fn_name HelloMain.main_fn) (fn_linkage HelloMain.main_fn) (fn_ret HelloMain.main_fn)
-    (fn_params HelloMain.main_fn) (removelast (fn_blocks HelloMain.main_fn)).
+  mkFunc (fn_name main_fn) (fn_linkage main_fn) (fn_ret main_fn)
+    (fn_params main_fn) (removelast (fn_blocks main_fn)).
 
 Local Definition changed_image : module :=
   map (fun it => match it with
@@ -40,7 +41,7 @@ Local Definition changed_image : module :=
     | _ => it end) hello_image_module.
 
 Example hello_image_changed_main g fr :
-  find_fn (mkGenv changed_image g fr) (TAtom "main") <> Some (Defined HelloMain.main_fn).
+  find_fn (mkGenv changed_image g fr) (TAtom "main") <> Some (Defined main_fn).
 Proof. vm_compute. discriminate. Qed.
 
 (** ## The function fields that hold *)
@@ -59,7 +60,7 @@ Definition hello_image_fns : list (string * func) :=
    ("__GI___libc_cleanup_push_defer", Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_push_defer);
    ("__GI___libc_cleanup_pop_restore", Unit_nptl_libcZ2dcleanup_os.fn___GI___libc_cleanup_pop_restore);
    ("__GI__IO_flush_all", Unit_libio_genops_os.fn___GI__IO_flush_all); ("_IO_cleanup", Unit_libio_genops_os.fn__IO_cleanup);
-   ("close_stdout", HelloClose.close_stdout_fn); ("proper_name", HelloVersion.proper_name_fn)]%string.
+   ("close_stdout", close_stdout_fn); ("proper_name", proper_name_fn)]%string.
 
 (** These names must stay outside the program, so that calls to them
     reach the OS contracts or the runtime's free. *)
@@ -94,7 +95,7 @@ Qed.
 (** In the whole image, main and each listed call find the expected
     body, and no item carries a name that must stay outside. *)
 Theorem hello_image_fn_link g m fr : initial_memory hello_image_module = Some (g, m) ->
-  find_fn (mkGenv hello_image_module g fr) (TAtom "main") = Some (Defined HelloMain.main_fn) /\
+  find_fn (mkGenv hello_image_module g fr) (TAtom "main") = Some (Defined main_fn) /\
   Forall (fun nf => find_fn (mkGenv hello_image_module g fr) (TAtom (fst nf)) = Some (Defined (snd nf))) hello_image_fns /\
   Forall (fun s => find_fn (mkGenv hello_image_module g fr) (TAtom s) = None /\ lookup (TAtom s) g = None)
     hello_image_absent.

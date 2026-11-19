@@ -8,7 +8,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
-From Nanofil Require HelloVersion.
+From Glibc Require Import HelloBodies.
+
 From Glibc Require Import OsWorld OsRegistry AtexitLogic HelloGlibcDebts HelloGlibcLibsT
   HelloGlibcMainLibsCalls HelloGlibcLibsSys HelloGlibcLibsCleanup HelloGlibcLibsExit.
 From Glibc Require Import Fix.
@@ -64,7 +65,7 @@ Local Instance libs_irisGS : irisGS_gen hlc (nanofil_lang glibc_os_registry ge) 
 Lemma libs_proper_name : forall p,
   D.fn_triple w0 ge (TAtom "proper_name") [WPtr p] True (fun r => ⌜r = Ret (WPtr p)⌝)%I.
 Proof using Hk.
-  intros p. exists HelloVersion.proper_name_fn. split; [exact (hk_proper_name _ _ Hk)|].
+  intros p. exists proper_name_fn. split; [exact (hk_proper_name _ _ Hk)|].
   split; [eexists; reflexivity|]. intros fr Φ Hfr. injection Hfr as <-. iIntros "_ HK".
   iApply wp_enter; [vm_compute; reflexivity | reflexivity |]. iNext.
   iApply wp_ret; [reflexivity | reflexivity |]. iNext. iApply "HK". done.

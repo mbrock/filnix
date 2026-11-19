@@ -222,9 +222,8 @@ allocator cursor.
 
 The following inventory covers every theory file that names
 `InterpRuntime`, including comments and generic theorem specializations.
-These files are outside the glibc binding change. The original inventory
-contains 38 files; the new explicit witness adds one more. A mention is
-not itself evidence that the whole file requires a transparent runtime.
+These files are outside the glibc binding change. A mention is not
+itself evidence that the whole file requires a transparent runtime.
 
 | File under `rocq/theories` | Why it names the interpreter |
 | --- | --- |
@@ -232,33 +231,7 @@ not itself evidence that the whole file requires a transparent runtime.
 | `core/Runtime.v` | It defines the interpreter model and proves the signature's obligations. |
 | `core/RuntimeWitness.v` | It checks that the interpreter implements the runtime signature. |
 | `core/Transport.v` | It instantiates the executable driver used by extraction. |
-| `hello_contracts/ExternalMachineFixtures.v` | It constructs concrete external-call machine transitions and rejection controls. |
-| `hello_contracts/HelloDiagnosticChecks.v` | It builds diagnostic memory and proves readiness for concrete invocation checks. |
-| `hello_contracts/HelloStdio.v` | It instantiates the logic for stream transfer and callback fixtures. |
-| `hello_contracts/HelloWorld.v` | It constructs ready worlds for the concrete Hello checks. |
-| `hello_contracts/Libc.v` | It specializes libc contracts for concrete call examples. |
-| `hello_contracts/LibcCallFixtures.v` | It checks string, memory and allocation contracts on concrete memories. |
-| `hello_contracts/LibcDiagnosticLogic.v` | It checks the diagnostic logic on concrete stream fixtures. |
-| `hello_contracts/LibcErrnoLogic.v` | It checks errno ownership across concrete stream calls. |
-| `hello_contracts/LibcExit.v` | It checks exit-status conversion on a concrete call. |
-| `hello_contracts/LibcStreamAdapter.v` | It checks stream-token adaptation on concrete return and error cases. |
-| `hello_contracts/LibcStreamTokens.v` | It instantiates stream-token checks with the concrete logic. |
-| `hello_contracts/LibcStreams.v` | It supplies concrete stream-call fixtures. |
-| `hello_contracts/Linked.v` | It checks linked-call resolution with concrete globals and free. |
-| `hello_contracts/Locale.v` | It checks locale calls and resource failures at concrete allocator states. |
-| `hello_contracts/StartupFixtures.v` | It instantiates startup examples. |
-| `programs/Buffer.v` | It specializes the generic buffer safety theorem. |
-| `programs/BufferLogic.v` | It specializes the buffer logic proof. |
-| `programs/Composition.v` | It checks stream-prefix composition on the Hi fixture. |
-| `programs/CountLogic.v` | It checks the count entry point on concrete memory. |
-| `programs/CtLt.v` | It specializes the constant-time comparison safety theorem. |
-| `programs/Cycle.v` | It specializes the cyclic program safety theorem. |
-| `programs/Hi.v` | It checks concrete Hi runs and external-call outcomes. |
-| `programs/HiLogic.v` | It proves fixture readiness and checks Hi's logic instance. |
-| `programs/Program.v` | It checks application, shutdown and completion transitions on concrete states. |
-| `programs/ScanLogic.v` | It checks the scan entry point on concrete memory. |
-| `programs/SlotLogic.v` | It proves readiness and instantiates the slot logic. |
-| `programs/Sum.v` | It specializes the sum program safety theorem. |
+| `logic/CtLt.v` | It specializes the constant-time comparison safety theorem. |
 | `soundness/Chain.v` | It specializes hull soundness for interpreter execution. |
 | `soundness/Doomed.v` | It specializes doomed-frame soundness for interpreter execution. |
 | `soundness/Guard.v` | It specializes guard soundness for interpreter execution. |
@@ -268,39 +241,11 @@ not itself evidence that the whole file requires a transparent runtime.
 | `soundness/Single.v` | It specializes single-check soundness for interpreter execution. |
 | `soundness/Soundness.v` | It specializes the overall validator soundness theorem. |
 
-## Trusted libc outside the runtime module type
+## Contracts outside the runtime module type
 
-The [libc contracts](libc-contracts.md#trusted-entry-and-host-boundaries)
-are a separate part of the trusted base, not extra `Runtime` axioms.
-This includes launcher/libc/TLS initialization and host-exit completion,
-under the same policy as ordinary libc calls. In
-[HiArtifact.v](../rocq/theories/programs/HiArtifact.v),
-`HiProgram R.trusted_entry_contract` specifies successful entry images
-with their exact allocator state, and `HiProgram R.trusted_host_contract`
-requires an explicit completion witness at the exact handoff snapshot.
-Their native probes are respectively
-[libc-entry.c](../tests/c/prog/libc-entry.c) and
-[libc-exit.c](../tests/c/prog/libc-exit.c).
-
-The [selected shutdown boundary](libc-contracts.md#trusted-selected-shutdown-boundary)
-was named by `Selected R.selected_contract` and `Selected R.boundary` in
-[Selected.v](https://github.com/mbrock/filnix/blob/177d06baaf08b8d144af534c4c73ca7bcdffcf37/nanofil/rocq/theories/programs/Selected.v), which no proof used and
-which was removed in November 2026. Its trusted obligations included
-independent native action/callback admission, segment satisfaction under the
-declared effects/control/observations, and coverage of finite normal,
-unfinished and resource behavior. Host projection may not hide modeled callback
-re-entry. Existing exit/output probes supply finite counterexamples, not a
-proof of coverage or a pinned native instance; `SelectedChecks.specs` was only a
-logical fixture. Its anti-vacuity control admitted a valid selected source even
-when a false prefix predicate removes every behavior, demonstrating why
-admission alone cannot establish coverage.
-
-These are named predicates with derived Rocq consequences, not claims
-that native initialization, host handlers or termination have been
-proved. A ready handoff is not a completion witness; the finished state
-remembers pre-death memory and does not certify output delivery. The
-contract table records the observation policy and remaining coverage
-limits. No axiom was added outside or inside the module type for them.
+The live proof uses the [OS registry](../rocq/glibc/zsys/OsRegistry.v) to
+specify calls from compiled glibc into libpizlo. These contracts are not
+additional fields of the `Runtime` module type.
 
 ## Readiness
 

@@ -12,9 +12,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
-  HelloModule HelloLeaf HelloMain.
-From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
+  ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Import OsBlocks OsWorld OsRegistry WordString MemFwdLogic FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
   HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands
   HelloGlibcMainTail.
@@ -70,7 +69,7 @@ Proof using Hy Lb.
   rule1 "Hl4" ltac:(eapply wp_renew; inst;
     [reflexivity | vx | reflexivity | reflexivity | arith | cbn [r_end]; arith | arith]).
   iApply (wp_load_str w0 ge _ _ _ _ _ _ _ _ _ _ _ (DfracOwn 1) (DfracOwn 1) with "Hl4 Hp4 Hg");
-    [lk_prove | arith | apply mod16_mod8; exact Hb416 |].
+    [lk_prove | arith | apply MemFwdLogic.mod16_mod8; exact Hb416 |].
   iNext. iIntros "Hl4 Hp4".
   iDestruct "Hg" as (s) "#Hs". iDestruct (str_len_bound with "Hs") as %Hsl.
   iApply (wp_call_long w0 ge _ _ _ (fun n => ⌜n = Z.of_nat (length s)⌝)%I with "Hs");

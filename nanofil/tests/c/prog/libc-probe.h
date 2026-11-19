@@ -1,4 +1,4 @@
-// Shared child isolation for the native contracts in docs/libc-contracts.md.
+// Shared child isolation for tests of native library behavior.
 // A signal alone is insufficient: require a Fil-C diagnostic too.
 #include <signal.h>
 #include <stdio.h>

@@ -22,10 +22,12 @@ imports only from its own layer and the layers above it in this list:
 | --- | --- |
 | `core/` | Campaigns 1 and 2: terms, syntax, values, memory, ops, semantics, runs, the runtime's module type, the CFG, the validator, transport and extraction; exactly the theories the extracted driver needs |
 | `soundness/` | Campaign 3: the machine of a runtime, its invariants and `valid_no_unchecked` |
-| `external/` | Campaign 4's external-call boundary, launcher entry, stdout and shutdown |
+| `external/` | Campaign 4's shared external-call boundary and launcher entry |
 | `logic/` | the Iris program logic and Campaign 7's `never_panics` |
-| `programs/` | the small programs proved never to panic, with their C sources and generated `…Code.v` modules |
-| `hello_contracts/` | GNU Hello against per-function libc contracts, and the contracts only it uses; kept as a reference |
+| `programs/` | the small programs proved never to panic, with their C sources, generated `…Code.v` modules and example libc contracts |
+
+The GNU Hello proof lives separately under `rocq/glibc/`. It uses the
+[checked IR of Hello and glibc](hello-glibc.md), not the example contracts.
 
 `-R theories Nanofil` names every file by its base name
 (`From Nanofil Require Import Syntax`), so base names stay unique under

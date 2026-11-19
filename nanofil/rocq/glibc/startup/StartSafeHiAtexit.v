@@ -15,7 +15,8 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
-From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Language Logic HelloLeaf.
+From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Language Logic.
+From Glibc Require Import IRFrames.
 From Glibc Require Import GlibcTactics FileInv OsWorld OsRegistry OsStart OsCpuid StartCode StartCtors StartState
   StartOwn StartJoin StartLibcStartMain HiAtexitGe HiAtexitModule HiAtexitInitial StartImageEarly
   StartOwnHiAtexit StartWpHiAtexit.

@@ -115,7 +115,7 @@ try {
     }
     // Context's generalizing binders are one binder per class, without ` and
     // !, and its broken lines align: dterm.js measures CONTEXT in capitals.
-    browser("open", source("programs-CtLt"));
+    browser("open", source("logic-CtLt"));
     check(`${fitsPage}
       const ctx = [...document.querySelectorAll('.rq-ctx')].find(c => c.textContent.includes('invGS_gen'));
       assert(ctx && !/[\`!]/.test(ctx.textContent), 'Context keeps its generalization markers');

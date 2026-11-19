@@ -10,7 +10,8 @@ From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
-  ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic HelloClose.
+  ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
+From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
   WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream
   ErrorEntry HelloErrorOpen HelloErrorOperand HelloVfxprintfIdle HelloCloseErrno Fix.

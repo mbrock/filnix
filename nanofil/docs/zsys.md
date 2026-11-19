@@ -1,13 +1,12 @@
 # Contracts at the zsys_ boundary
 
-An exploration, not a campaign. Today the formal campaign trusts glibc
-through a contract per libc function: Campaign 4 writes them in
-[ExternalCalls.v](../rocq/theories/external/ExternalCalls.v), [Libc.v](../rocq/theories/hello_contracts/Libc.v)
-and their siblings ([libc-contracts.md](libc-contracts.md)), and
-Campaign 3 uses them through `wp_external` ([logic.md](logic.md)). That
-continues as it is, for Hello and the campaigns in flight.
+The live GNU Hello proof runs compiled glibc bodies and trusts contracts
+at the runtime's `zsys_` boundary. The OS proofs use the shared framework
+in [ExternalCalls.v](../rocq/theories/external/ExternalCalls.v). This note
+records the exploration that led to that boundary, before the
+[glibc proof campaign](hello-glibc.md) adopted it.
 
-This page looks one layer down. Fil-C's user glibc is Fil-C code: it
+Fil-C's user glibc is Fil-C code: it
 compiles with Fil-C and makes no system call itself. It calls libpizlo,
 the runtime, whose `zsys_` functions are the pizlonated system calls,
 next to a few dozen other entry points that are not system calls. If

@@ -13,7 +13,7 @@ The Rocq development under [rocq/](../rocq/) now spans roughly four hundred thou
 | `theories/core`, `soundness`, `external` | 35 / 23,454 | — | IR syntax in [Syntax.v](../rocq/theories/core/Syntax.v), IEEE floats, small-step semantics in [Semantics.v](../rocq/theories/core/Semantics.v), [Runtime.v](../rocq/theories/core/Runtime.v) axioms, and [valid_no_unchecked] in [Soundness.v](../rocq/theories/soundness/Soundness.v) |
 | `theories/logic` | 16 / 16,069 | — | Identity-keyed [[iris]] heap pieces in [Pieces.v](../rocq/theories/logic/Pieces.v) and [Heap.v](../rocq/theories/logic/Heap.v), instruction rules in [Logic.v](../rocq/theories/logic/Logic.v), SWAR lanes in [Lanes.v](../rocq/theories/logic/Lanes.v), and constant-time logic in [PoisonLogic.v](../rocq/theories/logic/PoisonLogic.v) |
 | `theories/exec` | 9 / 6,843 | — | Abstract interpreter in [AbsRun.v](../rocq/theories/exec/AbsRun.v), cut-invariant inference in [AbsInfer.v](../rocq/theories/exec/AbsInfer.v), and [[weakest-precondition]] soundness in [AbsSound.v](../rocq/theories/exec/AbsSound.v) |
-| `theories/programs`, `hello_contracts` | 87 / 41,688 | — | Standalone C program proofs and retained libc-contract reference proofs |
+| Standalone program and former Hello proofs | 87 / 41,688 | — | This historical count includes the now-removed proof of Hello against per-function libc contracts. |
 | `glibc` | 827 / 133,728 | 587 / 179,668 | Userland glibc 2.44 proofs across `libio`, `hello`, `stdio`, `getopt`, `startup`, `string`, `intl`, `zsys`, `stdlib`, `nptl`, and `locale` |
 
 ### Four proof generations coexist

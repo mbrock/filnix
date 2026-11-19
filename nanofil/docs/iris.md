@@ -10,7 +10,7 @@ In 1967 Robert Floyd attached assertions to the edges of flowcharts, and in 1969
 
 Hoare logic handles variables and breaks on pointers. Its assignment rule substitutes for the variable assigned, but `c: *p = 1` may change `c: *q` when p and q alias, so every assertion about any cell must say whether it might be the one written. Proofs of pointer programs drowned in such side conditions, as Rod Burstall had already noticed in 1972.
 
-> nanofil's first proofs of single programs are Floyd's method. Cycle.v attaches an assertion to each of 19 points of a loop ([cycle_never_panics]), and [never_panics_by_invariant] is the rule that checks them: every step from a point that holds its assertion lands at a point that holds its own.
+> Nanofil's first proofs of single programs used Floyd's method. The rule [never_panics_by_invariant] requires every step from a point where its assertion holds to reach a point where the next assertion holds.
 
 ## Separation logic
 
@@ -476,10 +476,10 @@ It needs no new adequacy, since an invariant of configurations built from its as
 | Generic logic | 932 lines, 3 s | 786 lines, 7 s |
 | The program | 626 lines, 29 s | 488 lines, 59 s |
 | Safepoints | a stability lemma per function | once, by Löb |
-| Loops | assertions at points, as Cycle.v | Löb at the loop head |
+| Loops | assertions at points | Löb at the loop head |
 
 In both, most of the program proof's time goes to computing the machine's step on abstract states, which no logic removes. What separates them is where the next proofs spend effort, which is why logic.md recommends Iris: framing, safepoints and the wand that Hello's quotearg needs (`string ret ∗ (string ret -∗ slots)`) all come with it.
 
-### What comes next
+### Where the logic is used
 
-From [logic.md](logic.md#recommendation): step lemmas, one per instruction form of the [[core-subset|core subset]], proved once as the WP's rules, so that no program proof computes a step; an `ectx_language` whose context is the callers stack, so that a function's specification returns its resources as an ordinary triple; `meta` as persistent ghost_map elements beside `live` and the cells; then Iris in the main build, hi.c and gc.ir's `sum` through the logic with libc's contracts as triples, and Hello. Campaign 5's certificates and RefinedC-style ownership types would then be fragments of the logic, sound because adequacy is.
+The [list-sum proof](../rocq/spikes/ListSumLogic.v) uses the shared logic on a small program. The [GNU Hello campaign](hello-glibc.md) uses it to prove the compiled bodies of libc calls. The [original recommendation](logic.md#recommendation) explains how the comparison led to those rules.

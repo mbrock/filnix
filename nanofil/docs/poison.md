@@ -418,7 +418,7 @@ general rules establish a read, write, allocation, or pure step directly
 from the machine. Closed IR functions are supported; external contracts,
 variadic calls, raw calls, and argument snapshots are not yet modeled.
 
-[PoisonHeap.v](../rocq/theories/programs/PoisonHeap.v) proves both a small
+[PoisonHeap.v](../rocq/theories/logic/PoisonHeap.v) proves both a small
 byte-scratch kernel and a [[validator]]-accepted module over an 8-byte heap
 cell. The validated kernel checks every pointer before accessing memory,
 advances its input cursor with [[flight]], runs a recursive `Select` loop
@@ -435,7 +435,7 @@ IR control flow, addresses, and modeled variable-time operations. They do
 not establish native hardware timing or trace equality under independently
 scheduled collectors.
 
-[CtLt.v](../rocq/theories/programs/CtLt.v) follows OpenSSL's
+[CtLt.v](../rocq/theories/logic/CtLt.v) follows OpenSSL's
 `constant_time_lt` from C through nanofil's optimized IR to an Iris proof.
 It proves poison-fault freedom, machine panic freedom, and equal finite
 leakage traces for any two pairs of secret integers. The return mask stays

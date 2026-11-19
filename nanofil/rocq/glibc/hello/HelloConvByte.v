@@ -9,7 +9,8 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
-  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic HelloLeaf HelloLocale HelloConvDefs.
+  ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
+From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import HelloImageModule HelloImageLoad OsWorld OsRegistry FileInv LibioLogic WordString
   Mbrtowc HelloConvHardLocale Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
@@ -25,6 +26,19 @@ Local Abbreviation gl := (img_a "_nl_global_locale").
 Local Abbreviation eb := (img_a "errno").
 Local Abbreviation cn := (rop (img_a "_nl_C_name")).
 Local Abbreviation lit := (rop (img_a "hard-locale#str.31")).
+
+(** Reading the low byte as unsigned recovers the byte after a signed load. *)
+Local Lemma ub_of_sb x : 0 <= x < 256 -> extension Ub (extension Sb x mod 2 ^ 32) mod 2 ^ 32 = x.
+Proof.
+  intros Hx. cbn [extension]. unfold sign_extension.
+  assert (E : x mod 256 = x) by (apply Z.mod_small; lia). rewrite E.
+  destruct (Z.leb_spec 128 x) as [Hh | Hh].
+  - assert (E2 : (x - 256) mod 2 ^ 32 = x - 256 + 2 ^ 32) by (symmetry; apply Z.mod_unique with (-1); lia).
+    rewrite E2.
+    assert (E3 : (x - 256 + 2 ^ 32) mod 256 = x) by (symmetry; apply Z.mod_unique with (2 ^ 24 - 1); lia).
+    rewrite E3. apply Z.mod_small. lia.
+  - assert (E2 : x mod 2 ^ 32 = x) by (apply Z.mod_small; lia). rewrite E2. rewrite E. apply Z.mod_small. lia.
+Qed.
 
 Section conversion.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

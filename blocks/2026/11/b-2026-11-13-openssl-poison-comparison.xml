@@ -1,6 +1,6 @@
 <block id="b-2026-11-13-openssl-poison-comparison" kind="milestone" actor="T-01a1d657-e0ac-75ee-aef7-c8be5191b947" created="2026-11-13T19:31:11Z">
   <title>OpenSSL's unsigned comparison has a constant-time IR proof</title>
-  <about path="nanofil/rocq/theories/programs/CtLt.v"/>
+  <about path="nanofil/rocq/theories/logic/CtLt.v"/>
   <tag name="formal"/>
   <p>OpenSSL compares secret unsigned integers without branching on them.
   The new module page explains how its C function becomes nanofil's optimized

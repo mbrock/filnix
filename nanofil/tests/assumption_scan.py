@@ -20,13 +20,10 @@ PARAMETERS = {
     ('hello/HelloGlibcMainStreams.v', 'HelloWorldSig'): {'os_wi_stable'},
     ('hi_atexit/HiAtexitCleanup.v', 'HiCleanupSig'): {'hi_cleanup_rule'},
 }
-# Under theories, only these module types may declare assumptions. InterpRuntime
-# supplies Runtime's fields; HelloMain and HelloJoin supply their bases' fields
-# when they include their proof phases.
+# Under theories, only the Runtime module type may declare assumptions.
+# InterpRuntime supplies its fields.
 THEORY_SIGNATURES = {
     ('theories', 'core', 'Runtime.v'): 'Runtime',
-    ('theories', 'hello_contracts', 'HelloMainInterface.v'): 'HelloMainBase',
-    ('theories', 'hello_contracts', 'HelloJoinInterface.v'): 'HelloJoinBase',
 }
 
 def tokens(text):

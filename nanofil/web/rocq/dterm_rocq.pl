@@ -379,10 +379,8 @@ index_page(Pages) -->
                          ") links C programs against userland glibc compiled to nanofil IR and pushes trusted contracts down to libpizlo's ",
                          el(code, none, "zsys_*"), " syscall and runtime boundary (",
                          el(a, none, [href="../docs/zsys.html"], "zsys.md"),
-                         "). Earlier whole-program work proved GNU Hello against per-function libc contracts (",
-                         el(code, none, "rocq/theories/hello_contracts/"),
-                         ", kept as a compiled reference proof) and proved ",
-                         el(code, none, "listsum.c"), " through the program logic as a worked example (", el(code, none, "rocq/spikes/"),
+                         "). The proof of ",
+                         el(code, none, "listsum.c"), " is a worked example of the program logic (", el(code, none, "rocq/spikes/"),
                          "). Files that a generator writes, such as the IR fixtures, say ", el(code, none, "Do not edit"),
                          " in their headers and are omitted from this index." )),
                     el(h2, "prose-h", "Start here"),
@@ -432,17 +430,8 @@ index_page(Pages) -->
                               el(a, none, [href="rocq-theories-logic-ContractFrame.html"], "ContractFrame.v"),
                               " for external-call contracts and framing." )),
                          el(li, none,
-                            ( el(strong, none, "Worked examples, reference Hello proof, and compiler backend: "),
-                              "Standalone C program proofs are in ", el(code, none, "rocq/theories/programs/"), " (",
-                              el(a, none, [href="rocq-theories-programs-Sum.html"], "Sum.v"), ", ",
-                              el(a, none, [href="rocq-theories-programs-BufferLogic.html"], "BufferLogic.v"), ", ",
-                              el(a, none, [href="rocq-theories-programs-CountLogic.html"], "CountLogic.v"), ", ",
-                              el(a, none, [href="rocq-theories-programs-SlotLogic.html"], "SlotLogic.v"),
-                              "), the contract-based GNU Hello reference proof is in ",
-                              el(code, none, "rocq/theories/hello_contracts/"), " (",
-                              el(a, none, [href="rocq-theories-hello_contracts-HelloMain.html"], "HelloMain.v"), ", ",
-                              el(a, none, [href="rocq-theories-hello_contracts-HelloJoin.html"], "HelloJoin.v"),
-                              "), and the Gallina compiler backend and NFB bytecode proofs are in ",
+                            ( el(strong, none, "Compiler backend: "),
+                              "The Gallina compiler backend and NFB bytecode proofs are in ",
                               el(code, none, "rocq/backend/"), " (",
                               el(a, none, [href="rocq-backend-Compile.html"], "Compile.v"), ", ",
                               el(a, none, [href="rocq-backend-Regs.html"], "Regs.v"), ", ",
@@ -479,18 +468,6 @@ role_group(group(
       'nanofil/rocq/theories/soundness',
       'nanofil/rocq/theories/external',
       'nanofil/rocq/theories/logic' ])).
-role_group(group(
-    "Worked example programs",
-    "Standalone C program proofs demonstrating invariants, loops, heap allocation, helper specifications, persistent callee state, and contract-era hi.c lifecycle composition.",
-    [ 'nanofil/rocq/theories/programs' ])).
-role_group(group(
-    "Legacy libc contracts and reference Hello proof",
-    ( "This layer keeps the earlier libc contracts, their fixtures and calling rules, and the reference proof of GNU Hello 2.12.3 (",
-      el(a, none, [href="../docs/libc-contracts.html"], "libc-contracts.md"),
-      "). They remain compiled and gated while the ", el(code, none, "rocq/glibc/"),
-      " campaign proves compiled userland glibc IR." ),
-    [ 'nanofil/rocq/hello_contracts',
-      'nanofil/rocq/theories/hello_contracts' ])).
 role_group(group(
     "Program-logic worked example and constant-time spikes",
     ( "Worked examples (", el(code, none, "listsum.c"),
@@ -967,120 +944,6 @@ file_blurb('nanofil/rocq/theories/logic/VariadicLogic.v',
     "These rules verify variadic argument snapshots and pointer reads through the cursor stored in a va_list.").
 file_blurb('nanofil/rocq/theories/logic/WordBits.v',
     "These arithmetic lemmas relate little-endian bytes, masks, shifts, and carry-free arithmetic for word-at-a-time memory proofs.").
-
-%  Worked example programs: rocq/theories/programs/
-file_blurb('nanofil/rocq/theories/programs/Buffer.v',
-    "This example proves safe allocation and repeated summation of a four-element heap buffer using a direct execution invariant.").
-file_blurb('nanofil/rocq/theories/programs/BufferLogic.v',
-    "This example proves the heap-buffer program safe using separation logic, loop induction, and ownership of individual cells.").
-file_blurb('nanofil/rocq/theories/programs/Composition.v',
-    "This module combines stream state, output obligations, and exit callbacks for the contract-based greeting program.").
-file_blurb('nanofil/rocq/theories/programs/CountLogic.v',
-    "This example proves a character-counting loop safe by specifying its helper separately and borrowing string suffixes.").
-file_blurb('nanofil/rocq/theories/programs/Cycle.v',
-    "This example proves safe cyclic reads from a four-element global array for any loop trip count.").
-file_blurb('nanofil/rocq/theories/programs/Hi.v',
-    "This example proves a greeting program safe against a trusted puts contract using a direct machine invariant.").
-file_blurb('nanofil/rocq/theories/programs/HiArtifact.v',
-    "This proof checks that the compiler-generated greeting module decodes to the exact module used in its safety proof.").
-file_blurb('nanofil/rocq/theories/programs/HiLogic.v',
-    "This example proves the greeting program safe using separation logic and the library rule for puts.").
-file_blurb('nanofil/rocq/theories/programs/Program.v',
-    "This proof composes launcher startup, greeting execution, and shutdown into one contract-based program lifecycle.").
-file_blurb('nanofil/rocq/theories/programs/ScanLogic.v',
-    "This example proves safe string scanning and output while retaining permission to read the borrowed suffix afterward.").
-file_blurb('nanofil/rocq/theories/programs/SlotLogic.v',
-    "This example verifies a helper that retains, reuses, and grows a heap buffer across repeated calls.").
-file_blurb('nanofil/rocq/theories/programs/Sum.v',
-    "This example proves that summing a four-element read-only global array never panics, using direct symbolic execution.").
-
-%  Old reference proof: rocq/theories/hello_contracts/
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcCalls.v',
-    "These retained libc contracts specify string, allocation, errno, and output calls for the earlier Hello proof and examples.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcCallFixtures.v',
-    "These interpreter fixtures test admitted calls and rejected boundary cases for the retained libc contracts.").
-file_blurb('nanofil/rocq/theories/hello_contracts/ExternalMachineFixtures.v',
-    "These retained fixtures check external-call dispatch, return channels, rejection, and event order using the libc examples.").
-file_blurb('nanofil/rocq/theories/hello_contracts/StartupFixtures.v',
-    "These retained fixtures check launcher arguments, environment arrays, and exposed pointer cells using the libc examples.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcStringLogic.v',
-    "These rules derive string and output call triples from the retained libc contracts and shared string ownership assertions.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcMemLogic.v',
-    "These rules derive allocation, copying, and search call triples from the retained libc contracts and shared buffer assertions.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Shutdown.v',
-    "This retained protocol tracks exit callbacks and output obligations before handing process termination to the host runtime.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Stdio.v',
-    "This retained protocol tracks required output bytes, delivered prefixes, and stream errors across standard-output calls.").
-file_blurb('nanofil/rocq/theories/hello_contracts/CallbackLogic.v',
-    "This theorem connects a registered exit callback's program-logic specification to its execution in the shutdown machine.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Diagnostics.v',
-    "This contract distinguishes diagnostics that return normally from diagnostics that request process exit with a nonzero status.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Ending.v',
-    "This shutdown model intercepts exit requests and runs registered callbacks before the final host exit.").
-file_blurb('nanofil/rocq/theories/hello_contracts/ExitMemory.v',
-    "This module describes the capability-backed callback registry used to store exit handlers in the contract-based Hello proof.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Formatting.v',
-    "These contracts specify GNU Hello's formatted output calls and the format-string checks that make them safe.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Getopt.v',
-    "This contract specifies option parsing, including argument-string provenance and updates to the option argument and index cells.").
-file_blurb('nanofil/rocq/theories/hello_contracts/GetoptLogic.v',
-    "These ownership rules let a caller read the option argument and index cells after option parsing.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloClose.v',
-    "These proofs verify GNU Hello's stream-closing helper and standard-output exit callback against the retained libc contracts.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloConv.v',
-    "These proofs verify the multibyte-to-wide-character conversions used to prepare GNU Hello's greeting for wide output.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloConvDefs.v',
-    "This module shares memory-span facts and conversion-function definitions between GNU Hello's main and character-conversion proofs.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloDiagnosticChecks.v',
-    "These proofs discharge format-string and literal-argument requirements at GNU Hello's particular diagnostic call sites.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloJoin.v',
-    "This proof verifies greeting conversion and wide output, then joins them to the rest of Hello's main function.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloLeaf.v',
-    "These proofs verify GNU Hello's small memory and string wrappers against the retained per-function libc contracts.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloLocale.v',
-    "These proofs verify the locale-query helpers that GNU Hello uses to choose how to convert its greeting.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloMain.v',
-    "This proof follows Hello's main function through naming, locale setup, option parsing, and the help and version exits.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloModule.v',
-    "This module decodes and validates GNU Hello's generated IR and identifies the functions used by its reference proof.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloName.v',
-    "This proof verifies program-name setup, including path searches, libtool prefix removal, and stores into global pointer cells.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloProgName.v',
-    "This proof strengthens program-name setup so the caller retains full ownership of the original and selected name strings.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloReach.v',
-    "This check follows global symbols and callback pointers from main to verify that Hello's linked module is closed.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloStdio.v',
-    "These proofs establish the output-call specifications needed at Hello's concrete call sites using its owned string literals.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloVersion.v',
-    "These proofs verify GNU Hello's help and version output, including its variadic version-formatting helpers.").
-file_blurb('nanofil/rocq/theories/hello_contracts/HelloWorld.v',
-    "This module constructs the initial world and memory that connect Hello's startup, main proof, and exit callback.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LentLogic.v',
-    "These ownership tokens track strings lent to the program by external library state, including locale category names.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Libc.v',
-    "This module combines locale, option parsing, streams, errno, character conversion, and shutdown state into one libc world.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcDiagnosticLogic.v',
-    "These rules verify diagnostic calls that either return normally or request exit through the composite libc world.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcErrnoLogic.v',
-    "These stream-call rules lend the program's errno cell to libc and return ownership after the call.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcExit.v',
-    "This contract describes immediate process termination through libc without returning to the program or running further instructions.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamAdapter.v',
-    "This adapter transfers stream-handle tokens and errno ownership from the external world into the standard-output exit callback.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamLogic.v',
-    "These framing rules keep program-owned memory separate from the private stream storage maintained by libc contracts.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreamTokens.v',
-    "These tokens track the lifetime of standard-output and standard-error handles while the exit callback closes streams.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LibcStreams.v',
-    "These stream contracts connect standard output and standard error to the composite world and shutdown's output obligations.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Linked.v',
-    "This machine runs registered void exit callbacks as they are removed from the callback registry during shutdown.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Locale.v',
-    "This contract models locale queries and updates while lending category-name strings from library state to the caller.").
-file_blurb('nanofil/rocq/theories/hello_contracts/LocaleLogic.v',
-    "These rules connect locale queries to the external world and track ownership of the borrowed name strings.").
-file_blurb('nanofil/rocq/theories/hello_contracts/Streams.v',
-    "These contracts describe stream queries and closing operations through the stream components of the composite libc world.").
 
 %  Program-logic worked example: rocq/spikes/
 file_blurb('nanofil/rocq/spikes/ListSum.v',

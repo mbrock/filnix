@@ -1,14 +1,9 @@
 #!/usr/bin/env bash
-# The programs a Rocq proof is about (Panics.v, docs/formal.md's
-# Campaign 7) are nanofil's actual products: for each line of the table
-# below, compile SOURCE with nanofil (cc-ir, then `outcomes` with OPT,
-# which prints the checked module), print it as Gallina with
-# rocq/scripts/gallina.pl, and compare it with the committed
-# rocq/theories/programs/NAMECode.v. Fails if any differs, so a proof cannot
-# silently go on describing a module nanofil no longer makes.
+# Check that the constant-time comparison proof still describes the
+# checked IR nanofil generates for its C fixture.
 #
 #   FILCC=.../clang rocq/scripts/programs.sh            # check
-#   FILCC=.../clang rocq/scripts/programs.sh --update   # rewrite the Code.v files
+#   FILCC=.../clang rocq/scripts/programs.sh --update   # rewrite CtLtCode.v
 set -euo pipefail
 here=$(cd "$(dirname "$0")" && pwd)
 src="$here/../../src"
@@ -17,35 +12,14 @@ nanofil="$here/../../bin/nanofil"
 work=$(mktemp -d)
 trap 'rm -rf "$work"' EXIT
 
-# NAME  SOURCE (relative to nanofil/)  OPT
-programs='
-Sum rocq/theories/programs/sum.c -O
-Cycle rocq/theories/programs/cycle.c -O
-Buffer rocq/theories/programs/buffer.c -O
-Hi tests/c/prog/hi.c -O
-Scan rocq/theories/programs/scan.c -O
-Count rocq/theories/programs/count.c -O
-Slot rocq/theories/programs/slot.c -O
-CtLt rocq/theories/programs/ct_lt.c -O
-'
-
-status=0
-while read -r name source opt; do
-  [ -n "$name" ] || continue
-  lower=$(echo "$name" | tr '[:upper:]' '[:lower:]')
-  (cd "$src" && "$nanofil" cc-ir "$here/../../$source" </dev/null) >"$work/$name.ir"
-  (cd "$src" && "$nanofil" $opt outcomes "$work/$name.ir" </dev/null) | grep '^module(' \
-    | swipl "$here/gallina.pl" "$lower" "$source" >"$work/${name}Code.v"
-  target="$here/../theories/programs/${name}Code.v"
-  if [ "${1:-}" = --update ]; then
-    cp "$work/${name}Code.v" "$target"
-    echo "programs: wrote theories/programs/${name}Code.v from $source ($opt)"
-  elif diff -u "$target" "$work/${name}Code.v" >"$work/diff"; then
-    echo "programs: theories/programs/${name}Code.v is $source ($opt)"
-  else
-    echo "programs: theories/programs/${name}Code.v differs from nanofil $opt of $source:"
-    cat "$work/diff"
-    status=1
-  fi
-done <<<"$programs"
-exit $status
+source=rocq/theories/logic/ct_lt.c
+target="$here/../theories/logic/CtLtCode.v"
+(cd "$src" && "$nanofil" cc-ir "$here/../../$source" </dev/null) >"$work/ct_lt.ir"
+(cd "$src" && "$nanofil" -O outcomes "$work/ct_lt.ir" </dev/null) | grep '^module(' \
+  | swipl "$here/gallina.pl" ctlt "$source" >"$work/CtLtCode.v"
+if [ "${1:-}" = --update ]; then
+  cp "$work/CtLtCode.v" "$target"
+else
+  diff -u "$target" "$work/CtLtCode.v"
+  echo "CtLtCode.v matches nanofil -O of $source"
+fi

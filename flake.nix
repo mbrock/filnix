@@ -406,7 +406,7 @@
               inherit pkgs;
               filcc = filcc-staging;
             };
-            # Hello's linked checked module, the Iris proof's fixture.
+            # Hello's checked objects for the glibc image generator.
             nanofil-hello-fixture = import ./nanofil/nix/hello-fixture.nix {
               inherit pkgs;
               filcc = filcc-staging;

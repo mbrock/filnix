@@ -8,7 +8,8 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic HelloConvDefs.
+From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
+From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString LocalenameLogic DcgettextRealV
   StartCtypeInitSpec StartImageEarly HelloGetoptDiagLock HelloGetoptDiagTcb HelloGetoptDiagGettext
   HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloImageLocaleObjs HelloImageMbsObjs
