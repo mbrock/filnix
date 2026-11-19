@@ -212,18 +212,16 @@ def workers():
 def capture(project, output, replay=""):
     project = project.resolve()
     project_file = next(p for p in [project / "_RocqProject", project / "_CoqProject"] if p.exists())
-    flags, files = [], []
+    files = subprocess.check_output(
+        ["coq_makefile", "-sources-of", ".v", "-f", project_file.name], cwd=project, text=True,
+    ).split()
+    flags = []
     for line in project_file.read_text().splitlines():
         words = shlex.split(line, comments=True)
         if words and words[0] in ("-R", "-Q"):
             flags.extend(words)
-        elif len(words) == 1 and words[0].endswith(".v"):
-            files.append(words[0])
-        elif len(words) == 1 and (project / words[0]).is_dir():
-            files.extend(str(p.relative_to(project)) for p in sorted((project / words[0]).rglob("*.v")))
-        elif words:
+        elif words and (len(words) != 1 or words[0].startswith("-")):
             raise ValueError(f"Unsupported project option: {line}")
-    files = list(dict.fromkeys(files))
     here = Path(__file__).resolve().parent
     plans = json.loads(subprocess.check_output(
         ["swipl", str(here / "capture_plan.pl"), *files], cwd=project, stdin=subprocess.DEVNULL,

@@ -11,7 +11,8 @@ here=$(cd "$(dirname "$0")" && pwd)
 theories=$(realpath "${1:-$here/../theories}")
 cd "$here"
 python3 "$here/../../tests/assumption_scan.py" .
-mapfile -t sources < <(find . -name '*.v' -printf '%P\n' | sort)
+inventory=$(rocq makefile -sources-of .v -f _RocqProject)
+read -ra sources <<<"$inventory"
 order=$(rocq dep -sort -R "$theories" Nanofil -R . Glibc "${sources[@]}")
 for f in $order; do
   [[ $f != /* && $f != ../* ]] || continue

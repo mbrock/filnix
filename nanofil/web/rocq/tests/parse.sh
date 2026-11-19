@@ -46,11 +46,14 @@ flags() {
 }
 outside() { sed -E "s#^(-[RQ] +)(\.\./)#\1$1/\2#"; }
 
-# order DIR: the project's .v files in the order its project file lists them.
+# order DIR: the project's local sources in dependency order.
 order() {
   local p
   for p in "$1/_RocqProject" "$1/_CoqProject"; do
-    [ -e "$p" ] && grep -E '\.v$' "$p" && return
+    if [ -e "$p" ]; then
+      (cd "$1" && $rocqdep -sort -f "${p##*/}" | tr ' ' '\n' | sed '/^\(\.\.\/\|\/\|$\)/d')
+      return
+    fi
   done
   (cd "$1" && find . -name '*.v' | sed 's|^\./||' | sort)
 }
@@ -500,7 +503,8 @@ for proj in "${projects[@]}"; do
   if [ -e "$orig/_RocqProject" ] &&
      (cd "$orig" && $makefile -f _RocqProject -o Makefile.parse >/dev/null 2>&1 &&
       $rocqdep -f _RocqProject >"$tmp/deps" 2>/dev/null); then
-    while read -r v; do listed[$v]=1; done < <(order "$proj")
+    # rocq dep emits one .vo target for each project source.
+    while read -r v; do listed[$v]=1; done < <(awk '$1 ~ /\.vo$/ { sub(/\.vo$/, ".v", $1); print $1 }' "$tmp/deps")
     goals=()
     {
       for n in "${!paths[@]}"; do
