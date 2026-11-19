@@ -33,7 +33,6 @@
     environ and the constructors in some order. Every order is allowed,
     because the image does not record the one the dynamic loader chose. *)
 
-From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Lia Sorting.Sorted Sorting.Permutation.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Runtime Pieces.
 From Glibc Require Import OsWorld OsStart StartCtors.

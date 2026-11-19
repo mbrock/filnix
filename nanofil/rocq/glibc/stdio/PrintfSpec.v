@@ -21,9 +21,9 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic VariadicLogic.
-From Glibc Require Import Fix OsBlocks OsWorld AllocRo FileInv FileIdle LibioFputsSpec WordString PrintfStreamInv
+From Glibc Require Import Fix OsBlocks OsWorld AllocRo FileInv FileIdle LibioFputsSpec WordString
   FileTidy FxprintfStream NarrowFormat NarrowArgs FormatterStringTable CStruct PrintfLayout PrintfOut StrchrnulLogic.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

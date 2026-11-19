@@ -24,16 +24,15 @@ From Glibc Require Import GlibcProgram.
     pointers point into the stream's buffer ([in_buf]), and the closing
     half takes any new write pointer there. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   WordString.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -44,7 +43,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 (** The stream state st with `c: _mode` m. *)
 Definition fs_with_mode (st : fstate) (m : Z) : fstate :=
@@ -245,8 +244,6 @@ Existing Instance gen_heapGS0.
 Local Instance puts_inv_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ :=
   nanofil_irisGS registry (os_wi w0) ge.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-Lemma live_halves b reg : live b reg ⊣⊢ liveq (DfracOwn (1 / 2)) b reg ∗ liveq (DfracOwn (1 / 2)) b reg.
-Proof using Type. rewrite /live /liveq pts_ptsq -ptsq_split Qp.half_half. done. Qed.
 Definition xsputn_spec_for (F : ptr -> Z -> option Z -> iProp Σ)
     (G : list Z -> ptr -> Z -> option Z -> iProp Σ) (Rx : iProp Σ) : Prop := forall fr fp p dq s Φ,
   call_frame Unit_libio_fileops_os.fn__IO_new_file_xsputn [WPtr fp; WPtr p; WInt (Z.of_nat (length s))] = Some fr ->

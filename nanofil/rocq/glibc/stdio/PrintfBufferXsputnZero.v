@@ -14,7 +14,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   ExternalCalls Pieces Heap Language Logic Symbolic.
 From Glibc Require Import LibioLogic LibioXsputnZero
   PrintfBufferXsputnReturn.
-From Glibc Require LibioXsputnZero.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

@@ -16,9 +16,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import Unit_posix__exit_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld OsRegistry
   FileInv LibioLogic LibioCloseSteps HelloCloseErrno LeavesLogic SysWrappers.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Section diagnostic.

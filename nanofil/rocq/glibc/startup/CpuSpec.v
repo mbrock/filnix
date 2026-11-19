@@ -5,7 +5,7 @@
     the contract, which [CpuInitSpec](CpuInitSpec.v) states. The
     proof is not tied to one program. It holds for every linked
     program that defines the function and its callees as the
-    hi_atexit image does. [CpuHiAtexit](CpuHiAtexit.v) applies it to
+    hi_atexit image does. [CpuHiAtexit](../hi_atexit/CpuHiAtexit.v) applies it to
     that image.
 
     [CpuInit](CpuInit.v) already proves that the function never
@@ -35,9 +35,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Pieces Heap Logic StringLogic MemLogic.
 From Nanofil Require Import AbsRun AbsInfer AbsDen AbsMem AbsCall AbsOwn AbsSound.
-From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsBlocks OsCpuid OsRegistry HiAtexitModule
-  FileInv LibioCloseSteps CpuRules CpuHook CpuSetup CpuSound CpuTunables CpuInit CpuInitSpec.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Import Fix GlibcProgram GlibcSpec OsWorld OsBlocks OsCpuid OsRegistry
+  FileInv LibioCloseSteps CpuHook CpuSetup CpuSound CpuTunables CpuInit CpuInitSpec.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

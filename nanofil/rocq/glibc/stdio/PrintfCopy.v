@@ -24,7 +24,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv LibioLogic WordString MemFwdLogic LibioDefaultXsputnBuf
   PrintfStagingCopy PrintfOut PrintfSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Section copy.

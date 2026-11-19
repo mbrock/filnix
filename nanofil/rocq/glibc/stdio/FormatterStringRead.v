@@ -7,8 +7,9 @@
     writing any output. This rule covers those steps after glibc has
     read the letter s from the format. Earlier scanning, output writes,
     and initialization of the required memory remain separate work. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -17,8 +18,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld FileInv LibioLogic Fix WordString
   FormatterStringTable FormatterStringDispatch FormatterStringLength StrlenLogic.
 (** The variadic rule uses the same heap and runtime as the formatter. *)
-Module ReadVL := VariadicLogicOn R LG0.
-Import ReadVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic.
+Module ReadVL := FixVariadic.VL0.
+Import ReadVL ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 Section read.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

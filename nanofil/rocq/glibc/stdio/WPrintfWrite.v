@@ -5,7 +5,7 @@
     characters already copied. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_write_os Unit_string_memcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
   LibioCloseSteps LibioPutsInv LibioWIdle CBlocks PrintfOut WPrintfFileFlush WPrintfDispatch WPrintfCopy.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 
 Definition wprintf_write_fn := Unit_stdioZ2dcommon_wprintf_buffer_write_os.fn___wprintf_buffer_write.

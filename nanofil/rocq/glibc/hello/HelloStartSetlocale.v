@@ -10,6 +10,7 @@
     from there. Main keeps everything else that setlocale reads or
     writes with its copy of the C locale. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.program_logic Require Import language weakestpre.
@@ -19,11 +20,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv StrlenLogic WordString GlibcSpec
-  RdlockLogic RwlockIdle DcgettextRwlock LocalenameLogic StartGetenv GetenvEntry GetenvStatic GetenvScan LocaleEnv
-  HelloGlibcDebts HelloGetoptDiagTcb HelloGetoptDiagLock HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
-  HelloGetoptDiagImage HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloLocaleState
+  StartGetenv GetenvEntry GetenvStatic GetenvScan LocaleEnv
+  HelloGlibcDebts HelloGetoptDiagLock HelloImageModule HelloImageLoad HelloImageLayout
+  HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloLocaleState
   HelloSetlocalePostload HelloSetlocaleAll.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section wrap.

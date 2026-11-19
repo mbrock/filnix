@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     a premise. This file fills that premise with the proved parser call,
     so the program assumes nothing about the parser. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,21 +16,13 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
-  GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongSite GetoptLongCap GetoptDashRet GetoptLongOnlyRet GetoptLongOnlyShort GetoptWTail GetoptWOpt GetoptLongW GetoptWOptSession GetoptWRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptIdlePath GetoptScanEnd GetoptEntryScanRet GetoptEntryPre GetoptKnownCap GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet
-  GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptScanChoice GetoptCharRet GetoptEntryChar GetoptScanChar.
-From Glibc Require GetoptCallParse GetoptWrapper GetoptEntryScanRet GetoptIdlePath GetoptScanEnd GetoptWExit GetoptLongOnlyShort GetoptWRet GetoptWOptSession GetoptLongOnlyRet GetoptCharRet GetoptLongSite GetoptDashRet GetoptLongDash GetoptLongCap GetoptShortCap GetoptEntryScan GetoptScanChar FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongPfxAlloc GetoptLongSession GetoptLongStore GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptShortCap GetoptCharRet.
+Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptDashRet GetoptWExit GetoptCallParse GetoptWrapper GetoptEntryPre GetoptEntryScanRet GetoptEntryPre GetoptDiag GetoptShortCap GetoptEntry GetoptCharRet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongCall GetoptLongSite GetoptLongSession GetoptLongJoinMiss GetoptLongCap GetoptShortCap GetoptKnownCap
-  GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic
-  GetoptBytes GetoptArgv.
+Import GetoptLongSite GetoptShortCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** ## The answer is a 32-bit value
 

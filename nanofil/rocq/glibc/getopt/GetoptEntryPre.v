@@ -7,16 +7,15 @@ From Glibc Require Import GlibcProgram.
     the parser's first blocks need right after the copy, builds that from
     a session or from fresh storage, and runs the first blocks from it. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptColon GetoptEntry GetoptLongSession GetoptEntryBridge.
-From Glibc Require FileInv GetoptEntry GetoptEntryBridge GetoptInitialize GetoptLongSession GetoptState OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead
+  GetoptInitialize GetoptColon GetoptEntry GetoptEntryBridge.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,7 +54,7 @@ Lemma entry_pre_ctl_resume : let s := mkGetoptState 3 1 0 null 1 null 1 1 2 in
 Proof. cbn. unfold getopt_bounds, needs_init. cbn. lia. Qed.
 
 (** The session module supplies the state and the cursor relation. *)
-Import GetoptEntryBridge GetoptLongSession GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptEntryBridge GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section entry_pre.
 Context `{!gen_heapGS piece pval Σ}.

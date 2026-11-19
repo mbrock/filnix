@@ -7,7 +7,7 @@
     that its symbols give, with distinct keys.
 
     The real memory is too large to compute. A copy of the image that
-    blanks every other object is small enough, and HelloImageEraseMem.v
+    blanks every other object is small enough, and ImageEraseMem.v
     shows that the copy's memory matches the real one on the fifteen
     objects. Only this file names them; the generated image does not.
 
@@ -19,7 +19,7 @@ From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
 From Glibc Require Import WordString HelloGetoptTable HelloGetoptDiagMsgs HelloGettextSuffix
   HelloGettextLocaleConst HelloGettextDomain.
-From Glibc Require Import HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
+From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

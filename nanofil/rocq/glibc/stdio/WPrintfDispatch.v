@@ -4,7 +4,7 @@
     write leaves all 128 character positions available for the next append. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_flush_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,20 +12,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic WordBits.
 From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioCloseSteps LibioPutsInv LibioWIdle PrintfOut WPrintfFileFlush.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+From Glibc Require Export WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Definition wprintf_dispatch_fn := Unit_stdioZ2dcommon_wprintf_buffer_flush_os.fn___wprintf_buffer_flush.
-
-(** The stream counts characters, but the array stores four bytes per character. *)
-Definition stage_bytes (cs : list Z) := flat_map (fun c => le_bytes c 4) cs.
-Lemma stage_bytes_length cs : length (stage_bytes cs) = (4 * length cs)%nat.
-Proof. induction cs as [|c cs IH]; [done|]. change (length (le_bytes c 4 ++ stage_bytes cs) = (4 * S (length cs))%nat).
-  rewrite length_app length_le_bytes IH. lia. Qed.
-
-Lemma stage_bytes_valid cs : Forall (fun b => 0 <= b < 256) (stage_bytes cs).
-Proof. induction cs as [|c cs IH]; [constructor|]. apply Forall_app. split; [|exact IH].
-  apply Forall_forall. intros b Hb. apply in_map_iff in Hb as (i & <- & _). apply byte_of_range. Qed.
 
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

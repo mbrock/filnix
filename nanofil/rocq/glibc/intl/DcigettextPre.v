@@ -14,21 +14,21 @@ From Glibc Require Import GlibcProgram.
     and the premise for the cache search says that the search finds
     nothing. At the end, the caller gets back everything that the prefix
     allocated, with errno unchanged. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic VariadicLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic DcigettextExit DcigettextPreRules.
+From Glibc Require Import OsWorld OsBlocks OsMemLogic DcigettextExit DcigettextPreRules.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic DcigettextPreRules.DciVL.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic DcigettextPreRules.DciVL.
 
 Import ProgramAbbreviations.
 Section rules.

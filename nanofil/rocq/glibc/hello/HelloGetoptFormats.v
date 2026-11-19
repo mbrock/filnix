@@ -10,15 +10,16 @@
     contract. Once the formatter is proved, getopt's prints need no
     more work here. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv WordString PrintfStreamInv FileTidy FxprintfTidy FxprintfStream NarrowFormat NarrowArgs
+From Glibc Require Import OsWorld OsBlocks FileInv WordString FileTidy FxprintfTidy FxprintfStream NarrowFormat NarrowArgs
   PrintfSpec AllocRo LibioFputsSpec GetoptDiag GetoptLongDiag GetoptDiagFx HelloImageModule HelloStartKept.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The formats *)
@@ -35,7 +36,7 @@ Definition getopt_fmt_names : list string :=
 
 (** The tactic [narrow_args_by] proves that a list of arguments fits a
     format whose directives are known. *)
-Ltac narrow_args_by :=
+Local Ltac narrow_args_by :=
   repeat first
     [ apply args_end
     | apply args_literal; [reflexivity|]

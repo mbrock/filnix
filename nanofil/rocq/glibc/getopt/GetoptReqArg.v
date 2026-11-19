@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     the vector only below the argument count, and writes only the fields
     of its own state. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,9 +18,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptReqNext.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptReqNext GetoptReqTail GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,7 +31,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The next-argument module supplies the argument vector and its tactics. *)
-Import GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section req.

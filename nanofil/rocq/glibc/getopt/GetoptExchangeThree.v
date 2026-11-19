@@ -3,7 +3,7 @@ From Glibc Require Import GlibcProgram.
     proves the outer loop of the second copy with the script that proves
     the first. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,10 +12,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeTwo GetoptInitialize GetoptState GetoptSwap3Lower GetoptSwap3Upper LibioLogic OsWorld.
+  GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -29,7 +28,7 @@ Local Arguments Z.opp : simpl nomatch.
 (** The first copy's module supplies the outer-loop script. *)
 (** This module proves the lower swap loop of the second copy. *)
 (** This module proves the upper swap loop of the second copy. *)
-Import GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchangeTwo GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 Import ProgramAbbreviations.
 Section exchange.

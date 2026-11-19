@@ -14,9 +14,10 @@
     copy then carries the result over to the real memory.
 
     Every address comes from the record [hello_icf_objs] of
-    [CpuHello](../startup/CpuHello.v), which is computed from the
+    [CpuHello](CpuHello.v), which is computed from the
     loaded image. So a relink of Hello changes no line here. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -24,9 +25,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list_numbers.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv HelloImageErase HelloImageEraseMem HelloImagePieces
-  HelloImageModule HelloImageLoad CpuInitSpec CpuPlace CpuHello StartImageUnique StartImageCpu.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv.
+From Glibc Require Import OsWorld OsRegistry FileInv ImageErase ImageEraseMem ImagePieces
+  HelloImageModule HelloImageLoad CpuInitSpec CpuHello StartImageUnique StartImageCpu.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv.
 Open Scope Z_scope.
 
 (** ## The smaller copy of the image *)

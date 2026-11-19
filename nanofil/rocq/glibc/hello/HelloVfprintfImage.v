@@ -26,7 +26,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics External
 From Glibc Require Import OsWorld OsRegistry LibioLogic LibioSetb
   LibioStreamTidy LibioOverflowHeap PrintfSpec
   StrlenLogic FormatterScan FormatterLiteral
-  PrintfFileEntry PrintfFileCalls PrintfInternal HiAtexitSetb HelloGlibcLibsT
+  PrintfFileCalls PrintfInternal StreamSetb HelloGlibcLibsT
   LibioXsputnHeap
   LibioFputsSpec LibioFputsIdle.
 From Glibc Require LibioCleanupExit AllocLogic.

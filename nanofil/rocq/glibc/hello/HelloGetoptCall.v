@@ -23,7 +23,7 @@ From Glibc Require Import GlibcProgram.
     free as premises, which the safety theorem discharges except for the
     two warning printers. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -32,15 +32,14 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
-  GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
-  GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr
-  AtexitLogic HelloGlibcLibsT HelloGetoptTable GetoptInitial HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop.
-From Glibc Require FileInv GetoptLongStr GetoptLongStore HelloGlibcDebts HelloGetoptState.
+  GetoptModule GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
+  GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongStr
+  HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
+Import FileInv Fix.ML0 Fix.LG0 Fix.LG0.L HelloGlibcDebts.
 
 Section call.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

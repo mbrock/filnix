@@ -15,18 +15,17 @@
 
 From Glibc Require Import Unit_malloc_malloc_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld OsGetrandom OsClockGettime FileInv LibioLogic LibioCloseSteps StartCode StartLogic
+From Glibc Require Import OsBlocks OsWorld OsGetrandom OsClockGettime FileInv LibioLogic LibioCloseSteps StartLogic
   StartTunableGetValSpec StartTunableIsInitializedSpec StartClockGettimeSpec StartPtmallocInitSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -35,11 +34,6 @@ Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __ptmalloc_init`. *)
 Definition start_ptmalloc_init_fn : func := Unit_malloc_malloc_os.fn___ptmalloc_init.
-
-(** The image defines `c: __ptmalloc_init` with that body. *)
-Lemma start_ptmalloc_init_defined :
-  find_direct (TAtom "__ptmalloc_init") hi_module = Some (Defined start_ptmalloc_init_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 (** ## What the loops leave alone
 
@@ -115,14 +109,14 @@ Context (Hrand_ext : os_ext ge "zsys_getrandom").
 Context (Hcbs : Forall (fun n => exists p, lookup (TAtom n) (ge_globals ge) = Some p) pm_callbacks).
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-Ltac pm_alloc b H Ho :=
+Local Ltac pm_alloc b H Ho :=
   iApply wp_alloc; [reflexivity | vm_compute; congruence | vm_compute; congruence |
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |];
   iNext; iIntros (b H) Ho.
 
 (** This tactic runs one inlined call of `c: clock_gettime` on a fresh
     buffer and the two loads of the buffer that follow it. *)
-Ltac pm_clock Herr eb :=
+Local Ltac pm_clock Herr eb :=
   let b0 := fresh "b" in let Hb0 := fresh "Hb" in
   pm_alloc b0 Hb0 "Ho0";
   iDestruct (obj_blk_any with "Ho0") as "[Lb0 Hb0]"; [vm_compute; congruence|];
@@ -153,14 +147,14 @@ Ltac pm_clock Herr eb :=
 
 (** This tactic moves into the next block when the values it starts from
     are already known. *)
-Ltac enter := iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]].
+Local Ltac enter := iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]].
 
 (** This tactic hands the loop back to its retry block. *)
-Ltac pm_retry := iApply ("Hretry" with "[%] Ltk [Htkb Htka] Herr HK");
+Local Ltac pm_retry := iApply ("Hretry" with "[%] Ltk [Htkb Htka] Herr HK");
   [keeps_tac | iExists _, _; iSplitR; last first; [rewrite pts_app; iFrame "Htkb Htka" | iPureIntro; split; assumption]].
 
 (** This tactic runs one population count of the key and its test. *)
-Ltac pm_popcount G Hxl := enter; step_global G; check "Ltk";
+Local Ltac pm_popcount G Hxl := enter; step_global G; check "Ltk";
   iApply (wp_raw_load_long_bytes with "Ltk Htkb"); [reflexivity | vx | exact Hxl | left; reflexivity | a2 |];
   iNext; iIntros "Ltk Htkb"; do 13 step; enter; step; step.
 
@@ -309,13 +303,13 @@ Definition pm_loc4 (b : Z) : iProp Σ :=
 
 (** This tactic reads temporaries like [vx] and then drops the wraps
     on small constants. *)
-Ltac vxu := first [vx | cbn -[put];
+Local Ltac vxu := first [vx | cbn -[put];
   repeat match goal with |- context [lookup ?k ?E] =>
     let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H end;
   unwrap2; reflexivity].
 
 (** This tactic copies the address cb of one of the callbacks. *)
-Ltac pm_cb cb := lazymatch goal with
+Local Ltac pm_cb cb := lazymatch goal with
   | |- context [Exec _ (Let _ _ Copy [Global (TAtom ?n)] :: _) _] =>
       let H := fresh "Hcb" in
       destruct (proj1 (Forall_forall _ _) Hcbs n ltac:(cbn; tauto)) as [cb H]; step_global H
@@ -323,13 +317,13 @@ Ltac pm_cb cb := lazymatch goal with
 
 (** This tactic proves a bounds check on the local or global H by
     applying the rule directly, which also works after a contract call. *)
-Ltac pm_chk H := iApply (wp_check with H);
+Local Ltac pm_chk H := iApply (wp_check with H);
   [reflexivity | vx | reflexivity | cbn [r_end]; a2 | cbn [r_end]; a2 | cbn [r_end]; a2 | iNext; iIntros H].
 
 (** This tactic calls the function under the contract H, for logical
     input x. It is [call_spec] with the contract named, because
     `c: __tunable_get_val` has two contracts. *)
-Ltac pm_call H x :=
+Local Ltac pm_call H x :=
   lazymatch type of H with HasSpec ?registry ?wi ?ge ?n ?s =>
   lazymatch goal with |- context [mkFrame ?f ?e ?ls None (Exec ?lab (Call ?r (Global ?n) ?args :: ?rest) ?j)] =>
     let rule := open_constr:(fun y => wp_call_spec registry wi ge n s (HasSpec0 := H) y f e ls lab r args rest j _) in
@@ -338,7 +332,7 @@ Ltac pm_call H x :=
 (** Reading one size tunable is a single step with this tactic. It
     copies tunable id into the eight-byte local b and loads the local
     back. *)
-Ltac pm_read_size Hs Htun tl tlreg tv id b Hl Hb Ht :=
+Local Ltac pm_read_size Hs Htun tl tlreg tv id b Hl Hb Ht :=
   let cb := fresh "cb" in let w := fresh "w" in
   iRename Hl into "Lx"; iRename Hb into "Hx"; iRename Ht into "Tx";
   pm_cb cb; iDestruct "Hx" as (w) "Hx";
@@ -353,7 +347,7 @@ Ltac pm_read_size Hs Htun tl tlreg tv id b Hl Hb Ht :=
 
 (** This tactic reads int tunable id into the four-byte local b in the
     same way. *)
-Ltac pm_read_int Hs Htun tl tlreg tv id b Hl Hb Ht :=
+Local Ltac pm_read_int Hs Htun tl tlreg tv id b Hl Hb Ht :=
   let cb := fresh "cb" in let xs := fresh "xs" in let Hxs := fresh "Hxs" in
   iRename Hl into "Lx"; iRename Hb into "Hx"; iRename Ht into "Tx";
   pm_cb cb; iDestruct "Hx" as (xs Hxs) "Hx";
@@ -366,7 +360,7 @@ Ltac pm_read_int Hs Htun tl tlreg tv id b Hl Hb Ht :=
   iNext; iIntros "Lx Hx"; iRename "Lx" into Hl; iRename "Tx" into Ht; iClear "Hx".
 
 (** This tactic returns from the body and hands every resource back. *)
-Ltac pm_fin := iApply wp_ret_void; iNext;
+Local Ltac pm_fin := iApply wp_ret_void; iNext;
   iApply ("HK" with "[$Ltk $Leb $Lli $Laf $Lta $Lma $Lmp $Ltl] [T24 T19 T25 T14 T15 T23 T22 T17 T21 T18] Hli Hta
     [Htk Herr Haf Hma8 Hbins Hmp16 Hmp80 Hmp56]");
   [rewrite /pm_tunables; cbn [pm_size_ids pm_int_ids big_opL pm_tl]; iFrame
@@ -533,7 +527,7 @@ Qed.
 
 (** The body enters the key loop from two places, and this tactic proves
     that both reach the same end. *)
-Ltac pm_loop Hok0 Gtk Herr Btk :=
+Local Ltac pm_loop Hok0 Gtk Herr Btk :=
     iApply (pm_key_loop with "Ltk Htk Herr"); [exact Gtk | exact Herr | exact Btk |];
     iIntros (e') "%He' Ltk Htk Herr";
     iApply (pm_join with "[Ltk Leb Lli Laf Lta Lma Lmp Ltl] Htun Hli Hta [Htk Herr Haf Hma8 Hbins Hmp16 Hmp56 Hmp80]

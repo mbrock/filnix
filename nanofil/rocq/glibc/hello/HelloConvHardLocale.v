@@ -4,7 +4,7 @@
     "C". A match ends the search before the comparison with "POSIX". *)
 
 From Glibc Require Import Unit_locale_setlocale_os Unit_string_memcpy_os Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic WordString StrlenLogic StrlenWord
   MemFwdLogic SetlocaleCtypeQuery StrcmpLogic HelloImageModule HelloImageLoad.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section conversion.

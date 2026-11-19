@@ -11,7 +11,7 @@ From Glibc Require Import GlibcProgram.
     that Hello already shares. Malloc only reads a cache that Hello holds
     a read-only share of, so that share comes from Hello itself. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,15 +21,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv StrlenLogic
   MemFwdLogic AllocLogic
-  GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
-  GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr GetoptInitial
-  AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts.
-From Glibc Require FileInv AllocLogic MemFwdLogic HelloGlibcDebts.
+  GetoptInitialize GetoptDiag GetoptLongExact GetoptLongDiag
+  GetoptLongPfxAlloc GetoptLongAmbTail
+  HelloGlibcLibsT HelloGetoptTable HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
+Import FileInv Fix.ML0 Fix.LG0 Fix.LG0.L HelloGlibcDebts.
 
 Section backend.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

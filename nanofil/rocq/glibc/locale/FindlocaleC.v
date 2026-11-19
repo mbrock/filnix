@@ -3,19 +3,18 @@
     If none names a locale, it chooses "C". This proof follows the
     compiled lookups and returns the category's built-in locale data. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_locale_findlocale_os Unit_stdlib_getenv_os Unit_string_strcmp_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic StepRules Symbolic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes WordString GetenvEntry GetenvScan GetenvStatic
-  GetenvCall StartGetenv StrlenLogic StrcmpBits LocaleEnv FindlocaleEnv
-  FindlocaleCResult FindlocalePresent Fix.
-Module FL := VariadicLogicOn R LG0.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic FL.
+From Glibc Require Import OsWorld OsMemLogic ByteRead WordString GetenvEntry GetenvScan GetenvStatic GetenvCall StrlenLogic StrcmpBits LocaleEnv FindlocaleEnv FindlocaleCResult FindlocalePresent Fix.
+Module FL := FixVariadic.VL0.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsMemLogic FL.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

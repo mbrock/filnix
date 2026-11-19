@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     The proof is one for every buffer, none or a heap object, through
     the life its base's capability names ([wroom_cap]). *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,10 +17,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy
+  LibioCloseSteps BufferCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require LibioDefaultXsputnRoom.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,7 +36,7 @@ Definition xs_L122 : block := Eval vm_compute in
   | Some b => b | None => mkBlock (TAtom "iw_2.L122") [] [] JRetVoid end.
 
 
-Import LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** The life of a stream's buffer, as the capability of its base
     names it: the heap object's, or nothing when there is no buffer;
@@ -76,7 +76,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
 (** [wp_xs_L117] after the write end's load, its resources named. *)
-Ltac to117 fb nb :=
+Local Ltac to117 fb nb :=
   iAssert (wcells fb nb) with "[Hrp Hre Hrb Hwb Hbb Hbe]" as "Hwc"; [iFrame |];
   iApply (wp_xs_L117 Hmove Hmove_fn Hmove_sym with "Hvt Hl Hvtp Hwc Hwp Hwe Hroom Hos Hl' Hys HK"); try close_side; lk_fin.
 

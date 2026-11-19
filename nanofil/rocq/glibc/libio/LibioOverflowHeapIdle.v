@@ -8,9 +8,10 @@ From Stdlib Require Import ZArith List Lia.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic MemLogic.
-From Glibc Require Import GlibcProgram FileInv FileIdle FileTidy LibioPutsInv PrintfStreamInv PrintfStreamHeap
-  OsBlocks LibioSetb LibioOverflowBase LibioOverflowAllocSetg LibioOverflowHeapStart LibioOverflowHeapBuffer LibioDefaultXsputnBuf.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv.
+From Glibc Require Fix.
+From Glibc Require Import GlibcProgram FileInv FileIdle LibioPutsInv PrintfStreamInv PrintfStreamHeap
+  OsBlocks LibioSetb LibioOverflowBase LibioOverflowAllocSetg LibioOverflowHeapBuffer LibioDefaultXsputnBuf.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv.
 Open Scope Z_scope.
 
 (** Only an absent or heap-allocated buffer belongs to a buffered

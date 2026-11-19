@@ -6,7 +6,7 @@
     reads. Owning only the format bytes through NUL does not supply that
     padding. This rule scans a format; it does not interpret its directives. *)
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.

@@ -10,10 +10,16 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules Symbolic.
 From Glibc Require Import Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString
-  GetoptBytes GetenvEntry GetenvName GetenvScan StrlenLogic StrlenWord.
-Import ListNotations LG0 LG0.L ProgramAbbreviations GetoptBytes GetoptBytes.ML.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics WordString
+  ByteRead GetenvEntry GetenvName GetenvScan StrlenLogic StrlenWord.
+Import ListNotations LG0 LG0.L ProgramAbbreviations ByteRead ByteRead.ML.
 Open Scope Z_scope.
+
+Definition getenv_image_ok (ge : genv) (bc : Z) (rc : region) (be : Z) (re : region) : Prop :=
+  lookup (TAtom "__environ_counter") (ge_globals ge) = Some (mkPtr bc (Obj bc)) /\
+  lookup (TAtom "__environ") (ge_globals ge) = Some (mkPtr be (Obj be)) /\
+  0 < bc /\ bc + 8 <= r_end rc /\ r_end rc <= 2 ^ 48 /\
+  0 < be /\ be + 8 <= r_end re /\ r_end re <= 2 ^ 48 /\ be mod 8 = 0.
 
 (** Empty names return null before scanning any entries. Other names use
     the same comparison tests as the captured function. *)

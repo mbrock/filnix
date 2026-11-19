@@ -5,17 +5,17 @@
 
 From Glibc Require Import Unit_io_fstat64_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wfiledoalloc_os.
 From Glibc Require Import Unit_libio_wgenops_os Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv
-  AllocLogic SysWrappers LibioSetb HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitDoAlloc
+  AllocLogic SysWrappers LibioSetb StreamSetb AllocCall StreamDoAlloc
   LibioWIdle LibioWXsputnWindow LibioWAllocBuf LibioWAllocFile LibioWAllocSetb LibioWAllocStat LibioDoAllocBase
   LibioWOverflowLoan LibioWOverflowAllocateSteps.
-Import ListNotations ProgramAbbreviations SysWrappers FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 
@@ -38,8 +38,8 @@ Context (Hreg : holds_os registry) (Hext : sys_external ge) (Hstat : ge_fn ge "_
 Context (dq : dfrac) (mp tc dummy : Z) (mpr tcr dr : region)
   (Hmp : lookup (TAtom "glibc_malloc#mp_") (ge_globals ge) = Some (objp mp))
   (Htc : lookup (TAtom "tcache") (ge_globals ge) = Some (objp tc)).
-Local Abbreviation Mres := (hi_malloc_state dq mp tc dummy mpr tcr dr).
-Local Abbreviation malloc_rule := (hi_malloc_rule dq mp tc dummy mpr tcr dr Hmp Htc).
+Local Abbreviation Mres := (malloc_call_state dq mp tc dummy mpr tcr dr).
+Local Abbreviation malloc_rule := (malloc_call_rule dq mp tc dummy mpr tcr dr Hmp Htc).
 Local Abbreviation free_rule := (hi_free_rule Hfh Hzf Hzg).
 Local Abbreviation file_alloc := (wp_glibc__IO_file_doallocate_wide Hstat Mres
   (hi_doalloc_L5 Hreg Hext Hfh Hzf Hzg dq mp tc dummy mpr tcr dr Hmp Htc)

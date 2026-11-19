@@ -3,6 +3,7 @@
     its original word-aligned memory window. It also preserves
     stdout's buffer, stream fields and allocator state on failure. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -11,18 +12,16 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv WordString
-  HiAtexitBase HiAtexitGe HiAtexitAlloc HiAtexitOutputState HiAtexitXsputn HiAtexitStdout HiAtexitStringBytes.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp.
+  HiAtexitGe AllocCall StreamOutputState HiAtexitXsputn HiAtexitStdout WordStringBytes.
+From Glibc Require LibioDefaultXsputnBuf LibioPutsInv LibioXsputnBase.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioXsputnSetp.
-Import LibioPutsLock.
-Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L LibioXsputnBase LibioDefaultXsputnBuf.
+Import LibioPutsInv FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioXsputnBase LibioDefaultXsputnBuf.
 Local Opaque HiAtexitFns.hi_ge.
 
 (** Proof-mode searches keep the stream and allocator resources
     folded instead of expanding their memory layouts. *)
-#[local] Hint Opaque vtables_ro hi_stdout_before hi_stdout_after word_string hi_malloc_state
+#[local] Hint Opaque vtables_ro hi_stdout_before hi_stdout_after word_string malloc_call_state
   : typeclass_instances.
 
 Section rules.
@@ -42,7 +41,7 @@ Lemma hi_puts_xsputn eb vb vreg :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   xsputn_spec_for w0 glibc_os_registry hge (hi_stdout_before w0 eb vb)
     (fun s fp _ held => hi_stdout_after w0 eb vb s fp held)
-    (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr).
+    (vtables_ro hge vb vreg ∗ malloc_call_state dq mp tc dummy mpr tcr dr).
 Proof using Hmp Htc.
   intros Heb fr fp p dq' s Φ Hfr. iIntros "Hf Hstr [#Hvt HM] HK".
   iEval (unfold hi_stdout_before) in "Hf".
@@ -50,7 +49,7 @@ Proof using Hmp Htc.
   destruct Hp as (-> & Hfb & Hal & Hend & Hreg & Hlb).
   iAssert (xfields w0 eb fb nb) with "[Hxf]" as "Hxf".
   { iExists fl, f2, fd, tw, off, (2 ^ 32 - 1). iExact "Hxf". }
-  iDestruct (hi_word_string_bytes with "Hstr") as (b breg so (Hp & Hcap & Hb & Hb8 & Hso & Hbend & Hbreg & Hys))
+  iDestruct (word_string_bytes with "Hstr") as (b breg so (Hp & Hcap & Hb & Hb8 & Hso & Hbend & Hbreg & Hys))
     "(Hbl & Hys & Hstrback)".
   rewrite Hp in Hfr.
   iApply (hge_xsputn w0 dq mp tc dummy mpr tcr dr Hmp Htc with

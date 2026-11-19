@@ -33,3 +33,11 @@ Definition hi_globals : list (name * ptr) := Eval vm_compute in
 (** Laying out the module gives [hi_globals]. *)
 Lemma hi_layout : option_map fst (initial_memory hi_module) = Some hi_globals.
 Proof. vm_compute. reflexivity. Qed.
+
+(** This image retains the internal mempcpy alias and omits the unused stpcpy alias. *)
+From Glibc Require Import Unit_string_mempcpy_os.
+Example hi_gettext_link_gaps :
+  find_alias (TAtom "__GI_mempcpy") hi_module = Some (TAtom "__GI___mempcpy") /\
+  find_direct (TAtom "__GI___mempcpy") hi_module = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy) /\
+  find_direct (TAtom "__GI_stpcpy") hi_module = None /\ find_alias (TAtom "__GI_stpcpy") hi_module = None.
+Proof. repeat split; vm_compute; reflexivity. Qed.

@@ -24,7 +24,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic StringLogic MemLogic.
 From Glibc Require Import FileInv OsBlocks OsWorld StrrchrLogic.
 From Glibc Require WordString.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L WordString.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L WordString.
 Open Scope Z_scope.
 
 (** The short name of a program starts one byte after the last slash

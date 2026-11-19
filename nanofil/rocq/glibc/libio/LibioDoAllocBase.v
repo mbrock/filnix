@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     The allocator needs to distinguish terminal devices before choosing its buffer.
     The shared proofs extract the device's major number and read the kernel's size hint. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,7 +17,6 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioSetb.
-From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
@@ -91,10 +90,10 @@ Proof.
 Qed.
 
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 (** The evaluator computes a concrete value before a branch is chosen. *)
-Ltac vm_of x := eval vm_compute in x.
+Local Ltac vm_of x := eval vm_compute in x.
 
 (** A branch on an unknown test produces two proof goals.
     Each goal records which test result led to that branch. *)

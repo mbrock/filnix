@@ -13,7 +13,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic MemLogic.
 From Glibc Require Import FileInv WordString StrerrorCode HelloGetoptTable HelloGetoptDiagMsgs.
-Import ListNotations FileInv FileInv.ML FileInv.LG.
+Import ListNotations FileInv Fix.ML0 Fix.LG0.
 Open Scope Z_scope.
 
 (** The text excludes the NUL that lit_words adds. *)

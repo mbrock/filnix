@@ -229,7 +229,7 @@ Qed.
 Lemma w_zero_slot a : w_str + 5 <= a -> ~ (w_argv - 8 < a < w_argv + 8) -> int_slot (w_mem m0) a 0.
 Proof using Type. intros H1 H2. destruct (w_null_slot a H1 H2) as (_ & Hb & Ha). split; [lia|]. split; [exact Hb | exact Ha]. Qed.
 
-Ltac slot_bytes :=
+Local Ltac slot_bytes :=
   intros i Hi; assert (i = 0 \/ i = 1 \/ i = 2 \/ i = 3 \/ i = 4 \/ i = 5 \/ i = 6 \/ i = 7) as Hc by lia;
   repeat destruct Hc as [-> | Hc]; try subst i; vm_compute; reflexivity.
 

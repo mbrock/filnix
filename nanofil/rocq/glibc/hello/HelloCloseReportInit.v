@@ -3,8 +3,9 @@
     sets to zero. The 128-byte discard array in the printf buffer is
     not part of the caller's string. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_libio_vsnprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,8 +13,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct PrintfLayout PrintfOut PrintfSpec
-  FormatterStringArg CodePrelude HelloImageModule HelloCloseReportFlush.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
+  CodePrelude HelloCloseReportFlush.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic FixVariadic.VL0.
 Open Scope Z_scope.
 
 Definition report_init := Unit_libio_vsnprintf_os.fn___printf_buffer_snprintf_init.

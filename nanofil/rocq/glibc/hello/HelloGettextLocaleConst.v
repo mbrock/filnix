@@ -22,7 +22,7 @@ From Glibc Require Import GlibcProgram.
     alone, which shows neither where a program linking Hello with glibc
     puts the constants nor that startup hands their pieces over. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
@@ -34,7 +34,7 @@ Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-Import FileInv FileInv.ML FileInv.LG.
+Import FileInv Fix.ML0 Fix.LG0.
 
 (** ## The category name inside the table
 

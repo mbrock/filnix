@@ -7,7 +7,7 @@
     to read the suffix. The scan does not write output. This rule does
     not cover the later suffix write or the formatter's return. *)
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
   Fix WordString FormatterScan StrchrnulLogic.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** This block resumes formatting after the string write. *)
 Definition suffix_block := Eval vm_compute in

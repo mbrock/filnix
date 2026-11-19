@@ -5,7 +5,7 @@ From Glibc Require Import GlibcProgram.
     the two entries, records an ambiguity when they differ, and then
     stands ready to move on to the next entry. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,12 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxSet GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -66,16 +65,16 @@ Proof. intros [H | (j & Hj & H)]; [left; exact H | right; exists j; split; [lia 
 
 
 (** The set module supplies the comparison, the set, the option table and the tactics. *)
-Import GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 (** This tactic chains the kept names through assignments and the steps that keep them. *)
-Ltac ploop_kc := repeat (match goal with H : avoids _ ?Wl = true |- keeps _ _ (put _ _ _) =>
+Local Ltac ploop_kc := repeat (match goal with H : avoids _ ?Wl = true |- keeps _ _ (put _ _ _) =>
     apply keeps_put_avoid with (W := Wl); [vm_compute; reflexivity | exact H |] end);
   first [apply keeps_refl | assumption |
     lazymatch goal with H : keeps ?ks ?a ?c |- keeps ?ks ?x ?c => eapply keeps_trans; [|exact H]; ploop_kc end].
 
 (** This tactic takes a lookup through assignments and through the steps that keep the name. *)
-Ltac ploop_via := first
+Local Ltac ploop_via := first
   [ apply Symbolic.lookup_after_put_same
   | eapply lookup_put_miss; [vm_compute; reflexivity | ploop_via]
   | eassumption
@@ -83,7 +82,7 @@ Ltac ploop_via := first
       rewrite (keeps_in _ _ _ _ H); [ploop_via | unfold ploop_keys; cbn [In]; repeat first [left; reflexivity | right]] end ].
 
 (** This tactic closes the range of a flag or an index below 2^32. *)
-Ltac ploop_rng := first
+Local Ltac ploop_rng := first
   [ match goal with H : ?x = 0 \/ ?x = 1 |- 0 <= ?x < _ => destruct H as [-> | ->]; lia end
   | match goal with H : ?x = 0 \/ (?x = 1 /\ _) |- 0 <= ?x < _ => destruct H as [-> | [-> _]]; lia end
   | lia ].

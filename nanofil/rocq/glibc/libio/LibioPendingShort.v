@@ -10,9 +10,9 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Unit_libio___fpending_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics FileInv LibioLogic
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics FileInv LibioLogic
   LibioPutsInv LibioCloseSteps.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Section rules.

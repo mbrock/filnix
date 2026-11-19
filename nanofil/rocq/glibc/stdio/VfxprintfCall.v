@@ -3,7 +3,7 @@
     cell. Both rules retain the original format and cursor, return the
     stream's possibly changed flags word, region and lock, and return the
     formatter's result even when it indicates failure. *)
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
   VfxprintfNarrow VfxprintfSelect Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
 

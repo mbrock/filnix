@@ -6,17 +6,16 @@
     The input must be nonempty and fit the remaining staging space.
     This rule does not interpret conversions or flush the stream. *)
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_string_memcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic
   LibioPutsInv MemFwdLogic WordString Fix
   PrintfStagingCopy PrintfBufferWriteWindow.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps OsWorld.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
 Section write.

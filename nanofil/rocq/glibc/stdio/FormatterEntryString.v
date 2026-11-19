@@ -8,19 +8,20 @@
     conversions are registered, plus the function definitions used by
     the call. Initialization and writing the buffer to a FILE remain
     outside this rule. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic
   Fix WordString MemFwdLogic PrintfStagingCopy
-  FormatterLiteral FormatterInitialScan FormatterStringRead FormatterStringJoin
+  FormatterLiteral FormatterInitialScan FormatterStringJoin
   StrlenLogic FormatterScan.
 From Glibc Require Import FormatterEntry.
-Import ReadVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import FixVariadic.VL0 ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 Section entry_string.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

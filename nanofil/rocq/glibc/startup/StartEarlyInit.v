@@ -12,19 +12,18 @@
 
 From Glibc Require Import Unit_elf_libc_early_init_os Unit_stdlib_getrandom_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartCode StartLogic.
-From Glibc Require Import StartTunableGetValSpec StartGetrlimitSpec StartCtypeInitSpec StartPthreadTunablesSpec.
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartLogic.
+From Glibc Require Import StartGetrlimitSpec StartCtypeInitSpec StartPthreadTunablesSpec.
 From Glibc Require Import StartPtmallocInitSpec StartEarlyInitSpec OsGetrlimit.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -36,12 +35,6 @@ Definition start_early_init_fn : func := Unit_elf_libc_early_init_os.fn___libc_e
 
 (** This constant is the empty body of `c: __getrandom_early_init`. *)
 Definition start_getrandom_early_init_fn : func := Unit_stdlib_getrandom_os.fn___getrandom_early_init.
-
-(** The image defines both functions with those bodies. *)
-Lemma start_early_init_defined :
-  find_direct (TAtom "__libc_early_init") hi_module = Some (Defined start_early_init_fn) /\
-  find_direct (TAtom "__getrandom_early_init") hi_module = Some (Defined start_getrandom_early_init_fn).
-Proof. split; vm_compute; reflexivity. Qed.
 
 (** ## The empty callee
 
@@ -84,18 +77,18 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 (** The shared end runs in an environment that each path builds
     differently. This tactic reads a temporary from such an
     environment. *)
-Ltac vxu := first [vx | cbn -[put];
+Local Ltac vxu := first [vx | cbn -[put];
   repeat match goal with |- context [lookup ?k ?E] =>
     let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H end;
   unwrap2; reflexivity].
 
 (** This tactic checks an access to the local at temporary H's base. *)
-Ltac ei_chk H := rule1 H ltac:(eapply wp_check; inst;
+Local Ltac ei_chk H := rule1 H ltac:(eapply wp_check; inst;
   [reflexivity | vxu | reflexivity | cbn [r_end]; a2 | cbn [r_end]; a2 | cbn [r_end]; a2]).
 
 (** This tactic renews the check of an access to the local at
     temporary H's base. *)
-Ltac ei_renew H := rule1 H ltac:(eapply wp_renew; inst;
+Local Ltac ei_renew H := rule1 H ltac:(eapply wp_renew; inst;
   [reflexivity | vxu | reflexivity | reflexivity | cbn [r_end]; a2 | cbn [r_end]; a2 | cbn [r_end]; a2]).
 
 (** Any program whose image defines `c: __libc_early_init` with this

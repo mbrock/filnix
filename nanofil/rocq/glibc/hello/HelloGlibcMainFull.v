@@ -11,11 +11,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Machine
   ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts HelloGlibcLibsT
+From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts
   HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
-  HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands
-  HelloGlibcMainTail HelloGlibcMainGreet.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainGreet HelloGlibcMainHelp HelloGlibcMainLoop HelloGlibcMainOperands HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
+  HelloGlibcMainVersion HelloGlibcMainHelp HelloGlibcMainOperands
+  HelloGlibcMainGreet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

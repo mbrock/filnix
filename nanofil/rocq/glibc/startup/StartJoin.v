@@ -17,7 +17,7 @@ From Nanofil Require Import Term Values Memory Runtime Pieces Heap Logic StringL
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartLibcStartMain StartOwn StrlenBits StrlenLogic WordString.
 From Nanofil Require AbsRun AbsMem.
 From Glibc Require FileInv.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## Pieces of a live object

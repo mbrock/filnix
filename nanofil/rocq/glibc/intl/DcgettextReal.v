@@ -23,24 +23,23 @@ From Glibc Require Import GlibcProgram.
     that it does not. The caller also lends the locale, cache, binding, privilege
     and lock resources that DcgettextRwlock.v lists. These are conditions
     on the caller's state, not facts proved about startup. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic HiAtexitAlloc GetoptMallocGlibc.
-From Glibc Require Import LibioSetb TfindEmpty LocalenameLogic.
-From Glibc Require Import RdlockLogic RwunlockLogic.
-From Glibc Require Import GetoptLongPfxAlloc GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextFree DcigettextExit DcigettextPreRules DcigettextRoute.
-From Glibc Require Import DcgettextC DcgettextStpcpy DcgettextTfind DcgettextLocale DcgettextRwlock.
+From Glibc Require Import OsWorld OsBlocks OsRegistry OsMemLogic StrlenLogic WordString OsExternals.
+From Glibc Require Import AllocLogic AllocCall MallocCallRule.
+From Glibc Require Import TfindEmpty LocalenameLogic.
+From Glibc Require Import GetoptMessages.
+From Glibc Require Import DcigettextFree DcigettextRoute.
+From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import OsExternals Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -67,7 +66,7 @@ Definition dci_heap_glibc (mpb tcb : Z) : Prop :=
     the malloc rule over a share of the idle cache. *)
 Lemma dci_rest_rwf_glibc `{!Defines ge "free" free_fn, !Defines ge "malloc" malloc_fn,
       !Defines ge "glibc_malloc#__libc_malloc2" malloc2_fn} dq mpb tcb dmb mpr tcr dr :
-  dci_heap_glibc mpb tcb -> dci_rest_rwf (hi_malloc_state dq mpb tcb dmb mpr tcr dr).
+  dci_heap_glibc mpb tcb -> dci_rest_rwf (malloc_call_state dq mpb tcb dmb mpr tcr dr).
 Proof using Hreg.
   intros (Hfh & Hzf & Hzg & Hmp & Htc & Hmf & Hmd). split_and!.
   - apply Hreg. reflexivity.
@@ -102,11 +101,11 @@ Lemma wp_dcgettext_c_real f e ls l d args rest j mid dom ds dqd nb nc k cat dqc 
   dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs -∗
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs -∗
   ▷ (∀ q, dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs mid q -∗
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs mid q -∗
       WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame f e ls None
     (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
@@ -137,11 +136,11 @@ Lemma dcg_diag_translate_real dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbr
   diag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs)
     dom.
 Proof using Type*.
   intros Hh. pose proof (dci_rest_rwf_glibc dq mpb tcb dmb mpr tcr dr Hh) as Hr.
@@ -170,11 +169,11 @@ Lemma dcg_ldiag_translate_real dom ds dqd nb nc k cat dqc cv p276 p277 db dqb db
   ldiag_translate (dcg_before eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs)
     (dcg_after eb dom ds dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg sec dqs secreg
       (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
       (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
-      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs)
+      (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg) (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs)
     dom.
 Proof using Type*.
   intros Hh. pose proof (dci_rest_rwf_glibc dq mpb tcb dmb mpr tcr dr Hh) as Hr.

@@ -12,8 +12,8 @@ failures=0
 
 # tree NAME: a sealed Fix.v and a file that uses only the signature.
 tree() {
-  mkdir -p "$tmp/$1/sub"
-  cp "$here/../../glibc/Fix.v" "$tmp/$1/Fix.v"
+  mkdir -p "$tmp/$1/sub" "$tmp/$1/base"
+  cp "$here/../../glibc/base/Fix.v" "$tmp/$1/base/Fix.v"
   cat >"$tmp/$1/sub/General.v" <<'EOT'
 From Glibc Require Import Fix.
 Lemma general (s : R.state) : s = s.
@@ -52,7 +52,7 @@ expect passes 0 '@@abstract-general 2 files, 2 compiled'
 expect needs-interpreter 1 'abstract runtime: Concrete.v'
 
 tree unbound
-sed -i '/^Module R : StartRuntime := InterpRuntime\.$/d' "$tmp/unbound/Fix.v"
+sed -i '/^Module R : StartRuntime := InterpRuntime\.$/d' "$tmp/unbound/base/Fix.v"
 expect unbound 2 ''
 
 if [ "$failures" != 0 ]; then

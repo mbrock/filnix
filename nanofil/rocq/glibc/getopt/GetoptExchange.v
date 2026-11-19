@@ -5,7 +5,7 @@
     argument vector: every swap reads and writes two distinct cells inside
     the vector, and the vector stays a permutation of the original. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,9 +14,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
   GetoptInitialize GetoptEntry GetoptArgv.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptInitialize GetoptState LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -76,7 +75,7 @@ Definition x3_blk16 : block := Eval vm_compute in x_blk "iw_3.L16".
 
 (** Initialization supplies the private-field and byte modules. *)
 (** This module describes the argument vector cells. *)
-Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Section helpers.
 Context `{!gen_heapGS piece pval Σ}.
@@ -119,28 +118,6 @@ End helpers.
 (** This tactic unfolds a precomputed block that the goal executes. *)
 Ltac unfold_blk := repeat match goal with |- context [b_insts ?B] => progress unfold B end.
 
-(** Signed comparisons of nonnegative 32-bit values read the values. *)
-Ltac sx := repeat match goal with |- context [sign_extension (2 ^ 32) (2 ^ 31) (?x mod 2 ^ 32)] =>
-  rewrite (sx_small x); [|lia] end.
-
-(** This tactic decides a branch whose condition arithmetic settles. *)
-Ltac brz :=
-  iApply wp_branch; [vx | iNext]; sx;
-  repeat match goal with
-    | |- context [?x <? ?y] =>
-        first [rewrite (proj2 (Z.ltb_lt x y)); [|lia] | rewrite (proj2 (Z.ltb_ge x y)); [|lia]]
-    | |- context [?x =? ?y] =>
-        first [rewrite (proj2 (Z.eqb_eq x y)); [|lia] | rewrite (proj2 (Z.eqb_neq x y)); [|lia]]
-    end;
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
-
-
-(** This tactic decides a branch whose condition has become closed. *)
-Ltac close_br :=
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
-
 (** This tactic reduces an index computation of the form base plus offset, scaled by eight. *)
 Ltac idx x := norm; rewrite (sx_nonneg x); [|lia]; change (2 ^ (3 mod 64)) with 8; norm.
 
@@ -160,7 +137,7 @@ Ltac vxn :=
 (** These scripts prove the lower swap loop of either exchange. Each
     iteration swaps the entry at bot plus i with the entry the same
     distance into the top run. *)
-Ltac x_lower_step IH bot mid top i av ps :=
+Local Ltac x_lower_step IH bot mid top i av ps :=
   brz; step; step; step; step; step; idx (bot + i);
   set (j := Z.to_nat (bot + i)); set (k := Z.to_nat (top - (mid - bot) + i));
   assert (Hj : Z.of_nat j = bot + i) by (unfold j; lia);
@@ -199,7 +176,7 @@ Ltac x_lower e fr i ps bot mid top av :=
 
 (** These scripts prove an upper swap loop of either exchange: one
     iteration swaps entry bot + i with entry mid + i. *)
-Ltac x_upper_step IH bot mid top i av ps :=
+Local Ltac x_upper_step IH bot mid top i av ps :=
   brz; step; step; step; step; step; idx (bot + i);
   set (j := Z.to_nat (bot + i)); set (k := Z.to_nat (mid + i));
   assert (Hj : Z.of_nat j = bot + i) by (unfold j; lia);

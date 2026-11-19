@@ -10,7 +10,7 @@
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs
+From Glibc Require Import HelloImageModule HelloImageWFwideObjs HelloImageWReleaseObjs
   HelloImageWConvObjs HelloImageWPrintfObjs.
 Import ListNotations.
 

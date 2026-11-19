@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_io_fstat64_os Unit_io_write_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram.
@@ -6,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     resulting rule preserves stdout's stronger field invariant and
     the allocator state, so string output needs no assumed callee. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,14 +15,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
-  LibioLogic SysWrappers AllocLogic LibioOverflowBase LibioOverflowAllocSetg LibioDefaultXsputnBuf
-  LibioXsputnBase HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitOverflowAlloc
-  HiAtexitOutputState HiAtexitBufferedOverflow.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioLogic LibioOverflowBase LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  LibioLogic SysWrappers AllocLogic LibioDefaultXsputnBuf
+  LibioXsputnBase AllocCall StreamOverflowAlloc
+  StreamOutputState HiAtexitBufferedOverflow.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Import ProgramAbbreviations.
@@ -57,7 +56,7 @@ Context (eb : Z)
 (** Overflow allocates a buffer on the first write and reuses it on
     later writes. Both paths call only functions proved here. *)
 Lemma hi_xsputn_overflow :
-  overflow_spec w0 registry ge (xos w0 eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)).
+  overflow_spec w0 registry ge (xos w0 eb (fun _ _ => malloc_call_state dq mp tc dummy mpr tcr dr)).
 Proof using Hda Hdab Hdwf Heb Hext Hfh Hfree_fn Hfstat Hfw Hisatty Hmaj Hmalloc2 Hmalloc_fn Hmp Hreg Hsetb Hstat Htc Hwrite Hzf Hzg.
   intros fr fb freg nb wp we ch vb vreg Φ Hfr Hch Hfb Hal Hend Hregend.
   iIntros "#Hvt Hl Hvtp Hwb (Hxf & HM) HK".

@@ -12,7 +12,7 @@
     borrowed or shared strings. *)
 
 From Glibc Require Import Unit_string_memchr_os.
-From Glibc Require Import LibioTactics GlibcTactics.
+From Glibc Require Import OsTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,7 +21,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLoop
   MemchrFirst.
-From Glibc Require MemchrFirst MemchrLast MemchrLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

@@ -7,16 +7,15 @@ From Glibc Require Import GlibcProgram.
     places where the blocks end, the exact fields of the object and what
     is known about the saved position in the current word. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptColon GetoptEntry GetoptLongSession GetoptEntryBridge.
-From Glibc Require FileInv GetoptEntry GetoptEntryBridge GetoptInitialize GetoptLongSession GetoptState OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead
+  GetoptInitialize GetoptColon GetoptEntry GetoptEntryBridge.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -33,7 +32,7 @@ Proof. unfold needs_init. cbn. split; [lia | reflexivity]. Qed.
 
 (** The entry module proves the first blocks of the call. *)
 (** The bridge module turns the session into the object and back into fields. *)
-Import GetoptEntryBridge GetoptLongSession GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptEntryBridge GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section entry_session.

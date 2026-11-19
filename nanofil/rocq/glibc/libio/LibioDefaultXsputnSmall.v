@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     (LibioDefaultXsputnTail.v's [wp_dx_L22]).
     LibioDefaultXsputnRoom.v's [wp_dx_L44] takes the other way. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,9 +15,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+  LibioCloseSteps BufferCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnBytes LibioDefaultXsputnTail.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -28,7 +27,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

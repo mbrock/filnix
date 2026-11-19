@@ -21,7 +21,7 @@ From Glibc Require Import GlibcProgram.
     [wp_xs_L70] resets the pointers. With nothing to write directly,
     LibioXsputnBase.v's [wp_xs_L178] hands the rest on. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,10 +29,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy
+  LibioCloseSteps BufferCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags LibioXsputnReset LibioXsputnCall.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnFlags LibioXsputnReset LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require LibioDefaultXsputnRoom.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -48,7 +48,7 @@ Definition xs_L168 : block := Eval vm_compute in
   | Some b => b | None => mkBlock (TAtom "L168") [] [] JRetVoid end.
 
 
-Import LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

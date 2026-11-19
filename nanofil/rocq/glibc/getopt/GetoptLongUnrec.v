@@ -6,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     bad option and answers '?'. This file proves that report and those
     stores safe. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,11 +15,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongArg GetoptLongDiag GetoptLongEq GetoptLongExact GetoptLongPre GetoptLongReq GetoptLongScan GetoptLongStore GetoptLongTail GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+  StrcmpLoop StrncmpWords StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptDiag GetoptLongExact GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,10 +35,10 @@ Definition lunrec_names : list name := Eval vm_compute in
 
 
 (** The found-option module supplies the option table, the report rule and the tactics. *)
-Import GetoptLongArg GetoptLongPre GetoptLongEq GetoptLongReq GetoptLongTail GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 (** This tactic shows that the message of a report is one of the five. *)
-Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
+Local Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
 
 Import ProgramAbbreviations.
 Section unrec.
@@ -87,11 +86,11 @@ Proof using Type.
     with "[Hib Hoob HK]" as "HL366".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur Ha Hcl HG".
     step. step. check "Hl".
-    store_pointer "Hl Hcur" by (StrlenLoop.arith) preserving wi_store.
+    store_pointer "Hl Hcur" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-    store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
+    store_word "Hl Hib" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. check "Hl".
-    store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
+    store_word "Hl Hoob" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0. fold null.
     iApply ("HK" with "[%] Hl [Hib] [Hoob] Hcur Ha Hcl HG");
@@ -106,17 +105,17 @@ Proof using Type.
     [unfold argv_strs; rewrite big_sepL_cons; iDestruct "Hs" as "[H _]"; iExact "H"|].
   iDestruct (argv_str_cap with "Hw0") as (rq) "[#Hcapq %Hq0]".
   step. step.
-  check_read_dq "Hsl" by StrlenLoop.arith.
+  check_read_dq "Hsl" by StringTactics.arith.
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  load_pointer_dq "Hsl Hsc Hcf" by StrlenLoop.arith.
+  load_pointer_dq "Hsl Hsc Hcf" by StringTactics.arith.
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step.
   iApply (Hgt with "HG"); [lmsg | vx |]. iNext; iIntros (q) "HT".
-  check_read_dq "Ha" by StrlenLoop.arith.
+  check_read_dq "Ha" by StringTactics.arith.
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]".
-  load_pointer_dq "Ha Hc0 Hcapq" by StrlenLoop.arith.
+  load_pointer_dq "Ha Hc0 Hcapq" by StringTactics.arith.
   iNext; iIntros "Ha Hc0 _". step. check "Hl".
-  load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
+  load_pointer_dq "Hl Hcur Hcapc" by StringTactics.arith.
   iNext. iIntros "Hl Hcur _".
   iApply (Hfx with "HT Hw0 Hpfx Hwc"); [lmsg | vx |].
   iNext; iIntros (r0) "HG". step.

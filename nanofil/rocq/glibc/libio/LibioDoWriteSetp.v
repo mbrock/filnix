@@ -4,7 +4,7 @@ From Glibc Require Import GlibcProgram.
     One symbolic run covers the pointer stores and the mode test.
     The continuation chooses the write end and returns the result. *)
 
-From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
+From Glibc Require Import GlibcTactics OsTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +12,6 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers.
-From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -29,7 +28,7 @@ Definition dw_L70 : block := Eval vm_compute in
   | Some b => b | None => mkBlock (TAtom "iw_1.L70") [] [] JRetVoid end.
 
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

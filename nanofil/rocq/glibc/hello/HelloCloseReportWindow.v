@@ -7,8 +7,9 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv StrlenBits StrlenLogic WordString StartJoin PrintfOut.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Fix.
+From Glibc Require Import FileInv StrlenLogic WordString StartJoin PrintfOut.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** A byte before the terminator that snprintf writes might already

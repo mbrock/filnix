@@ -17,7 +17,7 @@
     The compiler turns the function into blocks of instructions that
     jump to one another. The proof has one part for each block where it
     needs to state what is true, and the module
-    [CBlocks](../CBlocks.v) joins the parts into a proof about the
+    [CBlocks](../tactics/CBlocks.v) joins the parts into a proof about the
     whole function. The loop starts at the block named `L15`. The
     function jumps to that block from its entry and again from the end
     of every round, and `c: s` and `c: count` have different values on
@@ -33,7 +33,7 @@
     `c: __printf_buffer_flush` and `c: memcpy`. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -43,7 +43,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic WordString MemFwdLogic
   PrintfBufferIoSrc CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec
   PrintfCopy PrintfBufferIoNames.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

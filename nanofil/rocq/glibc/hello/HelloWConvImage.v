@@ -10,7 +10,7 @@ From Stdlib Require Import String ZArith.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap.
 From Glibc Require Import Fix OsWorld OsRegistry FileInv HelloImageModule HelloImageLoad
   LibioWConvAscii LibioWConvOut LibioWConvLast LibioWConvTranslit LibioWDoWriteLoop LibioWDoWriteUse.
-Import FileInv.ML FileInv.LG FileInv.L.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section image.

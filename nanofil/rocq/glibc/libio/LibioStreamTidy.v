@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy
   PrintfStreamInv LibioFputsSpec AllocRo LibioSetb LibioLogic
   LibioOverflowShort LibioXsputnShort LibioOverflowNoWrite LibioXsputnNoWrite.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Section rules.

@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     cursor becomes null. This file proves that step safe: the scanner
     reads only the cursor's string and writes only its own fields. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,8 +18,7 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptShort.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptShort GetoptState LibioLogic OsWorld.
+  ByteRead GetoptInitialize GetoptEntry GetoptExchange GetoptCursor.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -38,7 +37,7 @@ Definition opt_names : list name := Eval vm_compute in
 
 
 (** The character module supplies the argument vector and its tactics. *)
-Import GetoptShort GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 

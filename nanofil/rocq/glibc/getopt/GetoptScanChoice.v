@@ -9,16 +9,16 @@
     exception: the choice needs a bound one smaller than the scanner's,
     and the caller must supply it. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Values Memory Runtime Ops Pieces Heap Logic.
-From Glibc Require Import FileInv WordString GetoptState GetoptInitialize GetoptExchange GetoptReturn
-  GetoptIdlePath GetoptScanEnd GetoptEntry GetoptEntryScan.
-From Glibc Require FileInv GetoptArgv GetoptEntryScan GetoptExchange GetoptInitialize GetoptState.
+From Glibc Require Import FileInv WordString GetoptInitialize GetoptExchange
+  GetoptEntry GetoptEntryScan.
+From Glibc Require GetoptArgv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -130,7 +130,7 @@ Proof. lia. Qed.
 
 
 (** The bridge module carries the setup's environment fact across the scan. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** After the scan, the choice can look up every value it needs. The
     scan kept the setup's values, and the caller takes chk100 from the

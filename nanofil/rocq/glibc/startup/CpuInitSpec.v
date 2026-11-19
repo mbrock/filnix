@@ -22,13 +22,14 @@
     so the tunable rows that later startup code reads still have their
     type codes and their cleared flags. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic StringLogic MemLogic.
-From Glibc Require Import FileInv OsBlocks OsWorld OsCpuid StartTunableGetValSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Import FileInv OsBlocks OsWorld OsCpuid.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The globals

@@ -11,7 +11,7 @@
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Bool.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run.
-From Glibc Require Import HelloGetoptTable HelloImageEraseMem HelloImageModule HelloImageStart HelloImageLayout HelloImageLoad.
+From Glibc Require Import HelloGetoptTable ImageEraseMem HelloImageModule HelloImageStart HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

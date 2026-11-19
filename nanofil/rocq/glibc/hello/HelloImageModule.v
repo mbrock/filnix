@@ -8,7 +8,7 @@
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Semantics.
-From Glibc Require Import HelloImageEraseMem HelloImageChunks HelloImageCode StartCtors.
+From Glibc Require Import ImageEraseMem ImageChunks HelloImageCode StartCtors.
 Import ListNotations.
 
 (** The linked Hello image is the captured image followed by the runner. *)

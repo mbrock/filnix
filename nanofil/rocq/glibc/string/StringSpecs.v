@@ -11,7 +11,7 @@ From Glibc Require Export GlibcSpec StrlenWord StrnlenLogic StrcmpLogic
   StrncmpLogic StrchrnulLogic StrrchrLogic MemFwdLogic.
 From Stdlib Require Import String.
 From Nanofil Require Import Term Syntax Values Semantics ExternalCalls Runtime.
-From Glibc Require Import GlibcProgram OsRegistry LibioDefaultXsputnCopy.
+From Glibc Require Import GlibcProgram OsRegistry BufferCopy.
 
 Import ProgramAbbreviations.
 Section copies.
@@ -24,9 +24,9 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
     recover their whole buffer, including slots before an unaligned write pointer.
     One contract preserves both guarantees through separate logical inputs. *)
 Definition memcpy_spec := spec_choice (MemFwdLogic.copy_spec false)
-  (LibioDefaultXsputnCopy.copy_in_spec false).
+  (BufferCopy.copy_in_spec false).
 Definition mempcpy_spec := spec_choice (MemFwdLogic.copy_spec true)
-  (LibioDefaultXsputnCopy.copy_in_spec true).
+  (BufferCopy.copy_in_spec true).
 
 (** The linked memcpy definition establishes both ownership alternatives. *)
 #[global] Instance memcpy_has_spec n `{!Defines ge n Unit_string_memcpy_os.fn___GI_memcpy} :
@@ -34,7 +34,7 @@ Definition mempcpy_spec := spec_choice (MemFwdLogic.copy_spec true)
 Proof using Type*.
   apply has_spec_choice.
   - apply MemFwdLogic.memcpy_spec_valid; try assumption; apply defines.
-  - apply LibioDefaultXsputnCopy.memcpy_in_spec_valid; try assumption; apply defines.
+  - apply BufferCopy.memcpy_in_spec_valid; try assumption; apply defines.
 Qed.
 
 (** Mempcpy also requires the definition of the memcpy function it calls. *)
@@ -44,6 +44,6 @@ Qed.
 Proof using Type*.
   apply has_spec_choice.
   - apply MemFwdLogic.mempcpy_spec_valid; try assumption; apply defines.
-  - apply LibioDefaultXsputnCopy.mempcpy_in_spec_valid; try assumption; apply defines.
+  - apply BufferCopy.mempcpy_in_spec_valid; try assumption; apply defines.
 Qed.
 End copies.

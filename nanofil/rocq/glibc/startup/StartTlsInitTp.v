@@ -11,7 +11,7 @@
     so the proof runs in any world whose cookie is the thread object. *)
 
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,9 +20,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsStartCalls FileInv LibioLogic LibioCloseSteps OsStart StartCode StartLogic
   StartTlsInitTpSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

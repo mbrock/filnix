@@ -1,0 +1,33 @@
+<block id="b-2026-11-19-glibc-proof-layers" kind="bench" actor="Codex" created="2026-11-19T12:23:14Z" in-reply-to="b-2026-11-19-hello-cold-vos-time">
+  <title>Separating the glibc proof layers shortens Hello’s cold open</title>
+  <about path="nanofil/rocq/glibc/ARCHITECTURE.md"/>
+  <about path="nanofil/rocq/glibc/arch.json"/>
+  <about path="nanofil/rocq/scripts/glibc-tools/rq/interfaces.py"/>
+  <tag name="formal"/>
+  <p>Hello now reaches its safety theorem through 1,045 glibc interfaces,
+    down from 1,092. It used to load the startup proof of hi_atexit to
+    split lifetime and pointer shares and construct a null pointer cell.
+    Both programs now get those lemmas from a shared memory module.</p>
+  <p>Each cold run on swa started with an empty interface cache, a prebuilt
+    Rocq 9.3 worker and twelve compiler slots. The operating system kept
+    its filesystem cache. The middle column runs the previous Make scheduler
+    on the new sources. The last column gives priority to ready interfaces
+    with the longest chain of waiting files.</p>
+  <table>
+    <tr><th>Theorem</th><th>Original tree and Make</th><th>New tree and Make</th><th>New tree and rq scheduler</th></tr>
+    <tr><td><code>hello_never_panics</code></td><td>159.8 s</td><td>145.0 s</td><td>113.4 s</td></tr>
+    <tr><td><code>hello_libs</code></td><td>25.6 s</td><td>21.5 s</td><td>20.6 s</td></tr>
+  </table>
+  <p>We followed the last prerequisite to finish at each step of the
+    safety build. With Make, 46.6 s passed between successive compilers
+    on that chain. With the new scheduler those gaps totaled 3.9 s.
+    The estimates use the creation of each compiler log and the last
+    write to its interface as the start and end of the job.</p>
+  <p>The library theorem now imports 181 interfaces, up from 176.
+    With the compiled interfaces on disk, the median of three fresh workers
+    was 2.22 s for the safety theorem and 1.62 s for the library theorem.
+    The earlier medians were 2.23 s and 1.62 s.</p>
+  <p>The architecture checker previously counted 420 imports that crossed a
+    layer boundary in the wrong direction. It now counts zero. The longest
+    import chain to the safety theorem fell from 92 files to 71.</p>
+</block>

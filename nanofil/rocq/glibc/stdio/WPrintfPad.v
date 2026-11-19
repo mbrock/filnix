@@ -4,7 +4,7 @@
     If more padding remains, it flushes the full array and tries again. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioCloseSteps LibioPutsInv LibioWIdle CBlocks PrintfOut WPrintfFileFlush WPrintfDispatch WPrintfFill.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Definition wprintf_pad_fn := Unit_stdioZ2dcommon_wprintf_buffer_pad_1_os.fn___wprintf_buffer_pad_1.

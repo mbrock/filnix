@@ -4,7 +4,7 @@ From Glibc Require Import GlibcProgram.
     blocks is empty. This file gives the proof script for that loop and
     proves the loop of the first copy. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,10 +13,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptSwap2Lower GetoptSwap2Upper.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState GetoptSwap2Lower GetoptSwap2Upper LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -33,14 +32,14 @@ Proof. unfold avoids. rewrite forallb_app. by intros -> ->. Qed.
 
 (** This module proves the lower swap loop of the first copy. *)
 (** This module proves the upper swap loop of the first copy. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
 (** This tactic proves the kept facts a swap loop's caller needs: the
     lookups at kept names, and kept lookups since the loop began. *)
-Ltac x_after p1 p3 v11 av ks e :=
+Local Ltac x_after p1 p3 v11 av ks e :=
   iIntros (? ? ?) "Hl Hc Hs3";
   lazymatch goal with Hx : Permutation _ _ /\ _ /\ _ |- _ =>
     destruct Hx as (Hp3 & Hk3 & Hv); apply keeps_app in Hk3 as [Hk3 Hk3'];
@@ -57,7 +56,7 @@ Ltac x_after p1 p3 v11 av ks e :=
 
 (** After a swap run, the outer loop continues with a shorter block.
     This tactic continues it with the new bounds bot and top. *)
-Ltac x_again IH bot top :=
+Local Ltac x_again IH bot top :=
   lazymatch goal with Hp3 : Permutation _ ?ps3 |- _ =>
     iApply (IH (Z.to_nat (top - bot)) ltac:(lia) _ bot top ps3 eq_refl with "Hl Hc Hs3 [HK]");
     [ lk_prove | lk_prove | lk_prove | lk_prove | lia | lia | lia

@@ -8,8 +8,9 @@
     all of them. So the module proves that code once and uses the proof
     for each row. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,10 +19,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioDefaultXsputnBuf WordString StrchrnulLogic
-  StrlenWord FxprintfStream NarrowFormat NarrowArgs DcigettextExit DcigettextPreRules
-  FormatterSrc FormatterStringTable FormatterStringArg FormatterStringDispatch FormatterStringRead
-  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames VaArgRound PrintfLoopState.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
+  StrlenWord
+  CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCopy FormatterNames PrintfLoopState.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic FixVariadic.VL0.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

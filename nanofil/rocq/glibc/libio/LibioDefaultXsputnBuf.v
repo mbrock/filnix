@@ -11,7 +11,7 @@ From Glibc Require Import GlibcProgram.
     Overflow may change the stream's flags, descriptor and other fields alongside its write buffer.
     Its contract keeps those additional resources separate and guarantees a buffer even when output fails. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,8 +19,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnCopy LibioLogic OsWorld SysWrappers.
+  BufferCopy.
 From Glibc Require Import Fix.
 
 (** ## Environments *)
@@ -74,7 +73,7 @@ Definition room_ok (b sz : Z) (reg : region) (xs : list Z) (cs : list cap) (wp w
   in_buf b sz wp /\ in_buf b sz we /\ r_kind reg = Heap.
 
 
-Import LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Section buf.
 Context `{!gen_heapGS piece pval Σ}.
@@ -140,18 +139,6 @@ Proof using Type.
   rewrite (byte_ps_cons _ _ y (drop (S k) ys)) /byte_ps. cbn [length seqZ].
   iIntros "(Ha & Hb)". rewrite /ptsq !big_sepL_cons. iDestruct "Hb" as "(Hy & Hc)".
   iSplitL "Hy"; [cbn; iFrame; done|]. iIntros "(Hy & _)". iFrame.
-Qed.
-
-(** A shared reader can borrow a contiguous source range and return it to recover the whole source. *)
-Lemma bytesq_sub dq b o ys (j c : nat) : (j + c <= length ys)%nat ->
-  bytesq dq b o ys ⊢ bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) ∗
-    (bytesq dq b (o + Z.of_nat j) (take c (drop j ys)) -∗ bytesq dq b o ys).
-Proof using Type.
-  intros H. set (zs := take c (drop j ys)).
-  assert (E : ys = (take j ys ++ zs ++ drop c (drop j ys))%list) by (unfold zs; rewrite !take_drop; reflexivity).
-  assert (Lj : length (take j ys) = j) by (rewrite length_take_le; lia).
-  rewrite {1 2}E /bytesq !byte_ps_app !ptsq_app Lj.
-  iIntros "(H1 & H2 & H3)". iFrame "H2". iIntros "H2". iFrame.
 Qed.
 
 (** An allocated buffer exposes its storage and the bounds on its current write pointers. *)

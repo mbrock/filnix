@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     Printf must recover its staging bytes even when the stream accepts fewer
     bytes than requested. This proof checks and invokes the loaded function
     pointer. The caller still supplies the proof of the called function. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,13 +16,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferXsputnReturn.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules_values.

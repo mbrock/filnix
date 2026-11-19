@@ -7,7 +7,7 @@
     [HelloVersionEtcCall](HelloVersionEtcCall.v) supplies those
     contracts. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo HelloGlibcDebts HelloGlibcLibsT HelloEmitBug HelloVersionEtc.
-From Glibc Require HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
 Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
@@ -98,7 +97,7 @@ Qed.
 
 (** The formatter's grammar accepts a list of arguments that fits the
     directives of a format. *)
-Ltac narrow_args_by :=
+Local Ltac narrow_args_by :=
   repeat first
     [ apply args_end
     | apply args_literal; [reflexivity|]

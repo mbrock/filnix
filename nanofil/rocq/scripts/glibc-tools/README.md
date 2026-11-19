@@ -59,7 +59,7 @@ Loads and stores require evidence that the accessed memory belongs to the caller
 
 To read a stored pointer, use `load_pointer` from `GlibcTactics.v`; use `load_pointer_dq` when ownership carries a fractional permission. To write a pointer, use `store_pointer` from the same library. These operations preserve the capability information attached to the pointer.
 
-The libio proofs read character buffers and write machine words while other code may still own part of the memory. The helpers in `libio/LibioTactics.v` handle these shared reads and exclusive writes. Use `load_bytes_dq` to read a byte array and `store_word` to write a word. When only the read check remains, use `check_read_dq` to justify it from the caller's share of the buffer.
+The libio proofs read character buffers and write machine words while other code may still own part of the memory. The helpers in `tactics/OsTactics.v` handle these shared reads and exclusive writes. Use `load_bytes_dq` to read a byte array and `store_word` to write a word. When only the read check remains, use `check_read_dq` to justify it from the caller's share of the buffer.
 
 Address arithmetic needs the offsets of the fields being accessed. Each proof registers its field offsets so the arithmetic solver can replace them with numbers. For an offset called `off_field`, write `Hint Unfold off_field : offs`. The libraries offer different solvers for the remaining side conditions. Choose `concrete_side`, `libio_side` or `close_side` according to the library used by the proof.
 

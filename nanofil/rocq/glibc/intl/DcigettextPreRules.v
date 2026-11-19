@@ -1,3 +1,4 @@
+From Glibc Require FixVariadic.
 From Glibc Require Import GlibcProgram.
 (** The first blocks of glibc's `c: __dcigettext` prepare a translation
     lookup before they know the locale. They save errno, take the setlocale
@@ -11,22 +12,22 @@ From Glibc Require Import GlibcProgram.
     resources that the lock or the cache gives back. The rule for the
     locale name returns one fixed name, so a caller decides the locale
     when it supplies the rule. None of these rules is proved here. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic VariadicLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks OsMemLogic DcigettextExit.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Module DciVL := VariadicLogicOn R LG0.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic DciVL.
+Module DciVL := FixVariadic.VL0.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic DciVL.
 
 Import ProgramAbbreviations.
 Section rules.

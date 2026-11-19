@@ -4,7 +4,7 @@
     allocated a buffer or changed how much room remains. *)
 
 From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_flush_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine 
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileTidy LibioLogic LibioFputsSpec AllocRo
   CStruct CFrame CBlocks PrintfLayout PrintfOut PrintfSpec PrintfFileOut PrintfBufferFileNames
   PrintfBufferXsputnCall PrintfBufferOverflowCall PrintfFlush PrintfFlushDirect PrintfFlushChoice PrintfFlushStage PrintfFlushSwitch.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import PrintfBufferFileNames.fn___printf_buffer_flush_to_file.
 Open Scope string_scope.
 Open Scope list_scope.

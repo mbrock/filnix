@@ -12,7 +12,7 @@
     [HelloClosedStdout](HelloClosedStdout.v) proves the same flush for a
     narrow stream. *)
 From Glibc Require Import Unit_libio_iofflush_os Unit_libio_wfileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,7 +21,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
   LibioWIdle WFileSyncClosed FflushClosed Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
 

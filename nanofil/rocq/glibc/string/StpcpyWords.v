@@ -10,19 +10,19 @@ From Glibc Require Import GlibcProgram.
     In both cases the loads stay inside the string's window, and the
     stores stay inside the copied string, because a word is stored only
     when the loop knows that none of its bytes is the terminator. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes WordString StrcmpBits StrcmpLoop.
+From Glibc Require Import OsWorld OsMemLogic StrlenBits WordString StrcmpBits StrcmpLoop.
 From Glibc Require Import StpcpyBytes StpcpyTail StpcpyShift.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 (** These definitions name the loop head of the aligned word loop and
     the block that starts the unaligned one. *)

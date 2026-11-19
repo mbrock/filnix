@@ -8,6 +8,7 @@
     Hello's image, and shows that the image's start lists give the
     assertion before the first call. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_string_memrchr_os Unit_string_strrchr_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -15,13 +16,13 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic.
-From Glibc Require Import FileInv OsWorld OsRegistry StartCode StartCtors StartCtorRunnerSpec StartCtorRunner
+From Glibc Require Import FileInv OsWorld OsRegistry StartCode StartCtors StartCtorRunnerSpec
   StartStdfilesInitSpec StartStdfilesInit StartCtorVtablesSpec StartCtorVtables StartInitMiscSpec StartInitMisc
-  StartInitFirstSpec StartInitFirst StartCtorCalls StartCtorChain StrlenLogic StrrchrLogic
+  StartInitFirstSpec StartInitFirst StartCtorChain StrlenLogic StrrchrLogic
   MemrchrLogic
   HelloImageModule HelloImageLoad HelloImageCtors.
 From Glibc Require LibioStdfiles.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** Hello's image has exactly the three constructors that the chain

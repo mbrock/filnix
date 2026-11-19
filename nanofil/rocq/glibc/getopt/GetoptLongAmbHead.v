@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     The tactic that writes the line also serves the line that announces
     a listing. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,12 +16,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbItem GetoptLongAmbList GetoptLongAmbPrint GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptDiag GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -38,10 +37,10 @@ Definition arep_names : list name := Eval vm_compute in
 
 
 (** The listing module supplies the listing, the last steps, the set and the tactics. *)
-Import GetoptLongAmbList GetoptLongAmbItem GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 (** This tactic shows that the message of a report is one of the five. *)
-Ltac arep_msg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
+Local Ltac arep_msg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumption | apply List.Exists_cons_tl].
 
 (** This tactic writes the report's first line: it reads stderr,
     translates the message, reads the program name and the cursor, and
@@ -49,18 +48,18 @@ Ltac arep_msg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eass
 Ltac arep_head w0 registry ge Hlend Hfp Hgt Hfx M :=
   step; step;
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
+    [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | StringTactics.arith |];
   iNext; iIntros "_";
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]";
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |];
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | exact Hfp |];
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); step; step;
   iApply (Hgt _ _ _ _ _ _ _ _ M with "HG"); [arep_msg | vx |]; iNext; iIntros (q) "HT";
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
+    [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | StringTactics.arith |];
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]";
-  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |];
+  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | lia |];
   iNext; iIntros "Ha Hc0 _"; step; check "Hl";
-  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |];
+  iApply (wp_raw_load_pointer_dq with "Hl Hcur Hcapc"); [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | lia |];
   iNext; iIntros "Hl Hcur _";
   iApply (Hfx _ _ _ _ _ _ _ _ M with "HT Hw0 Hpfx Hwc"); [arep_msg | vx |];
   iNext; iIntros (r0) "HG"; step.

@@ -3,18 +3,19 @@
     and proves that they satisfy the existing library rules. Read-only fields retain their original
     bounds and [[separation-logic]] ownership requirements. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString HiAtexitBase HiAtexitGe HiAtexitCloseIt
-  HiAtexitInitial HiAtexitInitialAlloc HiAtexitCleanup.
-From Glibc Require FileInv LibioFlushInv OsWorld.
+From Glibc Require Import FileInv WordString HiAtexitGe
+  HiAtexitInitial HiAtexitInitialAlloc.
+From Glibc Require OsWorld.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioFlushInv FileInv HLG HLG.L OsWorld.
+Import FileInv Fix.LG0 Fix.LG0.L OsWorld.
 
 (** Every jump-table slot carries the actual linked function pointer. *)
 Definition hi_entry_vtables_ps : list (piece * pval) :=
@@ -53,7 +54,7 @@ Lemma hi_entry_single_own : pts hi_entry_single_ps ==∗
   single_ro hge 76240 (mkRegion 76240 76248 GlobalData Live).
 Proof using Type.
   iIntros "H". iMod (ptsq_persist (DfracOwn 1) _ with "H") as "#H".
-  iModIntro. rewrite /single_ro /FileInv.ML.bytesq. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
+  iModIntro. rewrite /single_ro /Fix.ML0.bytesq. iSplitR; [iPureIntro; vm_compute; intuition congruence|].
   iEval (rewrite /hi_entry_single_ps /ptsq; cbn [big_opL]) in "H".
   iDestruct "H" as "(Hl & Hb & _)". iFrame "Hl Hb". iSplit; iEmpIntro.
 Qed.

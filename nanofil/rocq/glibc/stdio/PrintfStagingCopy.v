@@ -11,7 +11,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import MemFwdLogic LibioDefaultXsputnCopy.
+From Glibc Require Import MemFwdLogic BufferCopy.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -126,8 +126,8 @@ Proof.
   destruct (byte_ps_agree _ _ _ _ _ _ _ Hl Hdst Hxi) as (Hv & _). by rewrite Hv.
 Qed.
 
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps Fix GlibcSpec.
-Import LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic
+From Glibc Require Import OsWorld OsRegistry OsExternals FileInv LibioLogic LibioCloseSteps Fix GlibcSpec.
+Import LibioCloseSteps OsExternals Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic
   ProgramAbbreviations.
 
 (** ## Owned staging windows *)

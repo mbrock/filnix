@@ -7,7 +7,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import List String ZArith.
 From Nanofil Require Import Term Syntax Values Memory Pieces Heap Logic.
-From Glibc Require Import WordString GetoptBytes GetenvCompare GetenvScan GetenvStatic.
+From Glibc Require Import WordString ByteRead GetenvCompare GetenvScan GetenvStatic.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.

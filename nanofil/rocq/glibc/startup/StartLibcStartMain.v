@@ -15,18 +15,17 @@
 
 From Glibc Require Import Unit_csu_libcZ2dstart_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic Symbolic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld OsThread OsStartCalls FileInv LibioLogic LibioCloseSteps OsStart StartCode StartLogic
+From Glibc Require Import OsBlocks OsWorld OsThread OsStartCalls FileInv LibioLogic LibioCloseSteps OsStart StartLogic
   StartTlsInitTpSpec StartSetupTlsSpec StartCtors.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Section calls.
@@ -98,11 +97,6 @@ End calls.
 (** This constant is the body of `c: __libc_start_main`. *)
 Definition start_libc_start_main_fn : func := Unit_csu_libcZ2dstart_os.fn___libc_start_main.
 
-(** The image defines `c: __libc_start_main` with that body. *)
-Lemma start_libc_start_main_defined :
-  find_direct (TAtom "__libc_start_main") HiAtexitModule.hi_module = Some (Defined start_libc_start_main_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 (** This constant is the head of the loop over the auxiliary vector. *)
 Definition lsm_blk17 : block := Eval vm_compute in
   match find_block (TAtom "L17") (fn_blocks start_libc_start_main_fn) with
@@ -123,7 +117,7 @@ Proof.
 Qed.
 
 (** This tactic shows that a temporary the scan never writes keeps its value. *)
-Ltac keep := repeat (rewrite lookup_after_put_other; [|reflexivity]); assumption.
+Local Ltac keep := repeat (rewrite lookup_after_put_other; [|reflexivity]); assumption.
 
 Section body.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

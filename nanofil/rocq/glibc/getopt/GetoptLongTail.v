@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     bad option and answers ':' or '?' as the option string asks. Both
     ends write only the parser's own private fields. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,11 +16,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenWord
+  StrcmpBits StrncmpLogic
+  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -38,7 +37,7 @@ Definition lreq_names : list name := Eval vm_compute in
 
 
 (** The store module supplies the option table, the report rule and the tactics. *)
-Import GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section tail.
@@ -74,12 +73,12 @@ Proof using Type.
   iDestruct (big_sepL_lookup with "Hs") as (s1) "#Hws1"; [exact Hq|].
   iDestruct (argv_str_cap with "Hws1") as (rq1) "[#Hcapq1 %Hq1]".
   step. step. load_s32_using ltac:(arith) "Hl Hib". step. check "Hl".
-  store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
+  store_word "Hl Hib" by (StringTactics.arith) preserving wi_store.
   iNext. iIntros "Hl Hib". step. step. step. idx (i + 1). check "Ha".
   iDestruct (big_sepL_lookup_acc with "Hcl") as "[Hcj Hcl]"; [exact Hq|].
-  load_pointer_dq "Ha Hcj Hcapq1" by StrlenLoop.arith.
+  load_pointer_dq "Ha Hcj Hcapq1" by StringTactics.arith.
   iNext. iIntros "Ha Hcj _". iSpecialize ("Hcl" with "Hcj"). check "Hl".
-  store_pointer "Hl Hab" by (StrlenLoop.arith) preserving wi_store.
+  store_pointer "Hl Hab" by (StringTactics.arith) preserving wi_store.
   iNext. iIntros "Hl Hab". step.
   iApply ("HK" with "[%] Hl [Hib] [Hab] Ha Hcl"); [xkeep | | unfold k in Hq; by rewrite (nth_lookup_Some _ _ _ _ Hq)].
   iSplit; [iPureIntro; lia|]. by replace (i + 2) with (i + 1 + 1) by lia.
@@ -115,7 +114,7 @@ Proof using Type.
   iNext; iIntros "_".
   load_bytes_dq "Htl Hvb" decode (apply load_sw_int; assumption) by rawa.
   iNext; iIntros "_ _". check "Hl".
-  store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
+  store_word "Hl Hoob" by (StringTactics.arith) preserving wi_store.
   iNext. iIntros "Hl Hoob". rewrite (Z.mod_small (lo_val x) (2 ^ 32)); [|lia].
   iDestruct (ws_byte po so 0 with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|].
   destruct Hbb as (Hcap & ? & ? & ? & ?).

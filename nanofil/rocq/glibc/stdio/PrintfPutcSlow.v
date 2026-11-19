@@ -3,7 +3,7 @@
     without touching the window. A successful flush gives it the strict
     inequality that both the C assertion and the byte store require. *)
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_putc_1_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -11,7 +11,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic CStruct CBlocks
   PrintfLayout PrintfOut PrintfSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope. Open Scope list_scope. Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

@@ -8,7 +8,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Values Memory Pieces Heap MemLogic.
 From Glibc Require Import FileInv CLocaleCells CtypeTranslitTables.
-Import ListNotations FileInv.ML FileInv.LG.
+Import ListNotations Fix.ML0 Fix.LG0.
 Open Scope Z_scope.
 Open Scope list_scope.
 

@@ -8,7 +8,7 @@
     backend directly and can use the same contract. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_flush_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,7 +17,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic CFrame CStruct CBlocks
   PrintfLayout PrintfOut PrintfSpec PrintfBufferIoSrc PrintfBufferIoNames.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

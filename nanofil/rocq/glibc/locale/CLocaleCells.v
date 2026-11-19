@@ -4,12 +4,12 @@
 From Stdlib Require Import List String ZArith.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Values Memory Pieces Heap.
-From Glibc Require Import FileInv HelloImagePlacement.
-Import FileInv.LG.
+From Glibc Require Import OsMemLogic HelloImagePlacement.
+Import Fix.LG0.
 Open Scope Z_scope.
 
 (** Each lookup must find the named symbol in the generated placement. *)
-Ltac conv_bounds n :=
+Local Ltac conv_bounds n :=
   let row := eval vm_compute in
     (List.find (fun row : string * Z * Z => String.eqb (fst (fst row)) n) placement) in
   lazymatch row with

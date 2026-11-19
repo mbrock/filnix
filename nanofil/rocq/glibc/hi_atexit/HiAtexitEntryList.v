@@ -3,17 +3,18 @@
     then proves that cleanup can use them. These fields are owned
     separately from the stdout fields used by puts. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv HiAtexitBase HiAtexitGe HiAtexitInitial HiAtexitInitialAlloc HiAtexitCleanup.
-From Glibc Require FileInv LibioFlushInv.
+From Glibc Require Import FileInv HiAtexitGe HiAtexitInitial HiAtexitInitialAlloc.
+From Glibc Require LibioFlushInv.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioFlushInv FileInv HLG HLG.L.
+Import LibioFlushInv FileInv Fix.LG0 Fix.LG0.L.
 
 (** The backward pointers name the preceding link, including the list
     head for stderr. The list lock and current-stream pointer are idle. *)

@@ -10,15 +10,16 @@
     also restates the rule for a 32-bit argument over the world of a
     glibc program. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic Fix WordString FormatterStringArg.
-Import StringVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic Fix WordString.
+From Glibc Require FixVariadic.
+Import FixVariadic.VL0 ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 
 (** Reading a pointer argument loads the cursor, rounds it up to the

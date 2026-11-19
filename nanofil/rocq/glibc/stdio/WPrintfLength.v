@@ -4,14 +4,15 @@
     It therefore needs only the string and its four-byte terminator. *)
 
 From Glibc Require Import Unit_wcsmbs_wcslen_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic CBlocks WPrintfDispatch.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+From Glibc Require Import WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition wprintf_length_fn := Unit_wcsmbs_wcslen_os.fn___wcslen.
@@ -24,18 +25,6 @@ Local Abbreviation size cs := (Z.of_nat (length cs)).
 Section scan.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Abbreviation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** The reader borrows one whole character. The same rule applies to
-    the mutable argument and the read-only format literal. *)
-Lemma wchar_at dq b o cs k x : cs !! k = Some x ->
-  bytesq dq b o (stage_bytes cs) ⊢ bytesq dq b (o + 4*Z.of_nat k) (le_bytes x 4) ∗
-    (bytesq dq b (o + 4*Z.of_nat k) (le_bytes x 4) -∗ bytesq dq b o (stage_bytes cs)).
-Proof using Type.
-  intros Hk. rewrite -{1 2}(take_drop_middle cs k x Hk) /stage_bytes flat_map_app. cbn [flat_map].
-  rewrite /bytesq byte_ps_app byte_ps_app !ptsq_app. fold (stage_bytes (take k cs)).
-  rewrite stage_bytes_length length_take_le; [|apply lookup_lt_Some in Hk; lia].
-  replace (Z.of_nat (4*k)) with (4*Z.of_nat k) by lia. iIntros "(Hp & Hc & Hs)". iFrame "Hc". iIntros "Hc". iFrame.
-Qed.
 
 Local Lemma length_char dq b cs i : 0 <= i <= size cs -> Forall (fun c => 0 < c < 256) cs ->
   bytesq dq b 0 (stage_bytes (cs ++ [0])) ⊢ ∃ x, ⌜(x = 0 /\ i = size cs) \/ (0 < x < 256 /\ i < size cs)⌝ ∗

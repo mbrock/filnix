@@ -21,7 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic MemLogic.
 From Glibc Require Import FileInv LibioStdfiles StartCode StartCtorRunnerSpec StartCtorRunner
   StartStdfilesInitSpec StartCtorVtablesSpec StartInitMiscSpec StartInitFirstSpec StartInitFirst.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv.
 Open Scope Z_scope.
 
 Section calls.

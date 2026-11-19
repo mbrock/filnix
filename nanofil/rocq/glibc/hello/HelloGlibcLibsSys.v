@@ -13,7 +13,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsRegistry AllocLogic AtexitLogic
   HelloGlibcXmalloc HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require AllocLogic AtexitLogic HelloGlibcXmalloc OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

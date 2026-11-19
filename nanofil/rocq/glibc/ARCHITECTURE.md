@@ -1,9 +1,9 @@
 # Architecture of `nanofil/rocq/glibc/`
 
-This tree currently holds three distinct bodies of Rocq code under one build root:
+The glibc proof tree has three parts. Rocq builds them under one logical root.
 
-1. **Shared userland C and OS proof infrastructure** (`base/`, `zsys/`, `tactics/`, and the root foundation files migrating into them): the runtime logic instantiation, the Linux/Fil-C syscall world, generic memory and stepping tactics, C-struct lenses, reflective symbolic execution, and ELF image-piece helpers. None of this is specific to glibc; any Fil-C C library or program proof uses it.
-2. **glibc 2.44 library proofs** (`string/`, `nptl/`, `stdlib/`, `locale/`, `intl/`, `libio/`, `stdio/`, `getopt/`, `startup/`, and generated captures under `gen/`): library proofs parameterized over the program context (`GlibcProgram`), never referencing a specific binary.
+1. **Shared userland C and OS proof infrastructure** (`base/`, `zsys/`, `tactics/`): the runtime logic instantiation, the Linux/Fil-C syscall world, generic memory and stepping tactics, C-struct lenses, reflective symbolic execution, and ELF image-piece helpers. None of this is specific to glibc; any Fil-C C library or program proof uses it.
+2. **glibc 2.44 library proofs** (`string/`, `nptl/`, `stdlib/`, `locale/`, `intl/`, `libio/`, `stdio/`, `getopt/`, `startup/`, and generated captures under `gen/`): library proofs parameterized over the program context (`GlibcProgram`). The wide-character conversion proofs also use the C locale placement table generated from Hello.
 3. **Whole-program proofs** (`hello/`, `hi_atexit/`): concrete programs linked against glibc, isolated from sibling programs.
 
 New and promoted shared modules should be named for what they prove (`OsMemLogic`, `OsTactics`, `ImagePieces`, `LiteralLogic`, `ByteRead`) rather than prefixed with `Glibc`.
@@ -20,7 +20,7 @@ The declarative layer map lives in [arch.json](arch.json) and is checked by [pro
 Dependencies point downward through six layers (with sibling programs in `L5` isolated from one another):
 
 - **L0 — Pure IR and data:** generated captures under `gen/` plus pure IR, layout, and piece modules in `base/`. Nothing in L0 imports Iris, `Fix`, or `zsys`.
-- **L1 — Logic and OS foundation:** `base/`, `zsys/`, and legacy root foundation files. This layer holds the single canonical Nanofil functor instantiation in `Fix*.v`, the OS syscall world in `OsWorld` and `OsRegistry`, the program context in `GlibcProgram` and `GlibcSpec`, and generic OS-world memory and literal rules such as `OsMemLogic`, `ByteRead`, and `LiteralLogic`.
+- **L1 — Logic and OS foundation:** `base/`, `zsys/`, and shared image rules. This layer holds the single canonical Nanofil functor instantiation in `Fix*.v`, the OS syscall world in `OsWorld` and `OsRegistry`, the program context in `GlibcProgram` and `GlibcSpec`, and generic OS-world memory and literal rules such as `OsMemLogic` and the registry predicates in `OsExternals`.
 - **L2 — Shared proof infrastructure and tactics:** `tactics/`. This layer holds pure stepping tactics in `GlibcTactics`, generic OS-world memory tactics in `OsTactics`, C-level lenses in `CFrame`, `CStruct`, and `CBlocks`, and opt-in reflective symbolic execution in `GlibcSym*`. Nothing in L1 or L2 imports `FileInv` or `libio/`.
 - **L3 — glibc library subsystems**, ordered as a DAG:
   - **L3a:** `string/`, `nptl/`, `stdlib/`
@@ -34,11 +34,11 @@ Dependencies point downward through six layers (with sibling programs in `L5` is
 
 Rocq functor applications copy definitions and lemmas into the compiled `.vos` interface of every module that instantiates them. Instantiate each Nanofil functor once:
 
-- `Fix.v` owns `R`, `LG0 := Logic R`, `ML0 := MemLogicOn R LG0`, and `SL0 := StringLogicOn R LG0`.
+- `Fix.v` owns `R`, `LG0 := Logic R`, `ML0 := MemLogicOn R LG0`, and `SL0 := ML0.SL`.
 - `FixVariadic.v` owns `VL0 := VariadicLogicOn R LG0`, keeping variadic definitions off the import path of ordinary files.
 - `FixExec.v` owns `AS0 := AbsSoundOn R LG0`, keeping abstract-execution soundness off ordinary Iris proofs.
 
-Proof files import from `Fix*` directly instead of re-instantiating functors or aliasing `FileInv.ML`.
+Proofs use the instances from `Fix*`. The memory logic already instantiates the string logic, so `SL0` names that same instance.
 
 ## Tactic hierarchy
 
@@ -59,11 +59,12 @@ python3 nanofil/tests/proof_arch_check.py --report
 python3 nanofil/tests/proof_arch_check.py --update-baseline
 ```
 
-## Cleanup phases
+## What the checker measures
 
-1. **Phase 0 (current):** declarative map in `arch.json`, ratcheted checker in CI, and baseline measurement.
-2. **Phase 1:** consolidate functors into `Fix*.v`, extract generic OS-world memory rules into `base/OsMemLogic.v`, move root foundation files into `base/` and `tactics/`, and detach `CStruct.v` from `FileInv`.
-3. **Phase 2:** create `tactics/OsTactics.v`, slim `libio/LibioTactics.v` to `FILE` tactics, extract bottom-of-subsystem `*Tactics.v` files, and mark proof-file tactics `Local`.
-4. **Phase 3:** promote misplaced common goods (`ImagePieces`, `LiteralLogic`, `ByteRead`, `AllocCall`) and close backward edges into `hello/` and `hi_atexit/` as well as upward library edges.
-5. **Phase 4:** prune duplicate and unused `Require` statements across the tree.
-6. **Phase 5:** re-measure cold and warm `rq open` timings, selectively shape any remaining serial micro-file spines where readability also improves, and layer `rq` scheduling improvements on top.
+The layer check covers direct imports, including imports between the two program directories. Startup reads CPU function bodies from the capturing translation units. Each program proves that its own linked image contains those bodies. The string library owns buffer copying and wide-character byte reads. The stream library owns the write contracts that both formatters and whole programs use.
+
+Each ordinary proof should keep a tactic local when all its callers are in that file. Some older files also supply tactics to other proofs. The manifest records the remaining count while those callers migrate to subsystem tactic modules.
+
+The import check counts a direct import as a candidate for removal when its exported names do not occur in the file. An import can still supply a notation, a hint, a typeclass instance or a name through a re-export. Compile the dependent proofs when removing a candidate.
+
+For a cold-open measurement, give `rq` an empty interface cache, a prebuilt worker and a fixed `RQ_JOBS`, then open a named theorem. For a warm measurement, stop the worker and open the same theorem again with the same cache. The dependency graph gives a chain length in files. The elapsed time also depends on the cost of each file and when its compiler can start.

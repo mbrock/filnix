@@ -12,18 +12,17 @@
 
 From Glibc Require Import Unit_csu_initZ2dfirst_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartCode StartLogic
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps
   StartInitMiscSpec StartInitFirstSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -33,11 +32,6 @@ Local Arguments Z.mul : simpl nomatch.
 (** This constant is the body of `c: _init_first`. The function is
     private to its source file, so the linker gave it a longer name. *)
 Definition start_init_first_fn : func := Unit_csu_initZ2dfirst_os.fn_glibc_init_first'23_init_first.
-
-(** The image defines `c: _init_first` with that body. *)
-Lemma start_init_first_defined :
-  find_direct (TAtom "glibc_init_first#_init_first") hi_module = Some (Defined start_init_first_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

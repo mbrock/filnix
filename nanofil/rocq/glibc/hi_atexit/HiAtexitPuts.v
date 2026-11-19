@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** This file proves puts for the actual linked hi_atexit program.
@@ -14,17 +15,16 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv WordString LibioPuts
-  HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitAlloc HiAtexitStdout
-  HiAtexitPutsXsputn HiAtexitPutsNl HiAtexitPutsOverflow HiAtexitPutsRules.
-From Glibc Require FileInv LibioPuts LibioPutsInv LibioPutsLock.
+  HiAtexitGe HiAtexitFns AllocCall HiAtexitStdout
+  HiAtexitPutsXsputn HiAtexitPutsNl HiAtexitPutsOverflow.
+From Glibc Require LibioPutsInv.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioPutsLock.
-Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L.
+Import LibioPutsInv FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** Proof-mode searches keep the stream and allocator resources
     folded instead of expanding their memory layouts. *)
-#[local] Hint Opaque vtables_ro hi_stdout_before hi_stdout_after word_string hi_malloc_state
+#[local] Hint Opaque vtables_ro hi_stdout_before hi_stdout_after word_string malloc_call_state
   : typeclass_instances.
 
 Section rules.
@@ -48,16 +48,16 @@ Lemma hi_puts fr p dq' s so soreg fp mode eb vb vreg sb sreg Φ :
   ow_errno w0 = Some (mkPtr eb (Obj eb)) -> ptr_addr (ow_self w0) <> 0 ->
   vtables_ro hge vb vreg -∗ single_ro hge sb sreg -∗ word_string dq' p s -∗
   live so soreg -∗ pcell so 0 fp -∗ hi_stdout_before w0 eb vb fp mode None -∗
-  hi_malloc_state dq mp tc dummy mpr tcr dr -∗
+  malloc_call_state dq mp tc dummy mpr tcr dr -∗
   ▷ (∀ r, ⌜puts_ret (Z.of_nat (length s)) r⌝ -∗ word_string dq' p s -∗
      live so soreg -∗ pcell so 0 fp -∗ hi_stdout_after w0 eb vb s fp None -∗
-     hi_malloc_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
+     malloc_call_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Hmp Htc.
   intros Hfr Hgso Hsoal Hsoend Heb Hself.
   iIntros "#Hvt #Hsingle Hstr Hso Hsoc Hf HM HK".
   iApply (LibioPuts.wp_glibc__IO_puts_for (glibc_program := program_of w0 glibc_os_registry hge) (fun n c H => H) (hi_sys_external _)
-    vb vreg (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr)
+    vb vreg (vtables_ro hge vb vreg ∗ malloc_call_state dq mp tc dummy mpr tcr dr)
     (hi_stdout_before w0 eb vb) (fun s fp _ held => hi_stdout_after w0 eb vb s fp held)
     (hi_stdout_before_open w0 eb vb) (fun s fp _ held => hi_stdout_after_lock w0 eb vb s fp held)
     (hi_stdout_before_wide w0 eb vb) (hi_ge_xsputn _)

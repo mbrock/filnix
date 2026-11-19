@@ -3,7 +3,8 @@
     This bridge supplies the close callback's concrete stream state
     without assuming that the operating system accepted the output. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Fix.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -11,13 +12,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioOverflowBase LibioDefaultXsputnBuf LibioXsputnBase HiAtexitBase HiAtexitGe
-  HiAtexitFclose HiAtexitCloseStdout HiAtexitOutputState.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioFcloseTail LibioLogic LibioOverflowBase LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  LibioDefaultXsputnBuf LibioXsputnBase HiAtexitGe
+  HiAtexitCloseStdout StreamOutputState.
+From Glibc Require LibioFcloseTail.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 Import LibioFcloseTail.
 

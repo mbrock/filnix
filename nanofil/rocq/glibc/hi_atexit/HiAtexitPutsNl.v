@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_libio_genops_os Unit_libio_ioputs_os.
 From Glibc Require Import GlibcProgram.
 (** Puts adds a newline only after the string write succeeds.
@@ -5,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     Both paths here preserve the buffer and stream resources that
     the later close callback needs, including when overflow fails. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,15 +15,13 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  LibioPutsNl AllocLogic HiAtexitBase HiAtexitGe HiAtexitFns
-  HiAtexitAlloc HiAtexitOutputState HiAtexitStdout HiAtexitPutsBuf.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  AllocLogic HiAtexitGe HiAtexitFns
+  AllocCall StreamOutputState HiAtexitStdout HiAtexitPutsBuf.
+From Glibc Require LibioDefaultXsputnBuf LibioPutsInv LibioXsputnBase.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import LibioPutsLock.
-Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import LibioPutsInv LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Local Arguments Z.add : simpl nomatch.
@@ -51,9 +50,9 @@ Context (Hov : forall s fr fp eb vb vreg Φ,
   call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt 10] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro hge vb vreg -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
-  hi_malloc_state dq mp tc dummy mpr tcr dr -∗
+  malloc_call_state dq mp tc dummy mpr tcr dr -∗
   ▷ (∀ r, ⌜r = 10 \/ r = 2 ^ 32 - 1⌝ -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
-     hi_malloc_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
+     malloc_call_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}).
 
 (** Unlocking can use the same stdout resources after either newline
@@ -64,11 +63,11 @@ Lemma hi_puts_L180 s e so soreg fb eb vb vreg Φ :
   so mod 8 = 0 -> so + 8 <= r_end soreg -> ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   live so soreg -∗ pcell so 0 (mkPtr fb (Obj fb)) -∗
   hi_stdout_after w0 eb vb s (mkPtr fb (Obj fb)) (Some 0) -∗
-  (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
+  (vtables_ro hge vb vreg ∗ malloc_call_state dq mp tc dummy mpr tcr dr) -∗
   ▷ (∀ e' c, ⌜keeps (atoms ["v0"; "v6"; "v12"; "chk1"]) e e' /\ lookup (TAtom "v208") e' = Some (WInt c)⌝ -∗
      live so soreg -∗ pcell so 0 (mkPtr fb (Obj fb)) -∗
      hi_stdout_after w0 eb vb s (mkPtr fb (Obj fb)) (Some 0) -∗
-     (vtables_ro hge vb vreg ∗ hi_malloc_state dq mp tc dummy mpr tcr dr) -∗
+     (vtables_ro hge vb vreg ∗ malloc_call_state dq mp tc dummy mpr tcr dr) -∗
      WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e' [] None (Enter (TAtom "L181") (Some (TAtom "L184")))) : sexpr) {{ Φ }}) -∗
   WP (ERun (mkFrame Unit_libio_ioputs_os.fn___GI__IO_puts e [] None (Enter (TAtom "L180") (Some (TAtom "L163")))) : sexpr) {{ Φ }}.
 Proof using Hov.

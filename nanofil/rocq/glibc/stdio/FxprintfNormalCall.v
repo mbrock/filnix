@@ -3,8 +3,9 @@
     after the two named arguments to __vfxprintf. It does not select stderr,
     take a lock or change cancellation itself. Those operations, if any,
     belong to the called function, whose contract remains explicit here. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,9 +14,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
   FxprintfStream Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
-Module NormalVL := VariadicLogicOn R LG0.
+Module NormalVL := FixVariadic.VL0.
 Import NormalVL.
 
 Definition fxprintf_normal_frame (fp fmt : ptr) (ys : list word) : frame :=

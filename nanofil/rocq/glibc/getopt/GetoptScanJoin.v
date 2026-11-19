@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     index over the permuted argument vector. At the option parser it
     gets the scanner's facts together with the untouched fields. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,9 +18,9 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString
-  GetoptModule GetoptState GetoptBytes GetoptArgv GetoptExchange GetoptReturn GetoptIdlePath GetoptScanEnd
+  GetoptModule GetoptState ByteRead GetoptArgv GetoptExchange GetoptIdlePath GetoptScanEnd
   GetoptScan GetoptScanSession.
-From Glibc Require FileInv GetoptArgv GetoptExchange GetoptInitialize GetoptScan GetoptScanSession GetoptState OsWorld.
+From Glibc Require GetoptInitialize.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -28,7 +28,7 @@ Open Scope Z_scope.
 
 (** The scan module proves the scanner. *)
 (** The session module packs the fields after an early return. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
+Import GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan_join.

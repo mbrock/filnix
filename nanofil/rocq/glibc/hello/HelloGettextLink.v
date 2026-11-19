@@ -22,7 +22,7 @@ From Glibc Require Import GlibcProgram.
     Hello's own link, relying on checks that the producer makes. The caller also
     lends the memory that gettext reads, three locks and errno, and
     nothing here says how startup prepares them. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,15 +30,15 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic MemFwdCode WordString SysWrappers.
-From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require Import StpcpyCode TfindCode TfindEmpty LocalenameCode LocalenameLogic RdlockCode RwunlockCode.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcgettextCode DcigettextCode DcigettextPreRules DcigettextRoute.
+From Glibc Require Import DcgettextCode DcigettextCode DcigettextRoute.
 From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal GettextLinkCode.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 (** ## The missing link facts
 
@@ -68,7 +68,7 @@ Context (Hreg : holds_os registry).
 (** Hello keeps a read-only share of malloc's idle cache. The
     translation lends that share to each malloc call and gets it back. *)
 Definition hello_gettext_cache (ob : hello_objs) : iProp Σ :=
-  hi_malloc_state DfracDiscarded (ho_mp ob) (ho_tc ob) (ho_dm ob) (ho_mpreg ob) (ho_tcreg ob) (ho_dmreg ob).
+  malloc_call_state DfracDiscarded (ho_mp ob) (ho_tc ob) (ho_dm ob) (ho_mpreg ob) (ho_tcreg ob) (ho_dmreg ob).
 
 (** Most heap facts already follow from Hello's own record. The new
     record adds only the two facts about memmove. *)
@@ -195,18 +195,14 @@ Definition gettext_calls (f : func) : list name :=
 (** The lookup calls stpcpy and mempcpy through `__GI_stpcpy` and
     `__GI_mempcpy`. The small fixtures do not keep those spellings,
     because each one is linked from the plain name alone and the linker
-    drops aliases that nothing uses. The hi_atexit image, which never
-    calls stpcpy, keeps only the mempcpy alias. *)
+    drops aliases that nothing uses. *)
 Example gettext_link_gaps :
   In (TAtom "__GI_stpcpy") (gettext_calls Unit_intl_dcigettext_os.fn___dcigettext) /\
   In (TAtom "__GI_mempcpy") (gettext_calls Unit_intl_dcigettext_os.fn___dcigettext) /\
   find_direct (TAtom "__GI___stpcpy") stpcpy_module = Some (Defined Unit_string_stpcpy_os.fn___GI___stpcpy) /\
   find_alias (TAtom "stpcpy") stpcpy_module = Some (TAtom "__GI___stpcpy") /\
   find_direct (TAtom "__GI_stpcpy") stpcpy_module = None /\ find_alias (TAtom "__GI_stpcpy") stpcpy_module = None /\
-  find_direct (TAtom "__GI_mempcpy") memfwd_module = None /\ find_alias (TAtom "__GI_mempcpy") memfwd_module = None /\
-  find_alias (TAtom "__GI_mempcpy") hi_module = Some (TAtom "__GI___mempcpy") /\
-  find_direct (TAtom "__GI___mempcpy") hi_module = Some (Defined Unit_string_mempcpy_os.fn___GI___mempcpy) /\
-  find_direct (TAtom "__GI_stpcpy") hi_module = None /\ find_alias (TAtom "__GI_stpcpy") hi_module = None.
+  find_direct (TAtom "__GI_mempcpy") memfwd_module = None /\ find_alias (TAtom "__GI_mempcpy") memfwd_module = None.
 Proof. repeat split; vm_compute; first [reflexivity | tauto]. Qed.
 
 (** The new record names none of the functions that [hello_link]

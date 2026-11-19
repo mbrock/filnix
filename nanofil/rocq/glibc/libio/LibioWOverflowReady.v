@@ -3,16 +3,16 @@
     this point. Their read pointers agree, but the old write pointers
     can still refer to the state before allocation. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
-From Glibc Require Import Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle LibioWXsputnWindow
+From Glibc Require Import Fix FileInv FileIdle LibioLogic LibioPutsInv LibioWIdle LibioWXsputnWindow
   LibioWOverflowDispatch LibioWOverflowFlush LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowSetWide
   LibioWOverflowEntry LibioWOverflowSetup LibioWOverflowState LibioWOverflowLoan CBlocks.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Abbreviation obj b := (mkPtr b (Obj b)).
 

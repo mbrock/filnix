@@ -15,7 +15,7 @@
     modality]] at each step so goals stay flat. *)
 
 From Glibc Require Import Unit_string_strcmp_os.
-From Glibc Require Import LibioTactics GlibcTactics.
+From Glibc Require Import OsTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,7 +23,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits.
-From Glibc Require WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

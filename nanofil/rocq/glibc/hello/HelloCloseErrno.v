@@ -13,9 +13,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import HelloBodies.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
 From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld
   FileInv LibioLogic HelloCloseStream LeavesLogic OsRegistry SysWrappers AllocLogic.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps
   LibioFcloseTail.
 Open Scope Z_scope.
 

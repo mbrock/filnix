@@ -4,7 +4,7 @@
     search reads beyond the five wide characters in the literal. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_wcsmbs_wcschrnul_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,7 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld FileInv LibioLogic
   LibioCloseSteps WPrintfDispatch WPrintfLength.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+From Glibc Require Import WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Definition wprintf_chr_fn := Unit_wcsmbs_wcschrnul_os.fn___wcschrnul.

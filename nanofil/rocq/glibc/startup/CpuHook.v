@@ -25,6 +25,7 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   Pieces Heap Language Logic StringLogic MemLogic ExternalCalls Dominance AbsRun AbsInfer AbsDen AbsMem AbsStep
   AbsCall AbsOwn AbsWindow AbsSound.
+From Glibc Require FixExec.
 From Glibc Require Import Fix GlibcProgram OsWorld OsBlocks OsCpuid OsRegistry CpuRules.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,7 +33,7 @@ Open Scope Z_scope.
 (** The glibc proofs share one runtime and one instance of the logic.
     The module [AS] is the checker's soundness theorem at that
     instance. *)
-Module AS := AbsSoundOn R LG0.
+Module AS := FixExec.AS0.
 
 (** A store changes bytes and an allocation adds an object. Neither
     ends the lifetime of an object. The world invariant of the glibc

@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioStdfiles StartStdfilesInitSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioStdfiles.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioStdfiles.
 Open Scope Z_scope.
 
 Section rules.

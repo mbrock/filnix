@@ -2,15 +2,16 @@
     and writes the newline. Its last read sees the wide zero. It returns
     without looking at another character or restarting the parser. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioCloseSteps WPrintfDispatch
+From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioCloseSteps
   WPrintfWrite WPrintfLength WPrintfScan WPrintfParse WPrintfOut.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+From Glibc Require Import WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

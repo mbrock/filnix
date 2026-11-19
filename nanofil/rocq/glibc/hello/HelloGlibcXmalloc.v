@@ -21,7 +21,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld LeavesLogic AllocLogic.
-From Glibc Require AllocLogic OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

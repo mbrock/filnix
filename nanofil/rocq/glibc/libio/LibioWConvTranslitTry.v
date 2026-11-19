@@ -3,7 +3,7 @@
     may already have written some bytes. The next attempt starts at that
     same cursor in the buffer as the previous attempt left it. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -11,7 +11,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv LibioLogic
   LibioDefaultXsputnBuf CBlocks Fix LibioWConvAscii LibioWConvTranslitCmp LibioWConvTranslitLen LibioWConvTranslitCall.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

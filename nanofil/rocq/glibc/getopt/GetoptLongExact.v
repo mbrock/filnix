@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     the parser reads each entry's name only through glibc's own strncmp
     and strlen, and it never reads past the table's last entry. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,11 +18,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+  StrncmpLogic
+  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptExchange
   GetoptDiag GetoptReqTail GetoptLongScan.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongScan GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop StrlenWord StrncmpLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -47,7 +46,7 @@ Definition plo_blk50 : block := Eval vm_compute in plo_blk "L50".
 
 
 (** The scan module supplies the string lemmas and the tactics. *)
-Import GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 (** The strncmp module proves glibc's own strncmp. *)
 (** The strlen module proves glibc's own strlen. *)
 
@@ -156,7 +155,7 @@ Proof using Type.
   iApply wp_branch; [vx | iNext]. close_br.
   step. load_pointer_dq "Htl Hn Hcapn" by first [rawa | al8].
   iNext. iIntros "_ _ _". step. check "Hl".
-  load_pointer_dq "Hl Hcur Hcapq" by StrlenLoop.arith.
+  load_pointer_dq "Hl Hcur Hcapq" by StringTactics.arith.
   iNext. iIntros "Hl Hcur _".
   pose proof (eq_len_le s) as Hle. iDestruct (ws_shape with "Hws") as %(Hch & Hqp & Hqe).
   iApply (StrncmpLogic.wp_call_glibc_strncmp registry (os_wi w0) ge _ _ _ _ _ _ _ _ _ _ _ _ _ _ _ (Z.of_nat (eq_len s)) with "Hnws Hws"); [lia | vxc (Z.of_nat (eq_len s)) | exact Hgn | reflexivity |].

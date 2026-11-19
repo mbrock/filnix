@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     The caller supplies the linked function bindings and ownership of the stream list.
     Cleanup supports both streams with pending output and streams that have nothing to flush. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,16 +15,15 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv
-  LibioLogic SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean LibioFlushStart
-  LibioFlushTail LibioFlushBody LibioFlush LibioCleanupFpLock LibioCleanupMode LibioCleanupFpUnlock
-  LibioCleanupStart LibioCleanupLock LibioCleanupPass LibioCleanup SysCleanup SysCleanupPop ExitRunTail.
-From Glibc Require ExitRunTail FileInv LibioCleanup LibioCleanupFpLock LibioCleanupFpUnlock LibioCleanupLock LibioCleanupMode LibioCleanupPass LibioCleanupStart LibioCloseSteps LibioFlush LibioFlushBody LibioFlushStart LibioFlushTail LibioLogic OsWorld SysCleanup SysCleanupPop SysWrappers.
+  LibioLogic SysWrappers LibioCloseSteps LibioFlushStart
+  LibioFlushTail LibioFlushBody
+  LibioCleanup SysCleanup SysCleanupPop ExitRunTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import LibioCleanup LibioCleanupPass LibioCleanupLock LibioCleanupStart LibioCleanupFpUnlock LibioCleanupMode LibioCleanupFpLock LibioFlush LibioFlushBody LibioFlushTail LibioFlushStart LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioCleanup LibioFlushBody LibioFlushTail LibioFlushStart LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

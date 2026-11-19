@@ -7,16 +7,16 @@
     function and [switch_spec]. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps PrintfBufferFileSrc
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioPutsInv PrintfBufferFileSrc
   PrintfBufferStage PrintfBufferDirect CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioPutsInv LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioPutsInv.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

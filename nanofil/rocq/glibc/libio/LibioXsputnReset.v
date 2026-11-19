@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     if (fp->_mode <= 0 && ...)
     ``` *)
 
-From Glibc Require Import GlibcTactics LibioTactics GlibcSymFunc.
+From Glibc Require Import GlibcTactics OsTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,10 +17,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy
+  LibioCloseSteps BufferCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnFlags LibioXsputnSetp OsWorld SysWrappers.
+From Glibc Require LibioDefaultXsputnRoom.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +37,7 @@ Lemma mode_sle m : m = 0 \/ m = 2 ^ 32 - 1 ->
 Proof. intros [-> | ->]; reflexivity. Qed.
 
 
-Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -60,7 +60,7 @@ Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; u
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
 (** Loading the buffer's base preserves ownership of the stream and its buffer. *)
-Ltac ldb H := load "Hl" H "Hbl".
+Local Ltac ldb H := load "Hl" H "Hbl".
 
 (** Resetting the stream stores the buffer's base in all five read and write pointer fields.
     The narrow mode permits execution to continue with the flag test. *)

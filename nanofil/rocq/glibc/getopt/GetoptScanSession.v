@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     reuses the fact, known when the scan started, that the position is
     null or at the end of a string. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,9 +18,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState
   GetoptInitialize GetoptArgv GetoptExchange GetoptReturn.
-From Glibc Require FileInv GetoptArgv GetoptExchange GetoptInitialize GetoptState OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -68,7 +67,7 @@ Proof. cbn. lia. Qed.
 
 
 (** The return module supplies the argument vector, the private object and its rules. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
+Import GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 (** This tactic enters a block that has no phi assignments. *)
 

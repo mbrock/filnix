@@ -10,7 +10,7 @@ From Glibc Require Import GlibcProgram.
     leaves the set null, and the parser then only remembers that the
     word is ambiguous. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,12 +19,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongPfxMark GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenLoop StrlenWord
+  StrcmpLoop StrncmpLoop StrncmpWords StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxMark.
 From Glibc Require CutoffLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -48,7 +47,7 @@ Definition plo_blk184 : block := Eval vm_compute in plo_blk "L184".
 
 
 (** The marking module supplies the set, the option table and the tactics. *)
-Import GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 Section fresh.
 Context `{!gen_heapGS piece pval Σ}.
@@ -70,6 +69,8 @@ Qed.
 End fresh.
 
 Import ProgramAbbreviations.
+From Glibc Require Export AllocCall.
+
 Section alloc_values.
 Context {hlc : has_lc}
   {Σ : gFunctors}
@@ -96,13 +97,6 @@ Definition getopt_cutoff_rule_with (C : iProp Σ) : Prop :=
   ⊢ C -∗ ▷ (C -∗ ∀ x, ⌜0 <= x < 2 ^ 32⌝ -∗ WP (ERun (mkFrame f (put d (WInt x) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
     WP (ERun (mkFrame f e ls None
       (Exec l (Call (CResult d W) (Global (TAtom "__GI___libc_alloca_cutoff")) args :: rest) j)) : gexpr) {{ Φ }}.
-Definition getopt_malloc_rule (M : iProp Σ) : Prop :=
-  forall f e ls l d v rest j n Φ, arg_x ge e (Arg L v) = Some (WInt n) -> 0 <= n < 2 ^ 64 ->
-  ⊢ M -∗ ▷ (∀ p, M -∗ (⌜p = null⌝ ∨ ∃ base, ⌜p = mkPtr base (Obj base) /\ 0 < base /\ base mod 16 = 0 /\
-                 base + req_extent (heap_req 16 n) <= 2 ^ 48⌝ ∗ obj base (heap_req 16 n)) -∗
-       WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-    WP (ERun (mkFrame f e ls None (Exec l (Call (CResult d P) (Global (TAtom "malloc")) [Arg L v] :: rest) j)) : gexpr)
-      {{ Φ }}.
 Definition getopt_memset_rule : Prop :=
   forall f e ls l d args rest j b reg xs cs nz Φ,
   map_option (arg_x ge e) args = Some [WPtr (mkPtr b (Obj b)); WInt 0; WInt nz] -> nz = Z.of_nat (List.length xs) ->
@@ -128,7 +122,7 @@ Proof using Type.
 Qed.
 
 (** A malloc rule for M also holds when the caller carries R beside M. *)
-Lemma getopt_malloc_rule_sep M R : getopt_malloc_rule M -> getopt_malloc_rule (M ∗ R).
+Lemma getopt_malloc_rule_sep M R : getopt_malloc_rule w0 registry ge M -> getopt_malloc_rule w0 registry ge (M ∗ R).
 Proof using Type.
   intros Hmal f e ls l d v rest j n Φ Hx Hn. iIntros "[HM HR] HK".
   iApply (Hmal with "HM"); [exact Hx | exact Hn|]. iNext. iIntros (p) "HM Hp". iApply ("HK" with "[$HM $HR] Hp").
@@ -176,11 +170,11 @@ Qed.
     zero, the capability slots stay owned, and the call returns b. *)
 
 (** This tactic replaces the integer that the name holds by v. *)
-Ltac palloc_int nm v := match goal with |- context [put (TAtom nm) (WInt ?X) _] =>
+Local Ltac palloc_int nm v := match goal with |- context [put (TAtom nm) (WInt ?X) _] =>
   replace X with v by (repeat first [rewrite sx_small; [|lia] | rewrite sx_nonneg; [|lia] | rewrite Z.mod_small; [|lia]]; lia) end.
 
 (** This tactic decides a branch on the address of a pointer that is null or an object's base. *)
-Ltac palloc_brp := iApply wp_branch; [vx | iNext]; close_br.
+Local Ltac palloc_brp := iApply wp_branch; [vx | iNext]; close_br.
 
 (** The parser has found the current entry k ambiguous with the first
     match j, it prints errors, and it has no set yet. It asks whether a

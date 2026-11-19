@@ -22,7 +22,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap StringLogic Logic MemLogic.
 From Glibc Require Import Fix FileInv.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section idle.

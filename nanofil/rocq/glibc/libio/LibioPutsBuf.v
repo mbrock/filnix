@@ -13,7 +13,7 @@ From Glibc Require Import GlibcProgram.
     bytes are [buf_own]'s. LibioPutsNl.v walks the block that uses
     them. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,8 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall LibioPutsMode.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld SysWrappers.
+  WordString LibioPutsInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -33,7 +32,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioPutsInv LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 (** One byte's [bytes] is its [ibyte]. *)
 Lemma bytes_one `{!gen_heapGS piece pval Σ} b o x : bytes b o [x] ⊣⊢ ibyte b o x.

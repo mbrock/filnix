@@ -16,7 +16,10 @@
         "IRBytes",
         "IRFrames",
         "IRNotation",
-        "LayoutTables"
+        "LayoutTables",
+        "ImageChunks",
+        "ImageErase",
+        "ImageEraseMem"
       ],
       "forbid_external_prefixes": [
         "iris."
@@ -170,49 +173,34 @@
     "HelloGetoptTable",
     "HelloImageWConvObjs",
     "HiAtexitModule",
-    "HiAtexitOutputState",
-    "HiAtexitStdout",
     "GetoptInitialize",
     "LibioWConvTranslitRepl",
     "Mbrtowc",
     "StartImageCpu",
-    "StartImageEarly"
+    "StartImageEarly",
+    "FileInv",
+    "GetoptEntry",
+    "LibioLogic",
+    "OsTactics",
+    "StrlenLogic",
+    "GetoptDiag",
+    "GetoptLongDiag",
+    "GetoptLongPfxAlloc",
+    "LibioSetb",
+    "StartGetenv",
+    "SysWrappers",
+    "FxprintfStream",
+    "WPrintfDispatch",
+    "WPrintfFileFlush"
   ],
   "critical_path_targets": [
     "HelloStartNeverPanics"
   ],
   "baseline": {
-    "layer_edges": {
-      ". -> libio": 1,
-      "gen -> hello": 2,
-      "getopt -> hi_atexit": 1,
-      "hello -> hi_atexit": 23,
-      "hi_atexit -> hello": 3,
-      "intl -> getopt": 37,
-      "intl -> hi_atexit": 2,
-      "intl -> libio": 89,
-      "libio -> hello": 12,
-      "libio -> hi_atexit": 14,
-      "libio -> startup": 5,
-      "libio -> stdio": 45,
-      "locale -> getopt": 4,
-      "locale -> hello": 2,
-      "locale -> libio": 22,
-      "locale -> startup": 2,
-      "nptl -> libio": 26,
-      "startup -> hello": 12,
-      "startup -> hi_atexit": 70,
-      "stdio -> hello": 9,
-      "stdio -> hi_atexit": 3,
-      "stdlib -> getopt": 4,
-      "stdlib -> libio": 6,
-      "string -> getopt": 4,
-      "string -> libio": 21,
-      "zsys -> hi_atexit": 1
-    },
-    "functor_apps": 29,
-    "exported_tactics": 327,
-    "duplicate_require_files": 385,
-    "unused_edges": 4366
+    "layer_edges": {},
+    "functor_apps": 0,
+    "exported_tactics": 153,
+    "duplicate_require_files": 0,
+    "unused_edges": 1946
   }
 }

@@ -6,6 +6,7 @@
     shares. This module says which objects the warnings keep between
     calls, and how they borrow the shared ones for one warning. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -13,13 +14,13 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString RdlockLogic TfindEmpty LocalenameLogic
-  DcgettextLocale DcgettextRwlock DcgettextRealV DcigettextRouteV PrintfSpec PrintfStreamInv FxprintfStream
-  GetoptDiag GetoptLongDiag GetenvEntry GetenvStatic StartCtypeInitSpec StartGetenv
-  HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGetoptDiagMsgs HelloGettextLink
-  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString RdlockLogic
+  DcgettextRwlock DcgettextRealV PrintfSpec
+  GetoptDiag GetoptLongDiag StartCtypeInitSpec
+  HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGetoptDiagMsgs
+  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloStartGetopt HelloStartGetoptRules.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section hd.

@@ -5,6 +5,7 @@
     file shows that main can lend them to the call and still keep its
     own contract. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_string_memset_os.
 From Glibc Require Import GlibcProgram GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -14,9 +15,9 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioWIdle PrintfSpec HelloImageModule
   HelloImageLoad HelloImageLayout HelloGlibcDebts HelloGlibcLibsT HelloStartHdGetopt HelloLocaleState
-  HelloWideState HelloImageWFwideObjs HelloImageWReleaseObjs HelloImageWConvObjs HelloImageWideObjs HelloImageWPrintfObjs HiAtexitAlloc LibioWOverflowWrite WPrintfScan WPrintfParse WPrintfInternal WPrintfFileFlush
+  HelloWideState HelloImageWFwideObjs HelloImageWReleaseObjs HelloImageWConvObjs HelloImageWideObjs HelloImageWPrintfObjs AllocCall LibioWOverflowWrite WPrintfScan WPrintfParse WPrintfInternal
   WPrintfWrap WPrintfStreamImage LibioWFwide.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section call.
@@ -87,12 +88,12 @@ Proof using Type*.
   { rewrite /E /wprintf_E. iIntros "((Ho & Hs & Hi & Hl & Ht & He & Hc) & Hp & #Hro)". iSplitL "He"; [iExact "He"|].
     iIntros "He". iSplitR "Hp"; [iFrame "Ho Hs Hi Hl Ht He Hc"|]. iSplitL "Hp"; [iExact "Hp"|iExact "Hro"]. }
   assert (Loan : E ⊢ vtables_ro hge (ho_vb o) (ho_vreg o) ∗ wvtables_ro hge (ho_vb o) ∗
-    hi_malloc_state DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
+    malloc_call_state DfracDiscarded (ho_mp o) (ho_tc o) (ho_dm o) (ho_mpreg o) (ho_tcreg o) (ho_dmreg o) ∗
     errno_any (ho_eb o) ∗ (errno_any (ho_eb o) -∗ E)).
   { iIntros "HE". iAssert (hello_ro hge o) as "#Hro". { rewrite /E /wprintf_E. iDestruct "HE" as "(_ & _ & Hro)". iExact "Hro". }
     iPoseProof (hello_ro_wvtables with "Hro") as "#Hwv". iPoseProof "Hro" as "(Hvt & _ & _ & _ & _ & _ & _ & Hm & _)".
     iDestruct (Herr2 with "HE") as "[He HK]". iSplitR; [iExact "Hvt"|]. iSplitR; [iExact "Hwv"|].
-    iSplitR; [rewrite /hi_malloc_state; iExact "Hm"|]. iSplitL "He"; [iExact "He"|iExact "HK"]. }
+    iSplitR; [rewrite /malloc_call_state; iExact "Hm"|]. iSplitL "He"; [iExact "He"|iExact "HK"]. }
   pose proof (hello_wprintf_xsputn_image w fr E Hlink Herr Hfd1 Loan Hwr) as Hxs.
   destruct (hk_zmemset _ _ Hlink) as [Hzf Hzs].
   assert (Hset : glibc_os_registry (TAtom "zmemset") = Some (void_only (ExternalCalls.memset_contract os_world))) by reflexivity.

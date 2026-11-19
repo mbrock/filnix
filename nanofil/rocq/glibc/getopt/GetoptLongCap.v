@@ -8,15 +8,14 @@ From Glibc Require Import GlibcProgram.
     vector. This file shows that each choice carries such a capability,
     using the strings the caller already shares with the parser. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
-From Glibc Require Import FileInv WordString GetoptState GetoptBytes GetoptArgv GetoptExchange GetoptLongScan
+From Glibc Require Import FileInv WordString ByteRead GetoptArgv GetoptExchange GetoptLongScan
   GetoptLongExact GetoptLongStore GetoptLongJoinMiss.
-From Glibc Require FileInv GetoptExchange GetoptLongJoinMiss GetoptState.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,7 +38,7 @@ Lemma long_cap_ctl_end : nth 2 [mkPtr 64 (Obj 64); mkPtr 96 (Obj 96)] null = nul
   nth 1 [mkPtr 64 (Obj 64); mkPtr 96 (Obj 96)] null = mkPtr 96 (Obj 96).
 Proof. split; reflexivity. Qed.
 
-Import GetoptLongJoinMiss GetoptExchange GetoptState FileInv FileInv.ML FileInv.LG FileInv.L GetoptArgv.
+Import GetoptLongJoinMiss GetoptExchange FileInv Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Section cap.
 Context `{!gen_heapGS piece pval Σ}.

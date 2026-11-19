@@ -13,7 +13,7 @@ From Glibc Require Import GlibcProgram.
     (LibioFcloseLock.v's [wp_fclose_L101]); the whole is
     [wp_glibc__IO_new_fclose_stdout]. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,7 +23,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry
   FileInv LibioLogic SysWrappers LibioCloseSteps LibioCloseItEnd LibioFinish LibioFcloseTail
   LibioFcloseLock.
-From Glibc Require FileInv LibioCloseSteps LibioFcloseLock LibioFcloseTail LibioFinish LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,7 +54,7 @@ Proof.
 Qed.
 
 
-Import LibioFcloseLock LibioFcloseTail LibioFinish SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioFcloseLock LibioFcloseTail LibioFinish SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules_values.

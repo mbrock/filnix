@@ -6,18 +6,18 @@
 
 From Glibc Require Import Unit_io_fstat64_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wfiledoalloc_os.
 From Glibc Require Import Unit_libio_wgenops_os Unit_misc_makedev_os Unit_termios_isatty_nostatus_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv AllocLogic
+From Glibc Require Import OsBlocks OsWorld OsRegistry Fix FileInv LibioLogic LibioCloseSteps LibioPutsInv AllocLogic
   SysWrappers LibioSetb LibioWIdle LibioWXsputnWindow LibioWAllocSetb
   LibioWOverflowDispatch LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowState LibioWOverflowLoan
   LibioWOverflowEntry LibioWOverflowReady LibioWOverflowBackup LibioWOverflowAllocateSteps LibioWOverflowAllocate
   LibioWOverflowAllocated LibioWOverflowAllocFlags CBlocks.
-Import ListNotations ProgramAbbreviations SysWrappers FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).

@@ -10,18 +10,17 @@
 
 From Glibc Require Import Unit_csu_libcZ2dstart_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld OsThread FileInv LibioLogic LibioCloseSteps StartCode StartLogic
+From Glibc Require Import OsBlocks OsWorld OsThread FileInv LibioLogic LibioCloseSteps StartLogic
   StartRawCall StartCallMainSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -32,11 +31,6 @@ Local Arguments Z.mul : simpl nomatch.
     function is private to its source file, so the linker gave it a
     longer name. *)
 Definition start_call_main_fn : func := Unit_csu_libcZ2dstart_os.fn_glibc_libc_start'23__libc_start_call_main.
-
-(** The image defines `c: __libc_start_call_main` with that body. *)
-Lemma start_call_main_defined :
-  find_direct (TAtom "glibc_libc_start#__libc_start_call_main") hi_module = Some (Defined start_call_main_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

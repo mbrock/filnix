@@ -8,7 +8,7 @@ From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
 Section errno.

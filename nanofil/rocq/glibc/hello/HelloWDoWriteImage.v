@@ -11,12 +11,12 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import weakestpre.
 From Stdlib Require Import String List ZArith.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap.
-From Glibc Require Import Fix OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import Fix OsWorld OsBlocks OsRegistry FileInv LibioLogic
   LibioWIdle LibioCleanupExit LibioWCloseIt
   LibioWConvAscii LibioWDoWriteLoop LibioWDoWriteUse LibioWOverflowWrite
   HelloImageModule HelloImageLoad HelloImageLayout HelloGlibcDebts HelloGlibcLibsT HelloStartFacts.
 From Glibc Require HelloWConvImage.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section image.

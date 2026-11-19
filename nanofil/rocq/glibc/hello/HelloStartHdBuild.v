@@ -5,6 +5,7 @@
     three locks start free and the thread's id is positive, so this
     thread holds none of the locks for writing. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,12 +13,12 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
-  HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
+  HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink AllocCall HelloImageModule HelloImageLoad HelloImageLayout
   HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs StartEarlyInitSpec ImageObjectPieces
   AllocRo LibioFputsSpec HelloCloseReportImage.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** A stored 32-bit integer keeps only the low 32 bits of a number. *)
@@ -134,7 +135,7 @@ Proof using Hself Hfd2.
     iSplitL "Llt Plt Lgl".
     { iSplitL "Llt"; [iExact "Llt"|]. iSplitL "Plt"; [iExact "Plt"|]. iSplitL "Lgl"; [iExact "Lgl"|].
       iSplit; [iPoseProof "Ro" as "(_ & _ & _ & _ & _ & _ & _ & _ & $ & _)" | iExact "Cl"]. }
-    iSplitR "He"; [|iExact "He"]. rewrite /hello_gettext_cache /hi_malloc_state.
+    iSplitR "He"; [|iExact "He"]. rewrite /hello_gettext_cache /malloc_call_state.
     iPoseProof "Hro" as "(_ & _ & _ & _ & _ & _ & _ & $ & _)". }
   iSplitL "Hps"; [|iPoseProof "Ro" as "($ & _)"].
   iSplit; [iPoseProof "Hro" as "(_ & $ & _)"|].

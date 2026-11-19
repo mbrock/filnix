@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     The global stdout pointer can change between accesses, so puts reads it each time.
     The proof retains that pointer cell together with the stream's fields throughout the lock operation. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
   WordString StrlenLogic StrlenWord LibioPutsInv.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsThread OsWorld StrlenWord SysWrappers.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec.
 Import ListNotations.
@@ -28,7 +27,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioPutsInv LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -41,7 +40,7 @@ Context (Hreg : holds_os registry)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The thread-cookie call requires an external name and its registry contract. *)
-Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
+Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
                         | apply (ext_data ge Hext); cbn; tauto].
 
 (** The thread-cookie rule returns a nonnull identifier when the caller supplies that guarantee. *)

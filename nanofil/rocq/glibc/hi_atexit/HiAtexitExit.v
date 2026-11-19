@@ -4,6 +4,7 @@
     thread and single-thread flag; it does not identify that state with
     the untouched loader image or prove process startup. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_stdlib_exit_os.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -13,12 +14,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv AtexitLogic ExitRun
-  HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitCloseStdout
+  HiAtexitFns HiAtexitGe HiAtexitCloseStdout
   HiAtexitStdout HiAtexitStdoutClose HiAtexitCleanup HiAtexitExitEnv.
-From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv LibioGenLeaves.
+From Glibc Require ExitRunTail LibioFlushInv LibioGenLeaves.
 Import ListNotations.
 Open Scope Z_scope.
-Import ExitRun ExitRunTail AtexitLogic HLG HLG.L LibioFlushInv FileInv.
+Import ExitRun ExitRunTail AtexitLogic Fix.LG0 Fix.LG0.L LibioFlushInv FileInv.
 
 (** The remaining streams are stderr and stdin, in list order. *)
 Definition hi_exit_streams : list ptr := [mkPtr 71760 (Obj 71760); mkPtr 72000 (Obj 72000)].

@@ -10,21 +10,21 @@ From Glibc Require Import GlibcProgram.
     'C' into the first byte of the buffer. It stops at the terminator of
     the name, before the block that writes the terminator into the buffer
     and reads the flag. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextFree DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks OsMemLogic OsExternals WordString ByteRead.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -36,7 +36,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
     reads byte 0 with its check, the second reads the terminator after an
     advanced pointer, and the last two reuse the byte 0 pieces. *)
 
-Ltac rdchr H q s k :=
+Local Ltac rdchr H q s k :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   iDestruct (ws_byte q s k with H) as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [cbn; lia|];
   destruct Hbb as (Hcap & Hb0' & Hbq & Hbe & Hbr);
@@ -47,7 +47,7 @@ Ltac rdchr H q s k :=
   iNext; iIntros "_ _".
 Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in *;
   first [apply Z.mod_1_r | rewrite ?Z.add_0_r; rewrite Z.mod_small; lia].
-Ltac rdchr1 :=
+Local Ltac rdchr1 :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   iDestruct (ws_byte _ [67] 1 with "Hw") as (bb breg) "(%Hbb & #Hbl1 & #Hbt1)"; [cbn; lia|];
   destruct Hbb as (Hcap1 & Hb01 & Hbq1 & Hbe1 & Hbr1);
@@ -56,10 +56,10 @@ Ltac rdchr1 :=
   iApply (wp_raw_load_sub_bytes_dq with "Hbl1 Hbt1");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap1 | ra |];
   iNext; iIntros "_ _".
-Ltac chkchr :=
+Local Ltac chkchr :=
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hbl");
     [reflexivity | vx | eassumption | arith | arith | arith |]; iNext; iIntros "_".
-Ltac ldchr :=
+Local Ltac ldchr :=
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | eassumption | arith |];
   iNext; iIntros "_ _".
@@ -71,7 +71,7 @@ Ltac ldchr :=
 Definition dci_c_kept (e e' : env) : Prop :=
   Forall (fun x => lookup (TAtom x) e' = lookup (TAtom x) e) ["v254"; "v17"; "chk0"; "v232"; "v69"; "v6"; "v2"; "v32"]%string.
 
-Ltac kept := repeat (first [reflexivity | eapply lookup_put_miss; [vm_compute; reflexivity |]]).
+Local Ltac kept := repeat (first [reflexivity | eapply lookup_put_miss; [vm_compute; reflexivity |]]).
 
 (** ## Copying the name
 

@@ -4,7 +4,7 @@
     terminator even when the count overflows and sets errno. *)
 
 From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,8 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks LibioLogic CStruct PrintfLayout PrintfOut PrintfSpec
   PrintfDone PrintfBufferDone PrintfBufferCount PrintfFlushStage WordString CodePrelude
-  HelloImageModule HelloCloseReportWindow HelloCloseReportFlush.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+  HelloCloseReportWindow HelloCloseReportFlush.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition report_done := Unit_libio_vsnprintf_os.fn___printf_buffer_snprintf_done.

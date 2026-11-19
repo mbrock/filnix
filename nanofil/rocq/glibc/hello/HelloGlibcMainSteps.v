@@ -14,8 +14,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle LeavesLogic ExitRunTail HelloGlibcDebts.
-From Glibc Require HelloGlibcDebts.
+From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle HelloGlibcDebts.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

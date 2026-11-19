@@ -7,7 +7,7 @@
     FILE flushing, registration initialization and startup remain outside
     these contracts. *)
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os Unit_string_strchrnul_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -17,7 +17,7 @@ From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
   Fix WordString MemFwdLogic PrintfStagingCopy FormatterLiteralWrite
   StrchrnulLogic FormatterScan.
 From Glibc Require Import FormatterSuffixScan FormatterSuffixReturn.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Section suffix.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

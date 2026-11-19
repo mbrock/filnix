@@ -11,11 +11,11 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle LibioLogic
   LibioOverflowBase LibioOverflowGen LibioStreamTidy
-  LibioPutsInv LibioFputsSpec PrintfStreamInv PrintfStreamHeap AllocRo AllocLogic HiAtexitSetb
+  LibioPutsInv LibioFputsSpec PrintfStreamInv PrintfStreamHeap AllocRo AllocLogic
   LibioOverflowHeapBuffer LibioOverflowHeapIdle.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Section rules.

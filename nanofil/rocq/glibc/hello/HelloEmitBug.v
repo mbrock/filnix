@@ -23,7 +23,6 @@ From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
   PrintfSpec NarrowFormat NarrowArgs AllocRo HelloVersionLits HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
@@ -100,7 +99,7 @@ Lemma wp_out_load f e ls lab vc chk d rest j Ψ :
 Proof using Hy.
   intros Hv. pose proof (hy_so_at _ _ Hy) as (Hs0 & Hs8 & Hse & Hsr).
   iIntros "(_ & _ & Hl & Hc & _) Hf HK".
-  rule1 "Hl" ltac:(eapply LibioLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule1 "Hl" ltac:(eapply OsMemLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iDestruct "Hf" as "(%fb & %freg & %st & %nb & %Hp & Hfl & Hrest)".
   pose proof Hp as (Hg & Hal & Hfb & Hend & Hreg & _).
   iApply (wp_raw_load_pointer_dq _ _ _ _ _ _ _ _ _ _ _ _ _ _ (ho_so o) (ho_soreg o) 0 (ho_out o) freg

@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     file proves the three ways the W option can end: the rest of the
     word, the next word, or no word at all. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,30 +18,22 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
-  GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession GetoptLongDash GetoptLongCap
-  GetoptShortCap GetoptColon GetoptEntry GetoptEntryScan GetoptScanChoice GetoptCharRet GetoptEntryChar GetoptScanChar GetoptWTail GetoptWOpt GetoptLongW GetoptWOptSession GetoptDashRet.
-From Glibc Require GetoptWOpt GetoptLongW GetoptWOptSession GetoptDashRet GetoptLongDash GetoptLongCap GetoptShortCap GetoptEntryScan GetoptScanChar FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongPfxAlloc GetoptLongSession GetoptLongStore GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptLongSession GetoptLongCap GetoptShortCap GetoptWTail GetoptWOpt GetoptLongW GetoptWOptSession GetoptDashRet.
+Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord StrcmpBits StrncmpLogic GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongJoinMiss GetoptLongSession GetoptLongCap GetoptShortCap GetoptEntry GetoptWTail GetoptWOpt GetoptLongW GetoptWOptSession GetoptDashRet.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptLongCall GetoptLongSession GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore
-  GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongCap GetoptShortCap GetoptExchange GetoptInitialize
-  GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongCap GetoptShortCap GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** A name that the W option keeps has the same value after it. *)
-Ltac wr_lk Hk :=
+Local Ltac wr_lk Hk :=
   lazymatch goal with |- lookup ?k ?e' = _ =>
     rewrite (keeps_in wos_keys k _ e' Hk);
     [|unfold wos_keys; cbn [In]; repeat first [left; reflexivity | right]] end.
 
 (** This tactic proves a pure premise and leaves the proof-mode goal alone. *)
-Ltac wr_side :=
+Local Ltac wr_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | |- avoids _ _ = true => vm_compute; reflexivity
@@ -244,7 +236,7 @@ Qed.
     ':' or '?'. Each of these ways hands its fields to the caller. *)
 
 (** This tactic restates cells between the two copies of their modules. *)
-Ltac wr_conv b r j av ar ps c :=
+Local Ltac wr_conv b r j av ar ps c :=
   iAssert (pcell b 32 c) with "[Hcur]" as "Hcur"; [iExact "Hcur"|];
   iAssert (live b r) with "[Hl]" as "Hl"; [iExact "Hl"|];
   iAssert (int_cell b 0 j) with "[Hib]" as "Hib"; [iExact "Hib"|];

@@ -21,7 +21,6 @@ From Glibc Require Import GlibcProgram.
     record already says where they live. *)
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Semantics.
-From Glibc Require Import HiAtexitModule.
 From Glibc Require Import GettextLinkCode HelloGettextImageCode HelloGettextLink.
 Import ListNotations.
 

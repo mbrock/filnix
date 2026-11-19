@@ -3,7 +3,7 @@
     the exit callback needs next. This file gives those calls their
     [[separation logic]] contracts. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,8 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString FileInv FileIdle SysWrappers AtexitLogic AllocLogic
-  LibioLogic LibioWIdle HelloGlibcProgCells LibioFlushInv HelloGlibcMainAlloc HelloVersionLits PrintfSpec.
-From Glibc Require FileInv LibioLogic.
+  LibioLogic LibioWIdle HelloGlibcProgCells LibioFlushInv HelloVersionLits PrintfSpec.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -105,7 +104,7 @@ End OW.
 Module ST := LibioLogic.
 End SW.
 (** The allocation interface supplies ownership of the idle tcache. *)
-Module AL := HelloGlibcMainAllocOn.
+Module AL := AllocLogic.
 Import FB SW SW.FI.ML SW.FI.LG SW.FI.L SW.OW SW.FI.
 
 Section debts.

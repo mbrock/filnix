@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     option string only up to two bytes past the character, which stay
     inside it, and it writes only the fields of its own state. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,8 +17,7 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptShort GetoptOptArg.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptOptArg GetoptShort GetoptState LibioLogic OsWorld.
+  ByteRead GetoptInitialize GetoptEntry GetoptExchange GetoptCursor GetoptOptArg.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -30,7 +29,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 (** The optional-argument module supplies the argument vector, its tactics and its step. *)
-Import GetoptOptArg GetoptShort GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptOptArg GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 
 Import ProgramAbbreviations.
 Section opt.
@@ -59,7 +58,7 @@ Proof using Type.
 Qed.
 
 (** This tactic half-checks and loads byte k of the option string at po, which lies inside it. *)
-Ltac rdopt po so k :=
+Local Ltac rdopt po so k :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   let Hcap := fresh "Hcap" in
   iDestruct (ws_byte po so k with "Hpo") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|];

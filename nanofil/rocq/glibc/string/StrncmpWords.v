@@ -21,7 +21,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop
   StrncmpBits StrncmpLoop.
-From Glibc Require StrcmpLoop StrncmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

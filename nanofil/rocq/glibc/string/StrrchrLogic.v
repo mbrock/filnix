@@ -17,8 +17,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrlenWord MemchrLast.
-From Glibc Require StrlenWord WordString.
+From Glibc Require Import StrlenLogic WordString StrlenLoop StrlenWord MemchrLast.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.

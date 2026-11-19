@@ -11,7 +11,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic.
 From Glibc Require Import FileInv.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section specs.

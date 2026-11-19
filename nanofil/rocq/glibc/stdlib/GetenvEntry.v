@@ -14,7 +14,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules.
 From Glibc Require Import Unit_stdlib_getenv_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics WordString.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics WordString.
 Import ListNotations LG0 LG0.L ProgramAbbreviations.
 Open Scope Z_scope.
 

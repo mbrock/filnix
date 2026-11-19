@@ -14,7 +14,7 @@
 From Stdlib Require Import String List.
 From Nanofil Require Import Term Syntax Values Memory Run Semantics.
 From Glibc Require Import HelloGettextImageCode HelloGettextLink HelloGettextImage.
-From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageLoad.
+From Glibc Require Import ImageEraseMem HelloImageModule HelloImageLoad.
 Import ListNotations.
 
 (** ## The lookups in the whole image *)

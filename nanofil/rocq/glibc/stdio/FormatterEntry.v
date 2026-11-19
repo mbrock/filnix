@@ -7,16 +7,17 @@
     allocations. Its real call frame therefore has no stack objects to
     invalidate on return. This fact does not permit dropping an arbitrary
     list of stack objects supplied at an internal block. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
-  FormatterLiteral FormatterInitialScan Fix.
-Import LiteralVL ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+From Glibc Require Import OsWorld FileInv LibioLogic
+  FormatterInitialScan Fix.
+Import FixVariadic.VL0 ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 (** Calling the captured function initializes its actual stack-object
     list to empty; the heap allocation instructions preserve that list. *)

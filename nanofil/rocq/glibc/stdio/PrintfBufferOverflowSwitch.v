@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     The caller must own the pointer cells that the switch reads and updates.
     These proofs preserve that ownership. They do not prove that overflow
     returns the required resources. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,13 +17,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferStage PrintfBufferDirect.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferDirect PrintfBufferStage SysWrappers.
+From Glibc Require LibioPutsInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

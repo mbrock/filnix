@@ -13,8 +13,9 @@
     functions are `c: __gconv_transform_internal_ascii` and
     `c: __gconv_transliterate`. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_iconv_gconv_simple_os Unit_iconv_gconv_trans_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,8 +24,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer VariadicLogic.
 From Glibc Require Import CodePrelude CLocaleCells
   CtypeTranslitTables OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle CBlocks Fix.
-Module WConvVL := VariadicLogicOn R LG0.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Module WConvVL := FixVariadic.VL0.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

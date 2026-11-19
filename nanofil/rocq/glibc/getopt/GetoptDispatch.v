@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     options. Each choice stores the private cursor, which points into the
     argument just after its dashes. This file proves the choice safe. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,9 +18,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule ByteRead
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptLongOnly.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCursor GetoptExchange GetoptInitialize GetoptLongOnly GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -43,7 +42,7 @@ Definition long_jump : jump := Eval vm_compute in b_jump (x_blk "L342").
 
 
 (** The long-only module proves the long-only test and both cursor stores. *)
-Import GetoptLongOnly GetoptCursor GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongOnly GetoptCursor GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
@@ -60,7 +59,7 @@ Local Instance dispatch_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_sta
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** This tactic checks and loads byte k, which lies inside the shared string s at q, as a signed byte. *)
-Ltac rdin q s k :=
+Local Ltac rdin q s k :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   let Hcap := fresh "Hcap" in
   iDestruct (ws_byte q s k with "Hws") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|];

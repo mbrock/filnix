@@ -6,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     last steps safe. The parser frees only the set that malloc made, and
     it writes only its own private fields. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,12 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop StrlenWord.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenWord
+  StrcmpLoop StrncmpWords StrncmpLogic
+  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +36,7 @@ Definition atail_names : list name := Eval vm_compute in
 
 
 (** The decision module supplies the set, the option table and the tactics. *)
-Import GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 
 Import ProgramAbbreviations.
 Section tail_values.
@@ -103,17 +102,17 @@ Proof using Type.
     with "[Hib Hoob HK]" as "HL307".
   { iIntros (e1 fr1 (Hk1 & H12' & Hc0'')) "Hl Hcur".
     step. step. check "Hl".
-    load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
+    load_pointer_dq "Hl Hcur Hcapc" by StringTactics.arith.
     iNext. iIntros "Hl Hcur _".
-    load_pointer_dq "Hl Hcur Hcapc" by StrlenLoop.arith.
+    load_pointer_dq "Hl Hcur Hcapc" by StringTactics.arith.
     iNext. iIntros "Hl Hcur _".
     iApply (StrlenWord.wp_call_glibc_strlen registry (os_wi w0) ge with "Hws"); [vx | exact Hgl | reflexivity |].
     iNext. iIntros "_". cbn [fr_fn fr_env fr_locals fr_doomed fr_at]. step. check "Hl".
-    store_pointer "Hl Hcur" by (StrlenLoop.arith) preserving wi_store.
+    store_pointer "Hl Hcur" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hcur". check "Hl". load_s32_using ltac:(arith) "Hl Hib". step. norm. check "Hl".
-    store_word "Hl Hib" by (StrlenLoop.arith) preserving wi_store.
+    store_word "Hl Hib" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hib". step. check "Hl".
-    store_word "Hl Hoob" by (StrlenLoop.arith) preserving wi_store.
+    store_word "Hl Hoob" by (StringTactics.arith) preserving wi_store.
     iNext. iIntros "Hl Hoob".
     rewrite (Z.mod_small (i + 1) (2 ^ 32)); [|lia]. change (0 mod 2 ^ 64) with 0.
     match goal with |- context [pcell b 32 {| ptr_addr := ?X; ptr_cap := ptr_cap cur |}] =>

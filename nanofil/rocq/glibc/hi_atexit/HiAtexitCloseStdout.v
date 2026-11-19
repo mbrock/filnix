@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import HiAtexit_hi_atexit.
 From Glibc Require Import GlibcProgram.
 (** hi_atexit.c registers `c: close_stdout_hi` with `c: atexit`, so
@@ -7,13 +8,13 @@ From Glibc Require Import GlibcProgram.
     close failed while bytes were pending or the close itself failed.
 
     [wp_hi_close_stdout] is its triple in the linked genv [hge], from
-    the state of stdout that HiAtexitFclose.v's [hi_fclose_stdout]
+    the state of stdout that StreamFclose.v's [hi_fclose_stdout]
     takes: a heap buffer holding the pending bytes, the lock free, and
     stdout linked in the list of streams. The function either returns,
     with stdout out of the list, or ends the process in `c: _exit`.
     Either way any postcondition of a return holds. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,11 +23,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry
   FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps
-  HiAtexitModule HiAtexitFns HiAtexitGe HiAtexitBase HiAtexitCloseIt HiAtexitFclose.
-From Glibc Require FileInv LibioCloseSteps LibioFcloseTail LibioLogic LibioRead OsWorld SysWrappers.
+  HiAtexitModule HiAtexitFns HiAtexitGe StreamFclose.
+From Glibc Require LibioFcloseTail LibioRead.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioFcloseTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioFcloseTail SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** hi_atexit.c's `c: close_stdout_hi`, renamed by link.pl. *)
 Definition hi_close_fn : func := HiAtexit_hi_atexit.fn_hi_atexit'23close_stdout_hi.
@@ -95,7 +96,7 @@ Local Ltac name_post :=
   | |- environments.envs_entails _ (wp _ _ (_ ?F) ?Q) =>
       let X := fresh "Post" in set (X := Q); let Y := fresh "Callee" in set (Y := F)
   end.
-(** HiAtexitFclose.v's [hi_fclose_stdout] in [hge]: every premise about
+(** StreamFclose.v's [hi_fclose_stdout] in [hge]: every premise about
     the genv by computation. *)
 Definition hge_fclose_stdout :=
   program_call(hi_fclose_stdout (glibc_program := program_of w0 glibc_os_registry hge) (Σ := Σ) (fun n c H => H) (hi_sys_external _)

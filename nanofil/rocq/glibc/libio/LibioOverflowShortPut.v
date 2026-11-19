@@ -4,7 +4,7 @@
     room for a caller to write straight into the short buffer. *)
 
 From Glibc Require Import Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic
   LibioPutsInv LibioOverflowBase LibioOverflowShortWrite.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

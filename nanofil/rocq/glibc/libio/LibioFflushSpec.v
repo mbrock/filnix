@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle LibioFputsSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** A call of `c: fflush` is described by the four values below. *)

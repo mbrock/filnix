@@ -35,7 +35,7 @@ From Stdlib Require Import String ZArith List Lia.
 From iris.program_logic Require Import language weakestpre.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcProgram Fix OsWorld FileInv LibioLogic LibioPutsInv CStruct PrintfLayout.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

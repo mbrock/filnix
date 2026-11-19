@@ -26,8 +26,9 @@
     pass converts into a sixteen-byte array on the stack. In either
     case it writes the bytes from the chosen buffer to the descriptor. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofwide_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -36,9 +37,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic VariadicLogic.
 From Glibc Require Import CodePrelude Fix OsBlocks OsWorld OsRegistry FileInv FileIdle
   LibioLogic LibioPutsInv LibioCloseSteps LibioWIdle LibioWXsputnWindow
-  LibioWXsputnRoom LibioWOverflowWrite LibioWDoWriteStream LibioWDoWriteTail CBlocks SysWrappers.
-Module WdVL := VariadicLogicOn R LG0.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps WdVL.
+  LibioWOverflowWrite LibioWDoWriteStream LibioWDoWriteTail CBlocks SysWrappers.
+Module WdVL := FixVariadic.VL0.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps WdVL.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

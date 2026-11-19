@@ -14,15 +14,14 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  FileInv FileIdle LibioLogic SysWrappers LibioCloseSteps LibioRead
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld OsRegistry
+  FileInv LibioLogic SysWrappers LibioCloseSteps LibioRead
   LibioWIdle LibioWXsputnWindow LibioWXsputnRoom LibioWOverflowWrite LibioWCloseIt LibioSetb
-  LibioWFwide LibioWFcloseTail
+  LibioWFwide
   LibioWRelease Mbrtowc HelloImageLoad HelloImageWFwideObjs HelloImageWReleaseObjs HelloWClosedStdout
   HelloFcloseWide HelloCloseStreamRetain HelloCloseErrno Fix.
 From Glibc Require LibioFcloseTail.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 

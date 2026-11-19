@@ -1,3 +1,4 @@
+From Glibc Require Import GetoptState.
 From Glibc Require Import GlibcProgram.
 (** Programs call glibc's getopt through global cells: optind holds the
     index of the next argument, opterr says whether to print errors,
@@ -10,7 +11,7 @@ From Glibc Require Import GlibcProgram.
     the public cells. This file proves those copies. The parser's own
     behaviour stays a premise, because its proof is not finished. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -18,9 +19,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry.
-From Glibc Require FileInv GetoptInitialize GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -65,19 +65,19 @@ Proof. split; [left; reflexivity | reflexivity]. Qed.
 
 
 (** The setup module supplies the private fields and the step tactics. *)
-Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic.
+Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
 
 (** This tactic loads a four-byte cell as a signed 32-bit value. *)
-Ltac ld H :=
+Local Ltac ld H :=
   iApply (wp_raw_load_sub_bytes_dq with H);
     [reflexivity | vx | reflexivity | apply load_sw_int; assumption | left; reflexivity | arith |];
   iNext; iIntros H.
 
 (** This tactic stores a 32-bit value into four owned bytes. *)
-Ltac sw H :=
+Local Ltac sw H :=
   iApply (wp_raw_store_w with H); [vx | vx | reflexivity | arith | reflexivity | wi_store |];
   iNext; iIntros H.
 

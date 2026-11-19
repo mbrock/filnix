@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_io_fstat64_os Unit_io_write_os Unit_libio_filedoalloc_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import Unit_misc_makedev_os Unit_string_memcpy_os Unit_string_mempcpy_os Unit_termios_isatty_nostatus_os.
 From Glibc Require Import GlibcProgram.
@@ -6,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     result is a bounded byte count or failure; safety does not require
     the operating system to accept every requested byte. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,13 +16,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers AllocLogic LibioDefaultXsputnBuf LibioXsputnBase
-  LibioWriteDq HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitDoWrite
-  HiAtexitOutputState HiAtexitXsputnRules HiAtexitXsputnOverflow HiAtexitGe HiAtexitFns.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioLogic LibioOverflowBase LibioWriteDq LibioXsputn LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  LibioWriteDq AllocCall
+  StreamOutputState HiAtexitXsputnOverflow HiAtexitGe HiAtexitFns.
+From Glibc Require LibioXsputn.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Definition hi_xsputn_irisGS `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}
@@ -90,16 +90,16 @@ Lemma hi_xsputn fr eb fb freg vb vreg nb wp we dq' b' reg' so c' ys Φ :
   c' = Obj b' \/ c' = Ro b' -> 0 < b' -> b' mod 8 = 0 -> 0 <= so -> b' + so + n <= r_end reg' -> r_end reg' <= 2 ^ 63 ->
   Forall (fun y => 0 <= y < 256) ys ->
   vtables_ro ge vb vreg -∗ live fb freg -∗ pcell fb off_vtable (mkPtr (vb + vt_file) (Ro vb)) -∗
-  wbuf fb nb wp we -∗ xos w0 eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr) fb nb -∗
+  wbuf fb nb wp we -∗ xos w0 eb (fun _ _ => malloc_call_state dq mp tc dummy mpr tcr dr) fb nb -∗
   liveq dq' b' reg' -∗ bytesq dq' b' so ys -∗
-  ▷ xs_post w0 registry ge eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
+  ▷ xs_post w0 registry ge eb (fun _ _ => malloc_call_state dq mp tc dummy mpr tcr dr)
     fb freg vb n dq' b' reg' so ys Φ -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Hcpy Hda Hdab Hdwf Hdxf Hext Hfh Hfo Hfree_fn Hfstat Hfw Hisatty Hmaj Hmalloc2 Hmalloc_fn Hmove Hmove_fn Hmove_sym Hmp Hpcpy Hreg Hsetb Hstat Htc Hwrite Hzf Hzg.
   intros n Hfr Heb Hfb Hal Hend Hregend Hc Hb Hb8 Ho Hbend Hbreg Hys.
   iIntros "#Hvt Hl Hvtp Hwb Hos Hbl Hys HK".
   iApply (LibioXsputn.wp_glibc__IO_new_file_xsputn Hmove Hmove_fn Hmove_sym Hfw
-    ltac:(split; [exact hi_file_write_dq | intros f2 fd H; left; exact (proj1 H)]) fr eb (fun _ _ => hi_malloc_state dq mp tc dummy mpr tcr dr)
+    ltac:(split; [exact hi_file_write_dq | intros f2 fd H; left; exact (proj1 H)]) fr eb (fun _ _ => malloc_call_state dq mp tc dummy mpr tcr dr)
     fb freg vb vreg nb wp we dq' b' reg' so c' ys with "Hvt Hl Hvtp Hwb Hos Hbl Hys HK"); try assumption.
   exact (hi_xsputn_overflow Hreg Hext Hstat Hfh Hzf Hzg
     dq mp tc dummy mpr tcr dr Hmp Htc Hda Hfw eb Heb).

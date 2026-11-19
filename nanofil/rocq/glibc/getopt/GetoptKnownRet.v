@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     known option's blocks and its return block up to the value returned,
     and it does the same for an unknown option. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,11 +17,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptReqNext
-  GetoptShort GetoptOptArg GetoptReqArg GetoptShortOpt GetoptShortRet GetoptShortCap GetoptKnownCap.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptKnownCap
-  GetoptShortCap GetoptShortRet GetoptState OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
+  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptReqTail
+  GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -43,8 +41,7 @@ Proof. split; reflexivity. Qed.
 Lemma known_ret_ctl_high : chr_w 200 = 4294967240.
 Proof. reflexivity. Qed.
 
-Import GetoptShortCap GetoptKnownCap GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize
-  GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section known_ret.

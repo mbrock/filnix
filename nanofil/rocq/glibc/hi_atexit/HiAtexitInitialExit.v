@@ -3,18 +3,19 @@
     They can be owned together with the streams and allocator, without
     assuming that startup has already run. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import AtexitLogic HiAtexitBase HiAtexitGe HiAtexitCloseIt HiAtexitInitial
+From Glibc Require Import AtexitLogic HiAtexitInitial
   HiAtexitInitialAlloc HiAtexitInitialStdout HiAtexitInitialList HiAtexitExitEnv.
 From stdpp Require Import list.
-From Glibc Require AtexitLogic ExitRun.
+From Glibc Require ExitRun.
 Import ListNotations.
 Open Scope Z_scope.
-Import ExitRun AtexitLogic HLG HLG.L.
+Import ExitRun AtexitLogic Fix.LG0 Fix.LG0.L.
 
 (** Each unused handler slot starts with four zero words. The last
     three words also have empty pointer capabilities. *)

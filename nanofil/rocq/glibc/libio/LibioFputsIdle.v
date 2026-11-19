@@ -15,8 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic StringLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle FileTidy LibioLogic
   PrintfStreamInv LibioPutsInv
-  WordString StrlenLogic AllocRo LibioSetb LibioFputsSpec LibioFputs LibioStreamTidy HiAtexitStringBytes.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+  WordString StrlenLogic AllocRo LibioSetb LibioFputsSpec LibioFputs LibioStreamTidy WordStringBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 (** ## A tidy stream at a known mode
@@ -117,7 +117,7 @@ Proof using Type*.
   intros H2 He Hin fr fp p dq s Φ Hfr. assert (Hg := Herrno). rewrite He in Hg. iIntros "Hf Hstr (Herr & #Hro & #Hm) HK".
   iAssert (file_tidy vb (ow_self w0) fp fd flags2 (Some 0)) with "[Hf]" as "Hf".
   { iApply fputs_stream_tidy. iExists _. iExact "Hf". }
-  iDestruct (hi_word_string_bytes with "Hstr") as (b reg so (Hp & Hcap & Hb & Hb8 & Hso & Hbend & Hbreg & Hys))
+  iDestruct (word_string_bytes with "Hstr") as (b reg so (Hp & Hcap & Hb & Hb8 & Hso & Hbend & Hbreg & Hys))
     "(Hbl & Hys & Hback)".
   rewrite Hp in Hfr.
   iApply (wp_xsputn_tidy Hreg Hext Hfree Hfw Hov Hxs_heap fr vb (ow_self w0) fp fd flags2 (Some 0) dq b reg so

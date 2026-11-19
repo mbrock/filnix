@@ -1,4 +1,4 @@
-From Glibc Require Export LiteralWords.
+From Glibc Require Export LiteralWords LiteralLogic.
 From Glibc Require Import GlibcProgram.
 (** Hello passes getopt_long the option string "g:t" and a table of four
     long options. The rule for the call needs read-only ownership of that
@@ -10,60 +10,20 @@ From Glibc Require Import GlibcProgram.
     the option table and the strings. It does not say that startup hands
     those pieces over. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString StrlenLogic GetoptModule GetoptLongExact GetoptLongSite
+From Glibc Require Import FileInv WordString StrlenLogic GetoptLongExact GetoptLongSite
   GetoptLongStr GetoptInitial GetoptInitialize HelloImage_hello.
-From Glibc Require FileInv GetoptLongExact GetoptLongStr GetoptInitial.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-Import FileInv FileInv.ML FileInv.LG.
-
-(** ## Words of a literal
-
-    The loader stores a string literal from a 16-byte boundary and pads it
-    with zeros to whole words. The definitions below compute those words
-    from the bytes, and the lemma after them proves the shape that the
-    string routines need at any 8-byte boundary. *)
-
-(** The words fit in 64 bits, their bytes spell s and a zero, and every
-    character of s is a byte other than zero. *)
-Definition lit_ok (s : list Z) : bool :=
-  (Z.of_nat (List.length (lit_words s)) =? (Z.of_nat (List.length s) + 8) / 8) &&
-  forallb (fun w => (0 <=? w) && (w <? 2 ^ 64)) (lit_words s) &&
-  bool_decide (take (S (List.length s)) (wbytes (lit_words s)) = s ++ [0]) &&
-  forallb (fun c => (0 <? c) && (c <? 256)) s.
-
-(** A literal with checked words has the string shape at any read-only
-    object that starts at an 8-byte boundary and holds its words. *)
-Lemma lit_shape b reg s :
-  0 < b -> b mod 8 = 0 -> b + 8 * Z.of_nat (List.length (lit_words s)) <= r_end reg -> r_end reg <= 2 ^ 48 ->
-  lit_ok s = true -> str_shape (mkPtr b (Ro b)) b reg (lit_words s) s.
-Proof.
-  intros Hb H8 Hfit Hsp Hok. unfold lit_ok in Hok. repeat rewrite andb_true_iff in Hok.
-  destruct Hok as (((Hl & Hw) & Hby) & Hch). apply Z.eqb_eq in Hl.
-  assert (Hst : wstart (mkPtr b (Ro b)) = b) by (unfold wstart; cbn; lia).
-  split; cbn [ptr_addr ptr_cap].
-  - right. reflexivity.
-  - exact Hb.
-  - exact H8.
-  - lia.
-  - rewrite Hst. exact Hfit.
-  - exact Hsp.
-  - rewrite H8 Z.add_0_l. exact Hl.
-  - apply Forall_forall. intros w Hin. apply list_elem_of_In in Hin.
-    rewrite forallb_forall in Hw. specialize (Hw w Hin). lia.
-  - rewrite H8. cbn [Z.to_nat drop]. exact (bool_decide_eq_true_1 _ Hby).
-  - apply Forall_forall. intros c Hin. apply list_elem_of_In in Hin.
-    rewrite forallb_forall in Hch. specialize (Hch c Hin). lia.
-Qed.
+Import FileInv Fix.ML0 Fix.LG0.
 
 (** ## Pieces of an option table
 
@@ -213,16 +173,6 @@ Context `{!gen_heapGS piece pval Σ}.
     The getopt rule shares the table and the strings read-only. The lemmas
     below freeze owned pieces into that form: first a literal, then the
     entries of any table, then Hello's own placement. *)
-
-(** The words of a checked literal make a read-only string. *)
-Lemma lit_own b reg s :
-  0 < b -> b mod 8 = 0 -> b + 8 * Z.of_nat (List.length (lit_words s)) <= r_end reg -> r_end reg <= 2 ^ 48 ->
-  lit_ok s = true -> pts (lit_ps b reg (lit_words s)) ==∗ word_string DfracDiscarded (mkPtr b (Ro b)) s.
-Proof using Type.
-  intros Hb H8 Hfit Hsp Hok. iIntros "H".
-  iDestruct (word_string_literal with "H") as "H"; [exact (lit_shape b reg s Hb H8 Hfit Hsp Hok)|].
-  iMod (word_string_persist with "H") as "#H". by iModIntro.
-Qed.
 
 (** The shared pieces of the entries from offset o on, with the names'
     strings, make the entries of the table. *)

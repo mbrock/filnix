@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     its first byte and writes only the fields of its own state, and the
     report goes through the caller's rule. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -16,9 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
+  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +36,7 @@ Definition req_names : list name := Eval vm_compute in
 
 
 (** The report module supplies the diagnostic rule, the argument vector and its tactics. *)
-Import GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 

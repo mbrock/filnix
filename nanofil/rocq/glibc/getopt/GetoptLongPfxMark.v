@@ -6,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     set, and it proves the marking of one entry safe: the parser writes
     only a byte of the set, and only below the count of entries. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,12 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongDiag GetoptLongExact GetoptLongPfxCmp GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpLoop StrncmpWords StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,7 +38,7 @@ Definition plo_blk172 : block := Eval vm_compute in plo_blk "L172".
 
 
 (** The comparison module supplies the option table, the targets and the tactics. *)
-Import GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 Section set.
 Context `{!gen_heapGS piece pval Σ}.
@@ -86,9 +85,9 @@ Lemma wp_amb_mark f e ls l d a rest j sb sreg xs t Φ :
 Proof using Type.
   intros Ha Ht Hsb Hend Hr. iIntros "Hl Hx HK".
   destruct (lookup_lt_is_Some_2 xs t Ht) as [x Hx].
-  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | apply Z.mod_1_r |].
+  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StringTactics.arith | StringTactics.arith | apply Z.mod_1_r |].
   iNext. iIntros "Hl". rewrite (bytes_at sb xs t x Hx). iDestruct "Hx" as "(Hx0 & Hb & Hx1)".
-  iApply (wp_raw_store_byte with "Hl Hb"); [vx | vx | reflexivity | StrlenLoop.arith | wi_store |].
+  iApply (wp_raw_store_byte with "Hl Hb"); [vx | vx | reflexivity | StringTactics.arith | wi_store |].
   iNext. iIntros "Hl Hb". iApply ("HK" with "Hl"). change (1 mod 256) with 1.
   rewrite (bytes_at sb (<[t := 1]> xs) t 1); [|apply list_lookup_insert_eq; exact Ht].
   rewrite take_insert_ge; [|lia]. rewrite drop_insert_lt; [|lia]. iFrame.

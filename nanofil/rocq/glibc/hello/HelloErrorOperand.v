@@ -11,7 +11,7 @@
     puts it back before the call. *)
 
 From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,12 +20,11 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle LibioLogic LibioCloseSteps
-  WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec LibioFflushSpec FxprintfStream
-  FxprintfNormalCall VfxprintfSelect ErrorCall ErrorEntry
-  ErrorFailure ErrorFallback ErrorText ErrorTail HelloErrorCall HelloCloseErrno HelloVfxprintfIdle
+  WordString NarrowFormat NarrowArgs PrintfSpec AllocRo LibioFputsSpec LibioFflushSpec
+  FxprintfNormalCall ErrorCall ErrorEntry
+  ErrorText ErrorTail HelloErrorCall HelloCloseErrno HelloVfxprintfIdle
   HelloErrorOpen Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
 
 Section operand.

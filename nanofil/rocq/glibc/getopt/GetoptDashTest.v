@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     count, and it compares two terminated strings that the scanner may
     read. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,9 +17,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrcmpBits StrcmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptPermute GetoptExchangeTwo GetoptExchangeThree GetoptIdleThree GetoptDash.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDash GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptIdleThree GetoptInitialize GetoptState LibioLogic OsWorld StrcmpLogic.
+  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptPermute GetoptExchangeTwo GetoptIdleThree GetoptDash.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,7 +35,7 @@ Definition dash_test_names : list name := Eval vm_compute in
 
 
 (** When the argument is "--", the scanner runs the blocks that GetoptDash.v proves. *)
-Import GetoptDash GetoptIdleThree GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptDash GetoptIdleThree GetoptExchangeTwo GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 (** The strcmp module proves glibc's own strcmp. *)
 
 (** This tactic enters a block and evaluates its phi assignments. *)

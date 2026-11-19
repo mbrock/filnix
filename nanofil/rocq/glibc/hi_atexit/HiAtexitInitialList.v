@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram.
 (** The static streams initially link forward, but their backward
     links are null. The stdfiles constructor must build those links
@@ -10,15 +11,14 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioStdfiles HiAtexitBase HiAtexitGe
+From Glibc Require Import OsWorld OsRegistry FileInv LibioStdfiles HiAtexitGe
   HiAtexitInitial HiAtexitInitialAlloc HiAtexitInitialStdout.
 From stdpp Require Import list.
-From Glibc Require FileInv LibioStdfiles.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The constructor uses the same interpreter logic as puts and close. *)
-Import LibioStdfiles FileInv FileInv.ML FileInv.LG FileInv.L.
+Import LibioStdfiles FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 (** The static list runs from stderr through stdout to stdin. *)
 Definition hi_initial_streams : list ptr :=

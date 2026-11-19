@@ -46,7 +46,6 @@
     table entry with the three arguments. The number of constructors is
     fixed by the image, so the calls are unrolled rather than looped. *)
 
-From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run.
 Import ListNotations.

@@ -12,7 +12,7 @@ From Glibc Require Import GlibcProgram.
     about locale translation and formatting. It is not part of the OS
     boundary. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,11 +21,10 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrlenLogic StrlenWord
+  StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongExact GetoptLongScan GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -43,14 +42,10 @@ Definition ldiag_names : list name := Eval vm_compute in
 
 (** The parser translates five messages, the format strings str.138,
     str.139, str.142, str.143 and str.144. *)
-Definition ldiag_msg (ge : genv) (mid : ptr) : Prop :=
-  List.Exists (fun n => lookup (TAtom n) (ge_globals ge) = Some mid)
-    ["glibc_getopt#str.138"; "glibc_getopt#str.139"; "glibc_getopt#str.142"; "glibc_getopt#str.143";
-     "glibc_getopt#str.144"]%string.
-
+From Glibc Require Export GetoptMessages.
 
 (** The exact search module supplies the option table and the tactics. *)
-Import GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 Import ProgramAbbreviations.
 Section ldiag_values.
@@ -144,7 +139,7 @@ Ltac lmsg := unfold ldiag_msg; repeat first [apply List.Exists_cons_hd; eassumpt
 (** This tactic proves a report about the found entry x at pr.7: it reads
     stderr and the program name, translates the message, reads the
     entry's name and writes the report. *)
-Ltac ldiag_entry_block Htc Hn0 :=
+Local Ltac ldiag_entry_block Htc Hn0 :=
   let Hdom := fresh "Hdom" in let Hfp := fresh "Hfp" in let Hlend := fresh "Hlend" in
   let Hgt := fresh "Hgt" in let Hfx := fresh "Hfx" in
   match goal with Hr : (getopt_ldiag_rule w0 registry ge) _ _ _ _ |- _ => destruct Hr as (Hdom & Hfp & Hlend & Hgt & Hfx & _) end;
@@ -155,16 +150,16 @@ Ltac ldiag_entry_block Htc Hn0 :=
   iDestruct (argv_str_cap with "Hws") as (rq) "[#Hcapq %Hq0]";
   step; step;
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Hsl");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
+    [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | StringTactics.arith |];
   iNext; iIntros "_";
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]";
-  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | exact Hfp |];
+  iApply (wp_raw_load_pointer_dq with "Hsl Hsc Hcf"); [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | exact Hfp |];
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"); step; step;
   iApply (Hgt with "HG"); [lmsg | vx |]; iNext; iIntros (q) "HT";
   iApply (wp_check_read_dq registry (os_wi w0) ge with "Ha");
-    [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | StrlenLoop.arith |];
+    [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | StringTactics.arith |];
   iNext; iIntros "Ha"; iDestruct "Hcl" as "[Hc0 Hcl]";
-  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StrlenLoop.arith | StrlenLoop.arith | lia |];
+  iApply (wp_raw_load_pointer_dq with "Ha Hc0 Hcapq"); [reflexivity | vx | left; reflexivity | StringTactics.arith | StringTactics.arith | lia |];
   iNext; iIntros "Ha Hc0 _";
   iApply (wp_half_check_read_dq with "Htl");
     [reflexivity | vx | assumption | exact Htc | al8 | al8 | lia | lia | al8 |];

@@ -1,22 +1,23 @@
 (** The proof that GNU Hello never panics from `c: __libc_start_main`
     joins the startup body to main's proof. That join needs a few plain
     facts about Hello's linked image and the world that startup ends in.
-    [StartWpHiAtexit](../startup/StartWpHiAtexit.v) proves the same
+    [StartWpHiAtexit](../hi_atexit/StartWpHiAtexit.v) proves the same
     facts for hi_atexit. This module proves them for Hello, by
     computation over the image's symbols wherever it can. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic.
-From Glibc Require Import FileInv OsWorld OsRegistry OsStart StartCtors StartLogic StartCallMainSpec
+From Glibc Require Import FileInv OsWorld OsRegistry OsStart StartCtors StartCallMainSpec
   StartLibcStartMain StartLsmImage StartLsmHello ImageObjectPieces StartInitFirstSpec StartJoin
   HelloImageModule HelloImageLoad HelloImageEarly HelloImageLsm HelloImageCtors HelloImageFnLink
   HelloImageLayout HelloGlibcLibsT HelloStartCtors StartPtmallocInitSpec StartCtorChain.
 From Glibc Require AtexitLogic SysWrappers.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The world after startup *)
@@ -149,7 +150,7 @@ Proof.
   do 28 (let a := fresh "F" in pose proof (List.Forall_inv Hfns) as a; apply List.Forall_inv_tail in Hfns;
     cbn [fst snd] in a).
   do 2 (let a := fresh "A" in pose proof (List.Forall_inv Habs) as a; apply List.Forall_inv_tail in Habs).
-  pose proof Habs as Hsys. unfold SysWrappers.sys_externals in Hsys.
+  pose proof Habs as Hsys. unfold OsExternals.sys_externals in Hsys.
   do 8 (let a := fresh "S" in pose proof (List.Forall_inv Hsys) as a; apply List.Forall_inv_tail in Hsys).
   destruct O as (O1 & O2 & O3 & O4 & O5 & O6 & O7 & O8 & O9 & O10 & O11 & O12 & O13 & O14 & O15 & O16).
   constructor; try assumption.

@@ -6,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     that call safe, and it states the condition on the option table
     that makes the fallback safe. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,13 +15,12 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
-  GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongJoinMiss GetoptLongPfxAlloc GetoptLongStore GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpBits StrncmpLogic
+  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
+  GetoptDiag GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptLongJoinMiss GetoptLongCall.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -89,19 +88,19 @@ Qed.
 
 
 (** The call module supplies the rule for a call of the parser. *)
-Import GetoptLongCall GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongCall GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** This tactic evaluates arguments through assignments and drops their wraps to 32 bits. *)
-Ltac site_vx :=
+Local Ltac site_vx :=
   cbn -[put];
   repeat match goal with
     |- context [lookup ?k ?E] =>
       let H := fresh "Hlk" in assert (H : lookup k E = _) by lk_prove; rewrite H; clear H
     end;
-  StrlenLoop.unwrap; reflexivity.
+  StringTactics.unwrap; reflexivity.
 
 (** A call needs facts about its arguments, such as their values and ranges, and this tactic proves them. *)
-Ltac site_side :=
+Local Ltac site_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | _ => first [assumption | lia | vx | site_vx]
@@ -178,7 +177,7 @@ Proof using Type.
   iNext. iIntros (x) "Hres". iExists _. iSplit; [done|]. iNext.
   iDestruct "Hres" as (i' oo' a' c') "(Hl & Hib & Hoob & Hab & Hcur & Ha & Hcl & HG & HF & HM & Hli & %Hp)".
   destruct Hp as (Hi' & Hc' & Ha' & Hxr & Hxf). cbn [fr_fn fr_env fr_locals fr_doomed fr_at].
-  step. iApply wp_branch; [vx | iNext]. StrlenLoop.unwrap.
+  step. iApply wp_branch; [vx | iNext]. StringTactics.unwrap.
   destruct (Z.eqb_spec x 4294967295) as [Ex | Ex]; cbn [negb];
     lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
       let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].

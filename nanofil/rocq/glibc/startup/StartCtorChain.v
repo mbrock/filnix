@@ -16,15 +16,16 @@
     `c: _IO_stdfiles_init` before and after that call. So it borrows them
     while it runs and gives them back. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic MemLogic.
-From Glibc Require Import FileInv LibioStdfiles LibioCloseSteps StartCode StartCtorRunnerSpec StartCtorRunner
+From Glibc Require Import FileInv LibioStdfiles LibioCloseSteps StartCode StartCtorRunnerSpec
   StartStdfilesInitSpec StartCtorVtablesSpec StartInitMiscSpec StartInitFirstSpec StartInitFirst StartCtorCalls.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioCloseSteps.
 Open Scope Z_scope.
 
 (** Whether a constructor has run is decidable, because names have

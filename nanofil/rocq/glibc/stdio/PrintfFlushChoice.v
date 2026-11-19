@@ -3,7 +3,7 @@
     not, the stream takes back all its fields and printf uses its own
     staging array. Both initialization and flushing make this choice. *)
 
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine 
   Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileTidy LibioFputsSpec AllocRo CStruct LiveApart
   PrintfLayout PrintfOut PrintfSpec PrintfFileOut.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv.
 Open Scope Z_scope.
 
 Section choice.

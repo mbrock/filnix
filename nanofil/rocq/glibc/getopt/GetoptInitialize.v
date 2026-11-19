@@ -15,7 +15,7 @@ From Glibc Require Import GlibcProgram.
     preserves the caller's own resource. Every path then joins at the
     block that checks for a leading colon. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,9 +23,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead.
 From Glibc Require Export GetenvCall.
-From Glibc Require FileInv GetoptBytes GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -86,7 +85,7 @@ Definition getopt_blk_init : block := Eval vm_compute in
 (** Byte access supplies shared string reads. *)
 (** The step tactics evaluate symbolic instructions. *)
 (** The OS interpretation survives safepoints. *)
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
+Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 
 Import ProgramAbbreviations.
 Section initialize_values.
@@ -139,7 +138,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 
 (** This tactic loads a field whose value is a local definition. *)
-Ltac load_int' H x :=
+Local Ltac load_int' H x :=
   iApply (wp_raw_load_sub_bytes_dq with H);
     [reflexivity | vx | reflexivity | apply load_sw_int; subst x; lia | left; reflexivity | arith |];
   iNext; iIntros H.

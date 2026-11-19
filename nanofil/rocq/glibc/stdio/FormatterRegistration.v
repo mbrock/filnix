@@ -2,14 +2,14 @@
     tables are null. These checks read genuine linked global cells;
     importing their names does not establish their values or ownership. *)
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioCloseSteps LibioLogic Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioCloseSteps LibioLogic.
+From Glibc Require Import OsWorld FileInv LibioLogic Fix.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 
 (** The checks leave all earlier registers available. This environment

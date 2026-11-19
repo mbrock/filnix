@@ -7,7 +7,7 @@
     is safe. The global cells of stdout and the callback may be shared,
     and a null callback needs no contract for the function it would call. *)
 From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
   SysWrappers CancelState Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps
   OsWorld SysWrappers.
 Open Scope Z_scope.
 

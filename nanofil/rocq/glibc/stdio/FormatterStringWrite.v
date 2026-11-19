@@ -7,7 +7,7 @@
     preserves one lifetime for the header and staging allocation; it
     does not cover empty strings, flushing, or the next format suffix. *)
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_write_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os Unit_string_memcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -15,8 +15,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
   Fix WordString MemFwdLogic
-  PrintfStagingCopy PrintfBufferWriteWindow FormatterLiteralWrite.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+  PrintfStagingCopy FormatterLiteralWrite.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 (** The width calculation leaves these temporary values for the next
     format iteration. The subtraction keeps its machine-word encoding. *)

@@ -5,7 +5,7 @@
     print, even if the formatter returned a negative count. *)
 
 From Glibc Require Import Unit_libio_vsnprintf_os Unit_stdioZ2dcommon_printf_buffer_done_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ From Glibc Require Import IRFrames.
 From Glibc Require Import Fix FileInv OsWorld OsBlocks OsRegistry LibioLogic WordString NarrowFormat NarrowArgs
   FxprintfStream PrintfLayout PrintfOut PrintfSpec PrintfWrap CodePrelude StartImageEarly HelloImageLoad HelloImageModule
   HelloCloseReportStrerror HelloCloseReportFormat HelloCloseReportFlush HelloCloseReportInit HelloCloseReportDone.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition report_vsnprintf := Unit_libio_vsnprintf_os.fn___vsnprintf_internal.

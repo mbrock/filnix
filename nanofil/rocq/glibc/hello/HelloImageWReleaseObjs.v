@@ -4,8 +4,8 @@
 
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
-From Glibc Require Import ImageObjectPieces StartImageUnique HelloImageModule HelloImageLoad
-  HelloImageEraseMem HelloImagePieces HelloImageWFwideObjs.
+From Glibc Require Import ImageObjectPieces HelloImageModule HelloImageLoad
+  ImageEraseMem ImagePieces HelloImageWFwideObjs.
 Open Scope Z_scope.
 
 (** The pointer at offset 64 of each step has zero address bytes and

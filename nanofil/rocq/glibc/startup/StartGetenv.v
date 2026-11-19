@@ -20,17 +20,13 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
-From Glibc Require Import FileInv WordString StartState StartOwn StartJoin GetenvScan GetenvEntry GetenvStatic.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Import FileInv WordString StartState StartOwn StartJoin GetenvScan GetenvEntry.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** Every call of `c: getenv` needs two facts about the image. The two
     globals exist, and each one fits in its region. *)
-Definition getenv_image_ok (ge : genv) (bc : Z) (rc : region) (be : Z) (re : region) : Prop :=
-  lookup (TAtom "__environ_counter") (ge_globals ge) = Some (mkPtr bc (Obj bc)) /\
-  lookup (TAtom "__environ") (ge_globals ge) = Some (mkPtr be (Obj be)) /\
-  0 < bc /\ bc + 8 <= r_end rc /\ r_end rc <= 2 ^ 48 /\
-  0 < be /\ be + 8 <= r_end re /\ r_end re <= 2 ^ 48 /\ be mod 8 = 0.
+From Glibc Require Export GetenvStatic.
 
 (** A lookup in a list finds what [nth_error] finds. *)
 Lemma lookup_nth_error_eq {A} (l : list A) k x : l !! k = Some x -> nth_error l k = Some x.

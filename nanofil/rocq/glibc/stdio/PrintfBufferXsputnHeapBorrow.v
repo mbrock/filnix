@@ -6,13 +6,13 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic PrintfBufferXsputnHeapSwitch.
-From Glibc Require FileInv OsWorld PrintfStreamHeap.
+From Glibc Require Import OsWorld FileInv LibioLogic.
+From Glibc Require PrintfStreamHeap.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 
 
-Import PrintfStreamHeap FileInv FileInv.ML FileInv.LG FileInv.L OsWorld.
+Import PrintfStreamHeap FileInv Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld.
 
 Section rules.
 Context `{!gen_heapGS piece pval Σ}.

@@ -1,3 +1,4 @@
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_intl_dcigettext_os.
 From Glibc Require Import GlibcProgram.
 (** The C-locale rule in DcigettextC.v depends on the test that sends a
@@ -6,19 +7,18 @@ From Glibc Require Import GlibcProgram.
     the first byte of the copied locale name is not 'C', the lookup goes
     on to compare the name with "POSIX" instead of returning. That path
     and the catalog search after it are outside the proved C route. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic GetoptBytes.
-From Glibc Require Import DcigettextPreRules.
+From Glibc Require Import OsWorld OsMemLogic ByteRead.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic DcigettextPreRules.DciVL.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic FixVariadic.VL0.
 
 Import ProgramAbbreviations.
 Section rules.

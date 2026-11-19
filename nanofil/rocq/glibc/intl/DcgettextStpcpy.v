@@ -21,21 +21,21 @@ From Glibc Require Import GlibcProgram.
     caller must say how they behave. It describes the rwlock operations,
     the locale query, the cache search and malloc, and it still states that the program runs in the C locale
     with an empty binding list and the privilege flag clear. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString.
-From Glibc Require Import LibioDefaultXsputnCopy StpcpyBytes StpcpyLogic.
-From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
+From Glibc Require Import OsWorld OsBlocks OsRegistry OsMemLogic StrlenLogic WordString.
+From Glibc Require Import BufferCopy StpcpyBytes StpcpyLogic.
+From Glibc Require Import GetoptMessages.
 From Glibc Require Import DcigettextCopy DcigettextRoute DcgettextC.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 (** A copy of valid bytes into a buffer of valid bytes leaves valid
     bytes. *)

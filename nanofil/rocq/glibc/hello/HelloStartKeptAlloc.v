@@ -18,10 +18,10 @@ From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv HelloGlibcDebts StartImageUnique HelloImageErase HelloImageEraseMem
-  HelloImagePieces HelloImageModule HelloImageLoad HelloImageCtors HelloImageLayout.
+From Glibc Require Import FileInv HelloGlibcDebts StartImageUnique ImageErase ImageEraseMem
+  ImagePieces HelloImageModule HelloImageLoad HelloImageCtors HelloImageLayout.
 From Glibc Require AllocLogic AtexitLogic ExitRun.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The pieces *)

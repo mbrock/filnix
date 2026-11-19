@@ -14,17 +14,16 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
-  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
+From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioLogic
+  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainDispatch
   HelloGlibcMainVersion HelloGlibcMainHelpEnd.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
 (** The help-ending module supplies the final output and exit steps. *)
-Import HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainDispatch HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section help.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.

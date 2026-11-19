@@ -17,23 +17,23 @@ From Glibc Require Import GlibcProgram.
     stpcpy. This proof reuses the proof of mempcpy, and it lets the
     caller say how stpcpy and malloc behave. Another module proves that
     behaviour of stpcpy from glibc's code. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic LibioSetb WordString StrlenLogic StrlenWord.
-From Glibc Require Import MemFwdLogic LibioDefaultXsputnCopy.
-From Glibc Require Import GetoptLongPfxAlloc DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
+From Glibc Require Import OsWorld OsBlocks OsRegistry OsMemLogic OsExternals WordString StrlenLogic StrlenWord.
+From Glibc Require Import MemFwdLogic BufferCopy.
+From Glibc Require Import AllocCall DcigettextFree DcigettextExit DcigettextPreRules DcigettextFail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -88,7 +88,7 @@ Proof using Type. intros H f e ls l d args rest j a b reg xs cs dq q s Φ Ha H1 
 
 (** This tactic proves the argument list of the mempcpy call, whose
     length argument is reduced modulo 2^64. *)
-Ltac vx_len n :=
+Local Ltac vx_len n :=
   cbn -[put]; repeat match goal with |- context [lookup ?k ?E] =>
     let L := fresh "Hlk" in assert (L : lookup k E = _) by lk_prove; rewrite L; clear L end;
   cbn -[put]; rewrite (Z.mod_small n (2 ^ 64)); [reflexivity | lia].

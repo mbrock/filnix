@@ -2,7 +2,7 @@
     owns many bytes of the program's initial memory, and it gets them
     from several lists. So it must know that no byte, and no object,
     is in two of the lists. This module checks that for Hello, as
-    [StartImageDisjoint](../startup/StartImageDisjoint.v) does for
+    [StartImageDisjoint](../hi_atexit/StartImageDisjoint.v) does for
     hi_atexit.
 
     Before `c: main` runs, glibc reads the processor's features, sets

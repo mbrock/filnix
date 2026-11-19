@@ -20,7 +20,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
   MemchrLast MemrchrBits.
-From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -80,7 +79,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
     using tactic `tac`. *)
-Ltac norm name v tac :=
+Local Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
 (** To keep intermediate integers readable, [normt] rewrites the
     integer in the newest temporary to `v` using tactic `tac`. *)
@@ -95,7 +94,7 @@ Ltac normp name v :=
     `__memrchr` computes its exact match mask and runs the 25-step
     leading-zero count to recover j. Tactic [idx_steps] steps through
     that sequence and reduces the resulting index to j. *)
-Ltac idx_steps w c j Hj Hcj Hlj :=
+Local Ltac idx_steps w c j Hj Hcj Hlj :=
   step_symbolic; step_symbolic; step_symbolic; step_symbolic; step_symbolic; normt (first_mask (Z.lxor w (rep c))) ltac:(reflexivity); step_symbolic; branch_symbolic;
   let Hmr := fresh in let Hh := fresh in let Hm0 := fresh in
   pose proof (marks_range w c) as Hmr; pose proof (head_marks w c j Hj Hcj Hlj) as Hh;

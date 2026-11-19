@@ -13,7 +13,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import GetoptModule GetoptState.
 From stdpp Require Import list.
-From Glibc Require FileInv GetoptState.
+From Glibc Require FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -126,7 +126,7 @@ Lemma getopt_flag_agrees : all_agree getopt_memory
 Proof. apply checked_pieces_all_agree. vm_compute. reflexivity. Qed.
 
 (** The session module supplies the private-field representation. *)
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section resources.
 Context `{!gen_heapGS piece pval Σ}.

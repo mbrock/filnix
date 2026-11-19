@@ -17,15 +17,14 @@ From Glibc Require Import GlibcProgram.
     compare-and-swap expects the word that the first one read, which
     lacks the held bit, so it fails once, rereads the word and succeeds
     on the retry. The proof steps through both attempts. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers RdlockLogic.
-From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry OsMemLogic OsExternals RdlockLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -35,7 +34,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import OsExternals Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -43,7 +42,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context (Hreg : holds_os registry) (Hext : sys_external ge).
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
-Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
+Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
   | apply (ext_fn ge Hext); cbn; tauto | apply (ext_data ge Hext); cbn; tauto].
 
 (** On the word 0 the call starts a write phase. Its compare-and-swap

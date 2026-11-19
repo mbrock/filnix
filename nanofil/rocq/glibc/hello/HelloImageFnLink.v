@@ -16,7 +16,7 @@ From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_stri
 From Glibc Require Import SysWrappers StrlenLogic
   AllocLogic LeavesLogic AtexitLogic
   HelloGlibcLibsT.
-From Glibc Require Import HelloImageEraseMem HelloImageModule HelloImageGettextLink HelloImageLoad.
+From Glibc Require Import ImageEraseMem HelloImageModule HelloImageLoad.
 Import ListNotations.
 
 (** ## Hello's entry *)

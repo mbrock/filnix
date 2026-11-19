@@ -29,7 +29,7 @@ From Glibc Require Import GlibcProgram.
     The source may be shared read-only memory, such as a string literal.
     Every write therefore returns the caller's [[separation-logic|ownership share]] of that memory. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -37,9 +37,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
+  LibioCloseSteps BufferCopy LibioDefaultXsputnBuf
   LibioDefaultXsputnTail LibioDefaultXsputn.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec LibioStreamSpecs.
 Import ListNotations.
@@ -88,7 +87,7 @@ Class XsFlags : Type := {
   xs_fixed : Z -> Z -> Prop
 }.
 
-Import LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioDefaultXsputn LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Section defs.
 Context `{!gen_heapGS piece pval Σ}.

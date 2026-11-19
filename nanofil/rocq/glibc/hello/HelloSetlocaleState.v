@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv StrlenLogic WordString HelloImageLoad
   StartCtypeInitSpec StartEarlyInitSpec HelloImageEarly StartImageEarly HelloGetoptTable HelloImageLocaleObjs
   HelloImageModule HelloImageCLocaleObjs HelloGettextLocaleConst HelloStartGetopt HelloLocaleState HelloSetlocalePostload HelloSetlocaleAll.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section window.

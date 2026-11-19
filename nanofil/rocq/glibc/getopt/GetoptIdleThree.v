@@ -5,7 +5,7 @@ From Glibc Require Import GlibcProgram.
     safe, including the blocks that load the endpoints before the outer
     loop and update them after it. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,10 +14,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptSwap3Lower GetoptSwap3Upper GetoptExchangeThree.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeThree GetoptExchangeTwo GetoptInitialize GetoptState LibioLogic OsWorld.
+  GetoptExchangeTwo GetoptExchangeThree.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -35,7 +34,7 @@ Definition x3_edges : list name := Eval vm_compute in
 
 
 (** This module proves the second exchange's outer loop. *)
-Import GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchangeThree GetoptExchangeTwo GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 

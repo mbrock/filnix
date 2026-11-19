@@ -21,8 +21,9 @@
     the formatter accepts. After the call it shows that the stream is
     unlocked as before. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,11 +31,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle LibioLogic LibioCloseSteps LibioFputsSpec WordString
-  FxprintfStream FileTidy NarrowFormat NarrowArgs PrintfSpec.
-Module WrapVL := VariadicLogicOn R LG0.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic
-  LibioCloseSteps WrapVL.
+From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps LibioFputsSpec WordString
+  FxprintfStream FileTidy PrintfSpec.
+Module WrapVL := FixVariadic.VL0.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps WrapVL.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.
@@ -81,7 +81,7 @@ Qed.
 (** The tactic [cursor_alloc] cb runs the allocation of the cursor
     object. It names the object cb and leaves the object's lifetime in
     Hcl and its first cell, which holds null, in Hcc. *)
-Ltac cursor_alloc cb :=
+Local Ltac cursor_alloc cb :=
   iApply wp_alloc; [vm_compute; reflexivity | vm_compute; congruence | vm_compute; congruence |
     intros ? ? ? ? Hf Hw; exact (os_wi_alloc w0 _ _ _ _ _ Hf Hw) |];
   let H := fresh "Hc" in

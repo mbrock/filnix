@@ -4,16 +4,16 @@
     twenty characters always targets a heap allocation. *)
 
 From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps LibioWIdle
-  LibioDefaultXsputnBuf LibioDefaultXsputnCopy CBlocks WPrintfDispatch WPrintfFileFlush
+From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic LibioWIdle
+  LibioDefaultXsputnBuf BufferCopy CBlocks WideBytes WideWriteSpec
   LibioWXsputnWindow LibioWXsputnWords LibioWXsputnCopy.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Abbreviation size cs := (Z.of_nat (length cs)).
 Local Abbreviation okbyte := (fun x : Z => 0 <= x < 256).

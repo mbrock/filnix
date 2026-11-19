@@ -18,7 +18,6 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry  FileInv LibioLogic .
-From Glibc Require FileInv LibioLogic OsWorld .
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -62,62 +61,9 @@ Local Arguments Z.opp : simpl nomatch.
 
 
 
-Import  FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import  Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
-Section rules.
-Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
-
-(** Expressions of the language. *)
-Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** Every live object lies in the address space from 0 to 2^48
-    (Runtime.v's [objects_fit]): owning its life at any share shows
-    it, before a step. *)
-Lemma wp_live_fit dq b reg fr Φ :
-  liveq dq b reg -∗
-  (⌜0 <= b /\ r_end reg <= 2 ^ 48⌝ -∗ liveq dq b reg -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
-  WP (ERun fr : sexpr) {{ Φ }}.
-Proof using Type.
-  iIntros "Hl HK". rewrite !wp_unfold /wp_pre /=. iIntros (σ ns κs nt) "Hσ".
-  iDestruct (ptsq_facts with "Hσ Hl") as %(Hag & _ & Hfit).
-  cbn [all_agree agree_piece fst snd] in Hag. destruct Hag as [[Hreg _] _].
-  destruct (Hfit b reg Hreg) as [H0 H48].
-  iSpecialize ("HK" with "[%] Hl"); [lia|]. iApply ("HK" $! σ ns κs nt with "Hσ").
-Qed.
-
-(** [wp_live_fit] for a whole life token. *)
-Lemma wp_live_fit1 b reg fr Φ :
-  live b reg -∗
-  (⌜0 <= b /\ r_end reg <= 2 ^ 48⌝ -∗ live b reg -∗ WP (ERun fr : sexpr) {{ Φ }}) -∗
-  WP (ERun fr : sexpr) {{ Φ }}.
-Proof using Type.
-  iIntros "Hl HK". rewrite /live pts_ptsq. iApply (wp_live_fit with "Hl").
-  iIntros (H) "Hl". rewrite -pts_ptsq. iApply ("HK" with "[//] Hl").
-Qed.
-
-(** [wp_raw_load_pointer] of a null pointer, whose capability needs
-    no life. *)
-Lemma wp_raw_load_null f e ls l d off args rest j classes p b reg o Φ :
-  op_arg_classes (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) P = Some classes ->
-  map2_option (value_x ge e) classes args = Some [WPtr p] ->
-  ptr_cap p = Obj b -> raw_address (ptr_addr p) off = b + o -> (b + o) mod 8 = 0 ->
-  live b reg -∗ pcell b o null -∗
-  ▷ (live b reg -∗ pcell b o null -∗
-     WP (ERun (mkFrame f (put d (WPtr null) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame f e ls None
-       (Exec l (Let d P (RawLoadPointer off [AuxRead; LowerResolve; AddressRead]) args :: rest) j))
-       : sexpr) {{ Φ }}.
-Proof using Type.
-  iIntros (Hc Hx Hp Ha Hal) "Hl Hc HK".
-  iApply (wp_raw_load_pointer with "Hl Hc [//]");
-    [exact Hc | exact Hx | exact Hp | exact Ha | exact Hal | cbn; lia |].
-  iNext. iIntros "Hl Hc _". iApply ("HK" with "Hl Hc").
-  Unshelve. exact reg.
-Qed.
-
-End rules.
-
 Section streams.
 Context `{!gen_heapGS piece pval Σ}.
 
@@ -209,7 +155,7 @@ End streams.
 
 
 (** The normal form of x by the virtual machine. *)
-Ltac vm_of x := eval vm_compute in x.
+Local Ltac vm_of x := eval vm_compute in x.
 
 (** A branch on a closed condition, computed. *)
 

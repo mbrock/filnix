@@ -6,16 +6,16 @@
     stream. Inline selection keeps the stream intact and borrows two shares
     of the wrapper's single lifetime instead. *)
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic
   PrintfStreamHeap PrintfBufferXsputnSwitch LibioPutsInv Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 Section selected.
 Context `{!gen_heapGS piece pval Σ}.
@@ -47,10 +47,10 @@ Proof using Type.
   intros Hb He Hr. iIntros "[[%Hp HF]|(%db & %dr & %bo & %dq & %Hp & Hd & HK)]".
   - subst p. iExists bb, br, 48, (DfracOwn (1/2)%Qp), (DfracOwn (1/2)%Qp).
     iSplit; [iPureIntro; repeat split; try reflexivity; lia|].
-    iIntros "Hb". iDestruct (LibioPutsInv.live_halves with "Hb") as "[Hb1 Hb2]".
+    iIntros "Hb". iDestruct (OsMemLogic.live_halves with "Hb") as "[Hb1 Hb2]".
     iFrame "Hb1 Hb2".
     iIntros "Hb1 Hb2". iSplitL "Hb1 Hb2".
-    { iApply LibioPutsInv.live_halves. iFrame. }
+    { iApply OsMemLogic.live_halves. iFrame. }
     iLeft. iFrame. done.
   - iExists db, dr, bo, (DfracOwn 1%Qp), dq. iSplit; [done|].
     iIntros "Hb". iFrame "Hb Hd". iIntros "Hb Hd". iFrame "Hb".

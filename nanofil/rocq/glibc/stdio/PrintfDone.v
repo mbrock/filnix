@@ -13,7 +13,7 @@
     of the buffer's invariant afterwards. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,7 +23,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers MemchrLast DcigettextExit
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfCountBits
   PrintfBufferDone PrintfBufferCount PrintfBufferFileSrc PrintfBufferFileNames PrintfFlush.
-Import ListNotations ProgramAbbreviations SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
 From Glibc Require Import Fix FileInv OsWorld OsRegistry LibioLogic WordString PrintfOut PrintfSpec
   HelloImageLoad HelloImageModule StartImageEarly HelloGetoptTable HelloGetoptDiagImage HelloGetoptDiagTcb
   HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale HelloCloseReportStrerror HelloCloseReportSnprintf.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Section text.

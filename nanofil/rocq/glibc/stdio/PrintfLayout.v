@@ -2,7 +2,7 @@
     and a buffer that feeds a stream is a
     `c: struct __printf_buffer_to_file`. This module names the two
     structures for the proofs. Each predicate is the general one of
-    [CStruct](../CStruct.v) applied to the layout table that the code
+    [CStruct](../tactics/CStruct.v) applied to the layout table that the code
     generator wrote for this fixture, so no proof here writes a field
     offset. *)
 
@@ -12,7 +12,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Pieces Heap.
 From Glibc Require Import Fix FileInv CStruct PrintfBufferFileLayout.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope string_scope.
 Open Scope Z_scope.
 

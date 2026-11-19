@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** The newline in puts calls an overflow wrapper when stdout has
@@ -5,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     overflow function. This file connects both calls to the linked
     program's proofs while retaining the stream and allocator state. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,15 +15,13 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioOverflowGen LibioXsputnBase LibioDefaultXsputnBuf AllocLogic
-  HiAtexitBase HiAtexitGe HiAtexitFns HiAtexitSetb HiAtexitAlloc HiAtexitXsputnOverflow
-  HiAtexitOutputState HiAtexitStdout HiAtexitOverflowRules.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioLogic LibioOverflowGen LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  HiAtexitGe HiAtexitFns AllocCall HiAtexitXsputnOverflow
+  StreamOutputState HiAtexitStdout.
+From Glibc Require LibioPutsInv.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import LibioPutsLock.
-Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 Local Opaque HiAtexitFns.hi_ge.
 (** The read-only vtables can be shared freely, and the proof below
@@ -57,9 +56,9 @@ Lemma hi_puts_overflow s fr fp eb vb vreg Φ :
   call_frame Unit_libio_genops_os.fn___GI___overflow [WPtr fp; WInt 10] = Some fr ->
   ow_errno w0 = Some (mkPtr eb (Obj eb)) ->
   vtables_ro hge vb vreg -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
-  hi_malloc_state dq mp tc dummy mpr tcr dr -∗
+  malloc_call_state dq mp tc dummy mpr tcr dr -∗
   ▷ (∀ r, ⌜r = 10 \/ r = 2 ^ 32 - 1⌝ -∗ hi_stdout_after w0 eb vb s fp (Some 0) -∗
-     hi_malloc_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
+     malloc_call_state dq mp tc dummy mpr tcr dr -∗ Φ (Ret (WInt r))) -∗
   WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Hmp Htc.
   intros Hfr Heb. iIntros "#Hvt Hf HM HK".

@@ -11,7 +11,7 @@
     strings of [LibioWConvTranslitRepl], and a search without a match
     leads to the default replacement of [LibioWConvTranslitFallback]. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,7 +22,7 @@ From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables
   OsWorld FileInv LibioLogic LibioDefaultXsputnBuf LibioWIdle CBlocks Fix LibioWConvAscii
   LibioWConvConsts LibioWConvTranslitCmp LibioWConvTranslitSearch LibioWConvTranslitFallback
   LibioWConvTranslitRepl LibioWConvLast.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

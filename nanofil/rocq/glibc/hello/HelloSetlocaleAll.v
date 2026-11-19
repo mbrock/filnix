@@ -15,22 +15,23 @@
     proof follows the code in that order, one category at a time, and
     its last lemma joins the parts into the whole call. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import ImageObjectPieces Unit_locale_findlocale_os Unit_locale_setlocale_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_stdlib_getenv_os.
 From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic StringLogic VariadicLogic.
-From Glibc Require Import HelloImageModule HelloImageLoad HelloImageEarly OsWorld OsRegistry FileInv LibioLogic WordString
-  GetoptBytes GetenvEntry RdlockLogic RwlockIdle StrcmpLogic StrchrnulLogic StrlenWord GetenvScan GetenvStatic GetenvCall
+From Glibc Require Import HelloImageModule HelloImageLoad OsWorld OsRegistry FileInv LibioLogic WordString
+  ByteRead GetenvEntry RdlockLogic RwlockIdle StrcmpLogic StrchrnulLogic StrlenWord GetenvScan GetenvStatic GetenvCall
   StartGetenv LocaleEnv FindlocaleEnv FindlocaleC
-  StartCtypeInitSpec StartEarlyInitSpec HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt
-  HelloSetlocalePostload HelloLocaleState HelloStartHdBuild StrlenLogic AllocLogic LibioCloseSteps StartPtmallocInit SysWrappers LibioCleanupExit Fix.
-Module FL := VariadicLogicOn R LG0.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic FL.
+  HelloImageCLocaleObjs
+  HelloSetlocalePostload HelloLocaleState HelloStartHdBuild StrlenLogic AllocLogic StartPtmallocInit SysWrappers Fix.
+Module FL := FixVariadic.VL0.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic FL.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

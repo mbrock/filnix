@@ -13,7 +13,7 @@
     that prints to a stream. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_printf_buffer_to_file_os Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,11 +21,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
-From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy LibioLogic LibioFputsSpec AllocRo WordString FxprintfStream
-  NarrowFormat NarrowArgs DcigettextExit FormatterSrc FormatterNames
+From Glibc Require Import Fix OsBlocks OsWorld FileInv FileTidy LibioLogic LibioFputsSpec AllocRo WordString FxprintfStream
+  DcigettextExit FormatterSrc FormatterNames
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec PrintfFileInit PrintfFileOut
   PrintfFlushChoice PrintfFlush PrintfDone PrintfFileEntry.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

@@ -14,7 +14,7 @@
     recovers the byte offset within the word. *)
 
 From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os.
-From Glibc Require Import LibioTactics GlibcTactics.
+From Glibc Require Import OsTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -23,7 +23,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop MemchrLast MemchrLogic
   StrcmpBits StrcmpLoop.
-From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
@@ -290,7 +289,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** To keep intermediate integers readable, [normt] rewrites the
     integer in the newest temporary to `v` using tactic `tac`. *)
-Ltac normt v tac :=
+Local Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
 (** Tactic [normp] rewrites the address of the pointer stored in
     temporary `name` to `v` by arithmetic. *)
@@ -299,7 +298,7 @@ Ltac normp name v :=
 
 (** Tactic [unmod] strips 64-bit modulo wraps from mask and word
     expressions already known to fit in `[0, 2 ^ 64)`. *)
-Ltac unmod :=
+Local Ltac unmod :=
   repeat match goal with |- context [?y mod 2 ^ 64] =>
     rewrite (Z.mod_small y (2 ^ 64));
     [| first [apply loop_mask_range | apply lmask_range | apply cmask_range | apply first_mask_range
@@ -308,7 +307,7 @@ Ltac unmod :=
 (** To step through the 15-instruction population count on mask m, [pop]
     names each intermediate value, rewrites the final count using Htl,
     and enters the successor block. *)
-Ltac pop m Htl :=
+Local Ltac pop m Htl :=
   step; do 15 step_named;
   match goal with |- context [mkFrame _ (put _ (WInt ?t) _) _ _ _] =>
     let H := fresh in assert (H : t = tail m) by (eapply tail_chain; eassumption); rewrite H Htl; clear H end;
@@ -317,7 +316,7 @@ Ltac pop m Htl :=
 
 (** Tactic [xrep] simplifies the IR computation of `x` XOR `[rep] c` into
     `Z.lxor x (rep c)` by dropping redundant modulo wraps. *)
-Ltac xrep x := rewrite rep_mod; rewrite (Z.mod_small x);
+Local Ltac xrep x := rewrite rep_mod; rewrite (Z.mod_small x);
   [first [reflexivity | rewrite Z.mod_small; [reflexivity | apply lxor_range; [lia | apply rep_range]]] | lia].
 
 (** Block `L37` is the main word-scanning loop of [Unit_string_strchrnul_os.fn___GI___strchrnul]. *)

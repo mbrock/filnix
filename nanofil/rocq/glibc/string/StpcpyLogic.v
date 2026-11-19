@@ -18,19 +18,19 @@ From Glibc Require Import GlibcProgram.
     The rule needs no bound on the old bytes of the buffer, because the
     copy never reads them. The call rule [wp_call_glibc_stpcpy] applies
     the result at a call of any name bound to the captured body. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic StrlenBits GetoptBytes WordString StrcmpBits StrcmpLoop.
-From Glibc Require Import LibioCloseSteps StpcpyBytes StpcpyTail StpcpyShift StpcpyWords.
+From Glibc Require Import OsWorld OsMemLogic StrlenBits ByteRead WordString StrcmpBits StrcmpLoop.
+From Glibc Require Import StpcpyBytes StpcpyTail StpcpyWords.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 (** This definition names the loop head of the byte prologue. *)
 Definition blk_9 : block := Eval vm_compute in sblk "L9".

@@ -20,7 +20,7 @@ From Nanofil Require Import Pieces Heap.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuPlans CpuSound.
+From Glibc Require Import OsWorld OsCpuid CpuSetup CpuPlans CpuSound.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.

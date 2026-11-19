@@ -4,17 +4,18 @@
     then initializes its private staging array, prints the greeting and
     flushes the array before returning an integer result. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_libio_iofwide_os Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import CodePrelude Fix OsBlocks OsWorld FileInv FileIdle
-  LibioLogic LibioCloseSteps LibioWIdle LibioPutsInv PrintfSpec PrintfWrap FxprintfStream WPrintfFileInit
-  WPrintfFileFlush WPrintfDispatch WPrintfLength WPrintfPad WPrintfWrite WPrintfParse WPrintfScan WPrintfOut WPrintfBuffer WPrintfDone.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld WrapVL.
+  LibioLogic LibioCloseSteps LibioWIdle LibioPutsInv PrintfSpec FxprintfStream WPrintfFileInit
+  WPrintfDispatch WPrintfLength WPrintfPad WPrintfWrite WPrintfParse WPrintfScan WPrintfOut WPrintfBuffer WPrintfDone.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps OsWorld FixVariadic.VL0.
 Open Scope Z_scope.
 Local Abbreviation obj b := (mkPtr b (Obj b)).
 Local Abbreviation size xs := (Z.of_nat (length xs)).
@@ -67,7 +68,7 @@ Qed.
     characters, independently of the state of the stream's buffers. *)
 Local Lemma wp_fresh_file fr bb fp Φ :
   call_frame wprintf_file_init_fn [WPtr (obj bb); WPtr fp] = Some fr -> 0 < bb -> bb mod 8 = 0 -> bb+560 <= 2^48 ->
-  FileInv.LG.obj bb (heap_req 8 560) -∗ ▷ (wide_stage bb (stage_reg bb) fp [] 0 true -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
+  Fix.LG0.obj bb (heap_req 8 560) -∗ ▷ (wide_stage bb (stage_reg bb) fp [] 0 true -∗ Φ RetVoid) -∗ WP (ERun fr : sexpr) {{ Φ }}.
 Proof using Type.
   intros Hfr Hb Ha He. iIntros "Hobj HK". iDestruct (obj_zero_block with "Hobj") as "(Hl & Hx & Hc)"; [compute; discriminate|].
   iAssert (live bb (stage_reg bb)) with "Hl" as "Hl".

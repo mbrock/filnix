@@ -13,7 +13,7 @@
     | [hge], [hge_frees], [hge_zgc_free] | the genv with the interpreter's free | *)
 
 From Glibc Require Import Unit_libio_filedoalloc_os Unit_libio_fileops_os.
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls.
 From Glibc Require Import HiAtexitModule HiAtexitFns OsWorld OsRegistry SysWrappers LibioLogic.

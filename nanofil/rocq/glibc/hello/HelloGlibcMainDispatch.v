@@ -17,7 +17,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart.
-From Glibc Require HelloGlibcDebts HelloGlibcMainStart HelloGlibcMainSteps.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -83,10 +82,10 @@ Ltac vxa H := cbn -[put];
   cbn -[put]; rewrite ?H; reflexivity.
 
 (** This tactic preserves the loop facts when the environment gains bindings. *)
-Ltac lf := split; [unfold start_vars; repeat split; lk_prove | split; [assumption | split; [assumption | lia]]].
+Local Ltac lf := split; [unfold start_vars; repeat split; lk_prove | split; [assumption | split; [assumption | lia]]].
 
 (** An exit retains the initialized temporaries and the current error flag. *)
-Ltac lfacts := split; [lf | split; [lk_prove | assumption]].
+Local Ltac lfacts := split; [lf | split; [lk_prove | assumption]].
 
 (** The loop may continue to version, help or operand processing. *)
 Definition loop_exits (Φ : gval -> iProp Σ) : iProp Σ :=

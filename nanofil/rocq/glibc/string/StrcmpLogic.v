@@ -20,7 +20,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop.
-From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 Open Scope Z_scope.
@@ -67,7 +66,7 @@ Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
 (** Tactic [normt] normalizes the integer in the newest local variable
     to v using tactic tac. *)
-Ltac normt v tac :=
+Local Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
 (** Tactic [normp] rewrites the address of the pointer held by
     [[temporary]] name to v using linear arithmetic. *)

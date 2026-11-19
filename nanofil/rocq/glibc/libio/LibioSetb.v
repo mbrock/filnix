@@ -13,7 +13,7 @@ From Glibc Require Import GlibcProgram.
     the model's own ([heap_fns]); a program that links glibc's
     `c: free` proves it from that function's triple. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,7 +22,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers.
-From Glibc Require FileInv LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,11 +31,7 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The genv ge leaves `c: malloc` and `c: free` to the model: neither
-    is defined or held as data, and its free frees heap objects. *)
-Definition heap_fns (ge : genv) : Prop :=
-  frees_heap (ge_free ge) /\ find_fn ge (TAtom "free") = None /\ lookup (TAtom "free") (ge_globals ge) = None /\
-  find_fn ge (TAtom "malloc") = None /\ lookup (TAtom "malloc") (ge_globals ge) = None.
+From Glibc Require Export OsExternals.
 
 (** `c: _flags` after `c: _IO_setb(fp, b, eb, a)`: `c: _IO_USER_BUF`
     clear when a is nonzero, the stream owning the buffer, else set. *)
@@ -61,7 +56,7 @@ Proof.
 Qed.
 
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules_values.
@@ -122,7 +117,7 @@ Context (Hfree : (free_rule w0 registry ge)).
 
 (** The stores of `c: _IO_setb`'s new base, end and flags, from block
     `c: L10` to the return. *)
-Ltac setb_tail a fl :=
+Local Ltac setb_tail a fl :=
   step; norm; check "Hl";
   iApply (wp_raw_store_pointer with "Hl Hb"); [vx | vx | reflexivity | ar | ar | wi_store |];
   iNext; iIntros "Hl Hb"; step; norm; check "Hl";

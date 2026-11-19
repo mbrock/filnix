@@ -22,7 +22,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic StringLogic MemLogic.
 From Glibc Require Import FileInv OsBlocks OsWorld.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv.
 Open Scope Z_scope.
 
 (** This record holds the address and the region of `c: __environ`,

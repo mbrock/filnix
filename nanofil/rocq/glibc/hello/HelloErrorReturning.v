@@ -7,18 +7,17 @@
     cancellation to its previous setting. A thread that entered with
     cancellation disabled still has it disabled on return. *)
 From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
-  ErrorCall ErrorEntry ErrorText ErrorMessage ErrorReport
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic SysWrappers
+  ErrorCall ErrorText ErrorMessage ErrorReport
   HelloErrorClosed HelloErrorCall Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic
-  LibioCloseSteps OsWorld SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
 Section returning.

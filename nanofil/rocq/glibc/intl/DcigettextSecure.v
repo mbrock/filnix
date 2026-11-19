@@ -15,14 +15,14 @@ From Glibc Require Import GlibcProgram.
     the buffer's whole first word through strchrnul, and the caller must
     show that the program links both functions. The caller gets the flag
     back with the value that it lent. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioSetb WordString GetoptBytes DcigettextFree DcigettextExit.
+From Glibc Require Import OsWorld OsBlocks OsMemLogic OsExternals WordString DcigettextFree DcigettextExit.
 From Glibc Require Import StrlenLogic MemFwdLogic StrchrnulLogic DcigettextCName.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -30,7 +30,7 @@ Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -40,7 +40,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 Context (eb : Z) (Herr : ow_errno w0 = Some (mkPtr eb (Obj eb))).
 
 (** This tactic proves that a byte access stays inside its object. *)
-Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in *;
+Local Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in *;
   first [apply Z.mod_1_r | rewrite ?Z.add_0_r; rewrite Z.mod_small; lia].
 
 (** The privileged branch calls strchr, which glibc implements with
@@ -88,7 +88,7 @@ Qed.
 (** After the flag test, both branches go on to check the copied name
     and leave the function in the same way. This tactic proves that
     common end once for both branches. *)
-Ltac c_tail Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hs Es1 xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs :=
+Local Ltac c_tail Hheap Hge Hlk1 Hlk2 Hu1 Hu2 Hs Es1 xs xsreg xd xreg sl sreg s msgid lk1 lk2 U1 U1' U2 U2' bs :=
   step; check "Hl";
   iApply (wp_raw_load_byte with "Hl Hb0"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | ra |];
   iNext; iIntros "Hl Hb0";

@@ -6,16 +6,16 @@
 
     A separate exchange reconnects errno and stream-mode ownership after
     message printing. Which part owns those cells depends on the result. *)
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioCloseSteps LibioFcloseTail
+From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic LibioFcloseTail
   HelloClosedStdout HelloCloseStdout HelloCloseCallback HelloErrorClosed HelloErrorCall
   ErrorCall ErrorFailure ErrorMessage.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioFcloseTail.
 Open Scope Z_scope.
 
 Section ownership.

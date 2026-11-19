@@ -3,6 +3,7 @@
     print a warning. Hello lends those resources to the conversion and
     puts them back even when a rejected byte has changed errno. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,12 +11,12 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import HelloBodies.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString LocalenameLogic DcgettextRealV
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString DcgettextRealV
   StartCtypeInitSpec StartImageEarly HelloGetoptDiagLock HelloGetoptDiagTcb HelloGetoptDiagGettext
-  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloImageLocaleObjs HelloImageMbsObjs
+  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloImageLocaleObjs
   HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloGlibcDebts HelloLocaleState HelloConvObjects
   Mbrtowc HelloConvString.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section state.

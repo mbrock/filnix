@@ -5,22 +5,20 @@
     [HelloVersionEtc](HelloVersionEtc.v) proves the last of the three.
     This module proves the other two for Hello's four authors. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
+From Glibc Require FixVariadic.
+From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
-  PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
+From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv LibioLogic LibioFputsSpec
+  PrintfSpec AllocRo VaArgRound FxprintfStream HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc.
-From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
-Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
-  HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -31,13 +29,13 @@ Local Arguments Z.mul : simpl nomatch.
 Definition va12 : block := Eval vm_compute in vblk "L12".
 
 (** A branch whose condition is now closed follows its selected edge. *)
-Ltac close_branch :=
+Local Ltac close_branch :=
   lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
     let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
 
 (** The variadic rules read the copy of the arguments that a call
     makes at entry and move a cursor over it. *)
-Module VeVL := VariadicLogicOn R LG0.
+Module VeVL := FixVariadic.VL0.
 Import VeVL.
 
 Section va.

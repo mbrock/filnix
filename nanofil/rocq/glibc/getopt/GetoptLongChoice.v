@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     choice receives either a session after that call or the state for
     one of the other two ways. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,13 +17,12 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
-  GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSession GetoptLongDash.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDispatch GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDash GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongStore GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpBits StrncmpLogic
+  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
+  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptDispatch GetoptLongDash.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,20 +35,20 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The dispatch module proves the choice between short and long options. *)
 (** The two-dash module proves the call for a word with two dashes and restores the session. *)
-Import GetoptLongDash GetoptLongCall GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongDash GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** The two-dash call and the short options read these names, which keep their values through the choice. *)
 Definition choice_keys : list name := Eval vm_compute in
   List.map TAtom ["v0"; "v2"; "pr.1"; "v6"; "v8"; "v10"; "v12"; "pr.3"; "v80"; "chk2"; "chk20"]%string.
 
 (** This tactic takes a parameter's value through the choice. *)
-Ltac choice_lk Hk :=
+Local Ltac choice_lk Hk :=
   lazymatch goal with |- lookup ?k ?e' = _ =>
     rewrite (keeps_in choice_keys k _ e' Hk);
     [assumption | unfold choice_keys; cbn [In]; repeat first [left; reflexivity | right]] end.
 
 (** This tactic proves a pure premise of the choice and leaves the proof-mode goal alone. *)
-Ltac choice_side :=
+Local Ltac choice_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | |- avoids _ _ = true => vm_compute; reflexivity
@@ -65,7 +64,7 @@ Local Instance choice_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stabl
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The choice and the two-dash call describe the same cells through two copies of their modules, and this tactic converts between the copies. *)
-Ltac choice_conv b r i av ar ps c :=
+Local Ltac choice_conv b r i av ar ps c :=
   iAssert (pcell b 32 c) with "[Hcur]" as "Hcur"; [iExact "Hcur"|];
   iAssert (live b r) with "[Hl]" as "Hl"; [iExact "Hl"|];
   iAssert (int_cell b 0 i) with "[Hib]" as "Hib"; [iExact "Hib"|];

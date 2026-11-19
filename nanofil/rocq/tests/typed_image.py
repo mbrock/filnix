@@ -58,7 +58,7 @@ def run(*args, **kwargs):
 with tempfile.TemporaryDirectory() as tmp:
     root = Path(tmp)
     for name in ("IRNotation.v", "IRBytes.v"):
-        shutil.copy(ROCQ / "glibc" / name, root)
+        shutil.copy(ROCQ / "glibc" / "base" / name, root)
     records = run(model, '--gallina', input=source, capture_output=True).stdout
     assert all(case in records for case in ('LdNarrow Sw', 'RawLoadPointer', 'IOutside', 'func_raw'))
     code = typed['TypedCode'](budget=1200)

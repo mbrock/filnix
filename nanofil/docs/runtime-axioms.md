@@ -214,7 +214,7 @@ gates run `Driver InterpRuntime`.
 The concrete Hello corollary uses the interpreter’s state and readiness
 definitions. The scheduled check compiles the rest of the tree against the
 abstract runtime. The theorem `hi_atexit_never_panics` in
-[StartSafeHiAtexit.v](../rocq/glibc/startup/StartSafeHiAtexit.v) takes
+[StartSafeHiAtexit.v](../rocq/glibc/hi_atexit/StartSafeHiAtexit.v) takes
 the runtime state as a premise, `R.ready s m`, rather than fixing an
 allocator cursor.
 

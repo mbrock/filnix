@@ -5,7 +5,7 @@ From Glibc Require Import GlibcProgram.
     pointer and the entry's name, and it writes them only through the
     report rule that its caller supplies. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,12 +14,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpLoop StrncmpWords StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptReqTail GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -35,7 +34,7 @@ Definition aprint_names : list name := Eval vm_compute in
 
 
 (** The tail module supplies the set, the option table, the report rule and the tactics. *)
-Import GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 
 Import ProgramAbbreviations.
@@ -73,10 +72,10 @@ Proof using Type.
   iDestruct (big_sepL_lookup with "Hes") as "(#Hn & #Hnws & _)"; [exact Hy|].
   iDestruct (argv_str_cap with "Hnws") as (rn) "[#Hcapn %Hn0]".
   step. step.
-  check_read_dq "Hsl" by StrlenLoop.arith.
+  check_read_dq "Hsl" by StringTactics.arith.
   iNext; iIntros "_".
   iDestruct (Hlend with "HG") as (dq freg) "[Hcf HG]".
-  load_pointer_dq "Hsl Hsc Hcf" by StrlenLoop.arith.
+  load_pointer_dq "Hsl Hsc Hcf" by StringTactics.arith.
   iNext; iIntros "_ _ Hcf"; iSpecialize ("HG" with "Hcf"). step. step. step. norm.
   change (2 ^ (5 mod 64)) with 32.
   match goal with |- context [put (TAtom "v296") (WPtr {| ptr_addr := ?X; ptr_cap := ptr_cap lo |})] =>

@@ -20,7 +20,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop StrrchrLogic
   MemchrLast MemchrLogic MemrchrBits MemrchrLoop MemrchrMask.
-From Glibc Require MemrchrMask StrcmpLoop StrrchrLogic WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -86,7 +85,7 @@ Ltac lk := repeat (rewrite lookup_after_put_other; [|reflexivity]);
   first [rewrite lookup_after_put_same; reflexivity | eassumption].
 (** To keep intermediate integers readable, [normt] rewrites the
     integer in the newest temporary to `v` using tactic `tac`. *)
-Ltac normt v tac :=
+Local Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
 (** Tactic [normp] rewrites the address of the pointer stored in
     temporary `name` to `v` by arithmetic. *)

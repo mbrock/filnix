@@ -13,14 +13,14 @@ From Glibc Require Import GlibcProgram.
     locale name. Because that name is "C", it does not consult the
     environment. The proof continues from the chosen name in another
     module. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks FileInv LibioLogic WordString GetoptBytes DcigettextPreRules.
+From Glibc Require Import OsWorld OsBlocks OsMemLogic WordString ByteRead DcigettextPreRules.
 From Glibc Require MemchrLast.
 From Glibc Require Import Fix.
 Import ListNotations.
@@ -28,7 +28,7 @@ Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -47,7 +47,7 @@ Qed.
 (** These tactics read the two bytes of the locale name "C". The first
     checks and loads byte 0, and the second loads the terminator through
     the pointer advanced by one. *)
-Ltac rd_c0 :=
+Local Ltac rd_c0 :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   iDestruct (ws_byte _ [67] 0 with "Hcv") as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [cbn; lia|];
   destruct Hbb as (Hcap & Hb0' & Hbq & Hbe & Hbr);
@@ -56,9 +56,9 @@ Ltac rd_c0 :=
   iApply (wp_raw_load_sub_bytes_dq with "Hbl Hbt");
     [reflexivity | vx | reflexivity | apply extended_chr | exact Hcap | ar |];
   iNext; iIntros "_ _".
-Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in *;
+Local Ltac ra := unfold raw_address; cbn [ptr_addr length Z.of_nat Pos.of_succ_nat] in *;
   first [apply Z.mod_1_r | rewrite ?Z.add_0_r; rewrite Z.mod_small; lia].
-Ltac rd_c1 :=
+Local Ltac rd_c1 :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   iDestruct (ws_byte _ [67] 1 with "Hcv") as (bb breg) "(%Hbb & #Hbl1 & #Hbt1)"; [cbn; lia|];
   destruct Hbb as (Hcap1 & Hb01 & Hbq1 & Hbe1 & Hbr1);

@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os.
 From Glibc Require Import GlibcProgram.
 (** An error report can fill stderr's buffer while the caller holds its lock.
@@ -8,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     The stream must already be producing bytes into a heap buffer.
     Buffers inside FILE and streams that need a new buffer or a choice
     of orientation are not covered. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,15 +18,15 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
   LibioLogic SysWrappers LibioOverflowBase LibioOverflowGen
-  PrintfStreamHeap PrintfBufferOverflowCall HiAtexitBase HiAtexitOverflow.
-From Glibc Require FileInv LibioOverflowGen LibioPutsInv PrintfBufferOverflowCall PrintfStreamHeap PrintfStreamInv SysWrappers.
+  PrintfStreamHeap PrintfBufferOverflowCall StreamOverflow.
+From Glibc Require LibioPutsInv.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** The stream view uses the same interpreter logic as the backend. *)
 (** The wrapper checks the stream's actual overflow jump-table entry. *)
 (** The caller's callee obligation uses the same concrete logic. *)
-Import PrintfStreamHeap PrintfStreamInv LibioPutsInv SysWrappers FileInv FileInv.ML FileInv.LG FileInv.L.
+Import PrintfStreamHeap LibioPutsInv SysWrappers FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section rules.

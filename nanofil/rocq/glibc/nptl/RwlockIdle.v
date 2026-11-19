@@ -18,22 +18,21 @@ From Glibc Require Import GlibcProgram.
     reading keeps it ready, and taking and releasing it for writing keeps
     it idle. In both cases the calling thread must not be the writer, and
     nobody waits on the lock's futexes. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
+From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry OsMemLogic OsExternals.
 From Glibc Require Import RdlockLogic RdlockPhase RwunlockLogic WrlockLogic
   RwunlockWrite.
-From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import OsExternals Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 (** ## The states of the lock
 

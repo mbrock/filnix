@@ -13,18 +13,18 @@
 
 From Glibc Require Import Unit_misc_initZ2dmisc_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartCode StartLogic
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps
   MemchrLast MemrchrBits StrrchrLogic StartInitMiscSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld WordString.
+From Glibc Require WordString.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps WordString.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps WordString.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -34,37 +34,12 @@ Local Arguments Z.mul : simpl nomatch.
 (** This constant is the body of `c: __init_misc`. *)
 Definition start_init_misc_fn : func := Unit_misc_initZ2dmisc_os.fn___init_misc.
 
-(** The image defines `c: __init_misc` with that body. *)
-Lemma start_init_misc_defined :
-  find_direct (TAtom "__init_misc") hi_module = Some (Defined start_init_misc_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Context `{Hstrrchr : !HasSpec registry (os_wi w0) ge (TAtom "__GI_strrchr") strrchr_spec}.
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 Local Ltac enter := iApply wp_enter; [reflexivity | reflexivity | iNext; cbn [b_insts b_jump]].
-
-(** The body reads the first slot of the argument array three times.
-    The second and third reads renew the check of the first one. The
-    call holds only a share of the array, and a share of the lifetime
-    of an object is enough to renew a check for reading. *)
-Lemma wp_renew_read_dq f e ls l d lo hi al args rest j classes p1 p b reg dq Φ :
-  op_arg_classes (Renew lo hi Read al) A = Some classes ->
-  map2_option (value_x ge e) classes args = Some [WPtr p1; WPtr p] ->
-  ptr_cap p1 = ptr_cap p -> ptr_cap p = Obj b \/ ptr_cap p = Ro b ->
-  b <= raw_address (ptr_addr p) lo -> raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg ->
-  raw_address (ptr_addr p) lo mod al = 0 ->
-  liveq dq b reg -∗
-  ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Renew lo hi Read al) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof using Type.
-  intros Hc Hx Hp1 Hp H1 H2 H3. apply (wp_read_dq registry (os_wi w0) ge dq _ _ _ []).
-  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
-  apply rule_let with (classes := classes) (xs := [WPtr p1; WPtr p]); [reflexivity | exact Hc | exact Hx |].
-  apply op_renew; [exact Hp1|]. eapply access_read; eauto.
-Qed.
 
 (** A pointer that is loaded from memory must point into a live
     object. For the program name, the string owns a share of that

@@ -3,20 +3,19 @@
     linked initial image and constructs the stronger stdout predicate
     used by puts. It does not assume the stream-list constructor ran. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld FileInv LibioDefaultXsputnBuf LibioXsputnBase
-  HiAtexitBase HiAtexitAlloc HiAtexitInitial HiAtexitInitialAlloc HiAtexitOutputState HiAtexitStdout.
+  AllocCall HiAtexitInitial HiAtexitInitialAlloc StreamOutputState HiAtexitStdout.
 From stdpp Require Import list.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioPutsInv LibioPutsLock LibioXsputnBase LibioXsputnSetp OsWorld.
+From Glibc Require LibioPutsInv.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioPutsLock.
-Import LibioPutsInv FileInv FileInv.ML FileInv.LG FileInv.L OsWorld.
-Import LibioXsputnSetp.
+Import LibioPutsInv FileInv Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 (** Stdout's static object contains the complete FILE and jump pointer. *)
@@ -99,7 +98,7 @@ Qed.
     supplies their starting states together. *)
 Lemma hi_initial_output_own w0 : In 1 (ow_fds w0) ->
   pts hi_initial_output_ps ⊢
-  hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
+  malloc_call_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
   hi_stdout_before w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None.
 Proof using Type.
   intros Hfd. rewrite /hi_initial_output_ps hi_pts_concat. cbn [big_opL].
@@ -117,7 +116,7 @@ End resources.
 Lemma hi_initial_output_allocatable Σ `{!gen_heapGpreS piece pval Σ} w0 :
   In 1 (ow_fds w0) ->
   ⊢ |==> ∃ Hh : gen_heapGS piece pval Σ,
-    @hi_malloc_state Σ Hh (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
+    @malloc_call_state Σ Hh (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
     @hi_stdout_before Σ Hh w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None.
 Proof.
   intros Hfd.

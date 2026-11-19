@@ -14,20 +14,19 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry WordString MemFwdLogic FileInv LeavesLogic LibioLogic ExitRunTail
-  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
-  HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp HelloGlibcMainOperands
+  HelloGlibcDebts HelloGlibcMainSteps
+  HelloGlibcMainOperands
   HelloGlibcMainTail.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainOperands HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainTail HelloGlibcMainVersion.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
 (** The tail module supplies the success and conversion-failure exits. *)
-Import HelloGlibcMainTail HelloGlibcMainOperands HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcMainTail HelloGlibcMainOperands HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 (** This tactic computes call arguments whose values fit their integer bounds. *)
-Ltac vxm := cbn -[put];
+Local Ltac vxm := cbn -[put];
   repeat match goal with |- context [lookup ?k ?E] =>
     let L := fresh "Hlk" in assert (L : lookup k E = _) by lk_prove; rewrite L; clear L end;
   cbn -[put]; unwrap; reflexivity.

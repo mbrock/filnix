@@ -15,8 +15,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer.
-From Glibc Require Import OsWorld OsCpuid HiAtexitModule CpuRules CpuSetup CpuPlans CpuSound
-  CpuTunables CpuIntelWord CpuVendors CpuCache.
+From Glibc Require Import OsWorld OsCpuid CpuSetup CpuPlans CpuSound
+  CpuTunables CpuVendors CpuCache.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope list_scope.

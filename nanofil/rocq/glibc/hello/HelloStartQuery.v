@@ -7,6 +7,7 @@
     them. This module opens that state the way a warning does, lends
     the two cells to the query, and closes the state again. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_locale_setlocale_os.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
@@ -15,11 +16,11 @@ From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle WordString LocalenameLogic
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString
   SetlocaleQuery StartCtypeInitSpec StartImageEarly HelloGlibcDebts HelloGetoptDiagLock
-  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly HelloImageDiagObjs
+  HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section query.

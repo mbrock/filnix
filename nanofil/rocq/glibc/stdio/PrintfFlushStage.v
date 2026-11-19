@@ -5,7 +5,7 @@
     and hands it to buffer selection on success. *)
 
 From Glibc Require Import Unit_libio_fileops_os Unit_libio_genops_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix OsWorld FileInv FileTidy LibioLogic CStruct PrintfLayout PrintfOut
   PrintfBufferFileNames PrintfBufferFlushEmpty
   PrintfBufferXsputnCall PrintfBufferXsputnStaging PrintfBufferOverflowCall PrintfBufferOverflowStaging.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import PrintfBufferFileNames.fn___printf_buffer_flush_to_file.
 Open Scope string_scope.
 Open Scope list_scope.

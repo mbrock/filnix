@@ -15,20 +15,20 @@ From Glibc Require Import GlibcProgram.
     strings at these addresses, and it does not show that startup hands
     the pieces over. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import FileInv WordString GetoptModule GetoptInitial GetoptDiag GetoptLongDiag
+From Glibc Require Import FileInv WordString GetoptInitial GetoptDiag GetoptLongDiag
   HelloGetoptTable HelloGetoptStart HelloGetoptDiagGettext.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
 
-Import FileInv FileInv.ML FileInv.LG.
+Import FileInv Fix.ML0 Fix.LG0.
 
 (** ## The nine messages
 

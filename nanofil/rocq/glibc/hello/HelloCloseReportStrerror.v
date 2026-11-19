@@ -5,7 +5,7 @@
     translations. Only the second path needs a proof of the print. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_errlist_os Unit_stdioZ2dcommon_snprintf_os Unit_string__strerror_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,7 +16,7 @@ From Glibc Require Import IRFrames.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString CodePrelude HelloGlibcProgCells
   StartImageEarly HelloImageModule HelloImageLoad HelloGetoptDiagImage HelloGetoptDiagTcb
   HelloCloseReportImage HelloCloseReportMessages HelloCloseReportLocale Fix.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Definition report_snprintf : func := Unit_stdioZ2dcommon_snprintf_os.fn___GI___snprintf.

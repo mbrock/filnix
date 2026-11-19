@@ -30,7 +30,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool.
 From Nanofil Require Import Term Syntax Values Memory Ops Semantics Pieces Heap.
 From Nanofil Require Import AbsRun AbsInfer AbsDen AbsSound.
-From Glibc Require Import Fix OsWorld OsCpuid OsRegistry HiAtexitModule CpuRules CpuHook CpuSetup CpuPlans CpuSound
+From Glibc Require Import Fix OsWorld OsCpuid OsRegistry CpuHook CpuSetup CpuPlans CpuSound
   CpuTunables CpuParts.
 Import ListNotations.
 Open Scope string_scope.
@@ -55,9 +55,6 @@ Definition icf_pre : fspec := spec [glo cpu] gall [None].
     with the type codes and the cleared flags. *)
 Definition icf_start_ok (md : module) : bool :=
   forallb (fun p => match gobj_in md (fst p) with Some ob => obj_le (st0 false) ob (snd p) | None => false end) gall.
-Lemma icf_image_start : icf_start_ok hi_module = true.
-Proof. vm_compute. reflexivity. Qed.
-
 Definition icf_plans := somes [plan_of t6 icf [] [] icf_pre].
 (** The call sets the low byte of _dl_hwcap to a value from two through six
     and clears its other seven bytes. The other objects keep their bounds. *)

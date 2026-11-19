@@ -7,7 +7,7 @@ From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From stdpp Require Import list_numbers.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Pieces Heap.
-From Glibc Require Import HiAtexitModule HelloImageErase HelloImageEraseMem HelloImagePieces.
+From Glibc Require Import HiAtexitModule ImageErase ImageEraseMem ImagePieces.
 Import ListNotations.
 Open Scope Z_scope.
 
@@ -29,9 +29,9 @@ Qed.
     The initial image is a chain of every initializer store, so reading
     one byte of it walks past thousands of stores, most of them the C
     locale's ctype tables. A piece check therefore runs on the erased
-    image that HelloImageErase.v defines instead: it keeps the objects
+    image that ImageErase.v defines instead: it keeps the objects
     that the pieces name and writes zeros for every other object. The
-    erasure theorems of HelloImageEraseMem.v and HelloImagePieces.v show
+    erasure theorems of ImageEraseMem.v and ImagePieces.v show
     that the erased image has the same regions and the same bytes and
     capabilities on every kept object, so a passing check gives
     agreement with [hi_m0] itself. *)

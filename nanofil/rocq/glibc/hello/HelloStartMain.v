@@ -3,7 +3,7 @@
     starts. After it has created the thread, startup initializes libc,
     runs the constructors and then calls main. The proof of the startup
     body takes a contract for each of those calls as a premise.
-    [StartMainHiAtexit](../startup/StartMainHiAtexit.v) proves them for
+    [StartMainHiAtexit](../hi_atexit/StartMainHiAtexit.v) proves them for
     the hi_atexit image. This module proves early init, the
     constructor runner and the call of main for Hello, in the world that startup ends in.
 
@@ -19,11 +19,11 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic.
 From Glibc Require Import OsWorld OsRegistry OsStart StartCtors StartLogic StartCallMainSpec StartCallMain
-  StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HelloImageModule HelloImageFnLink HelloImageEraseMem
-  HelloGlibcDebts HelloGlibcLibsT HelloStartBridge HelloImageLoad HelloImageEarly
-  StartCode StartTunableGetValSpec StartTunableGetVal StartTunableIsInitializedSpec StartTunableIsInitialized
-  StartClockGettimeSpec StartClockGettime StartGetrlimitSpec StartGetrlimit StartCtypeInitSpec StartCtypeInit
-  StartPthreadTunablesSpec StartPthreadTunables StartPtmallocInitSpec StartPtmallocInit
+  StartCtorRunnerSpec StartCtorRunner StartLibcStartMain HelloImageModule HelloImageFnLink ImageEraseMem
+  HelloGlibcDebts HelloStartBridge HelloImageEarly
+  StartCode StartTunableGetVal StartTunableIsInitialized
+  StartClockGettime StartGetrlimit StartCtypeInit
+  StartPthreadTunables StartPtmallocInit
   StartEarlyInitSpec StartEarlyInit StartTlsInitTpSpec StartTlsInitTp StartSetupTlsSpec StartSetupTls.
 Import ListNotations.
 Open Scope Z_scope.

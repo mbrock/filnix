@@ -78,7 +78,7 @@ glibc's IR.
 
 ## The proofs
 
-[GlibcLogic.v](../rocq/glibc/GlibcLogic.v) holds what the proofs
+[GlibcLogic.v](../rocq/glibc/base/GlibcLogic.v) holds what the proofs
 share:
 
 - `wp_raw_load_read`: Logic.v's raw long load through a read-only

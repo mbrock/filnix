@@ -12,9 +12,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import OsWorld OsRegistry WordString StrlenLogic StrcmpBits StrncmpBits
+From Glibc Require Import OsWorld OsRegistry WordString StrlenLogic StrcmpBits
   LeavesLogic StrlenWord StrncmpLogic MemFwdLogic HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require LeavesLogic MemFwdLogic OsWorld StrlenWord StrncmpLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

@@ -2,7 +2,7 @@
     The converter uses two local cursor cells, so a failed attempt can
     change the output bytes without moving the caller's output cursor. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -10,7 +10,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
 From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv LibioLogic
   LibioDefaultXsputnBuf CBlocks Fix LibioWConvAscii LibioWConvTranslitCmp.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.

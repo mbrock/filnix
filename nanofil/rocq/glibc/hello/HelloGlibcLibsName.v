@@ -13,7 +13,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString HelloGlibcProgCells HelloGlibcProgName MemrchrLogic MemcmpLogic
   HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require HelloGlibcProgName OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 

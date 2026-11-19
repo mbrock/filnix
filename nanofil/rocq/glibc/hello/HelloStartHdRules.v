@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv PrintfSpec GetoptDiag GetoptLongDiag DcgettextLocale
   StartCtypeInitSpec HelloGlibcDebts HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly
   HelloGetoptDiagImage HelloStartGetoptRules HelloStartHdGetopt.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section rules.

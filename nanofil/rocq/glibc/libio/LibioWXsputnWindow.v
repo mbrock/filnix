@@ -4,7 +4,7 @@
     stream as long as the new character index fits the physical buffer.
     It need not fit below the write end on a line-buffered stream. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +12,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioWIdle.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition window_base wd w := match w with WbNone => null | WbShort => mkPtr (wd+216) (Obj wd)

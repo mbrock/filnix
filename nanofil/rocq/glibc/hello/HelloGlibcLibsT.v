@@ -5,7 +5,7 @@
 
 From Glibc Require Import Unit_libio_genops_os Unit_nptl_libcZ2dcleanup_os Unit_stdlib_cxa_thread_atexit_impl_os Unit_stdlib_exit_os Unit_string_memcmp_os.
 From Glibc Require Import Unit_string_memrchr_os Unit_string_memset_os Unit_string_strncmp_os Unit_string_strrchr_os.
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import base list fin_maps.

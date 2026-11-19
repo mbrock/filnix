@@ -12,7 +12,7 @@ From Glibc Require Import GlibcProgram.
     checked against `c: __io_vtables` as in LibioDoWriteCall.v; a
     narrow stream's is `c: _IO_file_jumps`, which passes. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,8 +21,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioPutsInv LibioPutsLock LibioPutsUnlock.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv LibioPutsLock LibioPutsUnlock OsWorld SysWrappers.
+  WordString LibioPutsInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,7 +35,7 @@ Local Arguments Z.opp : simpl nomatch.
 Definition pu_j163 : jump := JBranch (Tmp (TAtom "v179")) (To (TAtom "L180")) (To (TAtom "L181")).
 
 
-Import LibioPutsUnlock LibioPutsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioPutsInv LibioCloseSteps SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

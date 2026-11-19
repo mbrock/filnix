@@ -26,8 +26,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Panics Language Logic StringLogic MemLogic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop.
-From Glibc Require StrcmpLoop WordString.
+From Glibc Require Import StrlenLogic WordString StrlenLoop StrcmpBits StrcmpLoop.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -71,7 +70,7 @@ Definition memcmp_blk89 : block := Eval vm_compute in
 
 (** Module [SL] supplies the step rules for symbolic execution. *)
 (** Module [ML] provides ownership predicates for byte slices. *)
-Module ML := MemLogicOn R LG0.
+Module ML := Fix.ML0.
 (** Module [WS] provides word-window and fractional read helpers. *)
 (** Module [LG] re-exports the program logic instance. *)
 Module LG := LG0.
@@ -117,11 +116,11 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** Tactic [norm] rewrites the integer stored in temporary `name` to `v`
     using tactic `tac`. *)
-Ltac norm name v tac :=
+Local Ltac norm name v tac :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by tac end.
 (** To keep intermediate integers readable, [normt] rewrites the
     integer in the newest temporary to `v` using tactic `tac`. *)
-Ltac normt v tac :=
+Local Ltac normt v tac :=
   match goal with |- context [mkFrame _ (put _ (WInt ?X) _) _ _ _] => replace X with v by tac end.
 (** Tactic [normp] rewrites the address of the pointer stored in
     temporary `name` to `v` by arithmetic. *)

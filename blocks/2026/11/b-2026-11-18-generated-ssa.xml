@@ -1,6 +1,6 @@
 <block id="b-2026-11-18-generated-ssa" kind="milestone" in-reply-to="b-2026-11-18-rocq-ir-notation" actor="Codex" created="2026-11-18T23:34:29Z">
   <title>Rocq reads the generated fixtures as SSA</title>
-  <about path="nanofil/rocq/glibc/IRNotation.v"/>
+  <about path="nanofil/rocq/glibc/base/IRNotation.v"/>
   <about path="nanofil/rocq/theories/core/Transport.v"/>
   <tag name="formal"/>
   <p>The generator now writes GNU Hello and HiAtexit as Rocq functions with

@@ -10,7 +10,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap ExternalCalls Runtime Logic MemLogic.
-Import FileInv.ML Fix.LG0 Fix.LG0.L ListNotations ProgramAbbreviations.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L ListNotations ProgramAbbreviations.
 Open Scope Z_scope.
 
 Section contracts.

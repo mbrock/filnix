@@ -4,7 +4,7 @@
     steps have a null finalizer as well as a null library handle. *)
 
 From Glibc Require Import Unit_iconv_gconv_db_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import CodePrelude OsWorld FileInv LibioLogic Fix.
 From Glibc Require MemchrLast.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition glibc_gconv_release_step := Unit_iconv_gconv_db_os.fn___gconv_release_step.

@@ -13,7 +13,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import Fix FileInv FileIdle PrintfStreamInv FileTidy.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section fx_stream.

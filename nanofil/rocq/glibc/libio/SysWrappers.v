@@ -11,7 +11,7 @@ From Glibc Require Import GlibcProgram.
     its bytes. Named contracts in [LibioSpecs] let stream callers use these
     results without constructing the callee's [[frame]]. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,7 +20,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsWrite OsFstat OsIoctl OsLseek OsClose OsExit OsThread
   OsRegistry FileInv LibioLogic.
-From Glibc Require FileInv LibioLogic OsClose OsExit OsFstat OsIoctl OsLseek OsWorld OsWrite.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec LibioSpecs.
 Import ListNotations.
@@ -32,38 +31,15 @@ Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
-(** The wrappers call these runtime operations. *)
-Definition sys_externals : list string :=
-  ["zsys_write"; "zsys_fstat"; "zsys_ioctl"; "zsys_lseek"; "zsys_close"; "zsys_exit_hard";
-   "zsys_exit_soft"; "zthread_self_cookie"].
+From Glibc Require Export OsExternals.
 
-(** The program leaves these names undefined as functions and global data.
-    Calls therefore use the external contracts supplied by the registry. *)
-Definition sys_external (ge : genv) : Prop :=
-  Forall (fun s => find_fn ge (TAtom s) = None /\ lookup (TAtom s) (ge_globals ge) = None) sys_externals.
-
-(** The registry holds the contracts of [glibc_os_registry]. *)
-Definition holds_os (registry : name -> option (contract os_world)) : Prop :=
-  forall n c, glibc_os_registry n = Some c -> registry n = Some c.
-
-
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules_values.
 Context {Σ : gFunctors}
-  {gen_heapGS0 : gen_heapGS piece pval Σ}
-  (registry : name -> option (contract os_world))
-  (ge : genv)
-  (Hreg : holds_os registry)
-  (Hext : sys_external ge).
+  {gen_heapGS0 : gen_heapGS piece pval Σ}.
 Existing Instance gen_heapGS0.
-Lemma reg_of s c : glibc_os_registry (TAtom s) = Some c -> registry (TAtom s) = Some c.
-Proof using Type*. apply Hreg. Qed.
-Lemma ext_fn s : In s sys_externals -> find_fn ge (TAtom s) = None.
-Proof using Type*. intros Hin. exact (proj1 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
-Lemma ext_data s : In s sys_externals -> lookup (TAtom s) (ge_globals ge) = None.
-Proof using Type*. intros Hin. exact (proj2 (proj1 (Forall_forall _ _) Hext s Hin)). Qed.
 Lemma obj_blk b q :
   0 <= req_extent q -> obj b q -∗ live b (mkRegion b (b + req_extent q) (req_kind q) Live) ∗ blk_any b 0 (req_extent q).
 Proof using Type.
@@ -82,17 +58,17 @@ Context (Hreg : holds_os registry)
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A runtime call is safe only if its name is external and its contract is registered. *)
-Ltac os_side :=
+Local Ltac os_side :=
   first [ apply (reg_of registry Hreg); reflexivity
         | apply (ext_fn ge Hext); cbn; tauto
         | apply (ext_data ge Hext); cbn; tauto ].
 
 
 (** Argument evaluation removes integer wrapping when bounds show that the value already fits. *)
-Ltac args_x := first [cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity | reflexivity].
+Local Ltac args_x := first [cbn; repeat (rewrite Z.mod_small; [|lia]); reflexivity | reflexivity].
 
 (** A wrapper can run once its arguments and external-call conditions have been checked. *)
-Ltac sides := try first [os_side | args_x | assumption].
+Local Ltac sides := try first [os_side | args_x | assumption].
 
 (** ## `c: _exit` *)
 

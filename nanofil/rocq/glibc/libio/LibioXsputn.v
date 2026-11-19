@@ -20,7 +20,7 @@ From Glibc Require Import GlibcProgram.
     | LibioXsputnCall.v, LibioXsputnReset.v, LibioXsputnFlags.v, LibioXsputnSetp.v | `c: new_do_write` inlined |
     | LibioXsputnBase.v | the scan and `c: L178`, the rest to `c: _IO_default_xsputn` | *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -28,13 +28,13 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy
+  LibioCloseSteps BufferCopy
   LibioDefaultXsputnBuf LibioDefaultXsputnTail LibioDefaultXsputn LibioXsputnBase
   LibioXsputnSetp LibioXsputnFlags
   LibioXsputnReset LibioXsputnCall LibioXsputnDo
   LibioXsputnWrite LibioXsputnFlush
   LibioXsputnFill LibioXsputnEnter.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputn LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioLogic LibioXsputnBase LibioXsputnCall LibioXsputnDo LibioXsputnEnter LibioXsputnFill LibioXsputnFlags LibioXsputnFlush LibioXsputnReset LibioXsputnSetp LibioXsputnWrite OsWorld SysWrappers.
+From Glibc Require LibioDefaultXsputnRoom.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -45,7 +45,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioXsputnEnter LibioXsputnFill LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioXsputnEnter LibioXsputnFill LibioXsputnFlush LibioXsputnWrite LibioXsputnDo LibioXsputnCall LibioXsputnReset LibioXsputnFlags LibioXsputnSetp LibioXsputnBase LibioDefaultXsputn LibioDefaultXsputnRoom LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -69,11 +69,11 @@ Context (Hfw : ge_fn ge "_IO_new_file_write" Unit_libio_fileops_os.fn__IO_new_fi
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** A lookup premise, through the environment's puts. *)
-Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
+Local Ltac lk_fin := first [assumption | lookups; first [reflexivity | do 2 f_equal; unwrap2; lia
   | do 3 f_equal; cbn [ptr_addr]; unfold off_write_end, off_buf_base, off_buf_end; unwrap2; lia]].
 
 (** Rebuild the stream's rest [xos] from its flags Hfl and the other fields. *)
-Ltac repack fl f2 fd tw off m eb X fb nb :=
+Local Ltac repack fl f2 fd tw off m eb X fb nb :=
   iAssert (xos w0 eb X fb nb) with "[Hfl Hrest HX]" as "Hos";
   [iFrame "HX"; iExists fl, f2, fd, tw, off, m; iFrame "Hrest"; iSplit; [done | iFrame "Hfl"; done] |].
 

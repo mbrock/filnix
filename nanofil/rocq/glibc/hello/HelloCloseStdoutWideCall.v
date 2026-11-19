@@ -17,7 +17,7 @@ From Glibc Require Import HelloWConvConsts.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
 From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_libio_wgenops_os Unit_misc_error_os Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import Unit_posix__exit_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -25,17 +25,17 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   Pieces Heap Language Logic MemLogic.
 From Glibc Require Import HelloBodies.
-From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
+From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic SysWrappers
   WordString PrintfSpec LibioCleanupExit ErrorCall HelloGlibcDebts HelloGlibcLibsT
   HelloImageLayout HelloImageModule HelloImageLoad StartImageCpu HelloStartFacts HelloStartHdGetopt
-  HelloErrorOperandCall HelloClosedStdout HelloImageCloseObjs HelloLocaleState LeavesLogic AllocLogic
-  LibioWOverflowWrite LibioWCloseIt LibioWConvAscii LibioWFwide LibioWRelease Mbrtowc
+  HelloImageCloseObjs HelloLocaleState LeavesLogic AllocLogic
+  LibioWOverflowWrite LibioWCloseIt LibioWConvAscii LibioWFwide Mbrtowc
   HelloImageWideObjs HelloImageWFwideObjs HelloImageWReleaseObjs HelloImageWConvObjs HelloConvObjects
   DcgettextRealV HelloGetoptDiagLock HelloGetoptDiagTcb HelloGetoptDiagGettext HelloStartGetoptRules
-  HelloWClosedStdout HelloWideState HelloCloseStdoutWide HelloGetoptDiagImage HelloCloseReport HiAtexitSetb StartCtypeInitSpec StartImageEarly HelloImageEarly
+  HelloWClosedStdout HelloWideState HelloCloseStdoutWide HelloGetoptDiagImage HelloCloseReport StreamSetb StartCtypeInitSpec StartImageEarly HelloImageEarly
   RdlockLogic DcgettextRwlock LibioWIdle LibioSetb Fix.
 From Glibc Require LibioFcloseTail LibioFlushBody.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic SysWrappers.
 Open Scope Z_scope.
 
 Section call.

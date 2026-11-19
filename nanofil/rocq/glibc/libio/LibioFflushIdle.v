@@ -21,7 +21,7 @@ From Glibc Require Import GlibcProgram.
     buffer keeps nothing in it between calls. The pending bytes go to
     `c: _IO_new_do_write`, whose joined proof this file reuses. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -30,8 +30,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers FileInv FileIdle LibioLogic LibioCloseSteps
   LibioPutsInv FflushAcquire FflushUnlock
-  HiAtexitDoWrite GlibcSpec LibioFputsSpec LibioFflushSpec Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
+  StreamDoWrite GlibcSpec LibioFputsSpec LibioFflushSpec Fix.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
 

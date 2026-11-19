@@ -4,7 +4,7 @@
     same heap allocation in place, even when a write fails. *)
 
 From Glibc Require Import Unit_io_write_nocancel_os Unit_io_write_os Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,8 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv LibioLogic
   LibioOverflowBase LibioOverflowSetp LibioOverflowSetpRest
-  LibioOverflowSetpEnd HiAtexitOverflowSend HiAtexitOverflow.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+  LibioOverflowSetpEnd StreamOverflowSend StreamOverflow.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

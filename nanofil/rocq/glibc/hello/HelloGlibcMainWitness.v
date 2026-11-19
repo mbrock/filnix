@@ -6,14 +6,14 @@
     This witness checks that the resources coexist. The safety proof
     constructs them from Hello's start state. *)
 
+From Glibc Require Import AtexitLogic.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld FileInv AllocLogic AtexitLogic HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require Import OsBlocks OsWorld FileInv AllocLogic HelloGlibcDebts HelloGlibcLibsT.
 From stdpp Require Import list.
-From Glibc Require AllocLogic FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,7 +55,7 @@ Qed.
 
 (** The stream witness uses the existing file invariant without weakening it. *)
 (** The allocation witness uses the existing idle-prelude predicate. *)
-Import LG0 LG0.L FileInv FileInv.ML.
+Import LG0 LG0.L FileInv Fix.ML0.
 
 (** The stream starts unoriented, with no buffer and a free lock. *)
 Definition hello_witness_state (vb lb fd : Z) : fstate :=

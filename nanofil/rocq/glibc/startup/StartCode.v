@@ -1,32 +1,14 @@
-(** The proofs of glibc's startup functions need each function's body as
-    a Rocq constant, so that a rule can unfold it block by block. This
-    file takes those bodies from the linked hi_atexit image. The bodies
-    do not mention any address, so a later relink of the image that moves
-    its globals leaves them unchanged.
-
-    ## How the bodies are named
-
-    Each constant is the image's definition of one symbol, found without
-    following aliases. A lemma next to each one records that the image
-    defines the symbol with that body, and a proof about a program cites
-    it through its own genv. *)
+(** Startup proofs unfold the bodies of the glibc functions as they step through
+    the captured IR. These names refer to the captured object files so that each
+    program can establish the link to its own image. *)
 
 From Glibc Require Import Unit_csu_libcZ2dstart_os Unit_csu_libcZ2dtls_os Unit_ctype_ctypeZ2dinfo_os Unit_elf_dlZ2dtls_init_tp_os Unit_elf_dlZ2dtunables_os.
 From Glibc Require Import Unit_libio_vtables_os Unit_nptl_pthread_mutex_conf_os.
 From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Semantics.
-From Glibc Require Import HiAtexitModule.
 Import ListNotations.
 Open Scope string_scope.
-
-(** This function returns the image's body for a symbol, or an empty
-    function when the image does not define it. *)
-Definition start_fn (n : string) : func :=
-  match find_direct (TAtom n) hi_module with
-  | Some (Defined f) => f
-  | _ => mkFunc (TAtom n) (TAtom "local") RVoid [] []
-  end.
 
 (** ## Thread setup
 
@@ -37,19 +19,9 @@ Definition start_fn (n : string) : func :=
     the thread object and makes it the thread's cookie. *)
 Definition start_setup_tls_fn : func := Unit_csu_libcZ2dtls_os.fn___libc_setup_tls.
 
-(** The image defines `c: __libc_setup_tls` with that body. *)
-Lemma start_setup_tls_defined :
-  find_direct (TAtom "__libc_setup_tls") hi_module = Some (Defined start_setup_tls_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 (** This constant is the body of `c: __tls_init_tp`, which fills in the
     thread object's own fields. *)
 Definition start_tls_init_tp_fn : func := Unit_elf_dlZ2dtls_init_tp_os.fn___tls_init_tp.
-
-(** The image defines `c: __tls_init_tp` with that body. *)
-Lemma start_tls_init_tp_defined :
-  find_direct (TAtom "__tls_init_tp") hi_module = Some (Defined start_tls_init_tp_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 (** ## The two handlers
 
@@ -62,11 +34,6 @@ Proof. vm_compute. reflexivity. Qed.
     `c: __libc_start_main` registers. *)
 Definition start_dlerror_handler_fn : func := Unit_csu_libcZ2dstart_os.fn_glibc_libc_start'23dlerror_handler.
 
-(** The image defines the dlerror handler with that body. *)
-Lemma start_dlerror_handler_defined :
-  find_direct (TAtom "glibc_libc_start#dlerror_handler") hi_module = Some (Defined start_dlerror_handler_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 (** ## Early initialization
 
     `c: __libc_early_init` sets up the character tables, reads several
@@ -77,28 +44,13 @@ Proof. vm_compute. reflexivity. Qed.
     tunable's value out of the tunable table. *)
 Definition start_tunable_get_val_fn : func := Unit_elf_dlZ2dtunables_os.fn___tunable_get_val.
 
-(** The image defines `c: __tunable_get_val` with that body. *)
-Lemma start_tunable_get_val_defined :
-  find_direct (TAtom "__tunable_get_val") hi_module = Some (Defined start_tunable_get_val_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 (** This constant is the body of `c: __pthread_tunables_init`, which
     reads the mutex spin-count tunable. *)
 Definition start_pthread_tunables_init_fn : func := Unit_nptl_pthread_mutex_conf_os.fn___pthread_tunables_init.
 
-(** The image defines `c: __pthread_tunables_init` with that body. *)
-Lemma start_pthread_tunables_init_defined :
-  find_direct (TAtom "__pthread_tunables_init") hi_module = Some (Defined start_pthread_tunables_init_fn).
-Proof. vm_compute. reflexivity. Qed.
-
 (** This constant is the body of `c: __ctype_init`, which points the
     thread's character-class tables at the C locale's. *)
 Definition start_ctype_init_fn : func := Unit_ctype_ctypeZ2dinfo_os.fn___GI___ctype_init.
-
-(** The image defines `c: __ctype_init` with that body. *)
-Lemma start_ctype_init_defined :
-  find_direct (TAtom "__GI___ctype_init") hi_module = Some (Defined start_ctype_init_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 (** ## Constructors
 
@@ -108,8 +60,3 @@ Proof. vm_compute. reflexivity. Qed.
 (** This constant is the body of `c: check_stdfiles_vtables`, which
     checks that the three standard streams use glibc's own jump table. *)
 Definition start_check_vtables_fn : func := Unit_libio_vtables_os.fn_glibc_vtables'23check_stdfiles_vtables.
-
-(** The image defines `c: check_stdfiles_vtables` with that body. *)
-Lemma start_check_vtables_defined :
-  find_direct (TAtom "glibc_vtables#check_stdfiles_vtables") hi_module = Some (Defined start_check_vtables_fn).
-Proof. vm_compute. reflexivity. Qed.

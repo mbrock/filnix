@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     caller receives either the answer with a session at the new index
     or the short-option state with the cursor past the dash. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,13 +17,12 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint GetoptLongAmbItem GetoptLongAmbList
-  GetoptLongAmbHead GetoptLongAmbPoss GetoptLongAmbRep GetoptLongPfxPath GetoptLongFind GetoptLongBody GetoptLongJoinMiss GetoptLongJoinFound GetoptLongJoin GetoptLongCall GetoptLongOnly GetoptDispatch GetoptLongSite GetoptLongSession.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCursor GetoptExchange GetoptInitialize GetoptLongAmbTail GetoptLongBody GetoptLongCall GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongSession GetoptLongSite GetoptLongStore GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpBits StrncmpLogic
+  GetoptModule GetoptState ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
+  GetoptDiag GetoptLongExact GetoptLongDiag GetoptLongStore
+  GetoptLongPfxCmp GetoptLongPfxAlloc GetoptLongAmbTail
+  GetoptLongSite GetoptLongSession.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -41,14 +40,14 @@ Proof. revert k. induction l as [|y l IH]; intros [|k] H; cbn in *; try discrimi
 (** The site module proves the long-only call and its test of the answer. *)
 (** The session module restores the session after a return. *)
 (** The cursor module proves the store of the cursor before the short options. *)
-Import GetoptLongSite GetoptLongCall GetoptLongSession GetoptLongBody GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongSite GetoptLongSession GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongStore GetoptLongDiag GetoptLongExact GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** After the store of the cursor, the short options read these names, which keep their values through the store. *)
 Definition single_keys : list name := Eval vm_compute in
   List.map TAtom ["v2"; "v12"; "pr.1"; "v80"; "chk2"; "chk20"]%string.
 
 (** A call needs facts about its arguments, such as their values and ranges, and this tactic proves them. *)
-Ltac single_side :=
+Local Ltac single_side :=
   lazymatch goal with
   | |- environments.envs_entails _ _ => fail
   | |- avoids _ _ = true => vm_compute; reflexivity
@@ -56,7 +55,7 @@ Ltac single_side :=
   end.
 
 (** A key in the list keeps its value through the store of the cursor. *)
-Ltac single_lk Hk :=
+Local Ltac single_lk Hk :=
   lazymatch goal with |- lookup ?k ?e' = _ =>
     rewrite (keeps_in single_keys k _ e' Hk);
     [|unfold single_keys; cbn [In]; repeat first [left; reflexivity | right]] end.
@@ -70,7 +69,7 @@ Local Instance single_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stabl
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The site and the cursor store describe the same cells through two copies of their modules, and this tactic converts between the copies. *)
-Ltac single_conv b r i av ar ps c :=
+Local Ltac single_conv b r i av ar ps c :=
   iAssert (pcell b 32 c) with "[Hcur]" as "Hcur"; [iExact "Hcur"|];
   iAssert (live b r) with "[Hl]" as "Hl"; [iExact "Hl"|];
   iAssert (int_cell b 0 i) with "[Hib]" as "Hib"; [iExact "Hib"|];

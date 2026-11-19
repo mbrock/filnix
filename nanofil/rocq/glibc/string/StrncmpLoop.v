@@ -21,7 +21,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop
   StrcmpBits StrcmpLoop StrncmpBits.
-From Glibc Require StrcmpLoop WordString.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -37,7 +36,7 @@ Ltac lkf H := repeat (apply lk_put; [reflexivity|]); exact H.
 
 (** Tactic [vxf] resolves every operand lookup in the current instruction
     from the environment hypotheses. *)
-Ltac vxf :=
+Local Ltac vxf :=
   cbn [map2_option map_option flight_arg_x flight_cap arg_x];
   repeat match goal with |- context [value_x ?g ?E ?k (Tmp ?n)] =>
     match goal with H : lookup n _ = Some ?x |- _ =>
@@ -89,7 +88,7 @@ Ltac normt v tac :=
 
 (** Tactic [fin_tac] steps through glibc's final word comparison on x
     and y with remaining count r, returning [strncmp_res]. *)
-Ltac fin_tac x y r Hl HK Hc A1 A2 :=
+Local Ltac fin_tac x y r Hl HK Hc A1 A2 :=
   assert (Hr0 : 0 < r) by (destruct Hl as (_ & _ & _ & ? & _); lia);
   do 10 step_symbolic; normt (cmp_mask x y) ltac:(reflexivity); step_symbolic; branch_symbolic;
   pose proof (cmp_mask_range x y);

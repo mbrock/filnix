@@ -3,7 +3,8 @@
     It uses the built-in conversion tables because Hello has registered
     no handlers of its own. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require FixVariadic.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -11,8 +12,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps PrintfSpec PrintfLoopState
   DcigettextExit DcigettextPreRules WPrintfDispatch WPrintfLength WPrintfPad WPrintfWrite WPrintfParse
-  WPrintfScan WPrintfString WPrintfOut PrintfWrap.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld WrapVL.
+  WPrintfScan WPrintfString WPrintfOut.
+From Glibc Require Import WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps OsWorld FixVariadic.VL0.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

@@ -4,7 +4,7 @@
     finds the narrow buffer already installed. *)
 
 From Glibc Require Import Unit_libio_genops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import Fix FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle LibioWXsputnWindow
   LibioWAllocBuf LibioWOverflowDispatch LibioWOverflowPut LibioWOverflowWrite LibioWOverflowSetp LibioWOverflowSetWide
   LibioWOverflowState LibioWOverflowLoan LibioWOverflowReady LibioWOverflowAllocateSteps CBlocks.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 

@@ -4,7 +4,7 @@
     An empty string returns zero without even setting the error bit. *)
 
 From Glibc Require Import Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy PrintfStreamInv LibioFputsSpec LibioLogic
   LibioPutsInv LibioFflushIdle LibioOverflowBase LibioOverflowNoWrite.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

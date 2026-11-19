@@ -6,9 +6,10 @@
     this thread already holds gets one more acquisition. The module does
     not cover a lock that another thread holds, which needs the
     compare-and-swap and the wait path. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,8 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfTidy FxprintfStream FxprintfTail.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
+  FxprintfTidy FxprintfStream FxprintfTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -26,8 +26,8 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
-Module FxVL := VariadicLogicOn R LG0.
-Import PrintfStreamInv SysWrappers LibioCloseSteps FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic FxVL.
+Module FxVL := FixVariadic.VL0.
+Import SysWrappers LibioCloseSteps Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic FxVL.
 
 (** This fact records where the argument copy lies. The proof keeps it
     as one opaque fact so that arithmetic in the lock code does not carry it. *)

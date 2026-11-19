@@ -12,7 +12,7 @@ From Glibc Require Import GlibcProgram.
     joins the result with the resumed-cluster rule of the entry blocks.
     The option choice and the form W; keep their own exits. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -22,12 +22,10 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  GetoptState GetoptBytes GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptEntryCall GetoptArgv
+  GetoptState ByteRead GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptArgv
   GetoptExchange GetoptReturn GetoptIdlePath GetoptScanEnd GetoptScan GetoptScanSession GetoptEntryScan
   GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap GetoptCharRet
   GetoptEntryChar.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCharRet GetoptEntry GetoptEntryCall GetoptEntryChar
-  GetoptEntryScan GetoptExchange GetoptInitialize GetoptScan GetoptScanSession GetoptShortCap GetoptState OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -57,8 +55,7 @@ Proof. intros [H | [H | H]]; tauto. Qed.
 Lemma scan_ret_ctl_inorder p q : scan_ret_case 2 1 1 [p; q] 1 2 q.
 Proof. right. right. split; [reflexivity|]. split; [lia|]. exists 1. cbn. repeat split; lia. Qed.
 
-Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML
-  FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section entry_scan_ret.

@@ -3,7 +3,7 @@
   <about path="nanofil/rocq/glibc/startup/CpuInitSpec.v" symbol="init_cpu_features_spec"/>
   <about path="nanofil/rocq/glibc/startup/CpuSpec.v" symbol="init_cpu_features_has_spec"/>
   <about path="nanofil/rocq/glibc/startup/CpuSound.v" symbol="CpuImage"/>
-  <about path="nanofil/rocq/glibc/startup/CpuHiAtexit.v"/>
+  <about path="nanofil/rocq/glibc/hi_atexit/CpuHiAtexit.v"/>
   <about path="nanofil/rocq/glibc/startup/CpuInitTunables.v" symbol="icf_tunables_split"/>
   <tag name="formal"/>
   <p>Every program built on Fil-C's user glibc starts by calling <c>init_cpu_features</c>, which asks the processor what it supports. An earlier block reported a proof that this function never panics. That proof was about one test program, hi_atexit, and it was not in a form that the proof of the rest of startup could call.</p>

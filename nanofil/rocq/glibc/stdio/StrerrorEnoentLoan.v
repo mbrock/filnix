@@ -5,19 +5,19 @@
 From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
 From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_stdioZ2dcommon_errlist_os Unit_string__strerror_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import Unit_string_stpcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap
   Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrappers
-  AllocLogic HiAtexitAlloc GetoptMallocGlibc TfindEmpty
-  LocalenameLogic RdlockLogic RwunlockLogic RwlockIdle
+  AllocLogic AllocCall TfindEmpty
+  LocalenameLogic RdlockLogic RwlockIdle
   StrlenLogic WordString DcigettextRoute
-  DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
+  DcigettextPreRules DcigettextSecure DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
   ErrlistEnoent ErrlistFacts ErrorText StrerrorEnoent Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
 Section loan.
@@ -42,7 +42,7 @@ Definition enoent_translation_pack (bs : list Z) : iProp Σ :=
     (rw_state a1 ar1 r1 cw1 sh1 fl1) (rw_state a2 ar2 r2 cw2 sh2 fl2)
     (rw_state a3 ar3 r3 cw3 sh3 fl3)
     (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg)
-    (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs ∗ int_cell tb 720 tid.
+    (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs ∗ int_cell tb 720 tid.
 
 Let translation := enoent_translation eb dom dqd nb nc k cat dqc cv p276 p277 db dqb dbreg ib dqi ireg
   sec dqs secreg v dq mpb tcb dmb mpr tcr dr dqr rb ro rreg gb go greg dqg lp lb lreg dql dqn dqt treg

@@ -27,12 +27,12 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers WordString PrintfStreamInv
+From Glibc Require Import OsWorld FileInv LibioLogic SysWrappers WordString
   FxprintfTidy FxprintfStream FxprintfCall GetoptDiag GetoptLongDiag.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import PrintfStreamInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section bridge.
@@ -123,16 +123,6 @@ Proof using Type*. lia. Qed.
     prints the translation with the program name and the option
     character. The caller lends the wrapper's resources from T. *)
 
-(** The parser's caller must still say how a message is translated. This
-    premise is that part of getopt_diag_rule, stated on its own so that the
-    construction below takes it as a separate hypothesis. *)
-Definition diag_translate (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (dom : ptr) : Prop :=
-  forall f e ls l d args rest j mid Φ, diag_msg ge mid ->
-    map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] ->
-    ⊢ G -∗ ▷ (∀ q, T mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-      WP (ERun (mkFrame f e ls None
-        (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
-
 (** A report prints the translated message, so the caller lends the
     wrapper's resources from the translation's resource T. The caller
     gives such a loan for every translation q of a message. It also says
@@ -173,16 +163,6 @@ Qed.
     prints one of two formats that the parser does not translate. The
     translated prints lend from T. The two untranslated prints lend from
     G and give G back. *)
-
-(** The caller must also say how a long-option message is translated.
-    This premise is that part of getopt_ldiag_rule, stated on its own so
-    that the construction below takes it as a separate hypothesis. *)
-Definition ldiag_translate (G : iProp Σ) (T : ptr -> ptr -> iProp Σ) (dom : ptr) : Prop :=
-  forall f e ls l d args rest j mid Φ, ldiag_msg ge mid ->
-    map_option (arg_x ge e) args = Some [WPtr dom; WPtr mid; WInt 5] ->
-    ⊢ G -∗ ▷ (∀ q, T mid q -∗ WP (ERun (mkFrame f (put d (WPtr q) e) ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
-      WP (ERun (mkFrame f e ls None
-        (Exec l (Call (CResult d P) (Global (TAtom "__GI___dcgettext")) args :: rest) j)) : gexpr) {{ Φ }}.
 
 (** The translated long-option prints lend from T, and their formatter
     premise covers any program name, prefix and option name. *)

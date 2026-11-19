@@ -10,19 +10,18 @@ From Glibc Require Import GlibcProgram.
     wrapper copy the public index in, that a session after a call is such
     a state, and that the zeroed object gives one wherever it lies. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
-From Glibc Require Import FileInv WordString GetoptState GetoptEntryPre GetoptWrapParse GetoptInitial.
-From Glibc Require FileInv GetoptState GetoptWrapParse GetoptInitial.
+From Glibc Require Import FileInv WordString GetoptState GetoptWrapParse GetoptInitial.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section state.
 Context `{!gen_heapGS piece pval Σ}.

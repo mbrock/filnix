@@ -29,7 +29,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic.
-From Glibc Require GlibcLogic LeavesLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -136,7 +135,7 @@ Qed.
 Ltac ids := apply ids_of; cbn; repeat constructor.
 
 
-Module ML := MemLogicOn R LG0.
+Module ML := Fix.ML0.
 Module LG := LG0.
 Module L := LG.L.
 Import L LG GlibcLogic ML LeavesLogic.
@@ -204,7 +203,7 @@ Ltac ign H :=
     and updating the global call counter. The tactic [tail58] steps
     through that shared tail block `L121`, marks slot k in use, and
     returns its pointer. *)
-Ltac tail58 k c Hc Hgcl Hwib Hwcl :=
+Local Ltac tail58 k c Hc Hgcl Hwib Hwcl :=
   step;
   rule1 "Hil" ltac:(eapply wp_check; inst; [reflexivity | reflexivity | reflexivity | arith | arith | arith]);
   rule2 "Hil" "Hfl0" ltac:(eapply wp_raw_store; inst;

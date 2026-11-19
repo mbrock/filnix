@@ -3,16 +3,16 @@
     back a valid buffer, even when the stream accepted only a prefix. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os Unit_string_memcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import CodePrelude Fix OsWorld OsRegistry FileInv LibioLogic
-  LibioCloseSteps LibioPutsInv LibioWIdle PrintfOut WPrintfFileFlush WPrintfDispatch
+  LibioPutsInv LibioWIdle PrintfOut WPrintfFileFlush WPrintfDispatch
   WPrintfFill WPrintfPad WPrintfCopy WPrintfWrite.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps OsWorld.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld.
 Open Scope Z_scope.
 
 Definition wprintf_failed_fn := Unit_stdioZ2dcommon_vfwprintfZ2dinternal_os.fn_glibc_vfwprintf_internal'23__wprintf_buffer_has_failed.

@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
 
     The selection does not write to the stream or promise that overflow succeeds.
     It uses heap space when available and printf's staging array otherwise. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,14 +15,14 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferOverflowSwitch PrintfStreamHeap.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioOverflowBase LibioPutsInv OsWorld PrintfBufferOverflowSwitch PrintfStreamHeap SysWrappers.
+  PrintfBufferOverflowSwitch PrintfStreamHeap.
+From Glibc Require LibioOverflowBase LibioPutsInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import PrintfStreamHeap LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import PrintfStreamHeap LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

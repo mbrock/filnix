@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     a dash. The decision then reaches the returns that GetoptReturn.v
     proves, or the option parser. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,9 +17,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptClamp GetoptSkipTest GetoptDash GetoptReturn.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptReturn GetoptState LibioLogic OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
+  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptSkipTest GetoptDash GetoptReturn.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -40,7 +39,7 @@ Definition scan_end_names : list name := scan_names ++ return_names.
 
 
 (** The return module proves the returns that end the call early. *)
-Import GetoptReturn GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptReturn GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
@@ -57,7 +56,7 @@ Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable 
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** This tactic checks and loads byte k of the shared string H at q as a signed byte. *)
-Ltac rdchr H q s k :=
+Local Ltac rdchr H q s k :=
   let bb := fresh "bb" in let breg := fresh "breg" in let Hbb := fresh "Hbb" in
   iDestruct (ws_byte q s k with H) as (bb breg) "(%Hbb & #Hbl & #Hbt)"; [lia|];
   destruct Hbb as (Hcap & Hb0' & Hbq & Hbe & Hbr);

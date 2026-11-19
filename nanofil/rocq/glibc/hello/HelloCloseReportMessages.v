@@ -13,7 +13,7 @@ From Stdlib Require Import List String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Run Machine Pieces Heap Logic Language.
 From Glibc Require Import FileInv WordString HelloGetoptTable StartImageEarly HelloImageLoad
   HelloCloseReportImage HelloCloseReportLookup Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Definition err_at (k : Z) := nth (Z.to_nat k) err_messages None.

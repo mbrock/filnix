@@ -16,6 +16,7 @@
     The world facts come from the final world of startup, whose errno
     cell is the image's `c: __libc_errno`. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -24,12 +25,12 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic MemLogic Language.
 From Glibc Require Import OsBlocks OsWorld OsRegistry OsStart FileInv LibioStdfiles StartCallMainSpec
-  HiAtexitBase HiAtexitGe HiAtexitModule HiAtexitInitial HiAtexitInitialAlloc HiAtexitInitialStdout
+  HiAtexitGe HiAtexitModule HiAtexitInitial HiAtexitInitialAlloc HiAtexitInitialStdout
   HiAtexitInitialExit HiAtexitEntryList HiAtexitEntryFields HiAtexitWorld HiAtexitStdout HiAtexitExit HiAtexitMain
   LibioDefaultXsputnBuf LibioXsputnBase.
-From Glibc Require LibioFlushInv LibioPutsInv LibioPutsLock LibioXsputnSetp.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioStdfiles.
-Import LibioPutsLock LibioPutsInv LibioXsputnSetp LibioXsputnBase LibioDefaultXsputnBuf.
+From Glibc Require LibioFlushInv LibioPutsInv.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioStdfiles.
+Import LibioPutsInv LibioXsputnBase LibioDefaultXsputnBuf.
 Open Scope Z_scope.
 
 (** ## The memory that startup keeps *)

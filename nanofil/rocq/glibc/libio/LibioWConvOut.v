@@ -34,7 +34,7 @@
     function against a rule for that run of the step. *)
 
 From Glibc Require Import Unit_libio_iofwide_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -42,8 +42,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic AbsInfer.
 From Glibc Require Import CodePrelude CLocaleCells CtypeTranslitTables OsWorld FileInv
-  LibioLogic LibioCloseSteps LibioWIdle CBlocks Fix LibioWConvAscii LibioWConvConsts.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+  LibioLogic LibioWIdle CBlocks Fix LibioWConvAscii LibioWConvConsts.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     skips the write, and block `c: L163` is reached with its flag
     `c: v179` 0 ([wp_puts_L109]). *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,8 +17,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioPutsInv LibioPutsLock LibioPutsUnlock LibioPutsCall.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsCall LibioPutsInv LibioPutsLock LibioPutsUnlock OsWorld SysWrappers.
+  WordString LibioPutsInv LibioPutsCall.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,7 +31,7 @@ Local Arguments Z.opp : simpl nomatch.
 Definition oriented (mode : Z) : Z := if mode =? 0 then 2 ^ 32 - 1 else mode.
 
 
-Import LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioPutsCall LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

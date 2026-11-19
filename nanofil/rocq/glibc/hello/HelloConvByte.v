@@ -3,7 +3,8 @@
     the name of the locale, reads the byte again as unsigned, and
     writes that value to the same four-byte output slot. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import AsciiConvert.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import HelloImageModule HelloImageLoad OsWorld OsRegistry FileInv LibioLogic WordString
   Mbrtowc HelloConvHardLocale Fix.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -26,6 +27,16 @@ Local Abbreviation gl := (img_a "_nl_global_locale").
 Local Abbreviation eb := (img_a "errno").
 Local Abbreviation cn := (rop (img_a "_nl_C_name")).
 Local Abbreviation lit := (rop (img_a "hard-locale#str.31")).
+
+(** The linker resolves the public alias and the converter's function
+    pointer to the two bodies used above. The two data symbols name
+    the objects that startup supplies. *)
+Lemma mbrtowc_image_link fr : let ge := mkGenv hello_image_module img_globals fr in
+  find_fn ge (TAtom "mbrtowc") = Some (Defined glibc_mbrtowc) /\
+  find_fn ge (TAtom "__gconv_transform_ascii_internal") = Some (Defined glibc_ascii_internal) /\
+  function_check_res ge (mkPtr (img_a "__gconv_transform_ascii_internal") (Fn (TAtom "__gconv_transform_ascii_internal"))) = Some ok /\ lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp (img_a "__libc_tsd_LOCALE")) /\
+  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (objp (img_a "errno")).
+Proof. vm_compute. repeat split. Qed.
 
 (** Reading the low byte as unsigned recovers the byte after a signed load. *)
 Local Lemma ub_of_sb x : 0 <= x < 256 -> extension Ub (extension Sb x mod 2 ^ 32) mod 2 ^ 32 = x.

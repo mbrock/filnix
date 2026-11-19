@@ -13,8 +13,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv LibioLogic
   LibioOverflowBase LibioSetb LibioOverflowAllocSetg LibioOverflowAlloc LibioDefaultXsputnBuf
-  HiAtexitBase HiAtexitSetb HiAtexitAlloc HiAtexitOverflowAlloc HiAtexitOutputState AllocLogic AllocRo LibioOverflowHeapStart.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+  AllocCall StreamOverflowAlloc StreamOutputState AllocLogic AllocRo LibioOverflowHeapStart.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 (** Allocation may discover a terminal and enable line buffering. It
@@ -70,7 +70,7 @@ Proof using Type*.
   - iDestruct "HM" as (mp tc dm mr tr dr [Hmp Htc]) "#HM".
     pose proof (hi_doallocbuf w0 registry ge Hreg Hext Hstat Hfstat Hmaj Hisatty Hsetb Hfree_fn Hfh Hzf Hzg
       Hmalloc Hmalloc2 DfracDiscarded mp tc dm mr tr dr Hmp Htc Hda) as Halloc.
-    pose proof (wp_ovf_L33 (hi_malloc_state DfracDiscarded mp tc dm mr tr dr) Halloc (heap_switch_to_putting Hreg Hext Hfw)) as H33.
+    pose proof (wp_ovf_L33 (malloc_call_state DfracDiscarded mp tc dm mr tr dr) Halloc (heap_switch_to_putting Hreg Hext Hfw)) as H33.
     iDestruct "Hbuf" as "((Hrp & Hre & Hrb & Hwb & Hb & He') & Hwp & Hwe & [%Ewp %Ewe])". subst wp we.
     iApply (wp_glibc__IO_new_file_overflow_alloc _ H33 fr fb freg ch f2 fd eb mode vb vr fl tw off null null null null null null
       with "Hvt Hl [$Hf2 $Hfd $Herr $Hcol $Hmode $Hvtp //] Hfl Htw Hoff Hrp Hre Hrb Hwb Hwp Hwe Hb He' HM");

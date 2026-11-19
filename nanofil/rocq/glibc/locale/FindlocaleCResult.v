@@ -4,15 +4,15 @@
     caller and returns the data for the requested category. *)
 
 From Glibc Require Import Unit_locale_findlocale_os Unit_string_strcmp_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls ExternalMachine
   Pieces Heap Language Logic MemLogic StepRules Symbolic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptBytes StrcmpLogic LocaleEnv Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+From Glibc Require Import OsWorld OsMemLogic WordString ByteRead StrcmpLogic LocaleEnv Fix.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsMemLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     This proof connects the function entry to the stream call and its count
     comparison. The stream call and the following buffer selection remain
     explicit obligations; neither is assumed to accept all bytes. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -15,15 +15,15 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps PrintfBufferXsputnEntry
+  PrintfBufferXsputnEntry
   PrintfBufferXsputnCaller.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsInv OsWorld PrintfBufferXsputnCall PrintfBufferXsputnCaller PrintfBufferXsputnEntry SysWrappers.
+From Glibc Require LibioPutsInv PrintfBufferXsputnCall.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

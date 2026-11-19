@@ -9,6 +9,7 @@
     proof of glibc's formatter is not finished yet, so this module
     assumes its contract for now. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,12 +18,12 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic StringLogic ExternalCalls.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString GlibcSpec PrintfSpec GetoptDiag GetoptLongDiag
-  DcgettextLocale HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagLock HelloGetoptDiagMsgs HelloGettextLocaleConst
+  DcgettextLocale HelloGlibcDebts HelloGetoptDiagLock HelloGetoptDiagMsgs HelloGettextLocaleConst
   HelloGettextDomain HelloImageModule HelloImageLoad HelloImageEarly HelloImageKept HelloImageLayout HelloStartFacts
-  HelloGetoptFormats HelloGetoptDiagImage HelloStartGetopt HelloGettextLink HiAtexitAlloc HelloGlibcMainAlloc
+  HelloGetoptFormats HelloGetoptDiagImage HelloStartGetopt HelloGettextLink AllocCall
   AllocRo LibioFputsSpec.
 From Glibc Require LibioCleanupExit.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## A value that the caller does not know
@@ -162,7 +163,7 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 
 Lemma hello_gettext_cache_of_ro ge (o : hello_objs) : hello_ro ge o ⊢ hello_gettext_cache o.
 Proof using Type.
-  rewrite /hello_ro /hello_gettext_cache /hi_malloc_state.
+  rewrite /hello_ro /hello_gettext_cache /malloc_call_state.
   iIntros "(_ & _ & _ & _ & _ & _ & _ & H & _)". iExact "H".
 Qed.
 

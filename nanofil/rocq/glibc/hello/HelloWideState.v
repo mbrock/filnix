@@ -5,6 +5,7 @@
     spread over its streams and its private state. This file shows how
     main lends them to the call and gets them back unchanged. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -12,9 +13,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv StartImageCpu HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageWFwideObjs HelloImageWideObjs HelloStartHdGetopt HelloGlibcDebts HelloLocaleState HelloConvObjects
+  HelloImageWideObjs HelloStartHdGetopt HelloGlibcDebts HelloLocaleState HelloConvObjects
   HelloConvState Mbrtowc LibioWFwide.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section state.

@@ -5,19 +5,20 @@
     The wrapper delegates printing to another function. The caller must
     prove that function separately before using this rule to prove an
     error report. The captured wrapper does not take a stream lock. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_misc_error_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps PrintfStreamInv
+From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
   FxprintfStream ErrorCode Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
-Module ErrorVL := VariadicLogicOn R LG0.
+Module ErrorVL := FixVariadic.VL0.
 Import ErrorVL.
 
 (** The call frame retains all arguments in its read-only snapshot. *)

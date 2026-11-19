@@ -3,7 +3,7 @@
     The call resets the offset and releases the lock without inspecting
     the descriptor or errno. Pending output and unread input are excluded. *)
 From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -11,7 +11,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsRegistry SysWrappers FileInv LibioLogic LibioCloseSteps
   FileSyncShort FflushAcquire FflushUnlock Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L
   FileInv LibioLogic LibioCloseSteps OsWorld SysWrappers.
 Open Scope Z_scope.
 

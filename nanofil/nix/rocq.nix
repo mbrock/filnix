@@ -351,8 +351,8 @@ let
       ../rocq/scripts/programs.sh
       ../rocq/scripts/gallina.pl
       ../rocq/scripts/link.pl
-      ../rocq/glibc/IRNotation.v
-      ../rocq/glibc/IRBytes.v
+      ../rocq/glibc/base/IRNotation.v
+      ../rocq/glibc/base/IRBytes.v
       ../rocq/scripts/glibc-code/typed.py
     ];
   };

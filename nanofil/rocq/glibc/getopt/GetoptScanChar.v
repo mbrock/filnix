@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     vector. The two calls of the long-option parser and the form W; keep
     their own exits. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -19,13 +19,10 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic GetoptModule
-  GetoptState GetoptBytes GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptEntryCall GetoptArgv
-  GetoptExchange GetoptCursor GetoptReturn GetoptIdlePath GetoptScanEnd GetoptEntryScan GetoptScanChoice
+  GetoptState ByteRead GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre GetoptArgv
+  GetoptExchange GetoptCursor GetoptIdlePath GetoptScanEnd GetoptEntryScan GetoptScanChoice
   GetoptDispatch GetoptDiag GetoptReqTail GetoptShort GetoptOptArg GetoptShortRet GetoptShortCap GetoptKnownCap
   GetoptCharRet GetoptEntryChar GetoptEntryScanRet.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptCharRet GetoptDispatch GetoptEntry GetoptEntryChar
-  GetoptEntryScan GetoptEntryScanRet GetoptExchange GetoptInitialize GetoptScanChoice GetoptShortCap
-  GetoptState OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -79,8 +76,7 @@ Proof using Type.
 Qed.
 End cursor.
 
-Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML
-  FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptShortCap GetoptKnownCap GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan_char.

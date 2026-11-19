@@ -3,8 +3,9 @@
     glibc leaves the input and output in place and sets errno. A NUL
     yields zero, and every other ASCII byte consumes one input byte. *)
 
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_wcsmbs_mbrtowc_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,11 +13,10 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
 From Glibc Require Import IRFrames.
-From Glibc Require Import CodePrelude HelloImageModule HelloImageLoad OsWorld OsBlocks FileInv LibioLogic
-  AsciiConvert StartInitMisc DcigettextExit Fix.
+From Glibc Require Import CodePrelude OsWorld OsBlocks OsMemLogic AsciiConvert DcigettextExit Fix.
 From Glibc Require Export CLocaleCells.
-Module MbVL := VariadicLogicOn R LG0.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic MbVL.
+Module MbVL := FixVariadic.VL0.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsMemLogic MbVL.
 Open Scope Z_scope.
 
 (** The public name mbrtowc is an alias for this body in Hello. *)
@@ -28,13 +28,13 @@ Local Arguments Z.mul : simpl nomatch.
 Local Abbreviation heap b n := (mkRegion b (b + n) Heap Live).
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation rop b := (mkPtr b (Ro b)).
-Local Abbreviation ts := (img_a "__libc_tsd_LOCALE").
-Local Abbreviation gl := (img_a "_nl_global_locale").
-Local Abbreviation cc := (img_a "_nl_C_LC_CTYPE").
-Local Abbreviation cd := (img_a "glibc_C_ctype#lc_ctype_data").
-Local Abbreviation ft := (img_a "__wcsmbs_gconv_fcts_c").
-Local Abbreviation st := (img_a "glibc_wcsmbsload#to_wc").
-Local Abbreviation fp := (mkPtr (img_a "__gconv_transform_ascii_internal") (Fn (TAtom "__gconv_transform_ascii_internal"))).
+Local Abbreviation ts := (conv_addr "__libc_tsd_LOCALE").
+Local Abbreviation gl := (conv_addr "_nl_global_locale").
+Local Abbreviation cc := (conv_addr "_nl_C_LC_CTYPE").
+Local Abbreviation cd := (conv_addr "glibc_C_ctype#lc_ctype_data").
+Local Abbreviation ft := (conv_addr "__wcsmbs_gconv_fcts_c").
+Local Abbreviation st := (conv_addr "glibc_wcsmbsload#to_wc").
+Local Abbreviation fp := (mkPtr (conv_addr "__gconv_transform_ascii_internal") (Fn (TAtom "__gconv_transform_ascii_internal"))).
 
 Section objects.
 Context `{!gen_heapGS piece pval Σ}.
@@ -43,10 +43,10 @@ Context `{!gen_heapGS piece pval Σ}.
     the last conversion step. Its library handle is null and its
     function pointer names the built-in ASCII converter. *)
 Definition mbr_tables : iProp Σ :=
-  liveq DfracDiscarded cc (img_gd "_nl_C_LC_CTYPE") ∗ pcellq DfracDiscarded cc 32 (rop cd) ∗
-  liveq DfracDiscarded cd (img_gd "glibc_C_ctype#lc_ctype_data") ∗ pcellq DfracDiscarded cd 0 (rop ft) ∗
-  liveq DfracDiscarded ft (img_gd "__wcsmbs_gconv_fcts_c") ∗ pcellq DfracDiscarded ft 0 (rop st) ∗
-  liveq DfracDiscarded st (img_gd "glibc_wcsmbsload#to_wc") ∗ pcellq DfracDiscarded st 0 null ∗ pcellq DfracDiscarded st 40 fp.
+  liveq DfracDiscarded cc (conv_region "_nl_C_LC_CTYPE") ∗ pcellq DfracDiscarded cc 32 (rop cd) ∗
+  liveq DfracDiscarded cd (conv_region "glibc_C_ctype#lc_ctype_data") ∗ pcellq DfracDiscarded cd 0 (rop ft) ∗
+  liveq DfracDiscarded ft (conv_region "__wcsmbs_gconv_fcts_c") ∗ pcellq DfracDiscarded ft 0 (rop st) ∗
+  liveq DfracDiscarded st (conv_region "glibc_wcsmbsload#to_wc") ∗ pcellq DfracDiscarded st 0 null ∗ pcellq DfracDiscarded st 40 fp.
 End objects.
 
 Section conversion.
@@ -109,7 +109,7 @@ Proof using Type*.
   Local Ltac mb_check H := check_read_dq H by a2; iNext; iIntros "_".
   step. mb_check "Hcc". load_pointer_dq "Hcc Hcc32 Hcd" by a2. iNext. iIntros "_ _ _".
   mb_check "Hcd". load_pointer_dq "Hcd Hcd0 Hft" by a2. iNext. iIntros "_ _ _".
-  step. step. branch. step. iApply (StartInitMisc.wp_renew_read_dq with "Hcd");
+  step. step. branch. step. iApply (OsMemLogic.wp_renew_read_dq with "Hcd");
     [reflexivity | vx | reflexivity | right; reflexivity | a2 | a2 | a2 |]. iNext. iIntros "_".
   load_pointer_dq "Hcd Hcd0 Hft" by a2. iNext. iIntros "_ _ _".
   check "Hil". store "Hil" "Hin". check "Hil". load_pointer_dq "Hil Hin Hsk" by a2. iNext. iIntros "Hil Hin _".
@@ -145,13 +145,3 @@ Proof using Type*.
     replace (sa+1-sa) with 1 by lia; iApply ("HK" with "[$Hts $Hts0 $Hgl $Hgl0] Hpsl Hps Hol Hbytes He").
 Qed.
 End conversion.
-
-(** The linker resolves the public alias and the converter's function
-    pointer to the two bodies used above. The two data symbols name
-    the objects that startup supplies. *)
-Lemma mbrtowc_image_link fr : let ge := mkGenv hello_image_module img_globals fr in
-  find_fn ge (TAtom "mbrtowc") = Some (Defined glibc_mbrtowc) /\
-  find_fn ge (TAtom "__gconv_transform_ascii_internal") = Some (Defined glibc_ascii_internal) /\
-  function_check_res ge fp = Some ok /\ lookup (TAtom "__libc_tsd_LOCALE") (ge_globals ge) = Some (objp ts) /\
-  lookup (TAtom "__libc_errno") (ge_globals ge) = Some (objp (img_a "errno")).
-Proof. vm_compute. repeat split. Qed.

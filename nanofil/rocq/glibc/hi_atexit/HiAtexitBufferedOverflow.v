@@ -1,3 +1,4 @@
+From Glibc Require Fix.
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
 From Glibc Require Import GlibcProgram.
 (** Once stdout has a buffer, an overflow either stores the next byte
@@ -5,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     concrete overflow rule to the buffer and field predicates used by
     string output. The buffer remains a heap object even on write errors. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,13 +14,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv
-  LibioLogic SysWrappers LibioOverflowBase LibioXsputnBase HiAtexitBase
-  HiAtexitOverflow HiAtexitOutputState.
-From Glibc Require FileInv LibioDefaultXsputnBuf LibioLogic LibioOverflowBase LibioXsputnBase LibioXsputnSetp OsWorld SysWrappers.
+  LibioLogic SysWrappers LibioOverflowBase LibioXsputnBase
+  StreamOverflow StreamOutputState.
+From Glibc Require LibioDefaultXsputnBuf.
 Import ListNotations.
 Open Scope Z_scope.
-Import LibioOverflowBase SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
-Import LibioXsputnSetp.
+Import LibioOverflowBase SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import LibioXsputnBase LibioDefaultXsputnBuf.
 
 Import ProgramAbbreviations.

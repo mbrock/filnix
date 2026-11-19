@@ -22,7 +22,7 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap StringLogic MemLogic.
 From Glibc Require Import HelloVersionLits FileInv StrlenLogic WordString HelloGetoptTable HelloGetoptStart StartImageUnique
-  HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad HelloImageCtors
+  ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad HelloImageCtors
   HelloImageStart HelloStartKeptAlloc LibioWIdle.
 Import ListNotations.
 Open Scope Z_scope.

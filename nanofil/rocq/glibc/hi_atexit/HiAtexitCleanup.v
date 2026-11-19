@@ -3,6 +3,7 @@
     the linked program, with its push, pop and flush callees discharged.
     The caller still owns the initialized thread and remaining streams. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -10,14 +11,14 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics ExternalCalls Pieces Heap Logic.
 From Glibc Require Import OsWorld OsRegistry FileInv LibioFlushInv LibioCleanupExit
-  HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt.
-From Glibc Require ExitRunTail FileInv LibioCleanupExit LibioFlushInv.
+  HiAtexitFns HiAtexitGe.
+From Glibc Require ExitRunTail.
 Import ListNotations.
 Open Scope Z_scope.
 
 (** Clients can describe remaining streams without loading a concrete
     copy of the entire flush proof chain. *)
-Import LibioFlushInv FileInv HLG HLG.L.
+Import LibioFlushInv FileInv Fix.LG0 Fix.LG0.L.
 
 (** The interface exposes only the proved cleanup rule. Its implementation
     must discharge this rule; the interface adds no trusted assumption. *)

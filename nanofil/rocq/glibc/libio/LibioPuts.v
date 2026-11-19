@@ -29,7 +29,7 @@ From Glibc Require Import GlibcProgram.
     | the count, at most `c: INT_MAX` | `c: L101`, `c: L212` | here |
     | the release | `c: L103` | LibioPutsUnlock.v | *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -37,10 +37,9 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
+From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   WordString StrlenLogic LibioPutsInv LibioPutsLock LibioPutsUnlock
-  LibioPutsCall LibioPutsMode LibioPutsBuf LibioPutsNl.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioPutsBuf LibioPutsCall LibioPutsInv LibioPutsLock LibioPutsMode LibioPutsNl LibioPutsUnlock OsWorld SysWrappers.
+  LibioPutsCall LibioPutsMode LibioPutsNl.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,16 +54,16 @@ Local Arguments Z.opp : simpl nomatch.
 Definition puts_ret (n r : Z) : Prop := r = Z.min (n + 1) 2147483647 \/ r = 2 ^ 32 - 1.
 
 
-Import LibioPutsNl LibioPutsBuf LibioPutsMode LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv LibioCloseSteps SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioPutsNl LibioPutsMode LibioPutsCall LibioPutsUnlock LibioPutsLock LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 (** A lookup of the goal, through its environment's [put]s, of a value
     equal to the one asked for by arithmetic. *)
-Ltac lk_val :=
+Local Ltac lk_val :=
   first [lk_prove | lookups; first [reflexivity | do 2 f_equal; unwrap2; first [reflexivity | lia]]].
 
 (** A branch on an unknown condition, as two goals, H naming whether
     it is 0. *)
-Ltac brz H :=
+Local Ltac brz H :=
   iApply wp_branch; [vx | iNext];
   lazymatch goal with |- context [edge_label (if ?n =? 0 then _ else _)] =>
     destruct (Z.eqb_spec n 0) as [H | H] end;

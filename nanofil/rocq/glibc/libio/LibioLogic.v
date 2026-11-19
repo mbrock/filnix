@@ -1,15 +1,6 @@
-(** What the libio proofs share (SysWrappers.v, LibioRead.v): a store
-    keeps OsWorld.v's [os_wi] when it writes back only the life token
-    the program owned ([os_wi_store_life]), the lists of pieces that
-    hold no life token ([no_life]), and the tactics that keep a
-    symbolic run's addresses small.
-
-    A store rule of Logic.v or MemLogic.v asks that the store keep the
-    world interpretation, given that the old pieces, the object's life
-    token first, are in the ghost heap: [os_wi_store] gives it when
-    every life token written is the one the heap holds, and the new
-    pieces of a store are the same life token and pieces with none
-    ([wi_store]). *)
+(** Stream proofs use the flag masks and write results defined here.
+    They use the shared OS memory tactics to step through the captured
+    code and to show that stores preserve the OS world. *)
 
 From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
@@ -19,81 +10,11 @@ From iris.program_logic Require Import language weakestpre.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Pieces Heap Language Logic StringLogic MemLogic StepRules ExternalCalls ExternalMachine.
 From Nanofil Require WordBits Symbolic.
+From Glibc Require Export OsTactics LibioTactics.
 From Glibc Require Import OsBlocks OsWorld FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-
-(** ## Pieces with no life token *)
-
-(** No piece of ps is a life token. *)
-Definition no_life (ps : list (piece * pval)) : Prop :=
-  forall l v, (l, v) ∈ ps -> match l with PLive _ => False | _ => True end.
-
-(** A long's cell has none. *)
-Lemma no_life_cell b o x : no_life (cell b o x).
-Proof.
-  intros l v Hin. unfold cell in Hin. cbn in Hin.
-  repeat (apply elem_of_cons in Hin as [Hin|Hin]; [injection Hin as -> _; exact I|]).
-  by apply not_elem_of_nil in Hin.
-Qed.
-
-(** Bytes have none. *)
-Lemma no_life_byte_ps b o xs : no_life (byte_ps b o xs).
-Proof. intros l v Hin. apply byte_ps_elem in Hin as (i & x & _ & -> & _). exact I. Qed.
-
-(** A pointer's cell, its aux slot and its bytes, has none. *)
-Lemma no_life_pcell b o c a : no_life ((PAux b o, VAux c) :: cell b o a).
-Proof.
-  intros l v Hin. apply elem_of_cons in Hin as [[= -> _] | Hin]; [exact I|]. exact (no_life_cell _ _ _ _ _ Hin).
-Qed.
-
-(** One byte has none. *)
-Lemma no_life_byte b o x : no_life [(PByte b o, VByte x)].
-Proof. intros l v Hin. apply list_elem_of_singleton in Hin. injection Hin as -> _. exact I. Qed.
-
-(** A store into the object b that keeps every region, whose new
-    pieces are b's life token, as owned, and pieces with no life
-    token, keeps [os_wi]. *)
-Lemma os_wi_store_life w0 b reg ps ps' m m' wd h :
-  m_regions m' = m_regions m -> no_life ps' ->
-  (forall l v, (l, v) ∈ (PLive b, VLive reg) :: ps -> h !! l = Some v) -> os_wi w0 m wd h ->
-  os_wi w0 m' wd (overwrite ((PLive b, VLive reg) :: ps') h).
-Proof.
-  intros Er Hn Hh Hw. apply (os_wi_store w0 m m' wd h); [exact Er | | exact Hw].
-  intros l v Hin. apply elem_of_cons in Hin as [[= -> ->] | Hin].
-  - apply Hh. left.
-  - pose proof (Hn l v Hin) as H. destruct l; [contradiction | exact I | exact I | exact I].
-Qed.
-
-(** The premise of a store rule over [os_wi]: by [os_wi_store_life]. *)
-Ltac wi_store :=
-  let Hh := fresh "Hh" in let Hw := fresh "Hw" in
-  intros ? ? ? Hh Hw; eapply os_wi_store_life; [reflexivity | | exact Hh | exact Hw];
-  first [apply no_life_cell | apply no_life_byte_ps | apply no_life_pcell | apply no_life_byte].
-
-(** ## A `c: int`'s bytes *)
-
-(** The four bytes of an int below 2^32 read back as it. *)
-Lemma of_bytes_int x : 0 <= x < 2 ^ 32 -> of_bytes (le_bytes x 4) = x.
-Proof.
-  intros Hx. transitivity (x mod 2 ^ (8 * (3 + 1))); [| apply Z.mod_small; exact Hx].
-  rewrite WordBits.low_step; [|lia]. change (8 * 3) with (8 * (2 + 1)).
-  rewrite WordBits.low_step; [|lia]. change (8 * 2) with (8 * (1 + 1)).
-  rewrite WordBits.low_step; [|lia]. change (8 * 1) with (8 * (0 + 1)).
-  rewrite WordBits.low_step; [|lia]. rewrite Z.mul_0_r Z.pow_0_r Z.mod_1_r. cbn -[byte_of].
-  change (Z.of_nat 0) with 0. change (Z.of_nat 1) with 1. change (Z.of_nat 2) with 2. change (Z.of_nat 3) with 3. lia.
-Qed.
-
-(** A signed 32-bit load of an int's bytes, at class [W], is its bits. *)
-Lemma load_sw_int x : 0 <= x < 2 ^ 32 -> extended Sw W (of_bytes (le_bytes x 4)) = Some (WInt x).
-Proof.
-  intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. f_equal. f_equal. unfold sign_extension.
-  rewrite (Z.mod_small x); [|exact Hx]. destruct (2 ^ 31 <=? x) eqn:E.
-  - apply Z.leb_le in E. rewrite Zminus_mod Z_mod_same_full Z.sub_0_r !Z.mod_mod; [|lia].
-    apply Z.mod_small. exact Hx.
-  - apply Z.mod_small. exact Hx.
-Qed.
 
 (** A mask of a nonnegative integer by a 32-bit one is a 32-bit int. *)
 Lemma land_lt32 a b : 0 <= a -> 0 <= b < 2 ^ 32 -> 0 <= Z.land a b < 2 ^ 32.
@@ -154,95 +75,6 @@ Lemma flags2_bit7 f2 : 0 <= f2 < 2 ^ 32 ->
             2 ^ ((8 mod 2 ^ 32) mod 32)) mod 2 ^ 32) mod 2 ^ 32) (128 mod 2 ^ 32) = Z.land f2 128.
 Proof. apply (flags2_mask f2 128 7); [reflexivity | lia]. Qed.
 
-(** ## Arithmetic *)
-
-(** Keep only arithmetic hypotheses, so lia does not read the rest. *)
-
-
-(** Drop each wrap to 64 or 32 bits of the goal that arithmetic shows
-    the identity. *)
-Ltac unwrap :=
-  repeat match goal with
-    | |- context [?x mod 2 ^ 64] => rewrite (Z.mod_small x (2 ^ 64)); [|clear_junk; lia]
-    | |- context [?x mod 18446744073709551616] => rewrite (Z.mod_small x 18446744073709551616); [|clear_junk; lia]
-    | |- context [?x mod 2 ^ 32] => rewrite (Z.mod_small x (2 ^ 32)); [|clear_junk; lia]
-    | |- context [?x mod 4294967296] => rewrite (Z.mod_small x 4294967296); [|clear_junk; lia]
-    end.
-
-(** An address or integer fact, by arithmetic. *)
-Ltac arith := cbn [ptr_addr ptr_cap]; unfold raw_address; unwrap; clear_junk;
-  first [lia | Z.div_mod_to_equations; lia].
-
-(** An address fact about FileInv.v's offsets, by arithmetic. *)
-Ltac ar := autounfold with offs; arith.
-
-(** Write each address of the goal's environment without wraps. *)
-Ltac norm := cbn [ptr_addr ptr_cap]; unwrap.
-
-(** The term X has a variable in it. *)
-Ltac has_var X := match X with context [?v] => is_var v end.
-
-(** Compute each closed integer of the goal's words: a value glibc
-    computes from constants, such as a flag test of a field known to
-    be 0, becomes its numeral. *)
-Ltac closed_ints :=
-  repeat match goal with
-    |- context [WInt ?X] =>
-      tryif has_var X then fail else
-      let v := eval vm_compute in X in tryif constr_eq X v then fail else change X with v
-    end.
-
-(** The term X holds no integer test. *)
-
-
-(** Decide a goal of integer tests, such as a branch condition, by
-    a case on each test and arithmetic. *)
-
-
-(** ## Values of an environment with an unknown tail *)
-
-(** A value premise of a step, such as `c: map2_option (value_x ge e)
-    classes args = Some xs`: computed when e is known; when e is a
-    run of [put]s over an unknown env, as at a loop's head, each
-    [lookup] is taken through the [put]s ([Symbolic.lookup_after_put])
-    and, past them, from a hypothesis `c: lookup k e = Some x`. *)
-(** A lookup past a [put] of another name. *)
-
-
-(** Prove `c: lookup k E = r`, r found: through E's [put]s, each of
-    another name by computation, to the [put] of k or, past them, to a
-    hypothesis. The proof applies one small lemma per [put], so its
-    size does not grow with the goal's. *)
-
-
-(** A pure premise left by an [iApply], by arithmetic or a lookup; the
-    proof-mode goal is left alone, so [try side] after an [iApply]
-    takes all its premises. *)
-Ltac libio_side :=
-  lazymatch goal with
-  | |- environments.envs_entails _ _ => fail
-  | _ => first [done | lia | unfold file_size; lia | unfold io_is_appending; lia | cbn; lia | lk_prove]
-  end.
-
-(** Each [lookup] of the goal taken through its [put]s and, past them,
-    from a hypothesis. *)
-Ltac lookups :=
-  repeat (rewrite Symbolic.lookup_after_put;
-          match goal with |- context [?c] => lazymatch c with name_eqb _ _ =>
-            let r := eval vm_compute in c in change c with r end end;
-          cbn beta iota);
-  repeat match goal with H : lookup ?k ?e = Some _ |- context [lookup ?k ?e] => rewrite H end.
-
-(** A pure premise of a write-loop rule, the [side] of v with
-    [lookups] for environments past the call. *)
-Ltac wside :=
-  lazymatch goal with
-  | |- environments.envs_entails _ _ => fail
-  | _ => first [done | unfold file_size; lia | lia | cbn; lia | lookups; first [reflexivity | do 2 f_equal; arith]]
-  end.
-
-
-
 (** What `c: _IO_new_file_write` leaves: r of the n bytes written,
     all of them with the flags as they were, or fewer after a failed
     call, which set `c: _IO_ERR_SEEN`. *)
@@ -275,64 +107,3 @@ Proof. intros (a & Hl & _ & Ha). unfold sym_ptr. rewrite Hl. exact Ha. Qed.
 (** It is the function [find_fn] finds. *)
 Lemma ge_fn_find ge n gf : ge_fn ge n gf -> find_fn ge (TAtom n) = Some (Defined gf).
 Proof. intros (a & _ & Hf & _). exact Hf. Qed.
-
-(** ## Steps over a Logic instance *)
-
-(** Each step tactic applies a rule from Logic.v to one instruction of a run
-    whose values are symbolic. It discharges the premises by computation or arithmetic. *)
-Import LG0.
-
-(** The point of the frame the goal's weakest precondition runs: the
-    hypotheses, which may hold other frames, are not looked at. *)
-
-
-(** Enter the start block of a frame. *)
-
-
-(** A check, its bounds by arithmetic, with the object's life H. *)
-
-
-(** A branch on a closed condition: computed. *)
-
-
-(** A branch on an unknown condition: both ways, as two goals. *)
-
-
-(** A branch whose condition is b, by [decide_ints]. *)
-
-
-(** One step whose premises reduce: a pure let, a flight, entering a
-    block, or a goto. The values stay symbolic. *)
-
-
-(** ## A check at a share *)
-
-Import LG0.L.
-
-Section rules.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
-Context {world : Type} (registry : name -> option (contract world))
-  (wi : mem -> world -> gmap piece pval -> Prop) `{!SafepointStable wi} (ge : genv).
-
-Local Instance step_irisGS : irisGS_gen hlc (nanofil_lang registry ge) Σ := nanofil_irisGS registry wi ge.
-Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
-
-(** [wp_check_read] at a share: a [[check]] for reading of the pointer
-    p, through a read-write or read-only capability for the object b of
-    which a share of the life is owned. *)
-Lemma wp_check_read_dq f e ls l d lo hi al args rest j classes p b reg dq Φ :
-  op_arg_classes (Check lo hi Read al) A = Some classes ->
-  map2_option (value_x ge e) classes args = Some [WPtr p] ->
-  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> b <= raw_address (ptr_addr p) lo ->
-  raw_address (ptr_addr p) lo + (hi - lo) <= r_end reg -> raw_address (ptr_addr p) lo mod al = 0 ->
-  liveq dq b reg -∗
-  ▷ (liveq dq b reg -∗ WP (ERun (mkFrame f (put d (WPtr p) e) ls None (Exec l rest j)) : sexpr) {{ Φ }}) -∗
-  WP (ERun (mkFrame f e ls None (Exec l (Let d A (Check lo hi Read al) args :: rest) j)) : sexpr) {{ Φ }}.
-Proof using SafepointStable0.
-  intros Hc Hx Hp H1 H2 H3. apply (wp_read_dq registry wi ge dq _ _ _ []).
-  intros m fuel (Hf & _). cbn [all_agree agree_piece fst snd] in Hf. destruct Hf as [[E _] _].
-  apply rule_let with (classes := classes) (xs := [WPtr p]); [reflexivity | exact Hc | exact Hx |].
-  apply op_check. exact (access_read _ _ _ _ _ _ _ Hp E H1 H2 H3).
-Qed.
-
-End rules.

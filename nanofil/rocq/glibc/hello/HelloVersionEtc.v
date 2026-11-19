@@ -11,22 +11,19 @@
     [HelloVersionEtcVa](HelloVersionEtcVa.v) proves the other two. *)
 
 From Glibc Require Import HelloImage_versionZ2detc.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
-From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
-  PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
+From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv LibioLogic LibioFputsSpec
+  PrintfSpec NarrowFormat NarrowArgs AllocRo HelloVersionLits HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude.
-From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
-Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
-  HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

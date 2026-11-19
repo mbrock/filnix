@@ -6,15 +6,15 @@
     The caller must supply the three null pointers that glibc checks.
     Neither rule initializes those pointers or proves startup behavior. *)
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSym.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import OsWorld FileInv LibioLogic
   Fix WordString MemFwdLogic FormatterRegistration.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 (** The first parser iteration initializes its counters and remembers
     the conversion letter after advancing the saved format pointer. *)

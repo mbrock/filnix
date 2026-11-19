@@ -10,18 +10,18 @@ From Glibc Require Import GlibcProgram.
     ownership of a buffer splits around the replaced stretch. The rule
     [wp_raw_store_l_bytes] stores a 64-bit integer into eight owned bytes,
     in the same way as the rule for 32-bit stores in MemLogic.v. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic.
+From Glibc Require Import OsWorld OsMemLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 
 (** ## Replacing part of a buffer *)
 

@@ -64,7 +64,6 @@
     buffers, [wp_os_errno_call] for calls that also set `c: errno`, and
     [wp_os_noreturn] for calls that exit the process. *)
 
-From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.

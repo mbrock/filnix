@@ -3,14 +3,14 @@
     Returning the cells with both cursors at the base recovers the
     stream at wide character index zero. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import Fix FileInv FileIdle LibioLogic LibioWIdle LibioWXsputnWindow LibioWOverflowState.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 Definition wo_ptrs st := [fs_ptr st 0; fs_ptr st 1; fs_ptr st 2; fs_ptr st 3;

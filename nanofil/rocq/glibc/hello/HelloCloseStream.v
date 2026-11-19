@@ -10,14 +10,14 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Fix.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
 From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
-  FileInv LibioLogic SysWrappers AllocLogic LibioCloseSteps LibioRead HiAtexitFclose HelloCloseStreamRetain.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld OsRegistry
+  FileInv LibioLogic SysWrappers AllocLogic HelloCloseStreamRetain.
 From Glibc Require LibioFcloseTail.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioFcloseTail.
 Open Scope Z_scope.
 
 (** This is the actual Hello function, not the hi_atexit callback.

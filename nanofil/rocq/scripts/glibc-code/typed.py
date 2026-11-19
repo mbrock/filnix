@@ -205,7 +205,7 @@ class TypedCode:
         definitions.append(f'Definition {prefix} : module := ' + (' ++ '.join(refs) or '[]') + '.\n')
         body = provenance + '\n'.join(definitions)
         if check_zero:
-            deps.extend(['HelloImageChunks', 'HelloImageEraseMem'])
+            deps.extend(['ImageChunks', 'ImageEraseMem'])
             body += f'\nLemma {prefix}_zero : zero_nonneg {prefix} = true.\nProof.\n'
             body += f'  unfold {prefix}. '
             if proofs:

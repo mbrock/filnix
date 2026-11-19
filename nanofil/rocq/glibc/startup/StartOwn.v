@@ -24,7 +24,7 @@ From stdpp Require Import list fin_maps.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsStart StartState StartLibcStartMain.
 From Glibc Require FileInv.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** A region found by its base is one of the regions in the list. *)

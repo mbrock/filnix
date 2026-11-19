@@ -4,21 +4,22 @@
     Establishing that entry state is separate from this execution proof;
     in particular, the loader image alone is not its precondition. *)
 
+From Glibc Require Fix.
 From Glibc Require Import HiAtexit_hi_atexit.
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv WordString AtexitLogic ExitRun LibioCloseSteps
-  HiAtexitModule HiAtexitBase HiAtexitFns HiAtexitGe HiAtexitCloseIt HiAtexitStdout
-  HiAtexitAlloc HiAtexitInitial HiAtexitExitEnv HiAtexitCleanup HiAtexitPuts HiAtexitExit.
-From Glibc Require AtexitLogic ExitRun ExitRunTail FileInv LibioFlushInv OsWorld.
+From Glibc Require Import OsWorld OsRegistry FileInv WordString AtexitLogic ExitRun
+  HiAtexitModule HiAtexitFns HiAtexitGe HiAtexitStdout
+  AllocCall HiAtexitInitial HiAtexitExitEnv HiAtexitPuts HiAtexitExit.
+From Glibc Require ExitRunTail LibioFlushInv.
 Import ListNotations.
 Open Scope Z_scope.
-Import ExitRun ExitRunTail AtexitLogic OsWorld HLG HLG.L LibioFlushInv FileInv.
+Import ExitRun ExitRunTail AtexitLogic OsWorld Fix.LG0 Fix.LG0.L LibioFlushInv FileInv.
 
 (** This is main's body in the actual linked module. *)
 Definition hi_main_fn : func := HiAtexit_hi_atexit.fn_main.
@@ -45,7 +46,7 @@ Definition hi_main_state (w0 : os_world) : iProp Σ :=
   tcb_cleanup_inv (ow_self w0) ∗
   live 73408 (mkRegion 73408 73416 GlobalData Live) ∗ pcell 73408 0 (mkPtr 72240 (Obj 72240)) ∗
   hi_stdout_before w0 70608 73504 (mkPtr 72240 (Obj 72240)) 0 None ∗
-  hi_malloc_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
+  malloc_call_state (DfracOwn 1) 68800 68992 65888 hi_mp_reg hi_tc_reg hi_dummy_reg ∗
   io_list_inv hge [mkPtr 71760 (Obj 71760); mkPtr 72240 (Obj 72240); mkPtr 72000 (Obj 72000)] ∗
   ([∗ list] g ∈ hi_exit_streams, stream_life g ∗ exit_stream false g) ∗
   word_string (DfracOwn 1) (mkPtr 65568 (Ro 65568)) [104; 101; 108; 108; 111] ∗
@@ -55,7 +56,7 @@ End resources.
 
 (** Proof-mode searches do not expand the combined entry resources. *)
 #[local] Hint Opaque hi_main_state hi_exit_callback_state hi_stdout_before hi_stdout_after
-  single_ro vtables_ro io_list_inv tcb_cleanup_inv stream_life exit_stream hi_malloc_state word_string
+  single_ro vtables_ro io_list_inv tcb_cleanup_inv stream_life exit_stream malloc_call_state word_string
   exit_funcs_inv exit_lock_free : typeclass_instances.
 
 Section rules.

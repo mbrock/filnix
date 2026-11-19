@@ -8,12 +8,11 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv.
-From Glibc Require FileInv.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 
 
-Import FileInv FileInv.LG.
+Import FileInv Fix.LG0.
 
 Section preds.
 Context `{!gen_heapGS piece pval Σ}.

@@ -35,7 +35,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry.
-From Glibc Require AtexitLogic LeavesLogic OsExit OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -59,7 +58,7 @@ Proof. intros H. cbn. rewrite H. reflexivity. Qed.
 
 (** Read a temporary of the abstract environment below a frame's puts
     by a hypothesis about it there, then compute the rest. *)
-Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
+Local Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
 
 (** The value premise of a step: by computation, or through [look]. *)
 

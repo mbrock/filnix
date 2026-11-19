@@ -1,3 +1,4 @@
+From Glibc Require Export GetoptTactics.
 From Glibc Require Import GlibcProgram.
 (** Each call of glibc's reentrant option scanner begins with the same
     fixed sequence of blocks. The call reads the private diagnostic flag,
@@ -13,7 +14,7 @@ From Glibc Require Import GlibcProgram.
     to option reading. Only a resumed call can have an active cursor,
     because initialization clears the cursor. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,9 +22,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState
   GetoptInitialize GetoptColon.
-From Glibc Require FileInv GetoptBytes GetoptColon GetoptInitialize GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -73,12 +73,7 @@ Definition entry_env (e : env) (n : Z) (av p lo li : ptr) (lonly b pe : Z) : Pro
   lookup (TAtom "chk20") e = Some (WPtr (mkPtr (b + 32) (Obj b))) /\
   lookup (TAtom "v80") e = Some (WInt 0).
 
-(** Signed comparison of a nonnegative 32-bit integer reads its value. *)
-Lemma sx_small x : 0 <= x < 2 ^ 31 -> sign_extension (2 ^ 32) (2 ^ 31) (x mod 2 ^ 32) = x.
-Proof.
-  intros H. unfold sign_extension. rewrite !Z.mod_small; try lia.
-  rewrite (proj2 (Z.leb_gt _ _)); lia.
-Qed.
+
 
 (** The function's first block reads the diagnostic flag. *)
 Definition getopt_blk_start : block := Eval vm_compute in
@@ -87,7 +82,7 @@ Definition getopt_blk_start : block := Eval vm_compute in
 
 
 (** The colon module supplies initialization, resume and the colon check. *)
-Import GetoptColon GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
+Import GetoptColon GetoptInitialize GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 Import ProgramAbbreviations.
 Section entry_values.
@@ -111,27 +106,6 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** This tactic loads an owned private integer field as a signed 32-bit value. *)
 
 
-(** Signed comparisons of nonnegative 32-bit values read the values. *)
-Ltac sx := repeat match goal with |- context [sign_extension (2 ^ 32) (2 ^ 31) (?x mod 2 ^ 32)] =>
-  rewrite (sx_small x); [|lia] end.
-
-(** This tactic decides a branch whose condition arithmetic settles. *)
-Ltac brz :=
-  iApply wp_branch; [vx | iNext]; sx;
-  repeat match goal with
-    | |- context [?x <? ?y] =>
-        first [rewrite (proj2 (Z.ltb_lt x y)); [|lia] | rewrite (proj2 (Z.ltb_ge x y)); [|lia]]
-    | |- context [?x =? ?y] =>
-        first [rewrite (proj2 (Z.eqb_eq x y)); [|lia] | rewrite (proj2 (Z.eqb_neq x y)); [|lia]]
-    end;
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
-
-(** This tactic decides a branch whose condition has become closed. *)
-Ltac close_br :=
-  lazymatch goal with |- context [edge_label (if ?c then _ else _)] =>
-    let c' := eval vm_compute in c in change c with c' end; cbn [edge_label].
-
 (** This tactic rebuilds an integer field from its rewritten bytes. *)
 Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 
@@ -143,7 +117,7 @@ Ltac lk :=
         | match goal with H : lookup ?k ?E = lookup ?k ?E1 |- lookup ?k ?E = _ => rewrite H; lk end ].
 
 (** Each kept lookup becomes an equation about the new environment. *)
-Ltac unkeep Hk :=
+Local Ltac unkeep Hk :=
   let Hc := fresh "Hkc" in pose proof Hk as Hc;
   unfold keeps, colon_keys, entry_keys in Hc; cbn [List.map] in Hc;
   repeat match type of Hc with Forall _ (_ :: _) => let H := fresh "Hkk" in apply Forall_cons_1 in Hc as [H Hc] end.

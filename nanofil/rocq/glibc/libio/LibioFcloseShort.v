@@ -11,11 +11,11 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld OsRegistry
   SysWrappers
   LibioUnlink FileInv LibioLogic LibioCloseSteps LibioCloseItEnd
   LibioFcloseTail LibioFcloseLock LibioFclose LibioCloseItShort.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld
   FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 

@@ -4,7 +4,7 @@ From Glibc Require Import GlibcProgram.
     The cancellation flag remains disabled when the diagnostic calls exit.
     This proof follows the actual flag update and saves the previous state
     in caller-owned memory; it does not supply an exit or cleanup contract. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,7 +12,6 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers.
-From Glibc Require FileInv LibioLogic OsThread OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -24,7 +23,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The function obtains the current thread's address before it reads or
     changes that thread's cancellation flag. *)
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -36,7 +35,7 @@ Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The call to obtain the thread address uses the registered runtime function,
     rather than a function body supplied by the linked program. *)
-Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
+Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity
   | apply (ext_fn ge Hext); cbn; tauto | apply (ext_data ge Hext); cbn; tauto].
 
 (** Disabling cancellation from the initial zero state saves zero and installs

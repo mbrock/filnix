@@ -12,16 +12,16 @@ From Glibc Require Import GlibcProgram.
     built-in free, and the other runs glibc's captured `c: free`, which
     hands the object to the runtime's `c: zgc_free`. Both proofs show that
     the OS state stays valid after the object dies. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic LibioSetb AllocLogic.
+From Glibc Require Import OsWorld OsMemLogic OsExternals AllocLogic.
 Import ListNotations.
 Open Scope Z_scope.
-Import FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld OsMemLogic.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

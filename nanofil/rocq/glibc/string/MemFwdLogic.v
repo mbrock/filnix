@@ -26,10 +26,10 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenWord OsWorld OsRegistry.
-From Glibc Require OsWorld StrlenWord.
+From Glibc Require Import StrlenLogic WordString StrlenWord OsWorld OsRegistry.
 From Glibc Require Import Fix.
-From Glibc Require Import GlibcProgram GlibcSpec.
+From Glibc Require GlibcSpec.
+Import GlibcProgram GlibcSpec.
 Import ListNotations.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -149,7 +149,7 @@ Qed.
     and `c: strdup`. *)
 
 
-Module ML := MemLogicOn R LG0.
+Module ML := Fix.ML0.
 Module SL := ML.SL.
 Module LG := ML.LG.
 Module L := LG.L.

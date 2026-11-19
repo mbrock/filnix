@@ -1,7 +1,7 @@
 (** Startup calls two functions through pointers rather than by name.
     The constructor runner calls each constructor from its table, and
     `c: __libc_start_call_main` calls main. A contract in
-    [GlibcSpec](../GlibcSpec.v) names its function, so this module
+    [GlibcSpec](../base/GlibcSpec.v) names its function, so this module
     proves a rule that uses such a contract at a call through a pointer.
 
     ## The rule
@@ -12,7 +12,7 @@
     caller uses the contract as it would at a call by name. *)
 
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -20,9 +20,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Section raw_call.

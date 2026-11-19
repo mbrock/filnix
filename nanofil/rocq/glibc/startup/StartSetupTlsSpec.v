@@ -12,13 +12,14 @@
     cookie and both handler flags, and the call hands it back with the
     new cookie. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap fancy_updates.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Runtime Logic MemLogic.
-From Glibc Require Import FileInv OsStart StartLogic StartTlsInitTpSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Import FileInv OsStart StartTlsInitTpSpec.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section spec.

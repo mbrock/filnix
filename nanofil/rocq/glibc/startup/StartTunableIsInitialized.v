@@ -11,17 +11,16 @@
 
 From Glibc Require Import Unit_elf_dlZ2dtunables_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics GlibcSpec.
+From Glibc Require Import GlibcTactics OsTactics GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import HiAtexitModule OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartCode StartLogic StartTunableGetValSpec StartTunableIsInitializedSpec.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld.
+From Glibc Require Import OsBlocks OsWorld FileInv LibioLogic LibioCloseSteps StartTunableIsInitializedSpec.
 From Glibc Require Import Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.
@@ -30,11 +29,6 @@ Local Arguments Z.mul : simpl nomatch.
 
 (** This constant is the body of `c: __tunable_is_initialized`. *)
 Definition start_tunable_is_initialized_fn : func := Unit_elf_dlZ2dtunables_os.fn___tunable_is_initialized.
-
-(** The linked image contains that body under this name. *)
-Lemma start_tunable_is_initialized_defined :
-  find_direct (TAtom "__tunable_is_initialized") hi_module = Some (Defined start_tunable_is_initialized_fn).
-Proof. vm_compute. reflexivity. Qed.
 
 (** ## The proof
 

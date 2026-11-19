@@ -9,16 +9,16 @@
     lock. *)
 
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics GlibcSymFunc.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic MemLogic.
-From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv FileIdle LibioLogic
-  LibioDoWrite LibioOverflowBase LibioOverflowShortWrite LibioXsputnHeap LibioWIdle LibioWDoWriteNarrow SysWrappers.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+From Glibc Require Import Fix OsBlocks OsWorld OsRegistry FileInv LibioLogic
+  LibioDoWrite LibioOverflowBase LibioXsputnHeap LibioWIdle LibioWDoWriteNarrow SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Local Abbreviation objp b := (mkPtr b (Obj b)).

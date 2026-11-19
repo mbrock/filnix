@@ -5,9 +5,10 @@
     `c: _IO_file_close_maybe_unlink` closes an idle stream in every one
     of these states. *)
 
+From Glibc Require Fix.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_iofclose_os.
 From Glibc Require Import Unit_nptl_libcZ2dcleanup_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,10 +18,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry SysWrappers
   FileInv FileIdle LibioLogic LibioCloseSteps LibioCloseItEnd LibioCloseItMid
   LibioPutsInv LibioFflushIdle LibioGenLeaves LibioFcloseTail LibioFcloseLock
-  LibioFclose LibioUnlink HelloClosedStdout LibioCloseItShort AllocLogic HiAtexitBase HiAtexitDoWrite
-  HiAtexitSetb HiAtexitCloseIt.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld
-  FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
+  LibioFclose LibioUnlink HelloClosedStdout LibioCloseItShort AllocLogic
+  StreamSetb StreamCloseIt.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
 Open Scope Z_scope.
 
 (** ## Closing a stream that is not putting

@@ -10,7 +10,7 @@ From Glibc Require Import GlibcProgram.
     and LibioWriteExit.v supplies the exit and accounting steps. The
     loop preserves the flag and the input share even when a write fails. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -20,7 +20,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic
   SysWrappers LibioWriteExit LibioWriteCallDq LibioWriteJoinDq.
-From Glibc Require FileInv LibioLogic LibioWriteCallDq LibioWriteExit LibioWriteJoinDq OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -31,7 +30,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioWriteJoinDq LibioWriteCallDq LibioWriteExit SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import LibioWriteJoinDq LibioWriteCallDq LibioWriteExit SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

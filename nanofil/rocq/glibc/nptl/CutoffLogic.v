@@ -28,15 +28,14 @@ From Glibc Require Import GlibcProgram.
     macro `c: THREAD_SELF` is `c: zthread_self_cookie()`, and the field
     sits at offset 1720 of `c: struct pthread`. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic.
-From Glibc Require Import OsWorld OsThread WordString FileInv LayoutTables CutoffLayout.
-From Glibc Require OsThread WordString FileInv.
+From Glibc Require Import OsWorld OsThread WordString ThreadCleanup LayoutTables CutoffLayout.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

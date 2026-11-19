@@ -9,7 +9,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import GlibcProgram FileInv FileIdle FileTidy PrintfStreamInv LibioPutsInv LibioSetb OsBlocks
   LibioOverflowBase LibioOverflowShortWrite LibioOverflowShortStart LibioOverflowShortSend.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv.
 Open Scope Z_scope.
 
 (** The setup may set the user-buffer and writing bits. The write itself

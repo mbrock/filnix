@@ -7,7 +7,6 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic MemLogic.
 From Glibc Require Import AllocLogic.
-From Glibc Require AllocLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 

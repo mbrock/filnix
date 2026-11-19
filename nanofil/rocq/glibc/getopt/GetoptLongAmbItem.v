@@ -6,7 +6,7 @@ From Glibc Require Import GlibcProgram.
     table and writes it through the report rule that its caller
     supplies. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -15,12 +15,11 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenBits StrlenLogic StrlenLoop StrlenWord
-  StrcmpBits StrcmpLoop StrncmpBits StrncmpLoop StrncmpWords StrncmpLogic
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor
-  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag GetoptLongStore GetoptLongTail GetoptLongReq GetoptLongEq GetoptLongPre GetoptLongArg GetoptLongUnrec GetoptLongMissOnly
-  GetoptLongMiss GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongPfxSet GetoptLongPfxStep GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxEnd GetoptLongAmbTail GetoptLongAmbPrint.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptLongAmbPrint GetoptLongAmbTail GetoptLongDiag GetoptLongExact GetoptLongPfxAlloc GetoptLongPfxCmp GetoptLongPfxEnd GetoptLongPfxIter GetoptLongPfxLoop GetoptLongPfxMark GetoptLongPfxSet GetoptLongPfxStep GetoptLongScan GetoptLongStore GetoptReqTail GetoptState LibioLogic OsWorld StrlenLoop.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString StrchrnulLogic StrlenLogic StrlenWord
+  StrcmpLoop StrncmpWords StrncmpLogic
+  GetoptModule GetoptInitialize GetoptEntry GetoptExchange
+  GetoptDiag GetoptReqTail GetoptLongScan GetoptLongExact GetoptLongDiag
+  GetoptLongPfxCmp GetoptLongPfxMark GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongAmbPrint.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -54,7 +53,7 @@ Definition plo_blk273 : block := Eval vm_compute in plo_blk "L273".
 
 
 (** The write module supplies the write of one candidate, the set, the option table and the tactics. *)
-Import GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxEnd GetoptLongPfxLoop GetoptLongPfxIter GetoptLongPfxStep GetoptLongPfxSet GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongStore GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptLongAmbPrint GetoptLongAmbTail GetoptLongPfxAlloc GetoptLongPfxMark GetoptLongPfxCmp GetoptLongDiag GetoptLongExact GetoptLongScan GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 
 Import ProgramAbbreviations.
@@ -116,9 +115,9 @@ Proof using Type.
   rewrite (Z.mod_small (Z.of_nat k) (2 ^ 64)); [|lia].
   match goal with |- context [put (TAtom "v286") (WPtr {| ptr_addr := ?X; ptr_cap := Obj sb |})] =>
     replace X with (sb + Z.of_nat k) by (rewrite !Z.mod_small; lia) end.
-  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StrlenLoop.arith | StrlenLoop.arith | apply Z.mod_1_r |].
+  iApply (wp_check with "Hl"); [reflexivity | vx | reflexivity | StringTactics.arith | StringTactics.arith | apply Z.mod_1_r |].
   iNext. iIntros "Hl". iDestruct (bytes_at sb xs k x Hx with "Hx") as "(Hx0 & Hb & Hx1)".
-  iApply (wp_raw_load_byte with "Hl Hb"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | StrlenLoop.arith |].
+  iApply (wp_raw_load_byte with "Hl Hb"); [reflexivity | vx | reflexivity | reflexivity | left; reflexivity | StringTactics.arith |].
   iNext. iIntros "Hl Hb". iDestruct (bytes_at sb xs k x Hx with "[$Hx0 $Hb $Hx1]") as "Hx".
   iApply wp_branch; [vx | iNext].
   destruct (Z.eqb ((extension Ub x mod 2 ^ 32) mod 2 ^ 32) 0); cbn [edge_label].

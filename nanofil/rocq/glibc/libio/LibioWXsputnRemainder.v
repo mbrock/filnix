@@ -4,7 +4,7 @@
     the whole stage back. *)
 
 From Glibc Require Import Unit_string_memcpy_os Unit_string_mempcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,8 +12,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps LibioWIdle LibioWOverflowDispatch
   LibioWXsputnWords LibioWXsputnRoom LibioWXsputnWindow LibioWXsputnAppend LibioWXsputnSelect
-  LibioWXsputnDefault LibioWXsputnTail LibioWXsputnCopy WPrintfDispatch WPrintfFileFlush CBlocks.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+  LibioWXsputnDefault LibioWXsputnCopy WideBytes WideWriteSpec CBlocks.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

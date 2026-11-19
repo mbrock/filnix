@@ -8,7 +8,7 @@ From Stdlib Require Import String ZArith List.
 From Nanofil Require Import Term Values Memory Pieces Heap MemLogic StringLogic.
 From Glibc Require Import FileInv HelloImageLoad HelloImageWFwideObjs HelloImageWConvObjs
   ImageObjectPieces Mbrtowc LibioWConvConsts HelloImagePlacement.
-Import ListNotations FileInv.ML FileInv.LG.
+Import ListNotations Fix.ML0 Fix.LG0.
 Open Scope Z_scope.
 Open Scope list_scope.
 

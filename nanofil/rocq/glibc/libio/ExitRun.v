@@ -33,7 +33,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsThread OsRegistry
   ExitRunTail ExitRunLoop.
-From Glibc Require AtexitLogic ExitRunLoop ExitRunTail LeavesLogic OsExit OsThread OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

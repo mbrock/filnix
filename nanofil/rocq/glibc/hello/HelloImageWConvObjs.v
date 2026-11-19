@@ -15,7 +15,7 @@
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap StringLogic.
-From Glibc Require Import ImageObjectPieces HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
+From Glibc Require Import ImageObjectPieces ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
 From Glibc Require Export CtypeTranslitTables.
 Import ListNotations.
 Open Scope Z_scope.
@@ -27,7 +27,7 @@ Open Scope Z_scope.
     still holds its characters when the loader finishes. The lemmas
     below prove this for any module whose names are distinct. They
     compare the module with the copy that
-    [HelloImageEraseMem](HelloImageEraseMem.v) blanks. *)
+    [ImageEraseMem](../base/ImageEraseMem.v) blanks. *)
 
 (** Writing a string at offset i of address a leaves character j at
     address a + i + j, reduced to a byte. *)

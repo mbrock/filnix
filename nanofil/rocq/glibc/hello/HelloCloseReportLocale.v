@@ -14,7 +14,7 @@ From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle StartCtyp
   HelloGlibcDebts HelloGetoptDiagGettext HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLocaleConst
   HelloGettextDomain HelloGetoptDiagImage HelloStartGetoptRules HelloStartHdGetopt HelloStartHdRules
   HelloImageModule HelloImageLoad HelloImageLayout HelloImageEarly LibioCleanupExit DcgettextRealV DcgettextRwlock.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section report.

@@ -19,7 +19,7 @@ From stdpp Require Import list fin_maps.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap.
 From Glibc Require Import OsWorld OsStart StartCtors StartState StartOwn StartJoin HelloImageModule HelloImageLoad HelloImageCtors
   HelloImageDiagObjs HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs
-  HelloCloseReportImage HelloImageCpu HelloImageEarly HelloStartKept HelloImageDisjoint HelloImageLsm HelloImageEnviron StartImageUnique.
+  HelloCloseReportImage HelloImageCpu HelloImageEarly HelloStartKept HelloImageLsm HelloImageEnviron StartImageUnique.
 Import ListNotations.
 Open Scope Z_scope.
 

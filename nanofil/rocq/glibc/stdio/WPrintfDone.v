@@ -4,7 +4,7 @@
     also stores EOVERFLOW in errno. Neither path needs another buffer. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_wprintf_buffer_done_os Unit_stdioZ2dcommon_wprintf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -12,7 +12,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import CodePrelude Fix OsBlocks OsWorld
   FileInv LibioLogic LibioCloseSteps LibioPutsInv LibioWIdle DcigettextExit PrintfOut WPrintfFileFlush WPrintfDispatch.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 
 Definition wprintf_count_fn := Unit_stdioZ2dcommon_wprintf_buffer_done_os.fn___wprintf_buffer_done.

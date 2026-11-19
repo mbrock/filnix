@@ -5,7 +5,7 @@ From Glibc Require Import GlibcProgram.
     followed them, or restarts the nonoption block at i. This file proves
     those blocks safe and tracks the endpoints they leave. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -14,10 +14,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptSwap2Lower GetoptSwap2Upper GetoptExchangeTwo GetoptIdle GetoptPermute.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptExchangeTwo GetoptIdle GetoptInitialize GetoptPermute GetoptState LibioLogic OsWorld.
+  GetoptIdle GetoptPermute.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -33,7 +32,7 @@ Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. by rewrite !(Z.mod_sma
 
 
 (** The permuting branch. *)
-Import GetoptPermute GetoptIdle GetoptExchangeTwo GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptPermute GetoptIdle GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 Import ProgramAbbreviations.
 Section clamp.

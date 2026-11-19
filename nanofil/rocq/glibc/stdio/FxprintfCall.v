@@ -12,9 +12,10 @@
     does not apply when the stream is wide or another thread holds its
     lock. The formatter's own behavior remains a premise that the caller
     supplies, so this module does not prove formatting. *)
+From Glibc Require FixVariadic.
 From Glibc Require Import Unit_stdioZ2dcommon_fxprintf_os.
 From Glibc Require Import GlibcProgram.
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,8 +23,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic Identity VariadicLogic.
 From Glibc Require Import OsWorld OsThread OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  PrintfStreamInv FxprintfTidy FxprintfStream FxprintfLock.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsThread OsWorld SysWrappers PrintfStreamInv.
+  FxprintfTidy FxprintfStream FxprintfLock.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,8 +32,8 @@ Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.
 Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
-Module FxVL := VariadicLogicOn R LG0.
-Import PrintfStreamInv SysWrappers LibioCloseSteps FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic FxVL.
+Module FxVL := FixVariadic.VL0.
+Import SysWrappers LibioCloseSteps Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic FxVL.
 
 
 (** The checked function binds its two named parameters and snapshots
@@ -55,7 +55,7 @@ Local Instance fx_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The thread-cookie call needs the registry contract and an external name. *)
-Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
+Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
                         | apply (ext_data ge Hext); cbn; tauto].
 
 (** Taking the lock needs the current thread's identity, which the wrapper

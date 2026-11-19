@@ -35,7 +35,6 @@ From Glibc Require Import GlibcProgram.
     interpretation [os_wi] keeps its object identity registered in memory
     across every program step. *)
 
-From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -43,7 +42,6 @@ From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic.
 From Glibc Require Import OsBlocks OsWorld.
-From Glibc Require OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

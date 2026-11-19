@@ -13,7 +13,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import OsWorld OsRegistry LibioCleanupExit
   HelloGlibcDebts HelloGlibcLibsT.
-From Glibc Require LibioCleanupExit LibioFlushBody.
+From Glibc Require LibioFlushBody.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 

@@ -13,7 +13,7 @@ From Glibc Require Import GlibcProgram.
     argument, and a nonempty suffix sends it to the block that reads the
     next option character. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -21,9 +21,8 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
   GetoptInitialize.
-From Glibc Require FileInv GetoptBytes GetoptInitialize GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -64,7 +63,7 @@ Definition getopt_blk68 : block := Eval vm_compute in
 
 
 (** Initialization supplies the private-field and byte modules. *)
-Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes.
+Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead.
 
 (** After the colon check, the scanner also reads the skipped option string. *)
 Definition colon_keys : list name := TAtom "pr.1" :: entry_keys.
@@ -106,7 +105,7 @@ Ltac unkeep Hk :=
   repeat match goal with H : lookup ?k ?e1 = lookup ?k ?e, H' : lookup ?k ?e = Some _ |- _ => rewrite H' in H end.
 
 (** A run of assignments to other names keeps the listed lookups. *)
-Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply keeps_refl | assumption].
+Local Ltac keep := repeat (apply keeps_put; [vm_compute; reflexivity |]); first [apply keeps_refl | assumption].
 
 (** A resumed call skips the same ordering prefix as initialization,
     reading the option string through the caller's shared view. *)

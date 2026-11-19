@@ -5,7 +5,7 @@
     the report counter without a second print. *)
 
 From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
@@ -13,9 +13,9 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalMachine Pieces StepRules Heap Language Logic MemLogic VariadicLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream
+  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec
   ErrorEntry HelloErrorOpen HelloErrorOperand HelloVfxprintfIdle HelloCloseErrno Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
 
 Section message.

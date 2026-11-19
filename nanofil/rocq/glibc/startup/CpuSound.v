@@ -24,7 +24,7 @@ From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics
   Pieces Heap Language Logic StringLogic MemLogic ExternalCalls Dominance AbsRun AbsInfer AbsDen AbsMem AbsStep
   AbsCall AbsOwn AbsSound.
-From Glibc Require Import Fix GlibcProgram OsWorld OsCpuid OsRegistry CpuRules CpuHook CpuSetup.
+From Glibc Require Import Fix GlibcProgram OsWorld OsCpuid OsRegistry CpuHook CpuSetup.
 Import ListNotations.
 Open Scope Z_scope.
 

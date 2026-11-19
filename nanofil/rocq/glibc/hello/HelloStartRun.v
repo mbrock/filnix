@@ -4,7 +4,7 @@
     serves every program, so it asks its caller many questions about
     the program. This module answers all of them for Hello, except two:
     which memory the body reads, and how each late call hands over to
-    the next. [StartRunHiAtexit](../startup/StartRunHiAtexit.v) does the
+    the next. [StartRunHiAtexit](../hi_atexit/StartRunHiAtexit.v) does the
     same for hi_atexit, and this module follows it line by line.
 
     ## Why nothing here is new
@@ -15,19 +15,20 @@
     the image matches what the startup proof expects and passes the
     contracts along. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic.
-From Glibc Require Import OsWorld OsRegistry OsStart OsStartCalls OsCpuid StartCtors StartLogic
-  HelloImageModule HelloImageLoad HelloImageEarly HelloGlibcDebts HelloGlibcLibsT HelloStartBridge
-  StartCode StartTlsInitTp StartSetupTlsSpec StartSetupTls CpuInitSpec CpuHello StartImageEarly
+From Glibc Require Import OsWorld OsRegistry OsStart OsStartCalls OsCpuid StartCtors
+  HelloImageModule HelloImageLoad HelloImageEarly HelloGlibcDebts
+  CpuInitSpec CpuHello StartImageEarly
   StartTlsInitTpSpec StartLibcStartMain StartLsmImage StartLsmHello StartEarlyInitSpec StartCtorRunnerSpec StartPtmallocInitSpec
   HelloStartMain.
 From Glibc Require FileInv.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 Section run.

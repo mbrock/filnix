@@ -2,16 +2,16 @@
     stream has no pending narrow bytes or wide characters after the
     switch. Only the wide write end depends on the buffering flags. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import Fix OsWorld FileInv FileIdle LibioLogic LibioCloseSteps LibioPutsInv
-  LibioWIdle LibioWOverflowDispatch LibioWXsputnWindow LibioWXsputnRoom LibioWOverflowWrite
+From Glibc Require Import Fix OsWorld FileInv FileIdle LibioLogic LibioPutsInv
+  LibioWIdle LibioWOverflowDispatch LibioWXsputnWindow LibioWXsputnRoom
   LibioWOverflowSetp LibioWOverflowSetWide CBlocks.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

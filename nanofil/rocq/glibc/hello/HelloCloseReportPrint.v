@@ -4,7 +4,7 @@
     path needs stdout or restores the cancellation flag yet. *)
 
 From Glibc Require Import Unit_misc_error_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,12 +12,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine ExternalCalls
   ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv FileIdle LibioLogic LibioCloseSteps SysWrappers
-  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfStream FxprintfNormalCall
+  WordString NarrowArgs NarrowFormat PrintfSpec AllocRo LibioFputsSpec FxprintfNormalCall
   ErrorEntry ErrorText
   HelloGlibcDebts HelloGlibcLibsT HelloImageModule HelloImageLoad HelloImageLayout HelloStartFacts
   HelloEmitBug HelloErrorOperand HelloVfxprintfIdle HelloGetoptDiagImage HelloGetoptDiagTcb
   StartImageEarly HelloCloseReportImage HelloCloseReportLocale HelloCloseReportStrerror HelloCloseReportText LibioCleanupExit Fix.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps SysWrappers.
 Open Scope Z_scope.
 
 Section print.

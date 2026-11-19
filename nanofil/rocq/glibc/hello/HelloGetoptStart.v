@@ -12,7 +12,7 @@ From Glibc Require Import GlibcProgram.
     glibc's parser keeps that promise on every call. The objects may sit
     at any addresses, and the caller says they do not overlap. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -22,16 +22,16 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Mach
   ExternalCalls ExternalMachine Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LibioWIdle StrlenLogic
-  GetoptModule GetoptState GetoptInitialize GetoptDiag GetoptLongExact GetoptLongStore GetoptLongDiag
-  GetoptLongPfxAlloc GetoptLongAmbTail GetoptLongSite GetoptWrapParse GetoptLongStr GetoptInitial
+  GetoptInitialize GetoptDiag GetoptLongExact GetoptLongDiag
+  GetoptLongPfxAlloc GetoptLongAmbTail GetoptInitial
   AtexitLogic HelloGlibcLibsT HelloGetoptTable HelloGetoptState HelloGlibcDebts HelloGlibcMainLoop
   HelloGlibcMainFull HelloGetoptCall.
-From Glibc Require FileInv HelloGlibcDebts HelloGlibcMainFull ExitRun HelloGlibcMainLibs HelloGetoptCall.
+From Glibc Require ExitRun HelloGlibcMainLibs.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L HelloGlibcDebts.
+Import FileInv Fix.ML0 Fix.LG0 Fix.LG0.L HelloGlibcDebts.
 
 (** ## glibc's objects at startup
 

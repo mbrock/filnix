@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     This file joins the choice with the required-argument blocks and
     hands each exit the evidence for its argument. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,11 +17,9 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
-  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptCursor GetoptDiag GetoptReqTail GetoptReqNext
-  GetoptShort GetoptOptArg GetoptReqArg GetoptShortOpt GetoptShortCap.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptDiag GetoptExchange GetoptInitialize GetoptShortCap
-  GetoptShortOpt GetoptState OsWorld.
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule ByteRead
+  GetoptInitialize GetoptEntry GetoptArgv GetoptExchange GetoptDiag GetoptReqTail
+  GetoptOptArg GetoptShortOpt GetoptShortCap.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -47,8 +45,7 @@ Lemma known_req_keys_ctl : nth 3 known_req_keys (TAtom "") = TAtom "v455" /\
   nth 6 known_req_keys (TAtom "") = TAtom "chk0".
 Proof. split; reflexivity. Qed.
 
-Import GetoptShortCap GetoptReqNext GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize GetoptState
-  FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptShortCap GetoptReqTail GetoptDiag GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section known.

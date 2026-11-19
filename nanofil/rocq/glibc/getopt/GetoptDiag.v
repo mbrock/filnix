@@ -9,7 +9,7 @@ From Glibc Require Import GlibcProgram.
     of the stderr pointer, the read of the program name from the
     argument vector, and the arguments that it passes. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -18,9 +18,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptArgv GetoptExchange.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptInitialize GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -39,13 +38,10 @@ Definition diag_names : list name := Eval vm_compute in
 
 (** The scanner's two messages are the format strings str.148, for an
     unknown option, and str.149, for a missing argument. *)
-Definition diag_msg (ge : genv) (mid : ptr) : Prop :=
-  lookup (TAtom "glibc_getopt#str.148") (ge_globals ge) = Some mid \/
-  lookup (TAtom "glibc_getopt#str.149") (ge_globals ge) = Some mid.
-
+From Glibc Require Export GetoptMessages.
 
 (** The exchange module supplies the argument vector and its tactics. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 (** This tactic enters a block and evaluates its phi assignments. *)
 
@@ -123,10 +119,10 @@ Ltac vxc c := cbn -[put];
   cbn; rewrite (Z.mod_small c); [reflexivity | lia].
 
 (** This tactic shows that the message of a report is one of the two. *)
-Ltac msg := unfold diag_msg; first [left; eassumption | right; eassumption].
+Local Ltac msg := unfold diag_msg; first [left; eassumption | right; eassumption].
 
 (** This tactic proves one report block. *)
-Ltac diag_block :=
+Local Ltac diag_block :=
   let Hdom := fresh "Hdom" in let Hfp := fresh "Hfp" in let Hlend := fresh "Hlend" in
   let Hgt := fresh "Hgt" in let Hfx := fresh "Hfx" in
   match goal with H : (getopt_diag_rule w0 registry ge) _ _ _ _ |- _ => destruct H as (Hdom & Hfp & Hlend & Hgt & Hfx) end;

@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     This composition keeps two obligations explicit: the overflow contract
     and the ownership needed by buffer selection. It borrows the FILE
     lifetime only for the pointer read and returns it before calling overflow. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -17,13 +17,12 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
   LibioCloseSteps PrintfBufferOverflowPrelude
   PrintfBufferOverflowCall PrintfBufferOverflowReturn.
-From Glibc Require FileInv LibioCloseSteps LibioLogic OsWorld PrintfBufferOverflowCall PrintfBufferOverflowPrelude PrintfBufferOverflowReturn SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

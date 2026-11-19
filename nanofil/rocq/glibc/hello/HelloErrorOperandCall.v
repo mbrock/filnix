@@ -5,7 +5,7 @@
     the image's code in [HelloErrorOperand](HelloErrorOperand.v). *)
 
 From Glibc Require Import Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os Unit_stdioZ2dcommon_fxprintf_os.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,15 +13,13 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
-  LibioFflushSpec PrintfSpec NarrowFormat NarrowArgs AllocRo FxprintfStream FxprintfNormalCall VfxprintfSelect
+  LibioFflushSpec PrintfSpec NarrowArgs AllocRo
   ErrorCall LibioCleanupExit HelloVersionLits HelloGlibcDebts HelloGlibcLibsT HelloEmitBug HelloVersionEtc
   HelloErrorOperand.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageLayout.
-From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
-Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
-  HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.
 
 Section call.

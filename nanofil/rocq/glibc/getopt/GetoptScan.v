@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     it reaches the option parser with an argument that starts with a
     dash and has a second character. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,9 +17,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptModule ByteRead GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
   GetoptExchangeTwo GetoptIdlePath GetoptReturn GetoptScanEnd.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptExchange GetoptIdlePath GetoptInitialize GetoptScanEnd GetoptState LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -30,7 +29,7 @@ Definition scan_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; "
 
 (** The path module proves the tidying of the argument vector. *)
 (** The decision module proves the decision and the early returns. *)
-Import GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic ByteRead GetoptArgv.
 
 Import ProgramAbbreviations.
 Section scan.
@@ -41,7 +40,7 @@ Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable 
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 
 (** This tactic proves a lookup that the kept names Hk carry over. *)
-Ltac kin Hk H := rewrite (keeps_in _ _ _ _ Hk); [exact H | cbn; tauto].
+Local Ltac kin Hk H := rewrite (keeps_in _ _ _ _ Hk); [exact H | cbn; tauto].
 
 (** The call must stay inside the argument vector and its own state
     whatever the arguments are. It starts with the positions in order,

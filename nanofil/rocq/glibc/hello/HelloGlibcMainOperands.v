@@ -16,9 +16,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
-  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop
-  HelloGlibcMainVersion HelloGlibcMainHelpEnd HelloGlibcMainHelp.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcMainVersion.
+  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch
+  HelloGlibcMainVersion HelloGlibcMainHelpEnd.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -55,7 +54,7 @@ Qed.
 
 
 (** The help module supplies the common output and exit rules. *)
-Import HelloGlibcMainHelp HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcMainHelpEnd HelloGlibcMainVersion HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section operands.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -124,7 +123,7 @@ Lemma wp_flight_as n f e ls lab d op args lw rest j xs n' c Ψ :
 Proof using Type. intros Hx Ha Hc <-. iIntros "H". iApply (wp_flight with "H"); eassumption. Qed.
 
 (** This tactic checks and loads the operand after selecting the block's names. *)
-Ltac operand_steps Havp a i :=
+Local Ltac operand_steps Havp a i :=
   pose proof Havp as (Hav0 & Hav8 & H31 & Havend & Har);
   let Ei := fresh "Ei" in let E8 := fresh "E8" in let Ea := fresh "Ea" in
   destruct (operand_index a i) as (Ei & E8 & Ea); [lia | lia | lia |];

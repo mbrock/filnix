@@ -4,7 +4,7 @@
     cursor, so gnulib can recover the byte from the input. *)
 
 From Glibc Require Import Unit_iconv_gconv_simple_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -12,8 +12,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import IRFrames.
-From Glibc Require Import CodePrelude OsWorld FileInv LibioLogic Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+From Glibc Require Import CodePrelude OsWorld OsMemLogic Fix.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsMemLogic.
 Open Scope Z_scope.
 
 (** This is the function stored in the conversion table of Hello's

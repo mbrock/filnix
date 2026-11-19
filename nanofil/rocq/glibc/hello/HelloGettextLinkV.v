@@ -11,7 +11,7 @@ From Glibc Require Import GlibcProgram.
     finds the two functions where the selection of HelloStrchrImage.v
     finds them. The producer checked this on the full image, but Rocq has
     not. A caller whose flag reads 0 needs no such premise. *)
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -19,16 +19,16 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic StrlenLogic WordString SysWrappers.
-From Glibc Require Import AllocLogic HiAtexitAlloc HiAtexitModule HelloGlibcDebts HelloGlibcLibsT.
+From Glibc Require Import AllocLogic AllocCall HelloGlibcDebts HelloGlibcLibsT.
 From Glibc Require Import TfindEmpty LocalenameLogic.
 From Glibc Require Import GetoptDiag GetoptLongDiag GetoptDiagFx.
-From Glibc Require Import DcigettextPreRules DcigettextRoute DcigettextSecure.
-From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV.
+From Glibc Require Import DcigettextRoute DcigettextSecure.
+From Glibc Require Import DcgettextC DcgettextLocale DcgettextRwlock DcgettextRealV.
 From Glibc Require Import HelloGettextLink HelloGettextImage HelloStrchrImageCode HelloStrchrImage.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
-Import SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 
 Import ProgramAbbreviations.
 Section rules.

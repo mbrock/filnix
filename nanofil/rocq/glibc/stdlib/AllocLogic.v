@@ -53,7 +53,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
-From Glibc Require Import GlibcLogic StrlenBits LeavesLogic.
+Import GlibcLogic StrlenBits LeavesLogic.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -198,7 +198,7 @@ Proof using Type*. reflexivity. Qed.
     which calls `__libc_malloc2` and returns its result. The tactic
     [l7] steps through that call using [wp_libc_malloc2] and restores
     [tcache_idle] to the caller. *)
-Ltac l7 n Hn Hk :=
+Local Ltac l7 n Hn Hk :=
   step;
   call_spec with n;
   [ transitivity (Some [WInt (n mod 2 ^ 64)]); [reflexivity | rewrite Z.mod_small; [reflexivity | lia]]
@@ -230,7 +230,7 @@ Proof using Type*. intros Hi. rewrite lookup_seqZ_lt; [f_equal; lia | lia]. Qed.
     allocator. The tactic [l26] steps through block `L26` to verify the
     bin bounds check, load the `tcache` pointer, read the null bin
     entry, and restore the remaining bins. *)
-Ltac l26 i Htc dq dummy_reg :=
+Local Ltac l26 i Htc dq dummy_reg :=
   step; step; step; step; (branch_symbolic; LeavesLogic.decide_branch); step; step_global Htc;
   rule1 "Htcl" ltac:(eapply wp_check_read_dq; inst;
     [reflexivity | reflexivity | left; reflexivity | arith | arith | arith]);

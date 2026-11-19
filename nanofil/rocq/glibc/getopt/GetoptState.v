@@ -15,7 +15,6 @@ From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic.
 From Glibc Require Import FileInv WordString.
-From Glibc Require FileInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -54,7 +53,7 @@ Proof. unfold getopt_bounds, getopt_zero; cbn. lia. Qed.
 (** The parser and its caller use the same [[separation-logic]] instance
     so that their descriptions of the heap remain compatible. *)
 (** File-field rules supply the existing four-byte integer representation. *)
-Import FileInv FileInv.ML FileInv.LG FileInv.L.
+Import FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Section state.
 Context `{!gen_heapGS piece pval Σ}.

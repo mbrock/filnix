@@ -3,7 +3,7 @@
     for Hello is in [HelloStartRun](HelloStartRun.v). It asks its caller
     for the memory that the body reads, and for each of the three late
     calls it asks for what that call needs. This module supplies both,
-    as [StartWpHiAtexit](../startup/StartWpHiAtexit.v) does for
+    as [StartWpHiAtexit](../hi_atexit/StartWpHiAtexit.v) does for
     hi_atexit. The theorem itself is in
     [HelloStartNeverPanics](HelloStartNeverPanics.v).
 
@@ -15,6 +15,7 @@
     again when main starts. Startup builds main's private state from
     the objects that `c: getenv` reads and the image's private list. *)
 
+From Glibc Require Fix.
 From Glibc Require Import ImageObjectPieces GlibcTactics GlibcProgram GlibcSpec PrintfSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -23,17 +24,17 @@ From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic.
 From Glibc Require Import LocaleEnv.
-From Glibc Require Import FileInv FileIdle OsWorld OsRegistry OsStart OsCpuid StartCtors StartLogic StartCode StartState StartOwn
+From Glibc Require Import FileInv OsWorld OsRegistry OsStart OsCpuid StartCtors StartState StartOwn
   StartJoin StartGetenv StartLibcStartMain StartLsmImage StartLsmHello StartEarlyInitSpec StartCtorRunnerSpec
-  StartCallMainSpec StartPtmallocInitSpec StartCtypeInitSpec StartInitFirstSpec StartInitMiscSpec StartCtorChain StartImageEarly StartTunablesEarly CpuInitSpec
-  WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloGlibcLibsT HelloImageModule
-  HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageLsm HelloImageEnviron HelloImageCtors
-  HelloStartKept HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
-  HelloStartEntry HelloStartFacts StartWpHiAtexit HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale
+  StartCallMainSpec StartPtmallocInitSpec StartInitFirstSpec StartInitMiscSpec StartCtorChain StartImageEarly StartTunablesEarly CpuInitSpec
+  WordString GetenvScan GetenvEntry GetenvStatic GetoptDiag GetoptLongDiag HelloGlibcDebts HelloImageModule
+  HelloImageLoad HelloImageLayout HelloImageEarly HelloImageCpu HelloImageEnviron HelloImageCtors
+  HelloStartAssembly HelloStartCtors HelloStartMain HelloStartBridge HelloStartRun HelloStartPost
+  HelloStartEntry HelloStartFacts OsMemLogic HelloGetoptDiagImage HelloGetoptStart HelloStartHdGetopt HelloStartQuery HelloSetlocaleState HelloStartSetlocale
   HelloStartHdRules HelloStartHdBuild HelloLocaleState HelloConvState HelloStartGetoptRules LibioFputsSpec HelloVersionEtcCall HelloVfprintfImage
   HelloCloseStdoutCall.
 From Glibc Require AtexitLogic ExitRun HelloGlibcMainLibs HelloCloseStdoutWideCall HelloWDoWriteImage HelloWPrintfCall HelloWPrintfWrite.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## Joining shares *)
@@ -174,7 +175,7 @@ Proof using Hi.
     as "(Ei & St & Pg & D16 & D32 & #Ro & Loc & Cl & Ccells & Pml & Li & Ta & Pf)".
   iDestruct "Pml" as "(Ltk & Leb & Lli & Laf & Lta & Lma & Lmp & Ltl)".
   iDestruct (hello_lsm_split with "Hlsm") as "(Ldx & Bdx & Adx & Les & Bes & Ldm & Bdm & Lre & Bre & Lse & Bse & Ase)".
-  iDestruct (zero_pcell with "Bdx Adx") as "Hdx". iDestruct (zero_pcell with "Bse Ase") as "Hse".
+  iDestruct (zero_bytes_pcell with "Bdx Adx") as "Hdx". iDestruct (zero_bytes_pcell with "Bse Ase") as "Hse".
   pose proof (heap_object_bounds m av (8 * (2 * Z.of_nat (length aps) + 1)) ltac:(lia) (proj1 Hv)) as (Hav0 & _ & Have & _).
   destruct Hv as (_ & _ & Hpos & Hslots & _).
   iApply (hello_libc_start_main_wp w0 k m0 fr Hi o (hello_main_priv env) hello_exit0 _ Lb Hy fr0 _ (mkPtr (img_a "main") (Fn (TAtom "main")))

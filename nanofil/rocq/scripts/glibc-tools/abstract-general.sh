@@ -28,12 +28,12 @@ cp -r "$tree" "$out/glibc"
 find "$out/glibc" \( -name '*.vo*' -o -name '*.glob' -o -name '.*.aux' \) -delete
 signature='Module Type StartRuntime := Runtime'
 binding='Module R : StartRuntime := InterpRuntime.'
-if [ "$(grep -cxF "$signature" "$out/glibc/Fix.v")" != 1 ] ||
-   [ "$(grep -cxF "$binding" "$out/glibc/Fix.v")" != 1 ]; then
+if [ "$(grep -cxF "$signature" "$out/glibc/base/Fix.v")" != 1 ] ||
+   [ "$(grep -cxF "$binding" "$out/glibc/base/Fix.v")" != 1 ]; then
   echo "abstract-general: Fix.v must seal the interpreter runtime exactly once" >&2
   exit 2
 fi
-sed -i "/^$signature\$/,/^$binding\$/c\\Declare Module R : Runtime." "$out/glibc/Fix.v"
+sed -i "/^$signature\$/,/^$binding\$/c\\Declare Module R : Runtime." "$out/glibc/base/Fix.v"
 rm -f "$out/glibc/hello/HelloInterpNeverPanics.v"
 bash "$here/build.sh" "$out/glibc" "$jobs" >"$out/build.log" 2>&1
 (

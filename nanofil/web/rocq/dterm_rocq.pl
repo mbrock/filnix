@@ -690,8 +690,8 @@ file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBuf.v',
     "These assertions describe a stream's writable buffer space and the overflow behavior required by string output.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnBytes.v',
     "This proof verifies the short byte-copy loop used by glibc's default string-output routine for small writes.").
-file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnCopy.v',
-    "This rule verifies copying caller bytes into a stream buffer through libpizlo's memory-move contract.").
+file_blurb('nanofil/rocq/glibc/string/BufferCopy.v',
+    "These rules let a caller use memcpy or mempcpy to update part of a buffer and recover ownership of its bytes.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnRoom.v',
     "This proof verifies the bulk-copy path that fills available stream-buffer space when more than twenty bytes fit.").
 file_blurb('nanofil/rocq/glibc/libio/LibioDefaultXsputnSmall.v',
@@ -826,7 +826,7 @@ file_blurb('nanofil/rocq/glibc/libio/SysWrappers.v',
     "These proofs verify glibc's compiled syscall wrappers against the contracts for their calls into libpizlo.").
 
 %  Live campaign & shared framework: rocq/glibc/
-file_blurb('nanofil/rocq/glibc/GlibcLogic.v',
+file_blurb('nanofil/rocq/glibc/base/GlibcLogic.v',
     "This module supplies shared ownership rules and symbolic execution tactics for proofs of compiled glibc functions.").
 file_blurb('nanofil/rocq/glibc/string/StrlenBits.v',
     "These arithmetic lemmas support glibc's word-at-a-time string scans by relating byte extraction, masks, and population counts.").

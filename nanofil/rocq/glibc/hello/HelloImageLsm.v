@@ -3,7 +3,7 @@
     auxiliary vector, the secure-mode flag, the debug mask, the flag that
     asks for thread events and the saved stack end. The proof of Hello's
     startup must take them from the memory that the loader builds. This
-    module lists them as [StartOwnHiAtexit](../startup/StartOwnHiAtexit.v)
+    module lists them as [StartOwnHiAtexit](../hi_atexit/StartOwnHiAtexit.v)
     does for hi_atexit, and shows that Hello's image holds them.
 
     The whole Hello image is too large to compute, so the check runs on
@@ -15,8 +15,8 @@
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap.
-From Glibc Require Import StartLsmImage StartLsmHello StartImageUnique ImageObjectPieces HelloImageErase
-  HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
+From Glibc Require Import StartLsmImage StartLsmHello StartImageUnique ImageObjectPieces ImageErase
+  ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

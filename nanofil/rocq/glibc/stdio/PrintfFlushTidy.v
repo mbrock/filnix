@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Machine 
 From Glibc Require Import Fix OsBlocks OsWorld OsRegistry SysWrappers FileInv FileTidy LibioLogic LibioFputsSpec AllocRo
   LibioSetb LibioStreamTidy
   PrintfSpec PrintfFileOut PrintfBufferXsputnCall PrintfBufferOverflowCall PrintfFlush PrintfFlushFileSpec.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope Z_scope.
 
 Section flush.

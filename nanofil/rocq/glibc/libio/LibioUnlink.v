@@ -12,7 +12,7 @@ From Glibc Require Import GlibcProgram.
     the list (LibioUnlinkMid.v), clears `c: _IO_LINKED`, and releases
     and pops everything again (LibioUnlinkTail.v). *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,7 +21,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers SysCleanup LibioCloseSteps LibioUnlinkTail LibioUnlinkMid LibioUnlinkLock.
-From Glibc Require FileInv LibioCloseSteps LibioLogic LibioUnlinkLock LibioUnlinkMid LibioUnlinkTail OsThread OsWorld SysCleanup SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -32,7 +31,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioUnlinkLock LibioUnlinkMid LibioUnlinkTail SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioUnlinkLock LibioUnlinkMid LibioUnlinkTail SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -47,7 +46,7 @@ Context `{Hpop : !Defines ge "__GI___libc_cleanup_pop_restore" Unit_nptl_libcZ2d
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** The premises of `c: zthread_self_cookie`'s rule. *)
-Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
+Local Ltac self_side := first [apply (reg_of registry Hreg); reflexivity | apply (ext_fn ge Hext); cbn; tauto
                         | apply (ext_data ge Hext); cbn; tauto].
 
 (** A call of `c: zthread_self_cookie`, whose result is the thread's

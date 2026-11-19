@@ -430,9 +430,9 @@ def main():
     shared_layout_dir = captured_layouts['SHARED']
     layout_dirs = directories | {shared_layout_dir} if capture_layouts else set()
     status = 0
-    prelude_dir = args.output or (GLIBC if args.tree.resolve() == GEN.resolve() else args.tree)
+    prelude_dir = args.output or (GLIBC / "base" if args.tree.resolve() == GEN.resolve() else args.tree)
     for name in ("LayoutTables.v",) if args.layouts_only else PRELUDES:
-        source, destination = GLIBC / name, prelude_dir / name
+        source, destination = GLIBC / "base" / name, prelude_dir / name
         if source.resolve() == destination.resolve():
             continue
         data = source.read_bytes()

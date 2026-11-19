@@ -33,7 +33,7 @@ From Glibc Require Import OsBlocks OsWorld FileInv FileIdle LibioWIdle WordStrin
   HelloGetoptStart HelloImageModule HelloImageLoad HelloImageCtors HelloImageEarly HelloImageLayout
   HelloImageStart HelloStartKeptAlloc HelloStartKept.
 From Glibc Require AllocLogic AtexitLogic ExitRun.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The strings *)

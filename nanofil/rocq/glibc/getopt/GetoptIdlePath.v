@@ -7,7 +7,7 @@ From Glibc Require Import GlibcProgram.
     This file joins the proofs of those steps into one lemma for the
     whole path, from the clamp to the end-of-scan test. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -17,10 +17,9 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic WordString
-  GetoptModule GetoptState GetoptBytes GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
-  GetoptExchangeTwo GetoptExchangeThree GetoptIdle GetoptIdleThree GetoptPermute GetoptClamp
-  GetoptSkipTest GetoptSkip GetoptDash GetoptDashTest.
-From Glibc Require FileInv GetoptArgv GetoptBytes GetoptClamp GetoptDashTest GetoptExchange GetoptInitialize GetoptSkip GetoptSkipTest GetoptState LibioLogic OsWorld.
+  GetoptModule GetoptInitialize GetoptEntry GetoptArgv GetoptExchange
+  GetoptExchangeTwo GetoptIdle GetoptIdleThree GetoptPermute GetoptClamp
+  GetoptSkip GetoptDash GetoptDashTest.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -36,7 +35,7 @@ Definition clamp_keys : list name := List.map TAtom ["v0"; "v2"; "v12"; "chk0"; 
 (** The clamp module proves the clamp and the first exchange. *)
 (** The skip module proves the nonoption skip loop. *)
 (** The "--" test module proves the test and the second exchange. *)
-Import GetoptSkipTest GetoptExchange GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic GetoptBytes GetoptArgv.
+Import GetoptExchange GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic GetoptArgv.
 
 Import ProgramAbbreviations.
 Section path.
@@ -49,7 +48,7 @@ Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
 (** This tactic proves a lookup that the kept names Hk carry over. *)
 Ltac kin Hk H := rewrite (keeps_in _ _ _ _ Hk); [exact H | cbn; tauto].
 (** This tactic carries a lookup over two runs of kept names. *)
-Ltac kin2 Hk Hk' H := rewrite (keeps_in _ _ _ _ Hk); [kin Hk' H | cbn; tauto].
+Local Ltac kin2 Hk Hk' H := rewrite (keeps_in _ _ _ _ Hk); [kin Hk' H | cbn; tauto].
 
 (** Whatever the arguments are, the path must not read or write outside
     the argument vector. This lemma proves the path safe and says where

@@ -20,7 +20,6 @@
     phase after it. Only the three world-changing calls need rules of
     their own, and each of them updates the key and the world together. *)
 
-From Glibc Require Import GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,7 +28,6 @@ From stdpp Require Import gmap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces Heap ContractFrame Language Logic WiTransport.
 From Glibc Require Import OsBlocks OsWorld OsStartCalls.
-From Glibc Require OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

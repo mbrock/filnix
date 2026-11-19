@@ -6,16 +6,16 @@
     resources and errno that may change. This rule restores the stream after
     borrowing the selected lifetime. It does not prove that output succeeds. *)
 From Glibc Require Import Unit_libio_fileops_os Unit_stdioZ2dcommon_printf_buffer_done_os Unit_stdioZ2dcommon_printf_buffer_to_file_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic
   PrintfStreamHeap PrintfBufferXsputnCall
   PrintfFileSelect PrintfFileDone PrintfFileFlush Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 Open Scope Z_scope.
 Section completion.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.

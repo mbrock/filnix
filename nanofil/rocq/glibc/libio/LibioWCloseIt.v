@@ -4,7 +4,7 @@
     point to the base, so the close never seeks on that path. *)
 
 From Glibc Require Import Unit_io_close_nocancel_os Unit_libio_fileops_os Unit_libio_genops_os Unit_libio_wgenops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsWorld OsBlocks OsRegistry SysWrappers FileInv FileIdle LibioLogic
   LibioCloseSteps LibioSetb LibioWIdle
   LibioWXsputnWindow LibioWXsputnRoom LibioWOverflowWrite LibioWCloseItMid Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Abbreviation objp b := (mkPtr b (Obj b)).
 Local Abbreviation reg e n x := (lookup (TAtom n) e = Some x).

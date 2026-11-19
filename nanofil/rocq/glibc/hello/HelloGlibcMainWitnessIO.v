@@ -14,14 +14,14 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld FileInv HelloGlibcMainWitness.
 From stdpp Require Import list.
-From Glibc Require AllocLogic FileInv HelloGlibcMainWitness CutoffLogic.
+From Glibc Require AllocLogic CutoffLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
 (** The earlier fixture supplies the streams and allocator. *)
-Import HelloGlibcMainWitness LG0 LG0.L FileInv FileInv.ML.
+Import HelloGlibcMainWitness LG0 LG0.L FileInv Fix.ML0.
 
 (** The resource environment assigns distinct pages to shared globals.
     The jump-table slots carry function capabilities, even though this
@@ -193,7 +193,7 @@ Lemma witness_imported_resources Σ `{!gen_heapGpreS piece pval Σ} :
     @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 8192 (Obj 8192)) ∗
     @FileInv.file_inv Σ Hh 16384 (ow_self hello_witness_world) (mkPtr 12288 (Obj 12288)) ∗
     @FileInv.io_list_inv Σ Hh witness_ge [mkPtr 8192 (Obj 8192); mkPtr 4096 (Obj 4096); mkPtr 12288 (Obj 12288)] ∗
-    @FileInv.tcb_cleanup_inv Σ Hh (ow_self hello_witness_world) ∗ @errno_any Σ Hh 49152 ∗
+    @ThreadCleanup.tcb_cleanup_inv Σ Hh (ow_self hello_witness_world) ∗ @errno_any Σ Hh 49152 ∗
     @liveq Σ Hh DfracDiscarded 49152 (hello_witness_region 49152) ∗
     @FileInv.vtables_ro Σ Hh witness_ge 16384 (hello_witness_region 16384) ∗
     @FileInv.single_ro Σ Hh witness_ge 98304 (hello_witness_region 98304) ∗

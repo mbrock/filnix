@@ -24,11 +24,12 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Language Logic.
+From Glibc Require Fix.
 From Glibc Require Import IRFrames.
 From Glibc Require Import LocaleEnv GlibcProgram GlibcLogic OsWorld OsRegistry OsStart OsCpuid FileInv GetoptDiag GetoptLongDiag
-  HelloGlibcDebts StartCode StartState StartJoin StartLibcStartMain HelloImageModule HelloImageLoad HelloImageLayout
+  HelloGlibcDebts StartState StartJoin StartLibcStartMain HelloImageModule HelloImageLoad
   HelloImageEarly HelloStartAssembly HelloStartFacts HelloStartWp.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** This is the linked Hello program. It frees memory with the

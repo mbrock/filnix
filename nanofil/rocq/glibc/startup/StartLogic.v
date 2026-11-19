@@ -23,7 +23,7 @@ From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list gmap.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Pieces Heap ExternalCalls StepRules Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld OsStart FileInv LibioLogic LibioCloseSteps.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** A list of pieces is plain when it holds neither a life token nor a

@@ -14,7 +14,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Transport Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic LeavesLogic AtexitLogic OsWorld OsExit OsRegistry ExitRunTail.
-From Glibc Require AtexitLogic ExitRunTail LeavesLogic OsExit OsWorld.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.

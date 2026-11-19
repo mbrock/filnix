@@ -21,8 +21,8 @@ From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Semantics Pieces Heap Runtime Logic MemLogic.
 From Glibc Require Import FileInv OsWorld OsRegistry StartCtors StartTunableGetValSpec StartCtypeInitSpec
   StartPtmallocInitSpec StartEarlyInitSpec StartImageUnique StartImageEarly.
-From Glibc Require Import HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## The records and the lists *)

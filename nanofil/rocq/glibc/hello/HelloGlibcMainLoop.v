@@ -19,7 +19,6 @@ From Glibc Require Import HelloBodies.
 From Glibc Require Import OsWorld OsRegistry WordString FileInv LeavesLogic LibioLogic ExitRunTail
   HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart
   HelloGlibcMainDispatch.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -47,10 +46,10 @@ Local Notation res := (loop_res w0 ge o priv X av ar b4 b6 pn sn S).
 Local Notation exits := (loop_exits w0 ge o priv X av ar b4 b6 pn sn S).
 
 (** This tactic reads the error flag preserved on a loop back edge. *)
-Ltac phi_kept H := cbn -[put]; rewrite H; cbn -[put]; rewrite Z.mod_small; [reflexivity | lia].
+Local Ltac phi_kept H := cbn -[put]; rewrite H; cbn -[put]; rewrite Z.mod_small; [reflexivity | lia].
 
 (** This tactic computes call arguments after rewriting a bounded value. *)
-Ltac vxa H := cbn -[put];
+Local Ltac vxa H := cbn -[put];
   repeat match goal with |- context [lookup ?k ?E] =>
     let L := fresh "Hlk" in assert (L : lookup k E = _) by lk_prove; rewrite L; clear L end;
   cbn -[put]; rewrite ?H; reflexivity.

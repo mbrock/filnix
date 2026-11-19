@@ -13,8 +13,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Stdlib Require Import ZArith List Lia.
 From Nanofil Require Import Values Memory Runtime Pieces Heap Logic StringLogic.
-From Glibc Require Import FileInv WordString GetoptBytes GetoptState.
-From Glibc Require FileInv GetoptBytes GetoptState.
+From Glibc Require Import FileInv WordString ByteRead GetoptState.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -68,7 +67,7 @@ Proof. cbn. lia. Qed.
 
 
 (** The state module supplies the private fields, the cursor and the session. *)
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 (** The byte module reads one byte of a shared string. *)
 
 Section session.
@@ -126,8 +125,8 @@ Lemma short_byte_agree p s1 s2 (k : nat) : (k <= length s1)%nat -> (k <= length 
   word_string DfracDiscarded p s1 -∗ word_string DfracDiscarded p s2 -∗ ⌜sbyte s1 k = sbyte s2 k⌝.
 Proof using Type.
   intros H1 H2. iIntros "W1 W2".
-  iDestruct (GetoptBytes.ws_byte p s1 k H1 with "W1") as (b1 reg1) "(%Hb1 & _ & B1)".
-  iDestruct (GetoptBytes.ws_byte p s2 k H2 with "W2") as (b2 reg2) "(%Hb2 & _ & B2)".
+  iDestruct (ByteRead.ws_byte p s1 k H1 with "W1") as (b1 reg1) "(%Hb1 & _ & B1)".
+  iDestruct (ByteRead.ws_byte p s2 k H2 with "W2") as (b2 reg2) "(%Hb2 & _ & B2)".
   assert (b1 = b2) as <-.
   { destruct Hb1 as [[E1|E1] _], Hb2 as [[E2|E2] _]; rewrite E1 in E2; congruence. }
   iAssert (ptsq DfracDiscarded (byte_ps b1 (ptr_addr p + Z.of_nat k - b1) [sbyte s1 k])) with "[B1]" as "B1";
@@ -161,7 +160,7 @@ Lemma short_session b r av ar ps s oo a t :
 Proof using Type.
   intros Hbd Hlt Hin Hord Hb Hal Hend Hr Hav Hala Hda Hra Ht.
   iIntros "Hcu #Hws Hl Hib Her Hoo Hab Hini Hcur Hord Hfi Hla".
-  iDestruct (GetoptBytes.ws_shape with "Hws") as %(Htc & Hp0 & _).
+  iDestruct (ByteRead.ws_shape with "Hws") as %(Htc & Hp0 & _).
   assert (Ht1 : sbyte t 1 <> 0).
   { unfold sbyte. rewrite app_nth1; [|lia]. rewrite Forall_forall in Htc.
     assert (0 < nth 1 t 0 < 256) by (apply Htc; apply nth_In; lia). lia. }

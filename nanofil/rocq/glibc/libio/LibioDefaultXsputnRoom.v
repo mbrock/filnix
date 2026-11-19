@@ -19,7 +19,7 @@ From Glibc Require Import GlibcProgram.
     loop for smaller copies. Both paths update the write pointer and
     return to the main output loop with the remaining byte count. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -27,9 +27,8 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Symbolic
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers
-  LibioCloseSteps LibioDefaultXsputnCopy LibioDefaultXsputnBuf
-  LibioDefaultXsputnBytes LibioDefaultXsputnTail LibioDefaultXsputnSmall.
-From Glibc Require FileInv LibioCloseSteps LibioDefaultXsputnBuf LibioDefaultXsputnBytes LibioDefaultXsputnCopy LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioLogic OsWorld SysWrappers.
+  LibioCloseSteps BufferCopy LibioDefaultXsputnBuf
+  LibioDefaultXsputnTail LibioDefaultXsputnSmall.
 From Glibc Require Import Fix.
 From Glibc Require Import GlibcSpec.
 From Glibc Require StringSpecs.
@@ -47,7 +46,7 @@ Definition dx_L44 : block := Eval vm_compute in
   | Some b => b | None => mkBlock (TAtom "L44") [] [] JRetVoid end.
 
 
-Import LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioDefaultXsputnBytes LibioDefaultXsputnBuf LibioDefaultXsputnCopy SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioDefaultXsputnSmall LibioDefaultXsputnTail LibioDefaultXsputnBuf BufferCopy SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.
@@ -65,7 +64,7 @@ Context (Hmove : registry (TAtom "zmemmove") = Some (void_only (memmove_contract
 Local Notation sexpr := (language.expr (nanofil_lang registry ge)).
 
 (** After either copy path, these steps subtract the copied count and reenter the output loop. *)
-Ltac to_L22 := step; step; step; step.
+Local Ltac to_L22 := step; step; step; step.
 
 (** This tactic checks that the updated environment records the remaining bytes and source pointer. *)
 Ltac lk_fin := lookups; first [reflexivity | do 2 f_equal; unwrap2; lia | do 3 f_equal; cbn [ptr_addr]; unwrap2; lia].

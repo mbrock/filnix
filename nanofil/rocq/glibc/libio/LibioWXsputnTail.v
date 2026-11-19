@@ -3,15 +3,15 @@
     character for overflow. A successful call consumes that character;
     a WEOF return leaves it out of the reported count. *)
 
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import Fix OsWorld FileInv LibioLogic LibioCloseSteps LibioWIdle
-  LibioWOverflowDispatch LibioWXsputnWords LibioOverflowBase CBlocks WPrintfDispatch WPrintfLength.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic LibioCloseSteps.
+  LibioWOverflowDispatch LibioWXsputnWords LibioOverflowBase CBlocks WideBytes.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.
 Local Arguments Z.sub : simpl nomatch.

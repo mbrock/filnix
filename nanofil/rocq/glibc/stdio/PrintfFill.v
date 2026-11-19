@@ -11,7 +11,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsWorld OsRegistry FileInv LibioLogic MemFwdLogic
   PrintfStagingCopy PrintfOut.
-Import ListNotations ProgramAbbreviations OsWorld FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations OsWorld Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic.
 Open Scope Z_scope.
 
 (** A fill inside the window changes no bytes or slots outside it. The

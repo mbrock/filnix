@@ -20,7 +20,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Semantics Pieces Heap Logic Language.
 From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts HelloGlibcLibsT HelloGlibcMainLoop HelloGlibcMainFull.
+From Glibc Require Import OsWorld OsRegistry HelloGlibcDebts HelloGlibcMainLoop HelloGlibcMainFull.
 Import ListNotations.
 Open Scope Z_scope.
 

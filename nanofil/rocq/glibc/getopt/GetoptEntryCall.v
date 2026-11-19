@@ -7,16 +7,15 @@ From Glibc Require Import GlibcProgram.
     takes the real call frame into the first blocks, and it packages the
     result in the form that the wrapper's proof asks of the parser. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState ByteRead
   GetoptInitialize GetoptColon GetoptEntry GetoptEntryPre.
-From Glibc Require FileInv GetoptEntry GetoptEntryPre GetoptInitialize GetoptState OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -56,7 +55,7 @@ Lemma getopt_r_env_ctl : lookup (TAtom "v12") (getopt_r_env 3 64 null null null 
   lookup (TAtom "v14") (getopt_r_env 3 64 null null null 0 128 1) = Some (WInt 1).
 Proof. split; reflexivity. Qed.
 
-Import GetoptState FileInv FileInv.ML FileInv.LG FileInv.L.
+Import GetoptState FileInv Fix.ML0 Fix.LG0 Fix.LG0.L.
 
 Import ProgramAbbreviations.
 Section entry_call.

@@ -5,7 +5,7 @@
     that the other version proofs read. *)
 
 From Glibc Require Import Unit_io_write_os Unit_libio_fileops_os Unit_libio_iofflush_os Unit_stdioZ2dcommon_fprintf_os Unit_stdioZ2dcommon_printf_os.
-From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics GlibcSpec OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -13,17 +13,15 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls Pieces StepRules Heap Language Logic StringLogic MemLogic VariadicLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry WordString FileInv FileIdle LibioLogic LibioFputsSpec
-  PrintfSpec NarrowFormat NarrowArgs AllocRo VaArgRound FxprintfStream HelloVersionLits HelloGlibcDebts
+  PrintfSpec AllocRo HelloGlibcDebts
   HelloGlibcLibsT HelloGlibcMainSteps HelloEmitBug CodePrelude HelloVersionEtc HelloVersionEtcVa
-  PrintfWrap HelloImageLayout LibioFflushSpec LibioFflushIdle HelloErrorOperandCall
+  PrintfWrap HelloImageLayout LibioFflushIdle HelloErrorOperandCall
   HelloPrintSites.
 From Glibc Require LibioCleanupExit.
 From Glibc Require Import HelloImageModule HelloImageLoad.
-From Glibc Require HelloGlibcDebts LibioLogic.
 From Glibc Require Import Fix.
 Import ListNotations.
-Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG
-  HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcDebts HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 Open Scope Z_scope.
 
 Local Arguments Z.add : simpl nomatch.

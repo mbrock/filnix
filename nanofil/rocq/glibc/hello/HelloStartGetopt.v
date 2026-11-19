@@ -12,16 +12,17 @@
     starts as zero bytes, so every lock is free, the cache is empty and
     no domain is bound. *)
 
+From Glibc Require Fix.
 From Glibc Require Import GlibcTactics GlibcProgram.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import FileInv WordString RdlockLogic RwlockIdle TfindEmpty PrintfSpec ImageObjectPieces
+From Glibc Require Import FileInv WordString RwlockIdle TfindEmpty PrintfSpec ImageObjectPieces
   HelloGetoptTable HelloGetoptDiagMsgs HelloGettextLocaleConst HelloGettextSuffix HelloGettextDomain
-  HelloImageModule HelloImageLoad HelloImageKept HelloImageDiagObjs.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.
+  HelloImageLoad HelloImageKept HelloImageDiagObjs.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L.
 Open Scope Z_scope.
 
 (** ## What the pieces give *)

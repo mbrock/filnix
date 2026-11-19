@@ -21,7 +21,7 @@
     liveness tokens. *)
 
 From Glibc Require Import Unit_csu_errnoZ2dloc_os Unit_ctype_ctypeZ2dinfo_os Unit_locale_mb_cur_max_os Unit_wcsmbs_mbsinit_os.
-From Glibc Require Import LibioTactics GlibcTactics.
+From Glibc Require Import OsTactics GlibcTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -29,7 +29,6 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine Panics
   StepRules Symbolic ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import GlibcLogic.
-From Glibc Require GlibcLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -73,7 +72,7 @@ Ltac unwrap :=
 
 (** The tactic [decide_cmp] rewrites every integer equality or ordering
     comparison that `lia` can settle directly. *)
-Ltac decide_cmp :=
+Local Ltac decide_cmp :=
   repeat match goal with
     | |- context [?x =? ?y] =>
         first [rewrite (proj2 (Z.eqb_neq x y)); [|lia] | rewrite (proj2 (Z.eqb_eq x y)); [|lia]]
@@ -83,7 +82,7 @@ Ltac decide_cmp :=
 
 (** The tactic [pow_closed] evaluates closed shift multipliers of the
     form `2 ^ (n mod m)` by computation. *)
-Ltac pow_closed :=
+Local Ltac pow_closed :=
   repeat match goal with |- context [2 ^ (?n mod ?m)] =>
     let v := fresh "v" in let Ev := fresh "Ev" in
     remember (2 ^ (n mod m)) as v eqn:Ev; vm_compute in Ev; subst v end.
@@ -157,7 +156,7 @@ Ltac arith := cbn [ptr_addr ptr_cap null]; unfold raw_address; rewrite ?Z.add_0_
 
 
 
-Module ML := MemLogicOn R LG0.
+Module ML := Fix.ML0.
 Module LG := LG0.
 Module L := LG.L.
 Import L LG GlibcLogic ML.

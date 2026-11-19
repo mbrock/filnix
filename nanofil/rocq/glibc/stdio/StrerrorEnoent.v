@@ -6,7 +6,7 @@
 From Glibc Require Import Unit_intl_dcgettext_os Unit_intl_dcigettext_os Unit_locale_localename_os Unit_misc_tsearch_os Unit_nptl_pthread_rwlock_rdlock_os.
 From Glibc Require Import Unit_nptl_pthread_rwlock_unlock_os Unit_stdioZ2dcommon_errlist_os Unit_string__strerror_os Unit_string_memcpy_os Unit_string_mempcpy_os.
 From Glibc Require Import Unit_string_stpcpy_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -14,12 +14,12 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv LibioLogic SysWrappers
-  AllocLogic HiAtexitAlloc GetoptMallocGlibc TfindEmpty
-  LocalenameLogic RdlockLogic RwunlockLogic
+  AllocLogic AllocCall TfindEmpty
+  LocalenameLogic
   StrlenLogic WordString DcigettextRoute
-  DcigettextPreRules DcigettextSecure DcgettextC DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
+  DcigettextPreRules DcigettextSecure DcgettextLocale DcgettextRwlock DcgettextReal DcgettextRealV
   ErrlistEnoent ErrlistFacts ErrorText Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic OsWorld SysWrappers.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
 Section text.
@@ -57,7 +57,7 @@ Definition enoent_translation (bs : list Z) : iProp Σ :=
     (rw_held a1 ar1 r1 cw1 sh1 fl1 q1 tb tbreg i1 tid) (rw_held a2 ar2 r2 cw2 sh2 fl2 q2 tb tbreg i2 tid)
     (rw_held a3 ar3 r3 cw3 sh3 fl3 q3 tb tbreg i3 tid)
     (tfind_root dqr rb ro rreg) (locale_name_res dqg gb go greg lp dql lb lreg dqn 5 cv dqt treg)
-    (hi_malloc_state dq mpb tcb dmb mpr tcr dr) bs.
+    (malloc_call_state dq mpb tcb dmb mpr tcr dr) bs.
 
 Context `{!Defines ge "__get_errlist" Unit_stdioZ2dcommon_errlist_os.fn___get_errlist,
   !Defines ge "__GI_strlen" glibc_strlen, !Defines ge "__GI_mempcpy" Unit_string_mempcpy_os.fn___GI___mempcpy,

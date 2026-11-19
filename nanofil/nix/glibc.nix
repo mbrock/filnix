@@ -24,7 +24,7 @@ let
   };
   abstractFix =
     let
-      source = builtins.readFile (glibc + "/Fix.v");
+      source = builtins.readFile (glibc + "/base/Fix.v");
       sealedBinding = ''
         Module Type StartRuntime := Runtime
           with Definition state := InterpRuntime.state
@@ -54,10 +54,10 @@ let
         chmod -R u+w glibc
         ln -s ${model.objects}/share/rocq/theories theories
         ${lib.optionalString abstract ''
-          cp ${abstractFix} glibc/Fix.v
+          cp ${abstractFix} glibc/base/Fix.v
           rm glibc/hello/HelloInterpNeverPanics.v
         ''}
-        python3 ${../tests/assumption_scan.py} ${lib.optionalString abstract "--abstract-fix glibc/Fix.v"} glibc
+        python3 ${../tests/assumption_scan.py} ${lib.optionalString abstract "--abstract-fix glibc/base/Fix.v"} glibc
         ${lib.optionalString (!abstract) ''
           python3 ${../tests/proof_arch_check.py} --tree glibc --manifest ${../rocq/glibc/arch.json}
         ''}

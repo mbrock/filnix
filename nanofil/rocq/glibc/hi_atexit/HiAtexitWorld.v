@@ -8,9 +8,9 @@ From Glibc Require Import GlibcTactics.
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Runtime Pieces Heap.
-From Glibc Require Import OsWorld AtexitLogic ExitRun HiAtexitBase HiAtexitGe
-  HiAtexitCloseIt HiAtexitExitEnv.
-From Glibc Require AtexitLogic ExitRun ExitRunTail.
+From Glibc Require Import OsWorld AtexitLogic ExitRun HiAtexitGe
+  HiAtexitExitEnv.
+From Glibc Require ExitRunTail.
 Open Scope Z_scope.
 Import ExitRun ExitRunTail AtexitLogic.
 

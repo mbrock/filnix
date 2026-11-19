@@ -4,8 +4,8 @@
     constructor has a contract that asks for these globals in the state
     that the linker leaves them in. The proof of the startup of Hello
     must show that state before it can call them. This module shows
-    it, as [StartInitFirstImage](../startup/StartInitFirstImage.v) and
-    [StartStdfilesImage](../startup/StartStdfilesImage.v) show it for
+    it, as [StartInitFirstImage](../hi_atexit/StartInitFirstImage.v) and
+    [StartStdfilesImage](../hi_atexit/StartStdfilesImage.v) show it for
     the hi_atexit image.
 
     The memory of the whole image is too large to compute, so the proof
@@ -28,9 +28,9 @@ From Stdlib Require Import String ZArith Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Semantics Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import GlibcProgram GlibcSpec OsWorld OsRegistry FileInv LibioStdfiles
   StartInitMiscSpec StartInitFirstSpec StartStdfilesInitSpec StartCtorVtablesSpec.
-From Glibc Require Import HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad
+From Glibc Require Import ImageErase ImageEraseMem ImagePieces HelloImageModule HelloImageLoad
   HelloImageKept HelloImageStart.
-Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioStdfiles.
+Import ListNotations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioStdfiles.
 Open Scope Z_scope.
 
 (** ## The globals and their starting values

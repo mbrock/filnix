@@ -3,14 +3,14 @@
     using the stream's own lifetime, resets the offset and returns zero.
     It does not read the descriptor, errno or the short byte. *)
 From Glibc Require Import Unit_libio_fileops_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic MemLogic.
 From Glibc Require Import OsWorld FileInv LibioLogic LibioCloseSteps LibioPutsInv Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L
   FileInv LibioLogic LibioCloseSteps OsWorld.
 Open Scope Z_scope.
 

@@ -14,7 +14,6 @@ From Glibc Require Import IRFrames HelloBodies.
 
 From Glibc Require Import OsWorld OsRegistry AtexitLogic ExitRunTail ExitRun
   HelloGlibcDebts HelloGlibcLibsT HelloGlibcLibsCleanup.
-From Glibc Require ExitRun ExitRunTail.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.

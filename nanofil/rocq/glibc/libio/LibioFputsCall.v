@@ -20,7 +20,7 @@ From Glibc Require Import GlibcProgram.
     LibioPutsCall.v's for `c: puts`, with the stream the argument
     `c: v2` instead of `c: stdout`'s pointer. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From Glibc Require Import GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
@@ -29,8 +29,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import OsBlocks OsWorld OsRegistry FileInv LibioLogic SysWrappers LibioCloseSteps
-  WordString LibioPutsInv LibioPutsMode LibioFputsLock LibioFputsUnlock.
-From Glibc Require FileInv LibioCloseSteps LibioFputsLock LibioFputsUnlock LibioLogic LibioPutsInv OsWorld SysWrappers.
+  WordString LibioPutsInv.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -44,7 +43,7 @@ Local Arguments Z.opp : simpl nomatch.
 Definition fp_j162 : jump := JBranch (Tmp (TAtom "v176")) (To (TAtom "L107")) (To (TAtom "L106")).
 
 
-Import LibioFputsUnlock LibioFputsLock LibioPutsInv SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioPutsInv SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 Import ProgramAbbreviations.
 Section rules.

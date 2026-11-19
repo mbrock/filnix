@@ -7,7 +7,7 @@
 
     The compiled function has four blocks, and the proof has one part
     for each block. Each part assumes a statement of what holds when
-    its block starts, and [CBlocks](../CBlocks.v) joins the four parts
+    its block starts, and [CBlocks](../tactics/CBlocks.v) joins the four parts
     into a proof about the whole function. The statements call the two
     parameters `c: buf` and `c: ch`, as the C source does, and they
     call the buffer's fields by their names in the C structure. The
@@ -15,7 +15,7 @@
     and the proof assumes a contract for it. *)
 
 From Glibc Require Import Unit_stdioZ2dcommon_vfprintfZ2dinternal_os.
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -24,7 +24,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv LibioLogic FormatterSrc
   CFrame CStruct CBlocks PrintfLayout PrintfOut PrintfSpec FormatterNames.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

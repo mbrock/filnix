@@ -8,7 +8,7 @@ From Glibc Require Import GlibcProgram.
     returns what the wrapper returns. This file proves that call on top
     of the wrapper's rule, so the parser's own behaviour stays a premise. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -16,9 +16,8 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld FileInv LibioLogic WordString GetoptModule GetoptState GetoptBytes
+From Glibc Require Import GetoptState OsWorld FileInv LibioLogic WordString GetoptModule
   GetoptInitialize GetoptEntry GetoptWrapper.
-From Glibc Require FileInv GetoptInitialize GetoptState GetoptWrapper LibioLogic OsWorld.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -81,7 +80,7 @@ Proof. unfold needs_init. cbn. split; [left; reflexivity | lia]. Qed.
 
 
 (** The wrapper module proves the copies around the reentrant parser. *)
-Import GetoptInitialize GetoptState FileInv FileInv.ML FileInv.LG FileInv.L LibioLogic.
+Import GetoptInitialize FileInv Fix.ML0 Fix.LG0 Fix.LG0.L LibioLogic.
 
 Import ProgramAbbreviations.
 Section long_wrapper.

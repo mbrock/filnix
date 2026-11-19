@@ -13,16 +13,15 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
-From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle LeavesLogic LibioLogic ExitRunTail
-  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainStart HelloGlibcMainDispatch HelloGlibcMainLoop.
-From Glibc Require HelloGlibcDebts HelloGlibcMainDispatch HelloGlibcMainLoop HelloGlibcMainStart HelloGlibcMainSteps LibioLogic.
+From Glibc Require Import OsWorld OsRegistry WordString FileInv FileIdle LeavesLogic LibioLogic
+  HelloGlibcDebts HelloGlibcMainSteps HelloGlibcMainDispatch.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
 
 
 (** The loop module supplies the exit state and the shared step rules. *)
-Import HelloGlibcMainLoop HelloGlibcMainDispatch HelloGlibcMainStart HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
+Import HelloGlibcMainDispatch HelloGlibcMainSteps HelloGlibcDebts HelloGlibcDebts.FB HelloGlibcDebts.SW HelloGlibcDebts.SW.FI.ML HelloGlibcDebts.SW.FI.LG HelloGlibcDebts.SW.FI.L HelloGlibcDebts.SW.OW HelloGlibcDebts.SW.FI.
 
 Section version.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ}.
@@ -61,7 +60,7 @@ Lemma wp_std_stream f e ls lab vc chk d rest j sb sreg g fd Ψ :
     {{ Ψ }}.
 Proof using Type.
   intros Hv (Hs0 & Hs8 & Hse & Hsr). iIntros "Hl Hc Hf HK".
-  rule1 "Hl" ltac:(eapply LibioLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule1 "Hl" ltac:(eapply OsMemLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_load_stream with "Hl Hc Hf"); [apply Symbolic.lookup_after_put_same | lia | exact Hs8 |].
   iNext. iIntros "Hf". iApply ("HK" with "Hf").
 Qed.

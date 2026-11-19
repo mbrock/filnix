@@ -16,7 +16,7 @@ From Glibc Require Import GlibcProgram.
     over such a stream calls nothing and changes nothing, by
     LibioFlushFpLock.v, LibioFlushClean.v and LibioFlushFpUnlock.v. *)
 
-From Glibc Require Import GlibcTactics LibioTactics.
+From Glibc Require Import GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -26,7 +26,6 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import OsBlocks OsWorld OsThread OsRegistry FileInv LibioLogic
   SysWrappers LibioCloseSteps LibioFlushFpLock LibioFlushFpUnlock LibioFlushClean
   LibioFlushStart LibioFlushTail LibioFlushInv.
-From Glibc Require FileInv LibioCloseSteps LibioFlushClean LibioFlushFpLock LibioFlushFpUnlock LibioFlushInv LibioFlushStart LibioFlushTail LibioLogic OsWorld SysWrappers.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope Z_scope.
@@ -37,7 +36,7 @@ Local Arguments Z.mul : simpl nomatch.
 Local Arguments Z.opp : simpl nomatch.
 
 
-Import LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock SysWrappers FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic LibioCloseSteps.
+Import LibioFlushTail LibioFlushStart LibioFlushClean LibioFlushFpUnlock LibioFlushFpLock SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic LibioCloseSteps.
 
 (** The stream predicates retain their public names and definitions
     without importing the flush proofs into clients that only need ownership. *)

@@ -110,6 +110,7 @@ pack_units = [
 ]
 placement = [
   "__gconv_transform_internal_ascii", "__libc_tsd_LOCALE", "_nl_global_locale", "_nl_C_LC_CTYPE",
+  "__gconv_transform_ascii_internal", "glibc_C_ctype#lc_ctype_data", "__wcsmbs_gconv_fcts_c", "glibc_wcsmbsload#to_wc",
   "glibc_wcsmbsload#to_mb", "glibc_C_ctype#str.280", "glibc_C_ctype#translit_from_idx",
   "glibc_C_ctype#translit_from_tbl", "glibc_C_ctype#translit_to_idx", "glibc_C_ctype#translit_to_tbl",
 ]

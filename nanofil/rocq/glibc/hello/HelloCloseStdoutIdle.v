@@ -11,16 +11,16 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic.
+From Glibc Require Fix.
 From Glibc Require Import HelloBodies.
 From Glibc Require Import Unit_io_close_nocancel_os Unit_io_write_os Unit_libio___fpending_os Unit_libio_ferror_os Unit_libio_fileops_os.
 From Glibc Require Import Unit_libio_genops_os Unit_libio_iofclose_os Unit_nptl_libcZ2dcleanup_os Unit_posix__exit_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics OsBlocks OsWorld OsRegistry
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics OsBlocks OsWorld OsRegistry
   FileInv FileIdle LibioLogic SysWrappers LibioCloseSteps LeavesLogic AllocLogic
-  HelloClosedStdout HelloCloseErrno HelloCloseDispatch HelloCloseDiagnostic HelloCloseStreamRetain
+  HelloClosedStdout HelloCloseDispatch HelloCloseDiagnostic HelloCloseStreamRetain
   HelloCloseStreamIdle.
 From Glibc Require LibioFcloseTail.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L
-  FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic LibioCloseSteps LibioFcloseTail.
 Open Scope Z_scope.
 
 (** ## Borrowing a stream
@@ -90,7 +90,7 @@ Lemma wp_load_idle f e ls lab vc chk d rest j sb sreg vb self g fd Ψ :
     {{ Ψ }}.
 Proof using Type.
   intros Hv (Hs0 & Hs8 & Hse & Hsr). iIntros "Hl Hc Hf HK".
-  rule1 "Hl" ltac:(eapply LibioLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
+  rule1 "Hl" ltac:(eapply OsMemLogic.wp_check_read_dq; inst; [reflexivity | vx | left; reflexivity | arith | arith | arith]).
   iApply (wp_load_idle_ptr with "Hl Hc Hf"); [apply Symbolic.lookup_after_put_same | lia | exact Hs8 |].
   iNext. iIntros "Hf". iApply ("HK" with "Hf").
 Qed.

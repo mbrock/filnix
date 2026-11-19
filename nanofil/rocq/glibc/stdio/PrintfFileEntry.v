@@ -12,7 +12,8 @@
     The second takes the stream out of the invariant of a file-backed
     buffer when the print is over. *)
 
-From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics LibioTactics.
+From Glibc Require FixVariadic.
+From Glibc Require Import GlibcProgram GlibcSpec GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -21,8 +22,8 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap ContractFrame Language Logic StringLogic MemLogic
   VariadicLogic.
 From Glibc Require Import Fix OsBlocks OsWorld FileInv FileIdle FileTidy PrintfStreamInv LibioLogic LibioFputsSpec
-  AllocRo FormatterStringArg CStruct PrintfLayout PrintfOut PrintfSpec PrintfFileOut.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L OsWorld FileInv LibioLogic StringVL.
+  AllocRo CStruct PrintfLayout PrintfOut PrintfSpec PrintfFileOut.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic FixVariadic.VL0.
 Open Scope string_scope.
 Open Scope list_scope.
 Open Scope Z_scope.

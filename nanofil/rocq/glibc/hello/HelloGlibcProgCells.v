@@ -28,9 +28,8 @@ From Stdlib Require Import ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import IRFrames HelloBodies.
-From Glibc Require Import StrlenBits StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrcmpBits
+From Glibc Require Import StrlenLogic WordString StrlenLoop OsWorld StrrchrLogic StrcmpBits
   StrncmpBits StrncmpLogic MemFwdLogic.
-From Glibc Require OsWorld StrncmpLogic.
 From Glibc Require Import Fix.
 Open Scope Z_scope.
 Open Scope list_scope.
@@ -146,7 +145,7 @@ Qed.
 
 
 (** Byte pieces' shares. *)
-Module ML := MemLogicOn R LG0.
+Module ML := Fix.ML0.
 (** glibc's strncmp. *)
 (** The world's rules. *)
 (** The Logic instance. *)

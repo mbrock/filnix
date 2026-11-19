@@ -8,7 +8,7 @@ From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Values Memory Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import FileInv.
-Import ListNotations FileInv.ML FileInv.LG.
+Import ListNotations Fix.ML0 Fix.LG0.
 Open Scope Z_scope.
 
 (** A pointer in memory is its capability slot and its address bytes. *)

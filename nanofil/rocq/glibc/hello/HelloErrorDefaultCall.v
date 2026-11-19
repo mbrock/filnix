@@ -3,17 +3,16 @@
     before that prefix. It retains the original argument cursor and cleanup
     fields for the report and requires no custom callback function. *)
 From Glibc Require Import Unit_libio_fileops_os Unit_libio_iofflush_os Unit_misc_error_os Unit_nptl_pthread_setcancelstate_os.
-From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
+From Glibc Require Import GlibcProgram GlibcTactics OsTactics.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap
   Language Logic MemLogic Identity VariadicLogic.
-From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic LibioCloseSteps SysWrappers
+From Glibc Require Import OsWorld OsRegistry FileInv LibioLogic SysWrappers
   ErrorEntry ErrorDefaultEntry ErrorCall
-  FflushClosed HelloClosedStdout HelloErrorClosed HelloErrorCall Fix.
-Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic
-  LibioCloseSteps OsWorld SysWrappers.
+  HelloClosedStdout HelloErrorClosed HelloErrorCall Fix.
+Import ListNotations ProgramAbbreviations Fix.ML0 Fix.LG0 Fix.LG0.L FileInv LibioLogic OsWorld SysWrappers.
 Open Scope Z_scope.
 
 Section call.

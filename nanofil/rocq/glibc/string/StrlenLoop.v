@@ -18,8 +18,8 @@ From Stdlib Require Import String ZArith Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
   StepRules Symbolic ExternalCalls Pieces Heap Language Logic.
 From Glibc Require Import StrlenBits StrlenLogic WordString.
-From Glibc Require WordString.
 From Glibc Require Import Fix.
+From Glibc Require Import StringTactics.
 Open Scope Z_scope.
 Open Scope list_scope.
 
@@ -60,56 +60,6 @@ Ltac set_tail name r :=
   match goal with |- context [put (TAtom name) (WInt ?X) _] =>
     let H := fresh in assert (H : X = tail r) by (eapply tail_chain; eassumption); rewrite H; clear H;
     repeat match goal with H : ?x = _ |- _ => is_var x; clear H end end.
-
-(** Tactic [unwrap] removes 64-bit and 32-bit modulo wraps when linear
-    arithmetic shows the value already fits in range. *)
-Ltac unwrap :=
-  repeat match goal with
-    | |- context [?x mod 2 ^ 64] => rewrite (Z.mod_small x (2 ^ 64)); [|lia]
-    | |- context [?x mod 2 ^ 32] => rewrite (Z.mod_small x (2 ^ 32)); [|lia]
-    end.
-
-(** Tactic [clear_junk] discards non-arithmetic hypotheses from the
-    context so that `lia` does not waste time scanning them. *)
-Ltac clear_junk :=
-  repeat match goal with
-    H : ?T |- _ =>
-      lazymatch T with
-      | @eq Z _ _ => fail | Z.le _ _ => fail | Z.lt _ _ => fail | and (Z.le _ _) _ => fail
-      | lt _ _ => fail | le _ _ => fail
-      | _ => clear H
-      end
-    end.
-(** Tactic [pow_closed] evaluates closed power-of-two shift factors by
-    computation before handing the goal to `lia`. *)
-Ltac pow_closed :=
-  repeat match goal with |- context [2 ^ (?n mod ?m)] =>
-    let v := fresh "v" in let Ev := fresh "Ev" in
-    remember (2 ^ (n mod m)) as v eqn:Ev; vm_compute in Ev; subst v end.
-(** Tactic [arith] normalizes pointer and address projections, strips
-    non-arithmetic hypotheses, and solves linear or division goals. *)
-Ltac arith := cbn [ptr_addr ptr_cap extension]; unfold raw_address; clear_junk; pow_closed; unwrap;
-  first [lia | Z.div_mod_to_equations; lia].
-
-(** Tactic [close_if] simplifies a conditional branch edge once its
-    boolean condition reduces to `true` or `false`. *)
-Ltac close_if :=
-  match goal with |- context [edge_label (if ?c then _ else _)] =>
-    first [change c with true | change c with false]
-  end; cbn [edge_label].
-
-(** Tactic [look] resolves a lookup in the environment by skipping over
-    newer `put` bindings until it reaches hypothesis H. *)
-Ltac look H := repeat (rewrite lookup_after_put_other; [|reflexivity]); exact H.
-
-(** Tactic [set_int] normalizes the integer stored in temporary `name`
-    to `v` by computation or [arith]. *)
-Ltac set_int name v :=
-  match goal with |- context [put (TAtom name) (WInt ?X) _] => replace X with v by first [reflexivity | arith] end.
-(** Tactic [set_ptr] normalizes the address stored in pointer temporary
-    `name` to `v` by computation or [arith]. *)
-Ltac set_ptr name v :=
-  match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by first [reflexivity | arith] end.
 
 (** Tactic [gen_top] binds the newest temporary's integer expression to
     a fresh variable unless it is already a constant or variable, keeping
