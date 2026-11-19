@@ -21,7 +21,8 @@ def prepare(tree, file, model):
     compiler = Path(binary).resolve()
     identity = (tree, model, compiler, os.environ.get("ROCQPATH", ""))
     key = hashlib.sha256(os.fsencode(repr(identity))).hexdigest()[:24]
-    work = Path(os.environ["PE_CACHE"]).resolve() / "rq-interfaces" / key
+    cache = Path(os.environ["PE_CACHE"]).resolve() / "rq-interfaces"
+    work = cache / key
     work.mkdir(parents=True, exist_ok=True)
     roots = {"Nanofil": model}
     if namespace == "Glibc":
@@ -41,6 +42,8 @@ def prepare(tree, file, model):
             build_flags.extend(["-R", name, name])
             worker_flags.extend(["-R", str(mirror), name])
             for src in root.rglob("*.v"):
+                if src.is_relative_to(cache):
+                    continue
                 dest = mirror / src.relative_to(root)
                 if not dest.is_symlink():
                     dest.parent.mkdir(parents=True, exist_ok=True)

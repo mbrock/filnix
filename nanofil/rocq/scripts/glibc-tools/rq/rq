@@ -400,11 +400,13 @@ def prepare_interfaces(tree, file, model):
 
 
 def cmd_verify(args):
-    tree, file, _ = tree_and_flags(args.file, args.tree)
+    tree, file, flags = tree_and_flags(args.file, args.tree)
     if os.path.commonpath([tree, file]) != tree:
         die("the file must be inside the selected tree")
-    flags = prepare_interfaces(tree, file, os.environ["PE_MODEL"])
-    source = os.path.join(flags[-2], os.path.relpath(file, tree))
+    source = file
+    if not tree.startswith("/nix/store/"):
+        flags = prepare_interfaces(tree, file, os.environ["PE_MODEL"])
+        source = os.path.join(flags[-2], os.path.relpath(file, tree))
     with tempfile.TemporaryDirectory() as output:
         marker = os.path.join(output, os.path.splitext(os.path.basename(file))[0] + ".vok")
         result = subprocess.run(["rocq", "c", "-vok", *flags, "-o", marker, source],
