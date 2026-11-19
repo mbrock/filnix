@@ -11,7 +11,7 @@ From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Pieces Heap.
 From Glibc Require Import ErrlistDataCode ErrlistFacts WordString HelloGetoptTable
   HelloImageLoad HelloImageModule HelloImageErase HelloImageEraseMem HelloImagePieces
-  HelloStartKept StartImageEarly.
+  HelloStartKept ImageObjectPieces.
 Import ListNotations.
 Open Scope Z_scope.
 

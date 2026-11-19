@@ -18,7 +18,7 @@ From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine StepRules Symbolic
   ExternalCalls ExternalMachine Pieces Heap Language Logic MemLogic.
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageEarly OsWorld OsRegistry FileInv LibioLogic WordString
-  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt Fix.
+  StartCtypeInitSpec StartEarlyInitSpec HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt Fix.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic.
 Open Scope Z_scope.
 Local Arguments Z.add : simpl nomatch.

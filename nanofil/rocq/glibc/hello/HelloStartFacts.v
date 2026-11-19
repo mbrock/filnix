@@ -12,7 +12,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Lia Permutation.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic HelloMain.
 From Glibc Require Import FileInv OsWorld OsRegistry OsStart StartCtors StartLogic StartCallMainSpec
-  StartLibcStartMain StartLsmImage StartLsmHello StartImageCpu StartInitFirstSpec StartJoin
+  StartLibcStartMain StartLsmImage StartLsmHello ImageObjectPieces StartInitFirstSpec StartJoin
   HelloImageModule HelloImageLoad HelloImageEarly HelloImageLsm HelloImageCtors HelloImageFnLink
   HelloImageLayout HelloGlibcLibsT HelloStartCtors StartPtmallocInitSpec StartCtorChain.
 From Glibc Require AtexitLogic SysWrappers.

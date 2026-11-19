@@ -15,7 +15,7 @@
     again when main starts. Startup builds main's private state from
     the objects that `c: getenv` reads and the image's private list. *)
 
-From Glibc Require Import GlibcTactics GlibcProgram GlibcSpec PrintfSpec.
+From Glibc Require Import ImageObjectPieces GlibcTactics GlibcProgram GlibcSpec PrintfSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -330,7 +330,7 @@ Proof using Hi.
     iSplitR; [iExact "Hargs"|iExact "Hav"]. }
   (* What getopt and Hello's private state read. *)
   (* The counter is the eight zero bytes at 176352, and `c: __environ` is at 176320. *)
-  rewrite /hello_environ_counter_ps. iDestruct (StartImageCpu.obj_ps_own with "Hcnt") as "(Lc & Bc & _)".
+  rewrite /hello_environ_counter_ps. iDestruct (ImageObjectPieces.obj_ps_own with "Hcnt") as "(Lc & Bc & _)".
   cbn [fst snd]. iDestruct (bytes_zero_icell with "Bc") as "Bc".
   iMod (getenv_own (glibc_program := P tb) m env 176352 _ 176320 _ He2
     with "Lc Bc Len Ien Lev Pev Nev Sev") as "[Gg Gs]".

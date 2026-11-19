@@ -25,7 +25,7 @@ From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces Heap Logic MemLogic StringLogic.
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString StartCtypeInitSpec StartEarlyInitSpec
-  StartImageCpu HelloImageModule HelloImageLoad HelloImageEarly HelloImageCloseObjs HelloImageLocaleObjs
+  ImageObjectPieces HelloImageModule HelloImageLoad HelloImageEarly HelloImageCloseObjs HelloImageLocaleObjs
   HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs HelloStartGetopt HelloStartHdBuild HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.

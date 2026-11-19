@@ -15,7 +15,7 @@
     proof follows the code in that order, one category at a time, and
     its last lemma joins the parts into the whole call. *)
 
-From Glibc Require Import Unit_locale_findlocale_os Unit_locale_setlocale_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_stdlib_getenv_os.
+From Glibc Require Import ImageObjectPieces Unit_locale_findlocale_os Unit_locale_setlocale_os Unit_nptl_pthread_rwlock_unlock_os Unit_nptl_pthread_rwlock_wrlock_os Unit_stdlib_getenv_os.
 From Glibc Require Import Unit_string_strchr_os Unit_string_strchrnul_os Unit_string_strncmp_os.
 From Glibc Require Import GlibcProgram GlibcTactics LibioTactics.
 From iris.proofmode Require Import proofmode.
@@ -27,7 +27,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
 From Glibc Require Import HelloImageModule HelloImageLoad HelloImageEarly OsWorld OsRegistry FileInv LibioLogic WordString
   GetoptBytes GetenvEntry RdlockLogic RwlockIdle StrcmpLogic StrchrnulLogic StrlenWord GetenvScan GetenvStatic GetenvCall
   StartGetenv LocaleEnv FindlocaleEnv FindlocaleC
-  StartCtypeInitSpec StartEarlyInitSpec StartImageEarly HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt
+  StartCtypeInitSpec StartEarlyInitSpec HelloImageLocaleObjs HelloImageCLocaleObjs GetoptShortOpt
   HelloSetlocalePostload HelloLocaleState HelloStartHdBuild StrlenLogic AllocLogic LibioCloseSteps StartPtmallocInit SysWrappers LibioCleanupExit Fix.
 Module FL := VariadicLogicOn R LG0.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv LibioLogic FL.
@@ -507,7 +507,7 @@ Lemma sl_tail e b4 b5 b103 b104 n tb treg dqt dqi tid sh Φ :
   sl_fresh b4 b5 b103 b104 -> sl_regs e b4 b5 b103 b104 -> sl_set_regs e 13 ->
   rw_place (objp lk) lk lkreg tb treg ->
   sl_ro -∗ live gl glreg -∗ pcell gl 176 cv -∗ sl_tmp b4 b5 b103 b104 -∗
-  pts (StartImageCpu.obj_ps (img_ob "_nl_msg_cat_cntr") (le_bytes n 4)) -∗
+  pts (ImageObjectPieces.obj_ps (img_ob "_nl_msg_cat_cntr") (le_bytes n 4)) -∗
   rw_writing lk lkreg tid sh 0 -∗ rw_self dqt tb treg dqi tid -∗
   (live gl glreg -∗ pcell gl 176 cv -∗ hello_cat_cntr -∗ rw_state lk lkreg 0 0 sh 0 -∗ rw_self dqt tb treg dqi tid -∗
      Φ (Ret (WPtr cv))) -∗
@@ -522,7 +522,7 @@ Proof.
   step; step; step; step; sums; check "Hgl"; load_pointer_dq "Hgl H176 Hcl" by a2.
   iNext; iIntros "Hgl H176 _"; step; step; closed_ints; branch; step; step.
   (* The counter goes up by one. *)
-  rewrite le_bytes_mod32 /StartImageCpu.obj_ps. iEval (rewrite (pts_app [_]) pts_app) in "Hn".
+  rewrite le_bytes_mod32 /ImageObjectPieces.obj_ps. iEval (rewrite (pts_app [_]) pts_app) in "Hn".
   iDestruct "Hn" as "(Cl & Cb & Ca)". assert (Hn32 : 0 <= n mod 2^32 < 2^32) by (apply Z.mod_pos_bound; lia).
   iAssert (live (img_a "_nl_msg_cat_cntr") (img_gd "_nl_msg_cat_cntr")) with "Cl" as "Cl".
   iAssert (bytes (img_a "_nl_msg_cat_cntr") 0 (le_bytes (n mod 2^32) 4)) with "Cb" as "Cb".
@@ -537,7 +537,7 @@ Proof.
     iApply (AllocLogic.wp_glibc_free_null glibc_os_registry (os_wi w) hge); [exact Hfh | vm_compute; reflexivity | vm_compute; reflexivity |];
     iExists _; iSplit; [iPureIntro; reflexivity|]; iNext; cbn [fr_fn fr_env fr_locals fr_at fr_doomed]).
   iApply wp_ret; [reflexivity | vx |]. iNext. iApply ("HK" with "Hgl H176 [Cl Cb Ca] Hlk Hself").
-  iExists _. rewrite /StartImageCpu.obj_ps. iEval (rewrite (pts_app [_]) pts_app). iFrame "Cl Cb".
+  iExists _. rewrite /ImageObjectPieces.obj_ps. iEval (rewrite (pts_app [_]) pts_app). iFrame "Cl Cb".
   rewrite !length_fmap length_seq. iExact "Ca".
 Qed.
 

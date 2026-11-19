@@ -1,3 +1,4 @@
+From Glibc Require Export LiteralWords.
 From Glibc Require Import GlibcProgram.
 (** Hello passes getopt_long the option string "g:t" and a table of four
     long options. The rule for the call needs read-only ownership of that
@@ -32,16 +33,6 @@ Import FileInv FileInv.ML FileInv.LG.
     with zeros to whole words. The definitions below compute those words
     from the bytes, and the lemma after them proves the shape that the
     string routines need at any 8-byte boundary. *)
-
-(** This function reads byte i of s followed by its terminator, and it
-    gives zero past the end. *)
-Definition lit_byte (s : list Z) (i : nat) : Z := nth i (s ++ [0]) 0.
-
-(** These are the little-endian words that hold s, its terminator and the
-    padding. *)
-Definition lit_words (s : list Z) : list Z :=
-  map (fun k => fold_right (fun j acc => lit_byte s (8 * k + j) + 256 * acc) 0 (seq 0 8))
-    (seq 0 ((List.length s + 8) / 8)).
 
 (** The words fit in 64 bits, their bytes spell s and a zero, and every
     character of s is a byte other than zero. *)

@@ -18,7 +18,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith List Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Run Semantics Pieces Heap Logic MemLogic StringLogic.
-From Glibc Require Import FileInv WordString RdlockLogic RwlockIdle TfindEmpty PrintfSpec StartImageCpu
+From Glibc Require Import FileInv WordString RdlockLogic RwlockIdle TfindEmpty PrintfSpec ImageObjectPieces
   HelloGetoptTable HelloGetoptDiagMsgs HelloGettextLocaleConst HelloGettextSuffix HelloGettextDomain
   HelloImageModule HelloImageLoad HelloImageKept HelloImageDiagObjs.
 Import ListNotations ProgramAbbreviations FileInv.ML FileInv.LG FileInv.L.

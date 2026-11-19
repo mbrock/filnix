@@ -15,7 +15,7 @@
 From Stdlib Require Import String ZArith List Lia.
 From stdpp Require Import list.
 From Nanofil Require Import Term Syntax Values Memory Run Runtime Pieces Heap StringLogic.
-From Glibc Require Import StartImageEarly HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
+From Glibc Require Import ImageObjectPieces HelloImageErase HelloImageEraseMem HelloImagePieces HelloImageModule HelloImageLoad.
 Import ListNotations.
 Open Scope Z_scope.
 

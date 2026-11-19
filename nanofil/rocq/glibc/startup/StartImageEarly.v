@@ -16,6 +16,7 @@
     table is not here. The contract of `c: init_cpu_features` owns it,
     and the caller passes its life on. *)
 
+From Glibc Require Export ImageObjectPieces.
 From Glibc Require Import GlibcProgram GlibcSpec.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap fancy_updates.
@@ -93,10 +94,6 @@ Definition early_keep (n : name) : bool := existsb (name_eqb n) (map TAtom early
 Definition arena_keep (n : name) : bool := name_eqb n (TAtom "glibc_malloc#main_arena").
 
 (** ## The pieces *)
-
-(** A pointer in memory is its capability slot and its address bytes. *)
-Definition ptr_ps (b o : Z) (p : ptr) : list (piece * pval) :=
-  (PAux b o, VAux (ptr_cap p)) :: cell b o (ptr_addr p).
 
 (** The main arena's 254 bins are empty at the start. *)
 Definition bins_ps (ma : Z) : list (piece * pval) :=

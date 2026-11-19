@@ -26,6 +26,7 @@ From stdpp Require Import list_numbers.
 From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Run Pieces Heap Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld OsRegistry FileInv HiAtexitModule HiAtexitGe HiAtexitInitial
   HelloImageErase HelloImageEraseMem HelloImagePieces CpuInitSpec CpuPlace CpuHiAtexit StartImageUnique.
+From Glibc Require Export ImageObjectPieces.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L FileInv.
 Open Scope Z_scope.
 
@@ -56,12 +57,6 @@ Definition hi_tunable_bytes : list Z := Eval vm_compute in
     the order of [icf_small_globals]. *)
 Definition hi_small_bytes : list (list Z) := Eval vm_compute in
   zip_with (fun q g => bytes_at (hi_erased icf_keep) (fst q) (snd g)) (icf_small hi_icf_objs) icf_small_globals.
-
-(** This list holds one whole object. The object lies at the address
-    and in the region that the pair q gives. It holds the bytes xs,
-    and it holds no pointer. *)
-Definition obj_ps (q : Z * region) (xs : list Z) : list (piece * pval) :=
-  (PLive (fst q), VLive (snd q)) :: byte_ps (fst q) 0 xs ++ aux_ps (fst q) 0 (repeat CNone (length xs)).
 
 (** This list says what the eighteen objects hold when hi_atexit
     starts. The feature structure holds 528 zero bytes. The tunable
@@ -140,16 +135,6 @@ Qed.
 Section image.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ} (w0 : os_world).
 Local Notation hi_program := (program_of w0 glibc_os_registry hge).
-
-(** Owning the list of one object is owning its lifetime, its bytes
-    and its empty pointer slots. *)
-Lemma obj_ps_own q xs :
-  pts (obj_ps q xs) ⊣⊢ live (fst q) (snd q) ∗ bytes (fst q) 0 xs ∗ auxes (fst q) 0 (repeat CNone (length xs)).
-Proof using Type.
-  change (obj_ps q xs) with
-    ([(PLive (fst q), VLive (snd q))] ++ (byte_ps (fst q) 0 xs ++ aux_ps (fst q) 0 (repeat CNone (length xs))))%list.
-  rewrite !pts_app. done.
-Qed.
 
 (** Owning the lists of the small globals gives each one in the form
     that the contract asks for. The contract does not care what a

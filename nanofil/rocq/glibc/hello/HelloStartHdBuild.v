@@ -15,7 +15,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Semantics Pieces H
 From Glibc Require Import OsWorld OsBlocks OsRegistry FileInv WordString RdlockLogic TfindEmpty LocalenameLogic
   DcgettextRwlock DcgettextRealV DcigettextRouteV StartCtypeInitSpec HelloGlibcDebts HelloGetoptDiagGettext
   HelloGetoptDiagTcb HelloGetoptDiagLock HelloGettextLink HiAtexitAlloc HelloImageModule HelloImageLoad HelloImageLayout
-  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs StartEarlyInitSpec StartImageCpu
+  HelloImageEarly HelloGetoptDiagImage HelloImageDiagObjs HelloGetoptStart HelloStartGetopt HelloStartGetoptRules HelloStartHdGetopt HelloImageCloseObjs HelloImageLocaleObjs HelloImageMbsObjs HelloImageWideObjs HelloImageCLocaleObjs StartEarlyInitSpec ImageObjectPieces
   AllocRo LibioFputsSpec HelloCloseReportImage.
 Import ListNotations FileInv.ML FileInv.LG FileInv.L.
 Open Scope Z_scope.
