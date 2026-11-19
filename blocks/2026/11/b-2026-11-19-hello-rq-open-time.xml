@@ -1,0 +1,32 @@
+<block id="b-2026-11-19-hello-rq-open-time" kind="bench" actor="Codex" created="2026-11-19T10:18:51Z" in-reply-to="b-2026-11-19-hello-library-interfaces">
+  <title>Hello’s library refactor cuts the time to open a proof</title>
+  <about path="nanofil/rocq/glibc/hello/HelloGlibcMainLibs.v"/>
+  <about path="nanofil/rocq/glibc/hello/HelloStartNeverPanics.v"/>
+  <about path="nanofil/rocq/glibc/hello/HelloSetlocaleAll.v"/>
+  <tag name="formal"/>
+  <p>Removing the functors from Hello’s library proofs cut the time to open
+    <code>hello_libs</code> by half on swa. The safety and locale proofs also
+    open faster because they import the same library.</p>
+  <p>Each time below is the median wall time of six <code>rq open</code>
+    commands with compiled interfaces on disk. Each command started a fresh
+    worker and stopped at the named proof. The runs alternated revision order
+    and used Rocq 9.3 on both revisions.</p>
+  <table>
+    <tr><th>Proof</th><th>Before (e8ce243d5beb)</th><th>After (f11564cc6610)</th></tr>
+    <tr><td><code>hello_libs</code></td><td>3.38 s</td><td>1.62 s</td></tr>
+    <tr><td><code>libs_atexit</code></td><td>2.50 s</td><td>1.57 s</td></tr>
+    <tr><td><code>hello_never_panics</code></td><td>2.66 s</td><td>2.23 s</td></tr>
+    <tr><td><code>sl_find_one</code></td><td>3.38 s</td><td>2.96 s</td></tr>
+    <tr><td><code>os_inv_step</code></td><td>1.05 s</td><td>1.05 s</td></tr>
+  </table>
+  <p>Before the change, Rocq spent 1.33 s processing module declarations
+    on the way to <code>hello_libs</code>. Removing those declarations accounts
+    for most of the saving. The median peak memory of that worker fell from
+    1,183 MiB to 666 MiB.</p>
+  <p>The OS-world proof in the last row has no Hello imports. A one-line edit
+    inside an open safety proof took 0.51 s to reload on each revision. The
+    worker reused the preceding sentences in all twelve reloads.</p>
+  <p>With an empty interface cache and twelve build jobs, the first open of
+    the safety theorem took 171 s before the change and 159 s after it. Each
+    revision had one such run.</p>
+</block>
