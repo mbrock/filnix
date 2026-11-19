@@ -67,24 +67,24 @@ Local Abbreviation lk := (img_a "__libc_setlocale_lock").
 Local Abbreviation lkreg := (img_gd "__libc_setlocale_lock").
 
 Local Instance d_wrlock : Defines hge "__GI___pthread_rwlock_wrlock" Unit_nptl_pthread_rwlock_wrlock_os.fn____pthread_rwlock_wrlock.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 Local Instance d_unlock : Defines hge "__GI___pthread_rwlock_unlock" Unit_nptl_pthread_rwlock_unlock_os.fn____pthread_rwlock_unlock.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_getenv : Defines hge "__GI_getenv" Unit_stdlib_getenv_os.fn___GI_getenv.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_strlen : Defines hge "__GI_strlen" glibc_strlen.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_strncmp : Defines hge "__GI_strncmp" Unit_string_strncmp_os.fn___GI_strncmp.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_strchr : Defines hge "__GI_strchr" Unit_string_strchr_os.fn___GI_strchr.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_strchrnul : Defines hge "__GI___strchrnul" Unit_string_strchrnul_os.fn___GI___strchrnul.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_find : Defines hge "_nl_find_locale" Unit_locale_findlocale_os.fn__nl_find_locale.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 Local Instance d_free : Defines hge "free" free_fn.
-Proof. reflexivity. Qed.
+Proof using Type. reflexivity. Qed.
 
 Local Ltac sums := repeat match goal with |- context [(?A + ?Y) mod 2 ^ 64] =>
   tryif has_var Y then fail else let v := eval vm_compute in Y in tryif constr_eq Y v then fail else change Y with v end.
@@ -94,7 +94,7 @@ Local Ltac fill N := step; closed_ints; branch; step; step; closed_ints; branch;
 Local Ltac normp name v := match goal with |- context [put (TAtom name) (WPtr (mkPtr ?X _)) _] => replace X with v by a2 end.
 
 Local Lemma all_ext : sys_external hge.
-Proof. repeat constructor; vm_compute; reflexivity. Qed.
+Proof using Type. repeat constructor; vm_compute; reflexivity. Qed.
 
 Context (dq dqa dqe : dfrac) (bc : Z) (rc : region) (be : Z) (re : region) (counter : Z) (ep : ptr)
   (es : list getenv_entry) (Himage : getenv_image_ok hge bc rc be re) (Henv : c_locale_env (map entry_text es)) (Hfh : frees_heap fr).
@@ -118,7 +118,7 @@ Definition sl_cat_ro (x : Z * Z * region * Z * list Z) : iProp Σ :=
   pcellq DfracDiscarded pbt (8 * c) (if c =? 0 then plp else null).
 
 Local Instance sl_cat_ro_persistent x : Persistent (sl_cat_ro x).
-Proof. destruct x as [[[[? ?] ?] ?] ?]. rewrite /sl_cat_ro /pcellq /liveq /bytesq. apply _. Qed.
+Proof using Type. destruct x as [[[[? ?] ?] ?] ?]. rewrite /sl_cat_ro /pcellq /liveq /bytesq. apply _. Qed.
 
 (** These are the constants that setlocale reads in every category. *)
 Definition sl_ro : iProp Σ :=
@@ -134,14 +134,14 @@ Definition sl_ro : iProp Σ :=
   [∗ list] x ∈ sl_rows, sl_cat_ro x.
 
 Local Instance sl_ro_persistent : Persistent sl_ro.
-Proof. rewrite /sl_ro /liveq /bytesq. apply _. Qed.
+Proof using Type. rewrite /sl_ro /liveq /bytesq. apply _. Qed.
 
 Local Ltac al := iApply wp_alloc; [reflexivity | vm_compute; congruence | vm_compute; congruence |
   intros ? ? ? ? Hf Hw; exact (os_wi_alloc w _ _ _ _ _ Hf Hw) |]; iNext.
 
 (** One byte of a shared byte string is a shared byte of its own. *)
 Lemma bytesq_nth b o xs k x : xs !! k = Some x -> bytesq DfracDiscarded b o xs ⊢ bytesq DfracDiscarded b (o + Z.of_nat k) [x].
-Proof.
+Proof using Type.
   intros Hk. rewrite /bytesq /ptsq. iIntros "H".
   iDestruct (big_sepL_lookup with "H") as "H'"; [exact (byte_ps_lookup _ _ _ _ _ Hk)|].
   rewrite byte_ps_cons /byte_ps /=. iFrame.
@@ -151,7 +151,7 @@ Qed.
 Lemma zero_cells b o (n : nat) :
   pts (byte_ps b o (replicate (8 * n) 0)) -∗ pts (aux_ps b o (replicate (8 * n) CNone)) -∗
   [∗ list] i ∈ seq 0 n, pcell b (o + 8 * Z.of_nat i) null.
-Proof.
+Proof using Type.
   revert o. induction n as [|n IH]; intros o; [iIntros "_ _"; done|].
   replace (8 * S n)%nat with (8 + 8 * n)%nat by lia. iIntros "B A".
   iDestruct (zero_cell_prefix with "B A") as "(C & B & A)". rewrite -cons_seq -seq_shift big_sepL_cons big_sepL_fmap.
@@ -163,7 +163,7 @@ Qed.
 Lemma obj_cells b sz (n : nat) : req_extent (heap_req 8 sz) = 8 * Z.of_nat n ->
   obj b (heap_req 8 sz) ⊢ live b (mkRegion b (b + 8 * Z.of_nat n) Heap Live) ∗
     [∗ list] i ∈ seq 0 n, pcell b (8 * Z.of_nat i) null.
-Proof.
+Proof using Type.
   intros E. rewrite obj_zero_block; [|lia]. rewrite E. cbn [req_kind].
   replace (Z.to_nat (8 * Z.of_nat n)) with (8 * n)%nat by lia.
   iIntros "(L & B & A)". iFrame "L". iDestruct (zero_cells b 0 n with "B A") as "H". done.
@@ -189,7 +189,7 @@ Definition sl_names : list name :=
 
 Lemma sl_regs_keeps e e' b4 b5 b103 b104 :
   keeps sl_names e e' -> sl_regs e b4 b5 b103 b104 -> sl_regs e' b4 b5 b103 b104.
-Proof. unfold keeps. rewrite Forall_forall. intros Hk H. unfold sl_regs in *. rewrite !Hk; [exact H | cbn; tauto ..]. Qed.
+Proof using Type. unfold keeps. rewrite Forall_forall. intros Hk H. unfold sl_regs in *. rewrite !Hk; [exact H | cbn; tauto ..]. Qed.
 
 (** The four locals are fresh heap objects of two, two, fourteen and
     fourteen words. *)
@@ -214,7 +214,7 @@ Local Ltac sl_cases H := repeat destruct H as [<-|H]; try contradiction.
 Local Lemma sl_index_words c : 0 <= c < 13 ->
   sign_extension (2^32) (2^31) (c mod 2^32) mod 2^64 = c /\
   (c mod 2^64 * 8) mod 2^64 = 8*c.
-Proof.
+Proof using Type.
   intros Hc. unfold sign_extension.
   assert (E32 : c mod 2^32 = c) by (apply Z.mod_small; lia).
   assert (Elt : (2^31 <=? c) = false) by (apply Z.leb_gt; lia).
@@ -248,7 +248,7 @@ Lemma sl_find_one x e b4 b5 b103 b104 Φ :
      globals -∗ storage -∗ sl_tmp b4 b5 b103 b104 -∗
      pcell b103 (8 * x.1.1.1.1) cv -∗ pcell b104 (8 * x.1.1.1.1) (rop x.1.1.1.2) -∗ WP at262 e' {{ Φ }}) -∗
   WP at262 e {{ Φ }}.
-Proof.
+Proof using Henv Himage.
   intros Hin Hfr Hr Hpr. iIntros "#Hro HG HS (L4 & P4 & L5 & P5 & L103 & L104) N D HK".
   pose proof Himage as (Hcnt & Henvg & Hbc & Hbce & Hrc & Hbe & Hbee & Hre & Hbe8).
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
@@ -288,7 +288,7 @@ Lemma sl_find_skip e Φ :
   lookup (TAtom "pr.2") e = Some (WInt 7) ->
   (∀ e', ⌜keeps sl_names e e' /\ lookup (TAtom "pr.2") e' = Some (WInt 6)⌝ -∗ WP at262 e' {{ Φ }}) -∗
   WP at262 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hpr. iIntros "HK".
   cbn [sl_L262 b_insts b_jump]; step; closed_ints; step; closed_ints; branch; step; step; closed_ints; branch.
   step; cbn [edge_label]. iApply "HK". iPureIntro. split; [keeps_tac | apply Symbolic.lookup_after_put_same].
@@ -321,7 +321,7 @@ Lemma sl_comp_one x e b4 b5 b103 b104 Φ :
   (∀ e', ⌜keeps sl_names e e' /\ sl_comp_regs e' (x.1.1.1.1 + 1)⌝ -∗
      live b103 (hreg b103 14) -∗ pcell b103 0 cv -∗ pcell b103 (8 * x.1.1.1.1) cv -∗ WP atC10 e' {{ Φ }}) -∗
   WP atC10 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hin Hfr Hr (Hp5 & Hp9 & [t3 Hp3] & [t1 Hp1]). iIntros "#Hro L103 N0 N HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
   iDestruct "Hro" as "(_ & #HC & _ & _ & _ & _ & _ & _ & #Hsl & #Hsz & _)".
@@ -355,7 +355,7 @@ Lemma sl_comp_first e b4 b5 b103 b104 Φ :
   sl_ro -∗ live b103 (hreg b103 14) -∗ pcell b103 0 cv -∗
   (∀ e', ⌜keeps sl_names e e' /\ sl_comp_regs e' 1⌝ -∗ live b103 (hreg b103 14) -∗ pcell b103 0 cv -∗ WP atC10 e' {{ Φ }}) -∗
   WP atC10 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hr (Hp5 & Hp9 & [t3 Hp3] & [t1 Hp1]). iIntros "#Hro L103 N0 HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
   iDestruct "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
@@ -381,7 +381,7 @@ Qed.
 Lemma sl_comp_skip e Φ :
   sl_comp_regs e 6 ->
   (∀ e', ⌜keeps sl_names e e' /\ sl_comp_regs e' 7⌝ -∗ WP atC10 e' {{ Φ }}) -∗ WP atC10 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros (Hp5 & Hp9 & [t3 Hp3] & [t1 Hp1]). iIntros "HK".
   cbn [sl_C10 b_insts b_jump]; step; closed_ints; branch; step; step; closed_ints; branch.
   step; step; step; step; cbn [edge_label]. iApply "HK". iPureIntro. split; [keeps_tac|].
@@ -416,7 +416,7 @@ Lemma sl_set_one x e b4 b5 b103 b104 dn Φ :
      pcell b103 (8 * x.1.1.1.1) cv -∗ pcell b104 (8 * x.1.1.1.1) (rop x.1.1.1.2) -∗
      pcell gl (8 * x.1.1.1.1) (rop x.1.1.1.2) -∗ pcellq dn gl (128 + 8 * x.1.1.1.1) cv -∗ WP at394 e' {{ Φ }}) -∗
   WP at394 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hin Hfr Hr (Hp3 & Hv386 & Hv391). iIntros "#Hro Hgl L103 L104 N D G Gn HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
   iDestruct "Hro" as "(_ & #HC & _ & _ & _ & _ & _ & _ & _ & _ & #Hpb & #T)".
@@ -459,7 +459,7 @@ Lemma sl_set_zero e b4 b5 b103 b104 dqt dn Φ :
      pcell b103 0 cv -∗ pcell b104 0 ccp -∗ pcell gl 0 ccp -∗ pcellq dn gl 128 cv -∗
      liveq dqt lt ltreg -∗ pcellq dqt lt 0 (objp gl) -∗ pl_cells -∗ WP at394 e' {{ Φ }}) -∗
   WP at394 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros Hfr Hr (Hp3 & Hv386 & Hv391). iIntros "#Hro #Hpl Hgl L103 L104 N D G Gn Hlt Hlc Hpc HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
   iDestruct "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
@@ -493,7 +493,7 @@ Qed.
 Lemma sl_set_skip e Φ :
   sl_set_regs e 6 ->
   (∀ e', ⌜keeps sl_names e e' /\ sl_set_regs e' 7⌝ -∗ WP at394 e' {{ Φ }}) -∗ WP at394 e {{ Φ }}.
-Proof.
+Proof using Type.
   intros (Hp3 & Hv386 & Hv391). iIntros "HK".
   cbn [sl_L394 b_insts b_jump]; step; closed_ints; branch; step; step; closed_ints; branch.
   step; step; step; cbn [edge_label]; step. iApply "HK". iPureIntro. split; [keeps_tac|].
@@ -512,7 +512,7 @@ Lemma sl_tail e b4 b5 b103 b104 n tb treg dqt dqi tid sh Φ :
   (live gl glreg -∗ pcell gl 176 cv -∗ hello_cat_cntr -∗ rw_state lk lkreg 0 0 sh 0 -∗ rw_self dqt tb treg dqi tid -∗
      Φ (Ret (WPtr cv))) -∗
   WP at394 e {{ Φ }}.
-Proof.
+Proof using Hfh.
   intros Hfr Hr (Hp3 & Hv386 & Hv391) Hp. iIntros "#Hro Hgl H176 (L4 & P4 & L5 & P5 & L103 & L104) Hn Hlk Hself HK".
   destruct Hfr as (H4 & H5 & H103 & H104). pose proof Hr as (R0 & R2 & R4 & R4c & R5 & R5c & R103 & R104 & R30 & R5p).
   iDestruct "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
@@ -576,7 +576,7 @@ Lemma sl_explore fr0 tb treg dqt dqi tid cw sh treg' dql Φ :
      liveq dql lt ltreg -∗ pcellq dql lt 0 (objp gl) -∗ pl_cells -∗ hello_cat_cntr -∗
      rw_state lk lkreg 0 0 sh 0 -∗ rw_self dqt tb treg dqi tid -∗ Φ (Ret (WPtr cv))) -∗
   WP (ERun fr0 : sexpr) {{ Φ }}.
-Proof.
+Proof using Henv Hfh Himage.
   intros Hfr Hp Hcw. injection Hfr as <-.
   iIntros "Hlk Hself Hgl H176 Hcl #Hro #Hpl HG HS Hgc Hlt Hlc Hpc [%n Hn] HK".
   iPoseProof "Hro" as "(#H80 & #HC & #HP & #Hall & #Hlang & #Hlp & #Hlb & #Hib & #Hsl & #Hsz & #Hpb & #T)".
