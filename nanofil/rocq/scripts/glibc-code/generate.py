@@ -297,6 +297,12 @@ class Generator:
             source = program[0] if program else ""
             if capture_layouts and cfg.get('layouts', False):
                 layouts = self.layouts(unit_rows, fns.split())
+                if "layout_tags" in cfg:
+                    tags = set(cfg["layout_tags"])
+                    layouts = [row for row in layouts if row["tag"] in tags]
+                    absent = tags - {row["tag"] for row in layouts if not row.get("missing")}
+                    if absent:
+                        raise ValueError(f"{name}: no complete captured layout for {sorted(absent)}")
                 records, missing = captured_layouts['fixture_layout'](name, layouts)
                 self.layout_views[rel / (name + 'Layout.v')] = records, missing
                 print(f'{name}Layout: {len(records)} record entries; unavailable {missing}', flush=True)

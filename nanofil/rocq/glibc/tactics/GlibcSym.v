@@ -2463,6 +2463,32 @@ Ltac sym_quote_bytes rho dq b o xs :=
     end
   end.
 
+(** The executor can read an integer from its bytes when it knows their
+    width. A previous block returns those bytes with the width computed
+    from the load type. Glibc proofs also use wrappers such as a C int's
+    four-byte encoding. Conversion checks the encoding before the tactic
+    uses the integer as the value of a narrow cell. *)
+Ltac sym_quote_encoded rho b o bs n v :=
+  let checked := constr:(eq_refl bs : bs = sym_bytes n v) in
+  let qb := sym_quote_z rho b in
+  lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
+    lazymatch qo with (?o', ?r2) => let qv := sym_quote_z r2 v in
+      lazymatch qv with (?v', ?r3) => constr:((ANarrow n b' o' v', r3)) end end end.
+
+Ltac sym_quote_owned_bytes rho b o bs :=
+  let repr := eval cbv beta delta [sym_bytes] in bs in
+  match repr with
+  | le_bytes ?v ?width =>
+      let size := eval vm_compute in width in
+      lazymatch size with
+      | 1%nat => sym_quote_encoded rho b o bs constr:(Ub) v
+      | 2%nat => sym_quote_encoded rho b o bs constr:(Uh) v
+      | 4%nat => sym_quote_encoded rho b o bs constr:(Uw) v
+      end
+  | ?encode ?v => sym_quote_encoded rho b o bs constr:(Uw) v
+  | _ => sym_quote_bytes rho constr:(DfracOwn 1) b o bs
+  end.
+
 (** The tactic recognizes cell and lifetime permissions by name, without inspecting their implementation. *)
 Ltac sym_quote_atom rho P :=
   let rho := eval cbv beta delta [mkVal] in rho in
@@ -2495,16 +2521,7 @@ Ltac sym_quote_atom rho P :=
       sym_quote_bytes rho dq b o xs
   | ?byte_assertion ?b ?o ?bs =>
       let checked := constr:(eq_refl P : P = sym_ML.bytes b o bs) in
-      let bs := eval cbv beta delta [sym_bytes] in bs in
-      match bs with
-      | le_bytes ?v ?sz =>
-          let n := lazymatch sz with 1%nat => constr:(Ub) | 2%nat => constr:(Uh) | 4%nat => constr:(Uw) end in
-          let qb := sym_quote_z rho b in
-          lazymatch qb with (?b', ?r1) => let qo := sym_quote_z r1 o in
-            lazymatch qo with (?o', ?r2) => let qv := sym_quote_z r2 v in
-              lazymatch qv with (?v', ?r3) => constr:((ANarrow n b' o' v', r3)) end end end
-      | _ => sym_quote_bytes rho constr:(DfracOwn 1) b o bs
-      end
+      sym_quote_owned_bytes rho b o bs
   | _ => fail "sym_run: expected live, liveq, icell, pcell, bytes, bytesq, or live_cap; found" P
   end.
 

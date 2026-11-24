@@ -5,7 +5,7 @@
     This file joins the proofs of those steps into one lemma for the
     whole path, from the clamp to the end-of-scan test. *)
 
-From Glibc Require Import OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
+From Glibc Require Import CStruct OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -82,13 +82,14 @@ Proof using Type.
   apply avoids_app in Hks as [Hkd Hkt].
   iIntros "Hl Hi Ho Hf Hla Ha Hc #Hs #Hdd HK".
   iApply (GetoptClamp.wp_getopt_clamp (ks ++ clamp_keys) e fr0 n i o f l b r av ar ps
-            with "Hl Hi Ho Hf Hla Ha Hc Hs [HK]");
+            with "Hl [Hi Ho Hf Hla] Ha Hc Hs [HK]");
     [ apply avoids_app_r; [exact Hkx2 | vm_compute; reflexivity]
     | apply avoids_app_r; [exact Hkc | vm_compute; reflexivity]
-    | exact Hv2 | exact Hv12 | exact Hc0 | exact Hc2
-    | lia | lia | lia | lia | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia |].
+    | repeat split; assumption
+    | lia | lia | lia | lia | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia | struct_close |].
   iSplit.
-  - iIntros (e1 ps1 f1 l1 (Hp1 & Hk1 & _ & Hf1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
+  - iIntros (e1 ps1 f1 l1 (Hp1 & Hk1 & _ & Hf1 & H23 & _)) "Hl Hfields Ha Hc #Hs1".
+    struct_open "Hfields" as "(Hi & Ho & Hf & Hla & _)".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
     assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp1); exact Hlen).
     iApply (GetoptSkip.wp_getopt_skip (ks ++ GetoptDashTest.dash_keys) e1 i n l1 b r av ar ps1
@@ -110,7 +111,8 @@ Proof using Type.
     iApply ("HK" with "[%] Hl Hi Ho Hf Hla Ha Hc Hs3").
     split; [by rewrite Hp1|]. split; [eapply keeps_trans; [eapply keeps_trans; [exact Hk1 | exact Hk2] | exact Hk3]|].
     split; [lia|]. split; [lia|]. split; [lia|]. kin2 Hk3' Hk2' H23.
-  - iIntros (e1 l1 (Hk1 & _ & Hl1 & H23 & _)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
+  - iIntros (e1 l1 (Hk1 & _ & Hl1 & H23 & _)) "Hl Hfields Ha Hc #Hs1".
+    struct_open "Hfields" as "(Hi & Ho & Hf & Hla & _)".
     apply keeps_app in Hk1 as [Hk1 Hk1'].
     iApply (GetoptDashTest.wp_getopt_dash_end (ks ++ [TAtom "chk23"]) e1 i n f l1 b r av ar ps pdd sdd
               with "Hl Hi Hf Hla Ha Hc Hs1 Hdd [Ho HK]");

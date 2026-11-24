@@ -1,8 +1,11 @@
 layout = "getopt"
+names = true
+layouts = true
+layout_tags = ["struct _getopt_data"]
 roots = "getopt_long"
 units = '''
 - posix/getopt.os posix/getopt1.os
 '''
 fixtures = '''
-Getopt|||
+Getopt|||glibc_getopt#process_long_option _getopt_internal_r _getopt_internal getopt_long
 '''

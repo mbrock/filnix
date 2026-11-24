@@ -274,7 +274,9 @@ which this generator does not add.
 The compiler's `cc-layouts FILE` command exposes the completed C layouts
 without changing `cc-ir`, checked terms or assembly output. The generator
 uses this command for manifests with `layouts = true`; libio enables it first.
-A stdio batch enables it with `layouts = true` on the batch.
+A batch can set `layout_tags` to the records its proofs use. For example,
+the getopt clamp requests `struct _getopt_data`. The generator checks that
+the capture contains a complete definition of each requested tag.
 Each fixture receives a `<Name>Layout.v` beside its source tables.
 Fixtures that receive the same record name, size, alignment and ordered
 fields share one Rocq definition in `gen/layouts`. Each shared file holds

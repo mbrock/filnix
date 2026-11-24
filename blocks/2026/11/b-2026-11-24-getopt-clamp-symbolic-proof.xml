@@ -1,0 +1,24 @@
+<block id="b-2026-11-24-getopt-clamp-symbolic-proof" kind="finding" actor="mbrock" created="2026-11-24T23:55:57Z">
+  <title>The getopt clamp proof follows a reordered pair of loads</title>
+  <about path="nanofil/rocq/glibc/getopt/GetoptClamp.v"/>
+  <about path="nanofil/rocq/glibc/tactics/GlibcSym.v"/>
+  <tag name="formal"/>
+  <p>A caller can rewind optind between calls to getopt. Glibc compares
+    its saved last nonoption with optind and keeps the smaller index.
+    The clamp proof now states that result directly. Its caller lends
+    the scanner four named fields of the captured C structure.</p>
+  <p>In a copy of the captured IR, we moved the check and load of
+    optind ahead of the check and load of the last nonoption. The
+    original proof stopped at the first check. The new proof ran the
+    reordered block without edits. Reversing the comparison then
+    failed at the lemma for signed greater-than.</p>
+  <p>The symbolic executor could already read four-byte integers. It
+    now recognizes their glibc encoding and can read the bytes it
+    returns from one block in the next. It still stops at the
+    four-byte store. At that point the proof uses the existing store
+    rule and shows that the write preserves the OS invariant.</p>
+  <p>The file grew from 119 to 161 lines with the named fields and the
+    separate clamp lemma. With the imported interfaces built, the
+    median time for Rocq to check the file in a fresh process grew
+    from 3.48 to 4.50 seconds across three runs of each version.</p>
+</block>
