@@ -83,12 +83,11 @@ let
   # link N: the objects of everything N imports, under theories/ at
   # their own paths, since an object records its logical path
   # (Nanofil.core.Syntax).
-  link =
-    n:
-    lib.concatMapStrings (
-      d:
-      "mkdir -p theories/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo theories/${path.${d}}.vo\n"
-    ) closure.${n};
+  linkObjects = lib.concatMapStrings (
+    d:
+    "mkdir -p theories/${dirOf path.${d}}; ln -s ${vo.${d}}/${d}.vo theories/${path.${d}}.vo\n"
+  );
+  link = n: linkObjects closure.${n};
   vo = lib.genAttrs names (
     n:
     pkgs.runCommand "nanofil-rocq-${n}"
@@ -398,8 +397,9 @@ let
           mark programs
           (mkdir typed-test && cd typed-test
            cp -r ../rocq/theories .
-           ${link "Extract"}
-           ${link "IRNotation"}
+           ${linkObjects (
+             lib.unique (closure.Extract ++ closure.IRNotation ++ [ "IRNotation" ])
+           )}
            python3 ../tests/watch.py --label "Typed image printer" -- python3 ../rocq/tests/typed_image.py theories)
           mark typed-image
         ''
