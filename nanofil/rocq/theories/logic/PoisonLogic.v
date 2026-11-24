@@ -110,12 +110,179 @@ Fixpoint poverwrite (pps : list (ppiece * ppval)) (ph : gmap ppiece ppval)
 Definition pcell_ps (b o : Z) (pb : poison_byte) : list (ppiece * ppval) :=
   map (fun i => (PPByte b (o + i), VPByte pb)) [0; 1; 2; 3; 4; 5; 6; 7].
 
+(** A byte list owns consecutive byte entries within an object. *)
+Fixpoint bytes_ps (b o : Z) (xs : list Z) : list (piece * pval) :=
+  match xs with
+  | [] => []
+  | x :: rest => (PByte b o, VByte x) :: bytes_ps b (o + 1) rest
+  end.
+
 (** A byte list owns consecutive poison entries within an object. *)
 Fixpoint pbytes_ps (b o : Z) (pbs : list poison_byte) : list (ppiece * ppval) :=
   match pbs with
   | [] => []
   | pb :: rest => (PPByte b o, VPByte pb) :: pbytes_ps b (o + 1) rest
   end.
+
+(** Concatenating two byte slices shifts the second slice by the first slice's length. *)
+Lemma bytes_ps_app b o xs ys :
+  bytes_ps b o (xs ++ ys) = bytes_ps b o xs ++ bytes_ps b (o + Z.of_nat (length xs)) ys.
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o; cbn.
+  - rewrite Z.add_0_r. reflexivity.
+  - rewrite IH. replace (o + 1 + Z.of_nat (length xs)) with (o + Z.pos (Pos.of_succ_nat (length xs))) by lia.
+    reflexivity.
+Qed.
+
+(** Concatenating two poison byte slices shifts the second slice by the first slice's length. *)
+Lemma pbytes_ps_app b o pbs qbs :
+  pbytes_ps b o (pbs ++ qbs) = pbytes_ps b o pbs ++ pbytes_ps b (o + Z.of_nat (length pbs)) qbs.
+Proof.
+  revert o; induction pbs as [|pb pbs IH]; intros o; cbn.
+  - rewrite Z.add_0_r. reflexivity.
+  - rewrite IH. replace (o + 1 + Z.of_nat (length pbs)) with (o + Z.pos (Pos.of_succ_nat (length pbs))) by lia.
+    reflexivity.
+Qed.
+
+(** Indexing a byte list splits its ownership slice around the accessed element. *)
+Lemma bytes_ps_split b o xs k x :
+  nth_error xs k = Some x ->
+  exists pre post,
+    xs = pre ++ x :: post /\
+    length pre = k /\
+    bytes_ps b o xs =
+      bytes_ps b o pre ++ (PByte b (o + Z.of_nat k), VByte x) :: bytes_ps b (o + Z.of_nat k + 1) post.
+Proof.
+  revert o k; induction xs as [|y ys IH]; intros o [|k] Hk; cbn in Hk; try discriminate Hk.
+  - injection Hk as ->. exists [], ys. cbn. rewrite Z.add_0_r. auto.
+  - destruct (IH (o + 1) k Hk) as (pre & post & -> & Hlen & Hps).
+    exists (y :: pre), post. split; [reflexivity | split; [cbn; congruence |]].
+    cbn. rewrite Hps.
+    replace (o + 1 + Z.of_nat k) with (o + Z.pos (Pos.of_succ_nat k)) by lia.
+    replace (o + 1 + Z.of_nat k + 1) with (o + Z.pos (Pos.of_succ_nat k) + 1) by lia.
+    reflexivity.
+Qed.
+
+(** Indexing a poison byte list splits its poison slice around the accessed element. *)
+Lemma pbytes_ps_split b o pbs k pb :
+  nth_error pbs k = Some pb ->
+  exists pre post,
+    pbs = pre ++ pb :: post /\
+    length pre = k /\
+    pbytes_ps b o pbs =
+      pbytes_ps b o pre ++ (PPByte b (o + Z.of_nat k), VPByte pb) :: pbytes_ps b (o + Z.of_nat k + 1) post.
+Proof.
+  revert o k; induction pbs as [|q qs IH]; intros o [|k] Hk; cbn in Hk; try discriminate Hk.
+  - injection Hk as ->. exists [], qs. cbn. rewrite Z.add_0_r. auto.
+  - destruct (IH (o + 1) k Hk) as (pre & post & -> & Hlen & Hps).
+    exists (q :: pre), post. split; [reflexivity | split; [cbn; congruence |]].
+    cbn. rewrite Hps.
+    replace (o + 1 + Z.of_nat k) with (o + Z.pos (Pos.of_succ_nat k)) by lia.
+    replace (o + 1 + Z.of_nat k + 1) with (o + Z.pos (Pos.of_succ_nat k) + 1) by lia.
+    reflexivity.
+Qed.
+
+(** Earlier byte offsets never appear in a slice starting at a higher offset. *)
+Lemma bytes_ps_not_in_lt b o xs o' :
+  o' < o -> PByte b o' ∉ (bytes_ps b o xs).*1.
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o Ho; cbn.
+  - apply not_elem_of_nil.
+  - apply not_elem_of_cons; split; [intros [=]; lia | apply IH; lia].
+Qed.
+
+(** Earlier poison offsets never appear in a slice starting at a higher offset. *)
+Lemma pbytes_ps_not_in_lt b o pbs o' :
+  o' < o -> PPByte b o' ∉ (pbytes_ps b o pbs).*1.
+Proof.
+  revert o; induction pbs as [|pb pbs IH]; intros o Ho; cbn.
+  - apply not_elem_of_nil.
+  - apply not_elem_of_cons; split; [intros [=]; lia | apply IH; lia].
+Qed.
+
+(** Consecutive value byte entries have distinct keys. *)
+Lemma NoDup_bytes_ps b o xs :
+  NoDup (bytes_ps b o xs).*1.
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o; cbn;
+    [apply NoDup_nil_2 | apply NoDup_cons; split; [apply bytes_ps_not_in_lt; lia | apply IH]].
+Qed.
+
+(** Consecutive poison byte entries have distinct keys. *)
+Lemma NoDup_pbytes_ps b o pbs :
+  NoDup (pbytes_ps b o pbs).*1.
+Proof.
+  revert o; induction pbs as [|pb pbs IH]; intros o; cbn;
+    [apply NoDup_nil_2 | apply NoDup_cons; split; [apply pbytes_ps_not_in_lt; lia | apply IH]].
+Qed.
+
+(** Every piece in a byte slice belongs to its base object [b]. *)
+Lemma bytes_ps_piece_id b o xs l :
+  l ∈ (bytes_ps b o xs).*1 -> piece_id l = b.
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o Hin; cbn in Hin.
+  - by apply not_elem_of_nil in Hin.
+  - apply elem_of_cons in Hin as [-> | Hin]; [reflexivity | exact (IH _ Hin)].
+Qed.
+
+(** Every poison piece in a poison byte slice belongs to its base object [b]. *)
+Lemma pbytes_ps_ppiece_id b o pbs l :
+  l ∈ (pbytes_ps b o pbs).*1 -> ppiece_id l = b.
+Proof.
+  revert o; induction pbs as [|pb pbs IH]; intros o Hin; cbn in Hin.
+  - by apply not_elem_of_nil in Hin.
+  - apply elem_of_cons in Hin as [-> | Hin]; [reflexivity | exact (IH _ Hin)].
+Qed.
+
+(** A live token never collides with any byte key in a byte slice. *)
+Lemma live_not_in_bytes_ps b b' o xs :
+  PLive b' ∉ (bytes_ps b o xs).*1.
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o; cbn;
+    [apply not_elem_of_nil | apply not_elem_of_cons; split; [discriminate | apply IH]].
+Qed.
+
+(** Every entry of an in-bounds byte slice agrees with memory when its bytes match. *)
+Lemma all_agree_bytes_ps m b reg o xs :
+  live_at m b reg ->
+  0 <= o ->
+  b + o + Z.of_nat (length xs) <= r_end reg ->
+  (forall k x, nth_error xs k = Some x -> m_bytes m (b + o + Z.of_nat k) = x) ->
+  all_agree m (bytes_ps b o xs).
+Proof.
+  revert o; induction xs as [|x xs IH]; intros o Hlv Ho Hhi Hm; cbn; [exact I|].
+  cbn [length] in Hhi.
+  split.
+  - split; [unfold registered; destruct Hlv as [E _]; rewrite E; discriminate|].
+    intros reg' E' L'. destruct Hlv as [E0 _]. rewrite E' in E0. injection E0 as <-.
+    repeat split; try lia.
+    pose proof (Hm 0%nat x eq_refl) as H0. rewrite Z.add_0_r in H0. exact H0.
+  - apply IH; [exact Hlv | lia | lia |].
+    intros k y Hk. pose proof (Hm (S k) y Hk) as Hsk.
+    replace (b + (o + 1) + Z.of_nat k) with (b + o + Z.of_nat (S k)) by lia.
+    exact Hsk.
+Qed.
+
+(** Every entry of an in-bounds poison byte slice agrees with the shadow poison map. *)
+Lemma all_p_agree_pbytes_ps m pm paux b reg o pbs :
+  live_at m b reg ->
+  0 <= o ->
+  b + o + Z.of_nat (length pbs) <= r_end reg ->
+  (forall k pb, nth_error pbs k = Some pb -> pm (b + o + Z.of_nat k) = pb) ->
+  all_p_agree m pm paux (pbytes_ps b o pbs).
+Proof.
+  revert o; induction pbs as [|pb pbs IH]; intros o Hlv Ho Hhi Hpm; cbn; [exact I|].
+  cbn [length] in Hhi.
+  split.
+  - split; [unfold registered; destruct Hlv as [E _]; rewrite E; discriminate|].
+    intros reg' E' L'. destruct Hlv as [E0 _]. rewrite E' in E0. injection E0 as <-.
+    repeat split; try lia.
+    pose proof (Hpm 0%nat pb eq_refl) as H0. rewrite Z.add_0_r in H0. exact H0.
+  - apply IH; [exact Hlv | lia | lia |].
+    intros k qb Hk. pose proof (Hpm (S k) qb Hk) as Hsk.
+    replace (b + (o + 1) + Z.of_nat k) with (b + o + Z.of_nat (S k)) by lia.
+    exact Hsk.
+Qed.
 
 (** A fresh object owns clean bytes and unrestricted capability slots
     throughout its allocated extent. *)
@@ -1988,6 +2155,80 @@ Proof using Type.
   reflexivity.
 Qed.
 
+(** Borrowing one byte from a contiguous value slice exposes that element
+    and returns a wand that reassembles the slice intact. *)
+Lemma ptsq_bytes_borrow dq b o xs k x :
+  nth_error xs k = Some x ->
+  ptsq dq (bytes_ps b o xs) -∗
+    ptsq dq [(PByte b (o + Z.of_nat k), VByte x)] ∗
+    (ptsq dq [(PByte b (o + Z.of_nat k), VByte x)] -∗ ptsq dq (bytes_ps b o xs)).
+Proof using Type.
+  intros Hk.
+  destruct (bytes_ps_split b o xs k x Hk) as (pre & post & _ & _ & Hsplit).
+  rewrite Hsplit /ptsq big_sepL_app big_sepL_cons.
+  iIntros "(Hpre & Hx & Hpost)".
+  iSplitL "Hx".
+  - rewrite big_sepL_singleton. iExact "Hx".
+  - iIntros "Hx". rewrite big_sepL_singleton. iFrame.
+Qed.
+
+(** Borrowing one byte from a contiguous poison slice exposes that element
+    and returns a wand that reassembles the slice intact. *)
+Lemma pptsq_pbytes_borrow pdq b o pbs k pb :
+  nth_error pbs k = Some pb ->
+  pptsq pdq (pbytes_ps b o pbs) -∗
+    pptsq pdq [(PPByte b (o + Z.of_nat k), VPByte pb)] ∗
+    (pptsq pdq [(PPByte b (o + Z.of_nat k), VPByte pb)] -∗ pptsq pdq (pbytes_ps b o pbs)).
+Proof using Type.
+  intros Hk.
+  destruct (pbytes_ps_split b o pbs k pb Hk) as (pre & post & _ & _ & Hsplit).
+  rewrite Hsplit /pptsq big_sepL_app big_sepL_cons.
+  iIntros "(Hpre & Hpb & Hpost)".
+  iSplitL "Hpb".
+  - rewrite big_sepL_singleton. iExact "Hpb".
+  - iIntros "Hpb". rewrite big_sepL_singleton. iFrame.
+Qed.
+
+(** Reading an indexed byte from an owned slice borrows the element,
+    checks its load poison, and restores the full value and poison slices. *)
+Lemma wp_praw_load_byte_at f e te ls l d k n off av rest j p b reg o0 idx xs x pbs pb y ta tc dq pdq Φ :
+  op_arg_classes (RawLoad (LdNarrow n) off) k = Some [A] ->
+  value_x ge e A av = Some (WPtr p) -> value_t te A av = Some (WTPtr ta tc) ->
+  fst (narrow_type n) = 1 -> extended n k x = Some y ->
+  ptr_cap p = Obj b \/ ptr_cap p = Ro b -> raw_address (ptr_addr p) off = b + (o0 + Z.of_nat idx) ->
+  nth_error xs idx = Some x -> nth_error pbs idx = Some pb ->
+  t_index ta = false -> pol_check_branches pol && (t_branch ta || t_branch tc || t_index tc) = false ->
+  pb_no_load pb = false ->
+  ptsq dq [(PLive b, VLive reg)] -∗
+  ptsq dq (bytes_ps b o0 xs) -∗
+  pptsq pdq (pbytes_ps b o0 pbs) -∗
+  ▷ (ptsq dq [(PLive b, VLive reg)] -∗
+     ptsq dq (bytes_ps b o0 xs) -∗
+     pptsq pdq (pbytes_ps b o0 pbs) -∗
+     WP (PRun (mkFrame f (put d y e) ls None (Exec l rest j))
+       (put d (WTInt (pb_taint pb)) te) : pexprL) {{ Φ }}) -∗
+  WP (PRun (mkFrame f e ls None (Exec l (Let d k (RawLoad (LdNarrow n) off) [av] :: rest) j))
+    te : pexprL) {{ Φ }}.
+Proof using Type.
+  intros Hc Ha Hta Hn Hy Hp Hoff Hx Hpb Hi Hb Hload.
+  iIntros "Hl Hxs Hpbs HK".
+  iDestruct (ptsq_bytes_borrow dq b o0 xs idx x Hx with "Hxs") as "[Hx Hxs_back]".
+  iDestruct (pptsq_pbytes_borrow pdq b o0 pbs idx pb Hpb with "Hpbs") as "[Hpb Hpbs_back]".
+  iApply (wp_praw_load_byte _ _ _ _ _ _ _ _ _ _ _ _ p b reg (o0 + Z.of_nat idx) x y pb ta tc dq pdq
+    with "[Hl Hx] Hpb [Hxs_back Hpbs_back HK]");
+    try assumption.
+  - rewrite /ptsq !big_sepL_cons big_sepL_nil.
+    iDestruct "Hl" as "[$ _]". iDestruct "Hx" as "[$ _]".
+  - iNext. rewrite /ptsq !big_sepL_cons big_sepL_nil. iIntros "(Hl & Hx & _) Hpb".
+    iAssert (ptsq dq [(PByte b (o0 + Z.of_nat idx), VByte x)]) with "[Hx]" as "Hx".
+    { rewrite /ptsq big_sepL_singleton. iExact "Hx". }
+    iAssert (ptsq dq [(PLive b, VLive reg)]) with "[Hl]" as "Hl".
+    { rewrite /ptsq big_sepL_singleton. iExact "Hl". }
+    iSpecialize ("Hxs_back" with "Hx").
+    iSpecialize ("Hpbs_back" with "Hpb").
+    iApply ("HK" with "Hl Hxs_back Hpbs_back").
+Qed.
+
 (** A byte store updates the value and poison heaps together. Its frame
     conditions preserve every unowned byte and capability-taint slot. *)
 Lemma wp_praw_store_byte f e te ls l off v a rest j p b reg o x y pb tv ta tc Φ :
@@ -2798,6 +3039,25 @@ Proof.
   exact (proj1 (PD.pdriver_ct_sound pol ge steps (mkConfig fr1 [] m1 fuel)
     (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) s tr
     Hcb Hfree Hr1 Hr2 Hrel (Hsafe steps) Htr)).
+Qed.
+
+(** Erasing the shadow poison state from [wp_ct_driver] yields equality of
+    the plain operational leakage traces for both runs. *)
+Theorem wp_ct_driver_plain pol ge fr1 fr2 te m1 m2 pm paux s fuel :
+  pol_check_branches pol = true -> ge_free ge = free_res ->
+  R.ready s m1 -> R.ready s m2 ->
+  ct_rel (mkConfig fr1 [] m1 fuel) (mkConfig fr2 [] m2 fuel) (mkPState te [] pm paux) ->
+  poison_safe pol ge fr1 te m1 pm paux s fuel ->
+  forall steps, exists tr,
+    PD.driver_trace pol ge steps (mkConfig fr1 [] m1 fuel) s = Some tr /\
+    PD.driver_trace pol ge steps (mkConfig fr2 [] m2 fuel) s = Some tr.
+Proof.
+  intros Hcb Hfree Hr1 Hr2 Hrel Hsafe steps.
+  destruct (wp_ct_driver pol ge fr1 fr2 te m1 m2 pm paux s fuel
+    Hcb Hfree Hr1 Hr2 Hrel Hsafe steps) as (tr & Htr1 & Htr2).
+  exists tr. split;
+    [exact (PD.pdriver_trace_eq_driver_trace _ _ _ _ _ _ _ Htr1)
+    |exact (PD.pdriver_trace_eq_driver_trace _ _ _ _ _ _ _ Htr2)].
 Qed.
 
 (** Two runs that differ only in secret object bytes share allocator

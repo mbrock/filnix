@@ -32,6 +32,7 @@
     | `ext(T2)` of a `load(T)` or `ext(T)` value `x` to `x` | every T is a T2, and the result's class is x's |
     | `(a C b) == 0` to `a C' b` | C an integer condition, C' its negation |
     | `branch(b == 0, L1, L2)` to `branch(b, L2, L1)` | b a boolean |
+    | `(a + x) + (b - x)` to `a + b`, `(a + x) - x` to `a`, `(a - x) == (b - x)` to `a == b`, and constant-offset reassociation | `w`, `l` or `p` (exact modulo 2^32 or 2^64; for `p`, keeps the base pointer's capability) |
     | a pure operation already computed in a dominating block to that value | same class, operation and operands (commutative operands in either order) |
     | `p + t1` to `q + (c1 - c)`, `&a[i + 1]` to `&a[i] + 4` | `q = p + t` earlier in the block, the offsets' linear forms `k + c` and `k + c1` share `k` (rebased_op/7): exact modulo 2^64, and through a `w` index's extension only where its range rules out the wrap |
     | `branch(c, L1, L2)` to `goto` | c constant, or L1 = L2 |
@@ -159,7 +160,7 @@ trivial_phis(Cx, func(N, L, R, Ps, Blocks0), Rs0, func(N, L, R, Ps, Blocks), Rs)
 % |---|---|
 % | Reps | assoc Temp -> the value that replaces it (a same-class temp or a w/l constant) |
 % | Bools | assoc Temp -> K-Temp pairs equal to it, each 0 or 1 |
-% | Defs | assoc Temp -> cmp(Cond, K, A, B) for an integer comparison, not(B) for `B == 0` of a boolean B, or narrow(T) for a load or extension of narrow type T; and lin(Temp), range(Temp) and wsum(Temp) for rebasing (offset_facts/6) |
+% | Defs | assoc Temp -> cmp(Cond, K, A, B) for an integer comparison, not(B) for `B == 0` of a boolean B, or narrow(T) for a load or extension of narrow type T; arith(Temp) for additive cancellation; and lin(Temp), range(Temp) and wsum(Temp) for rebasing (offset_facts/6) |
 % | Out | assoc Label -> the rewritten block |
 % | Folded | true once a branch became a goto |
 
@@ -284,7 +285,11 @@ facts(D, K, Op, Args, Bools0, Defs0, Bools, Defs) :-
     ->  put_assoc(D, Defs0, narrow(T), Defs1)
     ;   Defs1 = Defs0
     ),
-    offset_facts(D, K, Op, Args, Defs1, Defs).
+    (   ( K == p ; int_class(K) ), memberchk(Op, [add, sub]), Args = [A1, A2]
+    ->  put_assoc(arith(D), Defs1, arith(K, Op, A1, A2), Defs2)
+    ;   Defs2 = Defs1
+    ),
+    offset_facts(D, K, Op, Args, Defs2, Defs).
 
 % fits(?T, ?T2): every value of the narrow type T is one of T2, so
 % extending a T value as T2 gives it back.
@@ -333,8 +338,16 @@ simplified(K, cmp(C, CK), [X, Y], Cx, Bools, Defs, R) :-
     simplified(K, cmp(C1, CK), [Y, X], Cx, Bools, Defs, R).
 simplified(K, Op, Args, Cx, Bools, Defs, R) :-
     int_class(K), identity(Op, K, Args, Cx, Bools, Defs, R), !.
+simplified(K, Op, Args, Cx, Bools, Defs, R) :-
+    cancel_arith(K, Op, Args, Defs, R0), !,
+    (   R0 = op(Op1, Args1) -> simplified(K, Op1, Args1, Cx, Bools, Defs, R)
+    ;   R = R0
+    ).
 simplified(K, cmp(C, CK), Args, Cx, Bools, Defs, R) :-
     int_class(CK), boolean_cmp(C, CK, K, Args, Cx, Bools, Defs, R), !.
+simplified(K, cmp(C, CK), Args, Cx, Bools, Defs, R) :-
+    int_class(CK), cancel_cmp(C, CK, Args, Defs, Args1), !,
+    simplified(K, cmp(C, CK), Args1, Cx, Bools, Defs, R).
 simplified(K, ext(_), [tmp(B)], Cx, Bools, _, value(tmp(E))) :-
     get_assoc(B, Bools, Eq), same_class(Cx, K, Eq, E).
 simplified(K, ext(T), [tmp(D)], cx(Classes, _), _, Defs, value(tmp(D))) :-
@@ -420,6 +433,71 @@ boolean_cmp(C, CK, K, [tmp(B), const(N)], Cx, Bools, Defs, R) :-
 % same_class(+Cx, +K, +Eq, -E): E is a temp of class K among Eq.
 same_class(cx(Classes, _), K, Eq, E) :-
     member(_-E, Eq), get_assoc(E, Classes, K), !.
+
+% cancel_arith(+K, +Op, +Args, +Defs, -R): exact additive cancellation
+% modulo 2^32 (w) or 2^64 (l, p). For class p the rewritten expression
+% keeps the base pointer (and therefore its capability).
+cancel_arith(K, Op, [A, B], Defs, R) :-
+    ( K == p ; int_class(K) ),
+    memberchk(Op, [add, sub]),
+    (   A = tmp(AT), get_assoc(arith(AT), Defs, arith(K, AOp, A1, A2)),
+        cancel_left(K, AOp, A1, A2, Op, B, Defs, R)
+    ;   int_class(K),
+        B = tmp(BT), get_assoc(arith(BT), Defs, arith(K, BOp, B1, B2)),
+        cancel_right(Op, A, BOp, B1, B2, R)
+    ).
+
+cancel_left(_, add, A1, A2, sub, A2, _, value(A1)) :- !.
+cancel_left(K, add, A1, A2, sub, A1, _, value(A2)) :- int_class(K), !.
+cancel_left(_, sub, A1, A2, add, A2, _, value(A1)) :- !.
+cancel_left(K, AOp, A1, const(C1), Op, const(C2), _, R) :-
+    integer(C1), integer(C2), !,
+    arith_modulus(K, M), Half is M >> 1,
+    ( AOp == add -> S1 = C1 ; S1 is -C1 ),
+    ( Op == add -> S2 = C2 ; S2 is -C2 ),
+    D is (S1 + S2) mod M,
+    (   D =:= 0 -> R = value(A1)
+    ;   D < Half -> R = op(add, [A1, const(D)])
+    ;   N is M - D, R = op(sub, [A1, const(N)])
+    ).
+cancel_left(K, AOp, A1, A2, Op, tmp(BT), Defs, R) :-
+    ( K == p -> BK = l ; BK = K ),
+    get_assoc(arith(BT), Defs, arith(BK, BOp, B1, B2)),
+    cancel_pair(K, AOp, A1, A2, Op, BOp, B1, B2, R).
+
+cancel_pair(_, add, A1, X, add, sub, B1, X, op(add, [A1, B1])) :- !.
+cancel_pair(K, add, X, A2, add, sub, B1, X, op(add, [A2, B1])) :- int_class(K), !.
+cancel_pair(_, add, A1, X, sub, add, X, B2, op(sub, [A1, B2])) :- !.
+cancel_pair(_, add, A1, X, sub, add, B1, X, op(sub, [A1, B1])) :- !.
+cancel_pair(K, add, X, A2, sub, add, X, B2, op(sub, [A2, B2])) :- int_class(K), !.
+cancel_pair(K, add, X, A2, sub, add, B1, X, op(sub, [A2, B1])) :- int_class(K), !.
+cancel_pair(_, add, A1, X, sub, sub, X, B2, op(add, [A1, B2])) :- !.
+cancel_pair(K, add, X, A2, sub, sub, X, B2, op(add, [A2, B2])) :- int_class(K), !.
+cancel_pair(_, sub, A1, X, add, add, X, B2, op(add, [A1, B2])) :- !.
+cancel_pair(_, sub, A1, X, add, add, B1, X, op(add, [A1, B1])) :- !.
+cancel_pair(_, sub, A1, X, add, sub, X, B2, op(sub, [A1, B2])) :- !.
+cancel_pair(_, sub, A1, X, sub, sub, B1, X, op(sub, [A1, B1])) :- !.
+
+cancel_right(add, X, sub, B1, X, value(B1)) :- !.
+cancel_right(sub, X, sub, X, B2, value(B2)) :- !.
+cancel_right(sub, X, add, X, B2, op(neg, [B2])) :- !.
+cancel_right(sub, X, add, B1, X, op(neg, [B1])) :- !.
+
+% cancel_cmp(+C, +CK, +Args, +Defs, -Args1): a +/- x == b +/- x is a == b
+% modulo 2^32 (w) or 2^64 (l), and likewise for ne.
+cancel_cmp(C, CK, [tmp(AT), tmp(BT)], Defs, [X, Y]) :-
+    memberchk(C, [eq, ne]),
+    get_assoc(arith(AT), Defs, arith(CK, Op, A1, A2)),
+    get_assoc(arith(BT), Defs, arith(CK, Op, B1, B2)),
+    (   Op == sub, A2 == B2 -> X = A1, Y = B1
+    ;   Op == add, A2 == B2 -> X = A1, Y = B1
+    ;   Op == add, A1 == B1 -> X = A2, Y = B2
+    ;   Op == add, A1 == B2 -> X = A2, Y = B1
+    ;   Op == add, A2 == B1 -> X = A1, Y = B2
+    ).
+
+arith_modulus(p, M) :- !, modulus(l, M).
+arith_modulus(K, M) :- modulus(K, M).
 
 % numbered(+K, +Op, +Args, +L, -Key): Op is pure, and Key identifies its
 % value: commutative integer operands in a fixed order. A pointer plus or

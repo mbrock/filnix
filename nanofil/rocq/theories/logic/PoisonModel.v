@@ -1271,6 +1271,43 @@ Fixpoint prun_trace (pol : poison_policy) (ge : genv) (steps : nat) (c : config)
       end
   end.
 
+(** This function collects the leakage trace directly from the plain
+    operational semantics without tracking shadow poison. Direct two-run
+    theorems use it to compare executions even when single-run taint
+    rejects a benign algebraic cancellation or reports a real leak. *)
+Fixpoint run_trace (pol : poison_policy) (ge : genv) (steps : nat) (c : config)
+  : option (list leak_event) :=
+  match steps with
+  | O => Some []
+  | S n =>
+      let ev := leak_of pol ge c in
+      match Semantics.step ge c with
+      | Next c' =>
+          let* rest := run_trace pol ge n c' in
+          Some (ev :: rest)
+      | Done _ => Some [ev]
+      | _ => None
+      end
+  end.
+
+(** Whenever a poisoned execution produces a leakage trace, erasing the
+    shadow poison state yields the identical plain leakage trace. *)
+Theorem prun_trace_eq_run_trace : forall pol ge steps c ps tr,
+  prun_trace pol ge steps c ps = Some tr ->
+  run_trace pol ge steps c = Some tr.
+Proof.
+  intros pol ge steps; induction steps as [|n IH]; intros c ps tr Htr; cbn in *.
+  - exact Htr.
+  - pose proof (pstep_erases pol ge c ps) as Her.
+    destruct (pstep pol ge c ps) as [c' ps' | o ots | q k | why | why];
+      try discriminate Htr.
+    + rewrite Her.
+      destruct (prun_trace pol ge n c' ps') as [rest|] eqn:Erest; [|discriminate Htr].
+      injection Htr as <-.
+      rewrite (IH c' ps' rest Erest). reflexivity.
+    + rewrite Her. exact Htr.
+Qed.
+
 (** ## Implicit-flow counterexample when branch checking is off
 
     An address can depend on a secret without using that secret in pointer
@@ -4277,6 +4314,60 @@ Proof.
         rewrite Etr2; cbn -[leak_of]; rewrite <- Eleak; split; [reflexivity | exact Hpost].
       * injection Htr as <-; cbn -[leak_of]; rewrite <- Eleak; split; [reflexivity|].
         split; [reflexivity | split; [cbn; unfold refusal; intros Hnr; apply Hnr; left; reflexivity | intros ? ? H; discriminate H]].
+Qed.
+
+(** This function collects the leakage trace emitted along a plain
+    operational driver run under runtime [R], independent of shadow poison. *)
+Fixpoint driver_trace (pol : poison_policy) (ge : genv) (steps : nat)
+    (c : config) (rt : R.state) : option (list leak_event) :=
+  match steps with
+  | O => Some []
+  | S n =>
+      let ev := leak_of pol ge c in
+      match Semantics.step ge c with
+      | Next c' =>
+          let* rest := driver_trace pol ge n c' rt in
+          Some (ev :: rest)
+      | Done _ => Some [ev]
+      | Fresh q k =>
+          if req_extent q <? 0 then None
+          else match R.alloc rt q with
+               | Some (base, rt') =>
+                   let* rest := driver_trace pol ge n (k base) rt' in
+                   Some (ev :: rest)
+               | None => Some [ev]
+               end
+      | Stuck _ => None
+      end
+  end.
+
+(** Every poisoned driver trace equals the corresponding plain driver trace
+    over [Semantics.step] and runtime [R]. *)
+Theorem pdriver_trace_eq_driver_trace : forall pol ge steps c ps rt tr,
+  pdriver_trace pol ge steps c ps rt = Some tr ->
+  driver_trace pol ge steps c rt = Some tr.
+Proof.
+  intros pol ge steps; induction steps as [|n IH]; intros c ps rt tr Htr;
+    cbn -[pstep Semantics.step leak_of R.alloc req_extent] in *.
+  - exact Htr.
+  - pose proof (pstep_erases pol ge c ps) as Her.
+    destruct (pstep pol ge c ps) as [c' ps' | o ots | q k | why | why];
+      try discriminate Htr.
+    + rewrite Her.
+      destruct (pdriver_trace pol ge n c' ps' rt) as [rest|] eqn:Erest; [|discriminate Htr].
+      injection Htr as <-.
+      rewrite (IH c' ps' rt rest Erest). reflexivity.
+    + rewrite Her. exact Htr.
+    + destruct Her as (k0 & Hs & Hk0). rewrite Hs.
+      destruct (req_extent q <? 0); [discriminate Htr|].
+      destruct (R.alloc rt q) as [[base rt']|]; [|exact Htr].
+      pose proof (Hk0 base) as Hkb.
+      destruct (k base) as [c' ps'] eqn:Ek.
+      cbn [fst] in Hkb. subst c'.
+      destruct (pdriver_trace pol ge n (k0 base) ps' rt') as [rest|] eqn:Erest;
+        [|discriminate Htr].
+      injection Htr as <-.
+      rewrite (IH (k0 base) ps' rt' rest Erest). reflexivity.
 Qed.
 
 End PoisonDriver.

@@ -442,3 +442,38 @@ leakage traces for any two pairs of secret integers. The return mask stays
 secret and may differ between the runs. A compiled branch-based control
 fails the poison rules. The page explains the helper-call proof and separates
 IR constant-time behavior from functional correctness and native timing.
+
+[CtTableScan.v](../rocq/theories/logic/CtTableScan.v) analyzes a more
+realistic memory-scanning pattern compiled from
+[ct_table_scan.c](../rocq/theories/logic/ct_table_scan.c) into typed
+[IRNotation](../rocq/theories/core/IRNotation.v) functions
+([CtTableScanCode.v](../rocq/theories/logic/CtTableScanCode.v)) with
+C-level source-hint names
+([CtTableScanNames.v](../rocq/theories/logic/CtTableScanNames.v)).
+Both functions advance a buffer cursor by a secret prefix `skip` and then
+reconstruct a public tail window `p = (buf + skip) + (len - skip) - win - 16`.
+Nanofil's additive-cancellation pass in [simplify.pl](../src/simplify.pl)
+cancels `skip` modulo `2^64` while keeping `buf`'s capability, so `p`
+remains public without manual annotation.
+
+Comparing the two compiled variants illustrates what each semantics catches.
+The indexed variant `scan_indexed` reads `tbl[i]` at a secret index `i`
+inside a 16-byte lookup table: under `pol_strict` its Fil-C capability check
+traps with `CannotBranch`, under `pol_erased` the raw load traps with
+`CannotIndex`, two concrete runs differing only in secret `start` emit
+distinct plain leakage traces, and an exact-size 16-byte `tbl` object traps
+with `OutOfBounds` as soon as the secret window overruns the table.
+The constant-time replacement `scan_ct` scans all 16 entries of `tbl` at a
+public index `k` with a branchless equality mask; a universal Iris proof
+using `wp_praw_load_byte_at` and `wp_ct_driver_plain` establishes
+memory safety, poison-fault freedom, and identical plain operational leakage
+traces for every valid public `len` and `win` and all secret inputs.
+
+Finally, `rebased_scan_fn` in [CtTableScan.v](../rocq/theories/logic/CtTableScan.v)
+formally separates single-run dynamic taint from two-run constant-time
+noninterference. Rebasing a public loop counter and base pointer by the same
+secret offset `sec` (`base = buf + sec`, `lim = len - sec`, `k = j - sec`)
+causes single-run taint to reject both the loop exit comparison
+(`CannotBranch`) and the dereferenced address (`CannotIndex`), while direct
+two-run simulation proves that the plain operational trace is identical for
+every pair of secret offsets.

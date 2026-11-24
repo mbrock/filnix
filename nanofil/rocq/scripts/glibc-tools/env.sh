@@ -18,7 +18,7 @@ mkdir -p "$pe_linkdir" || return 1
 if [ ! -e "$pe_linkdir/tools" ]; then
   nix build --impure -o "$pe_linkdir/tools" --expr "
     let flake = builtins.getFlake \"git+file://$pe_repo\";
-        pkgs = import flake.inputs.nixpkgs { system = \"x86_64-linux\"; };
+        pkgs = import flake.inputs.nixpkgs { system = builtins.currentSystem; };
         rocq = import $pe_repo/nanofil/nix/rocq-packages.nix { inherit pkgs; };
     in pkgs.buildEnv {
       name = \"rocq-tools\";

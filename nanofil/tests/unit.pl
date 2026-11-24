@@ -1986,6 +1986,48 @@ test(simplify_rebase) :-
            ( func_named(M, Fn, func(_, _, _, _, [block(s, [], Is, _)])),
              memberchk(let(tmp(q2), p, add, [tmp(p), _]), Is) )).
 
+% Additive cancellation (cancel_arith/5, cancel_cmp/5) removes paired
+% offsets modulo 2^32 or 2^64, keeping the base pointer's capability for
+% class p (such as `p = buf + k; rem = len - k; p + rem -> buf + len`).
+test(simplify_cancel) :-
+    PtrCancel = func(ptr_cancel, export, l,
+        [param(l, tmp(len)), param(l, tmp(sec))], [block(s, [], [
+            let(tmp(buf), p, alloc(8), [const(16)]),
+            store(l, const(42), tmp(buf)),
+            let(tmp(p1), p, add, [tmp(buf), tmp(sec)]),
+            let(tmp(l1), l, sub, [tmp(len), tmp(sec)]),
+            let(tmp(p2), p, add, [tmp(p1), tmp(l1)]),
+            let(tmp(p3), p, sub, [tmp(p2), tmp(len)]),
+            let(tmp(p4), p, add, [tmp(p3), const(10)]),
+            let(tmp(p5), p, sub, [tmp(p4), const(10)]),
+            let(tmp(v), l, load(l), [tmp(p5)])
+        ], ret(tmp(v)))]),
+    IntCancel = func(int_cancel, export, w,
+        [param(l, tmp(a)), param(l, tmp(b)), param(l, tmp(x))], [block(s, [], [
+            let(tmp(ax), l, add, [tmp(a), tmp(x)]),
+            let(tmp(bx), l, sub, [tmp(b), tmp(x)]),
+            let(tmp(s), l, add, [tmp(ax), tmp(bx)]),
+            let(tmp(sa), l, sub, [tmp(s), tmp(a)]),
+            let(tmp(sx), l, sub, [tmp(sa), tmp(x)]),
+            let(tmp(bx2), l, sub, [tmp(b), tmp(x)]),
+            let(tmp(eq), w, cmp(eq, l), [tmp(sx), tmp(bx2)])
+        ], ret(tmp(eq)))]),
+    ir_module([PtrCancel, IntCancel], M0),
+    optimize(passes([simplify]), M0, M), once(valid_module(M)),
+    Big is (1 << 64) - 7,
+    Runs = [ptr_cancel-[8, 3]-ret(42),
+            ptr_cancel-[Big, 999999]-ret(42),
+            int_cancel-[5, 19, Big]-ret(1),
+            int_cancel-[Big, 0, Big]-ret(1)],
+    forall(member(Fn-Args-Out, Runs),
+           ( module_fn_args_outcome(M0, Fn, Args, Out0), Out0 == Out,
+             module_fn_args_outcome(M, Fn, Args, Out1), Out1 == Out )),
+    % Neither sec nor len survives into the load address of ptr_cancel.
+    func_named(M, ptr_cancel, func(_, _, _, _, [block(s, [], Is1, _)])),
+    memberchk(let(tmp(v), l, load(l), [tmp(buf)]), Is1),
+    % int_cancel simplifies all the way down to constant 1.
+    func_named(M, int_cancel, func(_, _, _, _, [block(s, [], [], ret(const(1)))])).
+
 % Simplify's source contexts: a removed instruction's site goes, and an
 % appended block's sites move into its predecessor at its offset.
 test(simplify_contexts) :-

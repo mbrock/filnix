@@ -354,6 +354,9 @@ let
       ../rocq/glibc/base/IRNotation.v
       ../rocq/glibc/base/IRBytes.v
       ../rocq/scripts/glibc-code/typed.py
+      ../rocq/scripts/glibc-code/source.pl
+      ../rocq/scripts/glibc-code/source.py
+      ../rocq/scripts/glibc-code/names.py
     ];
   };
   # The corpus reads the extracted driver (Extract.v's imports, a few of
@@ -396,6 +399,7 @@ let
           (mkdir typed-test && cd typed-test
            cp -r ../rocq/theories .
            ${link "Extract"}
+           ${link "IRNotation"}
            python3 ../tests/watch.py --label "Typed image printer" -- python3 ../rocq/tests/typed_image.py theories)
           mark typed-image
         ''
