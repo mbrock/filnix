@@ -27,17 +27,6 @@ sync_file() {
   fi
 }
 
-# Legacy Prolog-term fixture (used by CtLt.v).
-check_term_fixture() {
-  local source="$1" prefix="$2" target="$3"
-  local base
-  base=$(basename "$target")
-  (cd "$src" && "$nanofil" cc-ir "$here/../../$source" </dev/null) >"$work/$prefix.ir"
-  (cd "$src" && "$nanofil" -O outcomes "$work/$prefix.ir" </dev/null) | grep '^module(' \
-    | swipl "$here/gallina.pl" "$prefix" "$source" >"$work/$base"
-  sync_file "$work/$base" "$target" "$source"
-}
-
 # Typed IRNotation fixture plus C source-hint name notations.
 check_typed_fixture() {
   local source="$1" name="$2" mod_def="$3" code_target="$4" names_target="$5"
@@ -102,7 +91,9 @@ PY
   sync_file "$work/$names_base" "$names_target" "$source"
 }
 
-check_term_fixture rocq/theories/logic/ct_lt.c ctlt "$here/../theories/logic/CtLtCode.v"
+check_typed_fixture rocq/theories/logic/ct_lt.c CtLt ctlt_module \
+  "$here/../theories/logic/CtLtCode.v" \
+  "$here/../theories/logic/CtLtNames.v"
 check_typed_fixture rocq/theories/logic/ct_table_scan.c CtTableScan cttable_module \
   "$here/../theories/logic/CtTableScanCode.v" \
   "$here/../theories/logic/CtTableScanNames.v"

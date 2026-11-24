@@ -762,6 +762,11 @@ as_pat(E, E) --> [].
 
 atom0(mixfix(F-T, Parts)) --> tk(id(Kind), F, Brace), { memberchk(Kind, [cfg,frame,run]) },
     tk(p('{'), Brace, _), !, frame_literal(Kind, Parts), tk(p('}'), _, T).
+atom0(mixfix(F-T, Parts)) --> tk(id(Kind), F, Brace), { memberchk(Kind, [ir,ir_blk,ir_fn]) },
+    tk(p('{'), Brace, _), !, ir_literal(Kind, Parts), tk(p('}'), _, T).
+atom0(mixfix(F-T, Parts)) --> tk(id(ir), F, Brack), tk(p('['), Brack, _), !,
+    ir_seq(ir_ssa, ';', "; ", Ps), tk(p(']'), _, T),
+    { flatten(["ir[ ", Ps, " ]"], Parts) }.
 atom0(E) --> tk(id(Kind), F, _), { memberchk(Kind, [cap,cap_fn,cap_blk]) }, tk(p('{')), !,
     cap_entry(Kind, Term), tk(p('}'), _, T), { cap_tree(F-T, Term, E) }.
 atom0(id(F-T, '..')) --> { nb_current(rocq_notation_rhs, true) }, tk(sym('..'), F, T), !.
@@ -825,6 +830,90 @@ frame_pc(["at ",L," { ",Is," => ",J," }"]) -->
 frame_pc(["enter: ",L,From]) --> frame_field(enter), !, frame_name(L),
     ( frame_field(from) -> frame_name(K), {From=[" from: ",K]} ; {From=[]} ).
 frame_pc(["pc: ",P]) --> frame_field(pc), atom(P).
+
+% Typed checked-IR notation (IRNotation.v): keep the readable IR syntax for
+% site rendering and strict reprinting while parsing embedded Gallina atoms.
+ir_literal(ir, Parts) --> ir_ssa(I), { flatten(["ir{ ", I, " }"], Parts) }.
+ir_literal(ir_blk, Parts) --> ir_block(B), { flatten(["ir_blk{ ", B, " }"], Parts) }.
+ir_literal(ir_fn, Parts) -->
+    atom(Lk), atom(Name), ir_formals(Ps), tk(sym('->')), atom(Ret), ir_body(Bs),
+    { flatten(["ir_fn{ ", Lk, " ", Name, Ps, " -> ", Ret, " ", Bs, " }"], Parts) }.
+
+ir_seq(Read, Sep, Glue, Parts) --> call(Read, X),
+    ( tk(p(Sep)) -> ir_seq(Read, Sep, Glue, Xs), { Parts = [X, Glue | Xs] }
+    ; { Parts = [X] } ).
+
+ir_formals(["()"]) --> tk(p('(')), tk(p(')')), !.
+ir_formals(["(", Ps, ")"]) --> tk(p('(')), ir_seq(ir_formal, ',', ", ", Ps), tk(p(')')).
+ir_formal([K, " %", D]) --> atom(K), tk(sym('%')), atom(D).
+
+ir_body(["blocks(", Xs, ")"]) --> tk(id(blocks)), !, tk(p('(')), term(Xs), tk(p(')')).
+ir_body(["{}"]) --> tk(p('{')), tk(p('}')), !.
+ir_body(["{\n  ", Bs, "\n}"]) --> tk(p('{')), ir_seq(ir_block, ';', ";\n  ", Bs), tk(p('}')).
+
+ir_block(["(", X, ")"]) --> tk(p('(')), !, term(X), tk(p(')')).
+ir_block(["@", L, Phis, Ins, J]) -->
+    tk(sym('@')), atom(L), ir_phis_end(Phis), ir_insts_end(Ins), ir_ssa(J).
+
+ir_phis_end([":"]) --> tk(sym(':')), !.
+ir_phis_end([" [", Ps, "]:"]) --> tk(p('[')), ir_seq(ir_phi, ';', "; ", Ps), tk(p(']')), tk(sym(':')).
+
+ir_phi(["(", X, ")"]) --> tk(p('(')), !, term(X), tk(p(')')).
+ir_phi(["%", D, " : ", K, " = phi(", Incs, ")"]) -->
+    tk(sym('%')), atom(D), tk(sym(':')), atom(K), tk(sym('=')), tk(id(phi)),
+    tk(p('(')), ir_seq(ir_incoming, ',', ", ", Incs), tk(p(')')).
+ir_incoming([Lab, " => ", V]) --> atom(Lab), tk(sym('=>')), ir_operand(V).
+
+ir_insts_end([" => "]) --> tk(sym('=>')), !.
+ir_insts_end([" code(", Xs, ") => "]) --> tk(id(code)), !, tk(p('(')), term(Xs), tk(p(')')), tk(sym('=>')).
+ir_insts_end(["\n    ", Is, "\n    => "]) --> ir_seq(ir_ssa, ';', ";\n    ", Is), tk(sym('=>')).
+
+ir_operand(["val(", X, ")"]) --> tk(id(val)), !, tk(p('(')), term(X), tk(p(')')).
+ir_operand(["%", X]) --> tk(sym('%')), !, atom(X).
+ir_operand(["$", X]) --> tk(sym('$')), !, atom(X).
+ir_operand(["#", X]) --> tk(sym('#')), !, atom(X).
+
+ir_edge(["edge(", X, ")"]) --> tk(id(edge)), !, tk(p('(')), term(X), tk(p(')')).
+ir_edge(["poll ", L]) --> tk(id(poll)), !, atom(L).
+ir_edge([L]) --> atom(L).
+
+ir_args(["()"]) --> tk(p('(')), tk(p(')')), !.
+ir_args(["(", As, ")"]) --> tk(p('(')), ir_seq(ir_actual, ',', ", ", As), tk(p(')')).
+ir_actual([K, " ", V]) --> atom(K), ir_operand(V).
+
+ir_opt_operands([" ", Os]) --> ir_operand_ahead, !, ir_seq(ir_operand, ',', ", ", Os).
+ir_opt_operands([]) --> [].
+
+ir_operand_ahead, [t(K, F, T)] --> [t(K, F, T)], { memberchk(K, [sym('%'), sym('$'), sym('#'), id(val)]) }.
+
+ir_ssa(["(", X, ")"]) --> tk(p('(')), !, term(X), tk(p(')')).
+ir_ssa(Parts) --> tk(sym('%')), !, atom(D),
+    (   tk(sym(':'))
+    ->  atom(K), tk(sym('=')), atom(Op), ir_opt_operands(Args),
+        { Parts = ["%", D, " : ", K, " = ", Op, Args] }
+    ;   tk(sym('=')), ir_operand(Base), tk(sym('+')), tk(id(p)), ir_operand(Off),
+        { Parts = ["%", D, " = ", Base, " +p ", Off] }
+    ).
+ir_ssa(["store ", Sz, " [", A, " + ", Off, "] <- ", V]) -->
+    tk(id(store)), !, atom(Sz), tk(p('[')), ir_operand(A), tk(sym('+')), atom(Off),
+    tk(p(']')), tk(sym('<-')), ir_operand(V).
+ir_ssa(["store.ptr [", A, " + ", Off, "] <- ", V]) -->
+    tk(id('store.ptr')), !, tk(p('[')), ir_operand(A), tk(sym('+')), atom(Off),
+    tk(p(']')), tk(sym('<-')), ir_operand(V).
+ir_ssa(["alloca ", X, " ", Sz]) --> tk(id(alloca)), !, atom(X), atom(Sz).
+ir_ssa(["goto ", Dst]) --> tk(id(goto)), !, ir_edge(Dst).
+ir_ssa(["br ", X, " ? ", Y, " : ", N]) -->
+    tk(id(br)), !, ir_operand(X), tk(sym('?')), ir_edge(Y), tk(sym(':')), ir_edge(N).
+ir_ssa(Parts) --> tk(id(ret)), !,
+    ( tk(id(void)) -> { Parts = ["ret void"] } ; ir_operand(V), { Parts = ["ret ", V] } ).
+ir_ssa(["unreachable"]) --> tk(id(unreachable)), !.
+ir_ssa([KwS, " ", Res, Fn, Args]) -->
+    tk(id(Kw)), { memberchk(Kw-KwS, [call-"call", rawcall-"rawcall"]) }, !,
+    (   tk(sym('%'))
+    ->  atom(D), tk(sym(':')), atom(K), tk(sym('=')), { Res = ["%", D, " : ", K, " = "] }
+    ;   tk(id(void)), { Res = "void " }
+    ),
+    ir_operand(Fn), ir_args(Args).
 
 % The transport fixture notation expands to ordinary Term.v constructors.
 % Keeping their trees lets the census count the same functions across both

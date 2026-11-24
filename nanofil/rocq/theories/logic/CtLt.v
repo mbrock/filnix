@@ -1,13 +1,15 @@
 (** OpenSSL compares secret unsigned integers without branching on them.
-    This page follows [constant_time_lt] from C through nanofil's optimized
-    [[stage|checked IR]] to an [[iris|Iris]] proof with [[poison]] restrictions.
-    The result may reveal which integer is smaller; the execution trace must
-    not reveal either input before the caller chooses to disclose that result.
+    This module verifies [constant_time_lt] directly on the typed checked IR
+    emitted by `nanofil -O` in [CtLtCode], with C source-hint temporary names
+    from [CtLtNames]. The returned mask may reveal which integer is smaller,
+    but the execution trace must reveal neither input before the caller
+    chooses to disclose that result.
 
     We use the two function bodies from OpenSSL 3.6.0's
     [constant_time.h](https://github.com/openssl/openssl/blob/openssl-3.6.0/include/internal/constant_time.h).
-    The fixture removes only their static inline qualifiers, so the helper
-    becomes a direct call that the proof checks separately.
+    The fixture removes only their static inline qualifiers so the helper
+    becomes a direct call that both the reflective taint checker and the
+    [[iris|Iris]] proof check separately.
 
     ```c
     unsigned int constant_time_msb(unsigned int a) {
@@ -18,18 +20,20 @@
     }
     ```
 
-    Subtraction alone cannot decide unsigned order from its high bit: it
-    wraps when the operands straddle the unsigned range. The XOR and OR
-    operations account for the operands' high bits before the helper expands
-    the answer into an all-zero or all-one mask. This small routine lets us
-    examine arithmetic taint and a helper call without a buffer-loop invariant. *)
+    Subtraction alone cannot decide unsigned order from its high bit because
+    it wraps when the operands straddle the unsigned range. The bitwise XOR
+    and OR operations account for the operands' high bits before the helper
+    expands the answer into an all-zero or all-one mask. This small call graph
+    exercises arithmetic [[poison]] propagation, direct helper calls, and
+    reflective taint checking without a buffer-loop invariant. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From iris.proofmode Require Import proofmode.
 From iris.program_logic Require Import weakestpre adequacy.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Maps Syntax Values Validate Memory Runtime Ops Semantics
-  Run Machine Panics Transport Pieces Heap Language Logic PoisonModel PoisonLogic CtLtCode.
+  Run Machine Panics Pieces Heap Language Logic PoisonModel PoisonLogic
+  TaintCheck CtLtCode CtLtNames.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -37,65 +41,94 @@ Open Scope list_scope.
 
 (** ## The compiler supplies the program
 
-    The proof reads the generated fixture rather than reconstructing the C
-    algorithm by hand. The fixture check recompiles ct_lt.c with nanofil -O
-    and rejects any difference, including changes to the leaky control. *)
+    The proof operates directly on the typed [IRNotation] functions generated
+    by `nanofil -O` in [CtLtCode] rather than decoding raw terms or copying
+    instructions by hand. Running `rocq/scripts/programs.sh` recompiles
+    `ct_lt.c` and rejects any drift in the functions, including the leaky
+    control. *)
 
-(** Decoding makes the compiler's term available to the operational semantics. *)
-Definition ctlt_module : module :=
-  match decode_module ctlt_term with Some md => md | None => [] end.
-
-(** Validation checks the whole fixture, including both helpers and the control. *)
+(** Campaign 1's [[validator]] accepts both helpers and the leaky control. *)
 Theorem ctlt_valid : valid ctlt_module = Some true.
 Proof. vm_compute. reflexivity. Qed.
 
-(** Selecting a function from the fixture keeps its instructions tied to C. *)
-Definition ctlt_nth (i : nat) : func :=
-  match nth_error ctlt_module i with
-  | Some (IFunc f) => f
-  | _ => mkFunc (TAtom "missing") (TAtom "local") RVoid [] []
-  end.
-
-(** The helper shifts by the public constant 31 and subtracts from zero. *)
-Definition msb_fn : func := Eval vm_compute in ctlt_nth 0.
-(** The comparison computes five arithmetic temporaries before calling the helper. *)
-Definition lt_fn : func := Eval vm_compute in ctlt_nth 1.
-(** The control compares the same inputs and branches on the answer. *)
-Definition leaky_fn : func := Eval vm_compute in ctlt_nth 2.
-
-(** Direct calls resolve against the same module that supplied the instructions. *)
+(** Direct calls resolve against the same module that supplied the functions. *)
 Definition ctlt_ge : genv := mkGenv ctlt_module [] free_res.
+
+(** ## Reflective taint check across the call graph
+
+    Before running any interactive proof, [TaintCheck] checks the whole two-function
+    call graph by computation. Both arguments of `constant_time_lt` carry every
+    [[poison]] restriction, the helper call preserves those restrictions across
+    the call boundary, and the branching control `leaky_lt` is rejected
+    statically against the exact same specification. *)
+
+(** Taint specification for `constant_time_msb`: one secret word in, one secret
+    word out, no memory writes. *)
+Definition msb_tspec : tspec :=
+  mkTSpec [WTInt taint_all] (Some (WTInt taint_all)) taint_bot taint_bot false.
+
+(** Taint specification for `constant_time_lt`: two secret words in, one secret
+    word out, no memory writes. *)
+Definition lt_tspec : tspec :=
+  mkTSpec [WTInt taint_all; WTInt taint_all] (Some (WTInt taint_all)) taint_bot taint_bot false.
+
+(** Call-graph specification table pairing both constant-time functions. *)
+Definition ctlt_tspecs : list (name * tspec) :=
+  [(TAtom "constant_time_msb", msb_tspec);
+   (TAtom "constant_time_lt", lt_tspec)].
+
+(** The reflective taint checker accepts the full two-function call graph under
+    [pol_strict] by `vm_compute`. *)
+Theorem ctlt_taint_ok :
+  taint_check_program pol_strict ctlt_module ctlt_tspecs = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** The reflective checker rejects the branching control `leaky_lt` against
+    [lt_tspec] without running a concrete trace. *)
+Theorem leaky_taint_rejected :
+  taint_check_fn pol_strict ctlt_module ctlt_tspecs fn_leaky_lt lt_tspec = false.
+Proof. vm_compute. reflexivity. Qed.
 
 (** ## Tracking the secret arguments
 
-    Both arguments carry every restriction: they cannot control a branch,
-    an address, or an operation classified as variable-time by the policy.
-    Arithmetic joins its operands' restrictions, so the mask remains secret
-    even though computing it is permitted. *)
+    Both inputs carry every restriction, so neither integer may influence a
+    branch, a memory address, or a variable-time operation. Pure bitwise and
+    additive operations join their operands' restrictions, keeping the returned
+    mask secret while allowing the computation to proceed. *)
 
-(** The helper starts with one secret integer and needs no memory ownership. *)
-Definition msb_entry x := mkFrame msb_fn [(TAtom "v0", WInt x)] [] None
-  (Enter (TAtom "start") None).
-(** The helper's argument keeps all three restrictions. *)
-Definition msb_te : tenv := [(TAtom "v0", WTInt taint_all)].
-(** The comparison starts with the two temporaries named by the compiler. *)
-Definition lt_entry a b := mkFrame lt_fn
-  [(TAtom "v2", WInt b); (TAtom "v0", WInt a)] [] None
-  (Enter (TAtom "start") None).
-(** Neither argument may become observable through control flow or addressing. *)
-Definition lt_te : tenv := [(TAtom "v2", WTInt taint_all); (TAtom "v0", WTInt taint_all)].
+Import CtLtNames.fn_constant_time_msb.
 
-(** Any two input pairs are related because both integer temporaries are secret.
-    The memory, runtime state, and initial fuel stay the same in both runs. *)
+(** Entry frame for `constant_time_msb` with one secret integer parameter. *)
+Definition msb_entry (x : Z) : frame :=
+  mkFrame fn_constant_time_msb [(‹a›, WInt x)] [] None
+    (Enter (TAtom "start") None).
+
+(** Entry taint environment for `constant_time_msb`. *)
+Definition msb_te : tenv :=
+  [(‹a›, WTInt taint_all)].
+
+Import CtLtNames.fn_constant_time_lt.
+
+(** Entry frame for `constant_time_lt` using C source-hint parameter names. *)
+Definition lt_entry (a b : Z) : frame :=
+  mkFrame fn_constant_time_lt [(‹b›, WInt b); (‹a›, WInt a)] [] None
+    (Enter (TAtom "start") None).
+
+(** Entry taint environment tagging both `a` and `b` with [taint_all]. *)
+Definition lt_te : tenv :=
+  [(‹b›, WTInt taint_all); (‹a›, WTInt taint_all)].
+
+(** Any two input pairs satisfy [ct_rel] because both integer parameters carry
+    [taint_all] while memory and fuel stay identical. *)
 Lemma lt_inputs_related a b a' b' m pm paux fuel :
   ct_rel (mkConfig (lt_entry a b) [] m fuel)
     (mkConfig (lt_entry a' b') [] m fuel) (mkPState lt_te [] pm paux).
 Proof.
   unfold ct_rel; cbn; repeat split; try congruence.
   intros x. unfold lt_te. cbn [lookup]. unfold name_eqb.
-  destruct (term_eqb x (TAtom "v2"));
+  destruct (term_eqb x ‹b›);
     [right; eexists _, _, _; repeat split; reflexivity|].
-  destruct (term_eqb x (TAtom "v0"));
+  destruct (term_eqb x ‹a›);
     [right; eexists _, _, _; repeat split; reflexivity|].
   left; split; reflexivity.
 Qed.
@@ -107,25 +140,22 @@ Section proof.
 Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ, !gen_heapGS ppiece ppval Σ}.
 Local Instance ctlt_iris : irisGS_gen hlc (poison_lang pol_strict ctlt_ge) Σ :=
   poison_irisGS pol_strict ctlt_ge.
-Local Notation pexprL := (language.expr (poison_lang pol_strict ctlt_ge)).
+Local Abbreviation pexprL := (language.expr (poison_lang pol_strict ctlt_ge)).
 
 (** ## Reading the one-run proof
 
-    A weakest-precondition assertion, written WP, says that execution is safe
-    and that any returned result satisfies the assertion inside braces.
-    Here that assertion says the result is an integer with every secret
-    restriction; it does not say that two calls return the same integer.
+    A weakest-precondition assertion, written WP, states that execution avoids
+    every panic and [[poison]] fault and that any returned value satisfies the
+    postcondition. Here the postcondition records that the returned word is an
+    integer carrying [taint_all], without asserting that two runs return the
+    same integer.
 
-    Every arithmetic result remains secret, while the shift count and call
-    target are public. The proof checks this at each instruction with
-    [wp_plet], which accounts for both the computed value and its restrictions.
+    Every arithmetic intermediate stays secret while the shift count 31 and
+    the direct call target remain public. Returning from `constant_time_msb`
+    uses [wp_pcall_bind] so the caller receives both the mask value and the
+    full taint carried by the helper's postcondition. *)
 
-    Returning from the helper must not erase the mask's restrictions.
-    The caller uses [wp_pcall_bind] to receive both the helper's result
-    and the restrictions established by its specification. *)
-
-(** The helper returns a secret integer without a poison fault or panic.
-    The postcondition deliberately does not make that integer public. *)
+(** The helper returns a secret integer without faulting or panicking. *)
 Lemma msb_spec x :
   ⊢ WP (PRun (msb_entry x) msb_te : pexprL)
       {{ v, ∃ n, ⌜v = (Ret (WInt n), [WTInt taint_all])⌝ }}.
@@ -137,8 +167,8 @@ Proof using Type.
   iExists _. done.
 Qed.
 
-(** The helper returns a secret mask to its caller. The comparison can return
-    that mask, but cannot remove its restrictions by passing it through a call. *)
+(** The comparison computes its five bitwise steps, calls `constant_time_msb`,
+    and returns the helper's secret mask unchanged. *)
 Lemma lt_spec a b :
   ⊢ WP (PRun (lt_entry a b) lt_te : pexprL)
       {{ v, ∃ n, ⌜v = (Ret (WInt n), [WTInt taint_all])⌝ }}.
@@ -156,14 +186,15 @@ Proof using Type.
 Qed.
 End proof.
 
-(** ## From one-run safety to two-run traces
+(** ## From one-run safety to two-run plain traces
 
-    The Iris proof establishes that no reachable state can panic or misuse
-    poison. Adequacy then relates two executions with arbitrary secret inputs,
-    under the same runtime driver and with the same step budget. *)
+    The Iris proof establishes that no reachable state panics or violates the
+    poison rules. Adequacy then transfers that single-run guarantee to any pair
+    of secret inputs, yielding equal finite plain operational leakage traces
+    under the deterministic runtime driver. *)
 
-(** The routine needs no memory from its caller. We instantiate the logic's
-    memory bookkeeping here so the final theorem has no Iris parameters. *)
+(** Instantiating Iris's heap functors discharges all logic parameters from the
+    final theorems. *)
 Definition ctltΣ : gFunctors := #[invΣ; gen_heapΣ piece pval; gen_heapΣ ppiece ppval].
 Local Instance ctltΣ_inv : invGpreS ctltΣ.
 Proof. apply subG_invΣ. apply _. Qed.
@@ -172,8 +203,7 @@ Proof. apply subG_gen_heapGpreS. apply _. Qed.
 Local Instance ctltΣ_poison : gen_heapGpreS ppiece ppval ctltΣ.
 Proof. apply subG_gen_heapGpreS. apply _. Qed.
 
-(** Every input pair avoids poison faults and ordinary machine panics.
-    The memory need only satisfy the runtime's usual readiness conditions. *)
+(** Every input pair avoids poison faults and ordinary machine panics. *)
 Theorem lt_safe a b m pm paux s fuel :
   R.ready s m -> live_disjoint m ->
   poison_safe pol_strict ctlt_ge (lt_entry a b) lt_te m pm paux s fuel.
@@ -189,17 +219,17 @@ Proof.
   iIntros (v) "H"; iDestruct "H" as (n) "%H". eauto.
 Qed.
 
-(** All input pairs produce equal finite IR leakage traces. There is no
-    premise that assumes a successful run or assumes the desired relation. *)
-Theorem lt_constant_time a b a' b' m pm paux s fuel :
+(** All input pairs produce identical finite plain IR leakage traces under
+    [pol_strict]. *)
+Theorem lt_constant_time a b a' b' m (pm : Z -> poison_byte) (paux : Z -> taint) s fuel :
   R.ready s m -> live_disjoint m ->
   forall steps, exists tr,
-    PD.pdriver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a b) [] m fuel)
-      (mkPState lt_te [] pm paux) s = Some tr /\
-    PD.pdriver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a' b') [] m fuel)
-      (mkPState lt_te [] pm paux) s = Some tr.
+    PD.driver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a b) [] m fuel) s = Some tr /\
+    PD.driver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a' b') [] m fuel) s = Some tr.
 Proof.
-  intros Hr Hd. apply wp_ct_driver; try reflexivity; try assumption.
+  intros Hr Hd. apply (wp_ct_driver_plain pol_strict ctlt_ge
+    (lt_entry a b) (lt_entry a' b') lt_te m m pm paux s fuel);
+    try reflexivity; try assumption.
   - apply lt_inputs_related.
   - apply lt_safe; assumption.
 Qed.
@@ -207,16 +237,18 @@ End CtLt.
 
 (** ## A branch with the same answer still leaks
 
-    Replacing the bit trick by an if statement preserves the intended mask
-    but makes the comparison observable. The examples below reach a forbidden
-    branch on either side of the comparison and when the inputs are equal. *)
+    Replacing the bit trick by an if statement preserves the returned mask
+    while exposing the comparison in control flow. Concrete runs confirm the
+    exact fault reported statically by [leaky_taint_rejected]: every input pair
+    traps with [CannotBranch] on the branch instruction. *)
 
-(** The control uses the same argument environment as the verified comparison. *)
-Definition leaky_entry a b := mkFrame leaky_fn
-  [(TAtom "v2", WInt b); (TAtom "v0", WInt a)] [] None
-  (Enter (TAtom "start") None).
+(** Entry frame for the branching control `leaky_lt`. *)
+Definition leaky_entry (a b : Z) : frame :=
+  mkFrame fn_leaky_lt [(‹b›, WInt b); (‹a›, WInt a)] [] None
+    (Enter (TAtom "start") None).
 
-(** Three steps enter the block, compare the arguments, and reject the branch. *)
+(** Three steps enter `start`, compare the secret inputs, and trap on the
+    branch. *)
 Theorem leaky_rejected m pm paux :
   let run a b := prun pol_strict ctlt_ge 3 (mkConfig (leaky_entry a b) [] m 100)
     (mkPState lt_te [] pm paux) in
@@ -225,9 +257,9 @@ Theorem leaky_rejected m pm paux :
   run 0 0 = PTrap CannotBranch.
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
-(** The good program may return different masks without changing its trace.
-    These boundary cases check zero, equality, and the unsigned high bit;
-    they do not replace a functional correctness theorem for all words. *)
+(** The constant-time routine returns the expected masks across zero, equality,
+    and unsigned high-bit boundary cases while keeping every result tagged
+    with [taint_all]. *)
 Example lt_masks :
   let m := mkMem (fun _ => 0) [] (fun _ => CNone) in
   let run a b := prun pol_strict ctlt_ge 20 (mkConfig (lt_entry a b) [] m 100)
@@ -240,18 +272,20 @@ Proof. vm_compute. repeat split; reflexivity. Qed.
 
 (** ## What the theorem covers
 
-    The theorem covers every pair of secret words in the generated IR,
-    including unsigned wraparound, and excludes every modeled poison fault
-    and panic. It does not prove the bit trick's functional specification,
-    preservation from C to IR, or timing of the emitted machine code.
+    The theorem covers every pair of secret 32-bit unsigned words in the
+    compiled IR, including unsigned wraparound, and excludes every modeled
+    [[poison]] fault and panic. It does not prove functional correctness of
+    the bit trick, preservation from C to IR, or hardware timing of emitted
+    machine code.
 
-    The return value is still secret: a caller cannot branch on it while
-    claiming the same guarantee. This routine makes no memory accesses,
-    syscalls, variadic calls, or indirect calls; the proof makes no claim
-    about those unsupported call forms or about a larger OpenSSL operation. *)
+    The returned mask remains secret, so a caller cannot branch on it while
+    retaining the same noninterference claim. Because this routine performs no
+    memory accesses, syscalls, variadic calls, or indirect calls, those
+    features are verified separately in [PoisonHeap] and [CtTableScan]. *)
 
 Module InterpCtLt := CtLt InterpRuntime.
 Print Assumptions InterpCtLt.lt_spec.
 Print Assumptions InterpCtLt.lt_safe.
 Print Assumptions InterpCtLt.lt_constant_time.
+Print Assumptions ctlt_taint_ok.
 Print Assumptions leaky_rejected.

@@ -1,16 +1,18 @@
 # Poison and constant time in Rocq
 
-November 2026. The technical report and primer for [[poison]] semantics
-over nanofil's checked IR, pairing Filip Pizlo's
+This technical report documents [[poison]] semantics over nanofil's checked IR,
+connecting Filip Pizlo's
 [`projects/zegarmistrz`](https://github.com/pizlonator/fil-c/tree/deluge/projects/zegarmistrz)
-emulator with nanofil's Rocq model ([formal.md](formal.md)).
-[zegarmistrz.md](zegarmistrz.md) introduces the ideas for a general
-reader; this document records the exact state space and propagation
-rules of `zegarmistrz`, the bug our formalization found in its store
-sanitizer, the two spikes in `rocq/spikes` ([Poison.v](../rocq/spikes/Poison.v)
-and [PoisonSbox.v](../rocq/spikes/PoisonSbox.v)), OpenSSL's three
-assembly regimes under Fil-C, and how poison lifts to Campaign 7's
-[[iris|Iris]] logic and user glibc.
+emulator to nanofil's Rocq model in [formal.md](formal.md).
+[zegarmistrz.md](zegarmistrz.md) introduces these ideas for a general reader.
+
+Here we record the state space and propagation rules of `zegarmistrz`, the bug
+our formalization found in its store sanitizer, and the early spikes
+[Poison.v](../rocq/spikes/Poison.v) and
+[PoisonSbox.v](../rocq/spikes/PoisonSbox.v). We also cover OpenSSL's three
+assembly regimes under Fil-C, reflective taint checking in
+[TaintCheck.v](../rocq/theories/logic/TaintCheck.v), and how poison lifts to
+Campaign 7's [[iris|Iris]] logic and user glibc.
 
 ## Zegarmistrz's state and rules, from source
 
@@ -435,13 +437,41 @@ IR control flow, addresses, and modeled variable-time operations. They do
 not establish native hardware timing or trace equality under independently
 scheduled collectors.
 
+### Reflective taint checking and factoring (`TaintCheck.v`)
+
+[TaintCheck.v](../rocq/theories/logic/TaintCheck.v) separates side-channel
+taint tracking from memory-safety proofs without touching `theories/exec/` or
+any non-poison proof. A function contract [tspec] specifies the input word
+taints, upper bounds on memory-byte and shadow-capability taints, whether the
+function writes memory, and the return taint. Given a module and a list of
+function contracts, [taint_check_program] computes a least fixpoint of abstract
+taint environments across every basic block and verifies every instruction,
+branch, Fil-C check, variable-time operation, direct call, and external `free`
+by computation inside Rocq.
+
+The factoring theorem [taint_check_poison_safe] combines a passing static check
+with any plain memory-safety proof ([plain_safe]) to produce full
+[poison_safe] across all reachable machine states and finite driver runs. Its
+corollary [taint_check_constant_time] feeds that result into
+[wp_ct_driver_plain] to yield identical plain operational leakage traces for
+every pair of secret-related executions. For non-allocating loops whose safety
+depends only on live object regions, [plain_safe_by_block_safe] proves
+[plain_safe] directly from a region-invariant block checkpoint without Iris
+ghost-heap machinery, even under arbitrary garbage-collector safepoints.
+
 [CtLt.v](../rocq/theories/logic/CtLt.v) follows OpenSSL's
-`constant_time_lt` from C through nanofil's optimized IR to an Iris proof.
-It proves poison-fault freedom, machine panic freedom, and equal finite
-leakage traces for any two pairs of secret integers. The return mask stays
-secret and may differ between the runs. A compiled branch-based control
-fails the poison rules. The page explains the helper-call proof and separates
-IR constant-time behavior from functional correctness and native timing.
+`constant_time_lt` from C through nanofil's optimized IR in typed
+[IRNotation](../rocq/theories/core/IRNotation.v)
+([CtLtCode.v](../rocq/theories/logic/CtLtCode.v)) with C source-hint temporary
+names ([CtLtNames.v](../rocq/theories/logic/CtLtNames.v)). It verifies both
+`constant_time_msb` and `constant_time_lt` with [taint_check_program]
+([ctlt_taint_ok]) while rejecting a compiled branch-based control
+([leaky_taint_rejected], [leaky_rejected]), and pairs that check with an Iris
+proof to establish poison-fault freedom, machine panic freedom, and equal plain
+finite leakage traces for any two pairs of secret integers. The return mask
+stays secret and may differ between the runs. The page explains the helper-call
+proof and separates IR constant-time behavior from functional correctness and
+native timing.
 
 [CtTableScan.v](../rocq/theories/logic/CtTableScan.v) analyzes a more
 realistic memory-scanning pattern compiled from
@@ -457,23 +487,31 @@ cancels `skip` modulo `2^64` while keeping `buf`'s capability, so `p`
 remains public without manual annotation.
 
 Comparing the two compiled variants illustrates what each semantics catches.
-The indexed variant `scan_indexed` reads `tbl[i]` at a secret index `i`
-inside a 16-byte lookup table: under `pol_strict` its Fil-C capability check
-traps with `CannotBranch`, under `pol_erased` the raw load traps with
-`CannotIndex`, two concrete runs differing only in secret `start` emit
-distinct plain leakage traces, and an exact-size 16-byte `tbl` object traps
-with `OutOfBounds` as soon as the secret window overruns the table.
-The constant-time replacement `scan_ct` scans all 16 entries of `tbl` at a
-public index `k` with a branchless equality mask; a universal Iris proof
-using `wp_praw_load_byte_at` and `wp_ct_driver_plain` establishes
-memory safety, poison-fault freedom, and identical plain operational leakage
-traces for every valid public `len` and `win` and all secret inputs.
+The reflective checker in [TaintCheck.v](../rocq/theories/logic/TaintCheck.v)
+accepts `scan_ct` ([scan_ct_taint_ok]) and rejects `scan_indexed` under both
+`pol_strict` and `pol_erased` ([scan_indexed_taint_rejected]) by computation.
+Concrete forensic checks on `scan_indexed` pinpoint each failure mode of the
+secret index `tbl[i]`: under `pol_strict` its Fil-C capability check traps
+with `CannotBranch`, under `pol_erased` the raw load traps with `CannotIndex`,
+two concrete runs differing only in secret `start` emit distinct plain leakage
+traces, and an exact-size 16-byte `tbl` object traps with `OutOfBounds` as
+soon as the secret window overruns the table. The constant-time replacement
+`scan_ct` scans all 16 entries of `tbl` at a public index `k` with a branchless
+equality mask. Bundling each buffer's liveness and bounds into a
+[readable_slice] record, [scan_ct_plain_safe] proves plain memory safety via
+[plain_safe_by_block_safe], and the factoring theorem yields universal poison
+safety ([scan_ct_safe]) and identical plain operational leakage traces
+([scan_ct_constant_time]) for every valid public `len` and `win` and any two
+memories that share the same region layout.
 
 Finally, `rebased_scan_fn` in [CtTableScan.v](../rocq/theories/logic/CtTableScan.v)
-formally separates single-run dynamic taint from two-run constant-time
+is written directly in [IRNotation](../rocq/theories/core/IRNotation.v) and
+formally separates single-run taint from two-run constant-time
 noninterference. Rebasing a public loop counter and base pointer by the same
 secret offset `sec` (`base = buf + sec`, `lim = len - sec`, `k = j - sec`)
-causes single-run taint to reject both the loop exit comparison
+causes both the static checker ([rebased_scan_taint_rejected]) and dynamic
+taint ([rebased_scan_taint_rejects]) to reject the loop exit comparison
 (`CannotBranch`) and the dereferenced address (`CannotIndex`), while direct
-two-run simulation proves that the plain operational trace is identical for
-every pair of secret offsets.
+two-run simulation ([rebased_scan_two_run_constant_time]) proves that the
+plain operational trace is identical for every readable buffer slice and every
+pair of secret offsets.

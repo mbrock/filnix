@@ -1,34 +1,27 @@
-(** Constant-time algorithms often scan a public tail window of a buffer and
-    compare a secret sub-window against a small fixed table. When the loop
-    computes its window pointer through a cancelled secret offset and then
-    indexes the table by a secret counter, two distinct questions arise: does
-    the compiler eliminate the cancelled secret offset, and how does the
-    remaining secret table index interact with Fil-C capability checks and
+(** Constant-time code often scans a public tail window of a buffer and
+    compares a secret 16-byte sub-window against a fixed lookup table. Two
+    questions arise when the compiler translates that pattern to checked IR.
+    First, does optimization cancel a secret prefix adjustment so the tail
+    window pointer stays public? Second, how does a secret table index interact
+    with Fil-C [[capability]] checks, single-run [[poison]] tracking, and
     two-run constant-time noninterference?
 
-    This module formalizes both a secret-indexed scanner (`scan_indexed`) and
-    an index-free constant-time replacement (`scan_ct`) directly on the checked
-    IR emitted by `nanofil -O` from `ct_table_scan.c` and rendered in
-    [IRNotation] with C source-hint temporary names from [CtTableScanNames].
-    First, we show that additive cancellation in `simplify.pl` keeps the window
-    pointer public even though the C source computes
-    `buf += skip; len -= skip; p = buf + len - win - 16`. Second, we separate
-    three effects of the secret index `tbl[i]`: Fil-C's bounds check traps with
-    `CannotBranch` under `pol_strict` even when the table has slack, erasing
-    the check still trips `CannotIndex` and produces distinct plain operational
-    traces, and an exact 16-byte table traps with `OutOfBounds` when `i`
-    reaches 16. Third, we prove in [[separation-logic]] that `scan_ct` is
-    memory-safe on an exact 16-byte table and two-run constant-time for every
-    public window length and every secret input. Finally, we include a minimal
-    rebased loop (`rebased_scan_fn`) separating single-run dynamic taint from
-    two-run operational noninterference. *)
+    This module answers both questions directly on the checked IR emitted by
+    `nanofil -O` from `ct_table_scan.c`, stored in [CtTableScanCode] in
+    [IRNotation] with C-level temporary names from [CtTableScanNames]. We first
+    run the reflective taint checker from [TaintCheck] to accept `scan_ct` and
+    reject `scan_indexed` by computation. Next, concrete forensic checks on
+    `scan_indexed` separate bounds-check branching, address-index leakage, and
+    exact-size out-of-bounds traps. We then prove plain memory safety for
+    `scan_ct` across all valid window lengths and combine it with the
+    reflective taint check to obtain universal [[poison]] safety and two-run
+    constant-time noninterference. Finally, a minimal rebased loop written in
+    [IRNotation] formally separates single-run taint from two-run
+    noninterference. *)
 
 From Stdlib Require Import String ZArith List Bool Lia.
-From iris.proofmode Require Import proofmode.
-From iris.program_logic Require Import weakestpre adequacy.
-From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Maps Syntax Values Validate Memory Runtime Ops Semantics
-  Run Machine Panics StepRules Pieces Heap Language Logic PoisonModel PoisonLogic
+  Run Machine Panics StepRules Pieces PoisonModel PoisonLogic TaintCheck IRNotation
   CtTableScanCode CtTableScanNames.
 
 Import ListNotations.
@@ -40,10 +33,9 @@ Open Scope list_scope.
 (** ## Validated checked IR
 
     Every theorem about `scan_indexed` and `scan_ct` operates directly on the
-    typed IR functions emitted by `nanofil -O` in [CtTableScanCode], with
-    source-hint C names from [CtTableScanNames] naming the SSA temporaries.
-    Campaign 1's [[validator]] accepts both functions without hand-transcribed
-    IR or runtime decoding. *)
+    typed IR functions emitted by `nanofil -O` in [CtTableScanCode]. Campaign
+    1's [[validator]] accepts both functions without hand-transcribed IR or
+    runtime decoding. *)
 
 (** Campaign 1's [[validator]] accepts both `scan_indexed` and `scan_ct`. *)
 Theorem cttable_valid : valid cttable_module = Some true.
@@ -52,12 +44,57 @@ Proof. vm_compute. reflexivity. Qed.
 (** Global environment containing both compiled functions. *)
 Definition cttable_ge : genv := mkGenv cttable_module [] free_res.
 
-(** ## Concrete forensic checks on `scan_indexed`
+(** ## Reflective taint checking
 
-    Before proving universal theorems about `scan_ct`, we instantiate a small
-    concrete heap to pin down the exact failure modes of `scan_indexed`. These
-    computational proofs check the compiled IR directly through [prun] and
-    [run_trace]. *)
+    Before proving anything about memory bounds or loop execution, we run the
+    static reflective taint checker from [TaintCheck] on the compiled IR. The
+    specification [scan_ct_tspec] marks the two pointers `buf` and `tbl` and
+    the public lengths `len` and `win` as unrestricted, while marking `skip`,
+    `start`, every byte and shadow capability in memory, and the returned word
+    as fully secret. A single computation accepts `scan_ct` under [pol_strict]
+    and rejects `scan_indexed` under both [pol_strict] and [pol_erased]. *)
+
+(** Static taint contract for a read-only scanner over secret data. *)
+Definition scan_ct_tspec : tspec :=
+  {| ts_args :=
+       [WTPtr taint_bot taint_bot;
+        WTInt taint_bot;
+        WTInt taint_bot;
+        WTInt taint_all;
+        WTInt taint_all;
+        WTPtr taint_bot taint_bot];
+     ts_ret := Some (WTInt taint_all);
+     ts_mem := taint_all;
+     ts_aux := taint_all;
+     ts_writes := false |}.
+
+(** Entry table checking `scan_ct` under [scan_ct_tspec]. *)
+Definition scan_ct_tspecs : list (name * tspec) :=
+  [(TAtom "scan_ct", scan_ct_tspec)].
+
+(** The reflective taint checker accepts `scan_ct` under [pol_strict] with all
+    secret inputs and all memory bytes tagged [taint_all]. *)
+Theorem scan_ct_taint_ok :
+  taint_check_program pol_strict cttable_module scan_ct_tspecs = true.
+Proof. vm_compute. reflexivity. Qed.
+
+(** The same checker rejects `scan_indexed` under both [pol_strict] and
+    [pol_erased], because the secret counter `i` indexes `tbl[i]`. *)
+Theorem scan_indexed_taint_rejected :
+  taint_check_fn pol_strict cttable_module [] fn_scan_indexed scan_ct_tspec = false /\
+  taint_check_fn pol_erased cttable_module [] fn_scan_indexed scan_ct_tspec = false.
+Proof. vm_compute. split; reflexivity. Qed.
+
+(** ## Forensic checks on `scan_indexed`
+
+    Static rejection tells us that `scan_indexed` leaks secrets, while concrete
+    executions pinpoint each failure mode. We instantiate a small concrete heap
+    and step the compiled IR directly through [prun] and [run_trace]. These
+    checks show that `simplify.pl` cancels the secret prefix `skip` in the
+    window pointer, that Fil-C's bounds check traps on `taint_branch`, that
+    erasing checks still traps on `taint_index` and produces distinct plain
+    traces, and that `scan_ct` computes the same result on an exact 16-byte
+    table. *)
 
 (** Fixed base addresses and read-only capability pointers for concrete runs. *)
 Definition scan_buf_base : Z := 131072.
@@ -69,16 +106,16 @@ Definition scan_tbl_ptr : ptr := mkPtr scan_tbl_base (Ro scan_tbl_base).
 (** Deterministic sample table bytes `tbl[0..15]`. *)
 Definition sample_tbl (k : Z) : Z := (17 * k + 5) mod 256.
 
-(** Construct a 24-byte buffer `buf` containing `sample_tbl` at offset
-    `4 + start` inside the 20-byte tail window `buf[4..23]` (`win = 4`). *)
+(** A 24-byte buffer containing [sample_tbl] at offset `4 + start` inside the
+    20-byte tail window `buf[4..23]` (`win = 4`). *)
 Definition matching_buf_byte (start : Z) (idx : Z) : Z :=
   let j := idx - 4 in
   if (start <=? j) && (j <? start + 16)
   then sample_tbl (j - start)
   else (3 * idx + 1) mod 256.
 
-(** Memory containing a 24-byte buffer at [scan_buf_base] and a `tbl_size`-byte
-    table at [scan_tbl_base]. *)
+(** Concrete memory holding a 24-byte buffer at [scan_buf_base] and a
+    `tbl_size`-byte table at [scan_tbl_base]. *)
 Definition scan_mem (buf_fn tbl_fn : Z -> Z) (tbl_size : Z) : mem :=
   mkMem
     (fun a =>
@@ -91,7 +128,7 @@ Definition scan_mem (buf_fn tbl_fn : Z -> Z) (tbl_size : Z) : mem :=
      mkRegion scan_tbl_base (scan_tbl_base + tbl_size) Heap Live]
     (fun _ => CNone).
 
-(** Entry frame calling `f` with public `len` and `win` and secret `skip` and `start`. *)
+(** Entry frame binding the six arguments of `scan_indexed` or `scan_ct`. *)
 Definition scan_frame (f : func) (len win skip start : Z) : frame :=
   mkFrame f
     [(‹tbl›, WPtr scan_tbl_ptr);
@@ -104,7 +141,7 @@ Definition scan_frame (f : func) (len win skip start : Z) : frame :=
 
 (** Machine configuration for a concrete run of `f`. *)
 Definition scan_cfg (f : func) (buf_fn tbl_fn : Z -> Z)
-    (tbl_size len win skip start : Z) (fuel : nat) : config :=
+    (tbl_size len win skip start fuel : Z) : config :=
   mkConfig (scan_frame f len win skip start) [] (scan_mem buf_fn tbl_fn tbl_size) fuel.
 
 (** Poison state tagging `skip`, `start`, and buffer/table bytes independently. *)
@@ -124,10 +161,10 @@ Definition scan_pstate (t_skip t_start t_bytes : taint) (tbl_size : Z) : pstate 
       else pb_clean)
     (fun _ => taint_bot).
 
-(** When only `skip` and data bytes carry full poison (and `start` stays public),
-    `scan_indexed` finishes cleanly under [pol_strict]: additive cancellation in
-    `simplify.pl` folds `(buf + skip) + (len - skip)` back to `buf + len` so the
-    window pointer `p` carries no poison. *)
+(** When only `skip` and data bytes carry full poison (and `start` stays
+    public), `scan_indexed` finishes cleanly under [pol_strict]: additive
+    cancellation in `simplify.pl` folds `(buf + skip) + (len - skip)` back to
+    `buf + len`, so the window pointer `p` carries no poison. *)
 Theorem scan_indexed_p_is_public :
   prun pol_strict cttable_ge 800
     (scan_cfg fn_scan_indexed (matching_buf_byte 2) sample_tbl 20 24 4 19 2 200)
@@ -146,8 +183,8 @@ Theorem scan_indexed_filc_check_traps_branch :
 Proof. vm_compute. reflexivity. Qed.
 
 (** Under [pol_erased], where Fil-C's capability checks do not emit branch
-    leakage events, the exact same `taint_branch` run completes without a
-    branch fault because the bounds check is architecturally never taken. *)
+    leakage events, the same `taint_branch` run completes without a branch
+    fault because the bounds check is architecturally never taken. *)
 Theorem scan_indexed_erased_branch_passes :
   prun pol_erased cttable_ge 800
     (scan_cfg fn_scan_indexed (matching_buf_byte 2) sample_tbl 20 24 4 19 2 200)
@@ -195,7 +232,7 @@ Theorem scan_ct_matches_indexed :
     else matching_buf_byte start idx in
   let run_ct buf_fn tbl_fn skip start :=
     prun pol_strict cttable_ge (Z.to_nat 10000)
-      (scan_cfg fn_scan_ct buf_fn tbl_fn 16 24 4 skip start (Z.to_nat 1000))
+      (scan_cfg fn_scan_ct buf_fn tbl_fn 16 24 4 skip start 1000)
       (scan_pstate taint_all taint_all taint_all 16) in
   let run_idx buf_fn tbl_fn skip start :=
     prun pol_strict cttable_ge 800
@@ -207,27 +244,80 @@ Theorem scan_ct_matches_indexed :
   run_idx (bad_buf 2) sample_tbl 19 2 = PDone (Ret (WInt 1)) [WTInt taint_bot].
 Proof. vm_compute. repeat split; reflexivity. Qed.
 
-(** ## Universal Iris proof of `scan_ct`
+(** ## Readable slices and entry states
 
-    Concrete runs test only fixed dimensions. Using [[separation-logic]] over
-    the dual value and [[poison]] heaps, we verify `scan_ct` for every public
-    `len` and `win` satisfying `win + 16 <= len`, arbitrary secret `skip` and
-    `start`, arbitrary secret bytes in `buf[0..len-1]`, and an exact 16-byte
-    secret table `tbl[0..15]`. *)
+    Bundling the capability, liveness, and bounds facts for a memory buffer into
+    one record keeps every universal theorem statement short and self-contained.
+    A [readable_slice] certifies that a pointer refers to a live object whose
+    bytes cover `[ptr_addr p, ptr_addr p + len)` without 64-bit wraparound. *)
 
-(** Entry frame binding all six parameters of `scan_ct`. *)
-Definition scan_ct_entry (p_buf p_tbl : ptr) (len win skip start : Z) : frame :=
+(** A live, readable memory slice `[ptr_addr p, ptr_addr p + len)`. *)
+Record readable_slice (m : mem) (p : ptr) (len : Z) : Prop := mkReadableSlice {
+  rs_cap : ptr_cap p = Obj (ptr_addr p) \/ ptr_cap p = Ro (ptr_addr p);
+  rs_addr_nonneg : 0 <= ptr_addr p;
+  rs_len_nonneg : 0 <= len;
+  rs_no_wrap : ptr_addr p + len < 2 ^ 64;
+  rs_live_bounds : exists r, live_at m (ptr_addr p) r /\ ptr_addr p + len <= r_end r
+}.
+
+(** Slice validity depends only on the live region map, so garbage-collector
+    safepoints and secret memory contents both preserve it. *)
+Lemma readable_slice_regions m1 m2 p len :
+  m_regions m1 = m_regions m2 ->
+  readable_slice m1 p len ->
+  readable_slice m2 p len.
+Proof.
+  intros Hreg [Hcap Ha Hl Hwrap [r [[Hobj Hlife] Hbnd]]].
+  refine (mkReadableSlice m2 p len Hcap Ha Hl Hwrap _).
+  exists r; split; [split; [rewrite <- Hreg; exact Hobj | exact Hlife] | exact Hbnd].
+Qed.
+
+(** Every in-bounds byte of a [readable_slice] passes Fil-C's capability read check. *)
+Lemma readable_slice_byte_access m p len off :
+  readable_slice m p len ->
+  0 <= off < len ->
+  access_res m (raw_address (ptr_addr p + off) 0) (ptr_cap p) 1 Read 1 = Some (RVal tt).
+Proof.
+  intros [Hcap Ha Hl Hwrap [r [[Hobj Hlife] Hbnd]]] Hoff.
+  unfold access_res, raw_address.
+  rewrite Z.add_0_r, (Z.mod_small (ptr_addr p + off) (2 ^ 64) ltac:(lia)).
+  destruct Hcap as [Hcap | Hcap]; rewrite Hcap;
+    unfold cap_access_res, readonly_access_res, aligned_res;
+    rewrite Hobj;
+    replace (ptr_addr p <=? ptr_addr p + off) with true by (symmetry; apply Z.leb_le; lia);
+    replace (ptr_addr p + off + 1 <=? r_end r) with true by (symmetry; apply Z.leb_le; lia);
+    rewrite Z.mod_1_r; reflexivity.
+Qed.
+
+(** Every in-bounds unsigned byte load from a [readable_slice] succeeds. *)
+Lemma readable_slice_load_byte m p len off :
+  readable_slice m p len ->
+  0 <= off < len ->
+  int_load_res (LdNarrow Ub) W m (raw_address (ptr_addr p + off) 0) (ptr_cap p) =
+    Some (RVal (WInt ((m_bytes m (ptr_addr p + off) mod 256) mod 2 ^ 32))).
+Proof.
+  intros Hsl Hoff.
+  pose proof Hsl as [_ Ha _ Hwrap _].
+  unfold int_load_res; cbn [fst narrow_type].
+  rewrite (readable_slice_byte_access m p len off Hsl Hoff).
+  unfold load_bytes, raw_address, extended, extension; cbn [modulus].
+  rewrite Z.add_0_r, (Z.mod_small (ptr_addr p + off) (2 ^ 64) ltac:(lia)).
+  change (Z.to_nat 1) with 1%nat. cbn. rewrite Z.add_0_r. reflexivity.
+Qed.
+
+(** Entry frame binding all six arguments of `scan_ct`. *)
+Definition scan_ct_entry (buf tbl : ptr) (len win skip start : Z) : frame :=
   mkFrame fn_scan_ct
-    [(‹tbl›, WPtr p_tbl);
+    [(‹tbl›, WPtr tbl);
      (‹start›, WInt start);
      (‹skip›, WInt skip);
      (‹win›, WInt win);
      (‹len›, WInt len);
-     (‹buf›, WPtr p_buf)]
+     (‹buf›, WPtr buf)]
     [] None (Enter (TAtom "start") None).
 
-(** Entry taint environment: `skip` and `start` carry full poison while the
-    buffer pointers and public window lengths stay unrestricted. *)
+(** Entry taint environment matching [scan_ct_tspec]: `skip` and `start` carry
+    full poison while the pointers and public window lengths stay clean. *)
 Definition scan_ct_te : tenv :=
   [(‹tbl›, WTPtr taint_bot taint_bot);
    (‹start›, WTInt taint_all);
@@ -236,27 +326,26 @@ Definition scan_ct_te : tenv :=
    (‹len›, WTInt taint_bot);
    (‹buf›, WTPtr taint_bot taint_bot)].
 
-(** Two calls to `scan_ct` with matching public pointers and lengths satisfy
-    [ct_rel] whenever their memories differ only in poisoned bytes. *)
-Lemma scan_ct_inputs_related p_buf p_tbl len win skip1 start1 skip2 start2 m1 m2 pm paux fuel :
+(** Two calls to `scan_ct` with matching public pointers, lengths, and live
+    region layout satisfy [ct_rel] under full-memory secret poison, regardless
+    of how their memory bytes, shadow capabilities, or secret offsets differ. *)
+Lemma scan_ct_inputs_related buf tbl len win skip1 start1 skip2 start2 m1 m2 fuel :
   m_regions m1 = m_regions m2 ->
-  (forall a, m_bytes m1 a <> m_bytes m2 a -> pb_taint (pm a) = taint_all) ->
-  (forall a, m_aux m1 a <> m_aux m2 a -> paux a = taint_all) ->
   ct_rel
-    (mkConfig (scan_ct_entry p_buf p_tbl len win skip1 start1) [] m1 fuel)
-    (mkConfig (scan_ct_entry p_buf p_tbl len win skip2 start2) [] m2 fuel)
-    (mkPState scan_ct_te [] pm paux).
+    (mkConfig (scan_ct_entry buf tbl len win skip1 start1) [] m1 fuel)
+    (mkConfig (scan_ct_entry buf tbl len win skip2 start2) [] m2 fuel)
+    (mkPState scan_ct_te [] (fun _ => pb_secret taint_all) (fun _ => taint_all)).
 Proof.
-  intros Hreg Hbytes Haux.
+  intros Hreg.
   unfold ct_rel; cbn; repeat split; try assumption; try reflexivity.
-  - intros x. unfold scan_ct_te. cbn [lookup]. unfold name_eqb.
-    destruct (term_eqb x ‹tbl›); [right; eexists _, _, _; repeat split; congruence|].
-    destruct (term_eqb x ‹start›); [right; eexists _, _, _; repeat split; reflexivity|].
-    destruct (term_eqb x ‹skip›); [right; eexists _, _, _; repeat split; reflexivity|].
-    destruct (term_eqb x ‹win›); [right; eexists _, _, _; repeat split; congruence|].
-    destruct (term_eqb x ‹len›); [right; eexists _, _, _; repeat split; congruence|].
-    destruct (term_eqb x ‹buf›); [right; eexists _, _, _; repeat split; congruence|].
-    left; split; reflexivity.
+  intros x. unfold scan_ct_te. cbn [lookup]. unfold name_eqb.
+  destruct (term_eqb x ‹tbl›); [right; eexists _, _, _; repeat split; congruence|].
+  destruct (term_eqb x ‹start›); [right; eexists _, _, _; repeat split; reflexivity|].
+  destruct (term_eqb x ‹skip›); [right; eexists _, _, _; repeat split; reflexivity|].
+  destruct (term_eqb x ‹win›); [right; eexists _, _, _; repeat split; congruence|].
+  destruct (term_eqb x ‹len›); [right; eexists _, _, _; repeat split; congruence|].
+  destruct (term_eqb x ‹buf›); [right; eexists _, _, _; repeat split; congruence|].
+  left; split; reflexivity.
 Qed.
 
 (** Lookup hits the head of [put] on matching names and skips it otherwise. *)
@@ -268,19 +357,12 @@ Lemma lookup_put_other {A : Type} (x y : name) (v : A) (m : list (name * A)) :
   term_eqb x y = false -> lookup x (put y v m) = lookup x m.
 Proof. intros Hne; rewrite lookup_put_name; unfold name_eqb; rewrite Hne; reflexivity. Qed.
 
-Lemma lookup_put_neq {A : Type} (x y : name) (v : A) (m : list (name * A)) :
-  x <> y -> lookup x (put y v m) = lookup x m.
-Proof.
-  intros Hne; rewrite lookup_put_name; unfold name_eqb.
-  destruct (term_eqb x y) eqn:E; [exfalso; apply Hne; apply term_eqb_eq; exact E | reflexivity].
-Qed.
-
 (** Helper tactic resolving environment lookups through nested [put]s. *)
 Local Ltac solve_lookup :=
   repeat (first
     [ rewrite lookup_put_same
     | rewrite lookup_put_other; [|reflexivity] ]);
-  try match goal with
+  repeat match goal with
       | H : lookup ?x ?e = Some _ |- context [lookup ?x ?e] => rewrite H
       end;
   cbn [word_at_class modulus];
@@ -289,996 +371,511 @@ Local Ltac solve_lookup :=
       end;
   first [ reflexivity | assumption ].
 
-(** Predicates identifying integer scalar classes and total binary ops. *)
-Definition int_classb (k : class) : bool :=
-  match k with W | L => true | _ => false end.
+(** ## Universal safety and constant time for `scan_ct`
 
-Definition bin_int_opb (o : op) : bool :=
-  match o with Add | Sub | Xor | And | Or | Sar | Shr => true | _ => false end.
-
-(** Binary arithmetic operations on integer scalars always succeed. *)
-Lemma alu_int_total_bin o k a b :
-  bin_int_opb o = true -> int_classb k = true ->
-  exists n, alu o k [WInt a; WInt b] = Some (WInt n).
-Proof.
-  intros Ho Hk.
-  destruct o; try discriminate Ho; destruct k; try discriminate Hk;
-    cbn [alu cond_bit modulus]; eexists; reflexivity.
-Qed.
-
-(** Joining any taint with [taint_all] yields [taint_all]. *)
-Lemma taint_join_all_l t : taint_join taint_all t = taint_all.
-Proof. destruct t; reflexivity. Qed.
-
-Lemma taint_join_all_r t : taint_join t taint_all = taint_all.
-Proof. destruct t; unfold taint_join, taint_all; cbn; rewrite !orb_true_r; reflexivity. Qed.
-
-(** In-bounds indexing into a list succeeds. *)
-Lemma nth_error_some_lt {A : Type} (xs : list A) (k : nat) :
-  (k < length xs)%nat -> exists x, nth_error xs k = Some x.
-Proof.
-  intros Hlt. destruct (nth_error xs k) as [x|] eqn:E; [exists x; reflexivity|].
-  apply nth_error_None in E. lia.
-Qed.
-
-(** Indexing into [replicate] returns the replicated element. *)
-Lemma nth_error_replicate_some {A : Type} (n : nat) (x : A) (k : nat) :
-  (k < n)%nat -> nth_error (replicate n x) k = Some x.
-Proof.
-  revert k. induction n as [|n IH]; intros [|k] Hlt; cbn; try lia.
-  - reflexivity.
-  - apply IH; lia.
-Qed.
-
-Lemma nth_error_replicate_inv {A : Type} (n : nat) (x y : A) (k : nat) :
-  nth_error (replicate n x) k = Some y -> y = x.
-Proof.
-  revert k. induction n as [|n IH]; intros [|k] H; cbn in H; try discriminate.
-  - injection H; auto.
-  - eapply IH; exact H.
-Qed.
+    Because [scan_ct_taint_ok] already verified every taint and side-channel
+    obligation statically, proving universal constant time for `scan_ct`
+    reduces to plain memory safety. Using [plain_safe_by_block_safe], we give a
+    three-state block invariant over the entry block `start`, the outer loop
+    header `L28`, and the inner loop header `L55`. Each basic block steps in a
+    straight line without induction, and the factoring theorem in [TaintCheck]
+    lifts that plain safety proof directly to [poison_safe] and identical
+    two-run leakage traces. *)
 
 Module CtTableScan (R : Runtime).
-Module PL := PoisonLogic R.
-Import PL.
+Module TC := TaintCheckSound R.
+Import TC.PL.
 
-Section proof.
-Context `{!invGS_gen hlc Σ, !gen_heapGS piece pval Σ, !gen_heapGS ppiece ppval Σ}.
-Local Instance cttable_iris : irisGS_gen hlc (poison_lang pol_strict cttable_ge) Σ :=
-  poison_irisGS pol_strict cttable_ge.
-Local Abbreviation pexprL := (language.expr (poison_lang pol_strict cttable_ge)).
-
-(** Helper tactic discharging side conditions of pure integer `Let` steps. *)
-Local Ltac solve_plet_side :=
-  first
-    [ reflexivity
-    | assumption
-    | cbn [value_x word_at_class modulus]; solve_lookup
-    | cbn [value_t]; solve_lookup
-    | cbn [alu extended]; reflexivity ].
-
-(** Stepping a pure binary integer `Let` updates the environment and taint
-    environment without touching memory. *)
-Lemma wp_plet_int_bin f e te ls l d k o v1 v2 rest j c1 c2 n1 n2 n t1 t2 Φ :
-  pure_scalar_op o = true ->
-  int_classb k = true -> int_classb c1 = true ->
-  op_arg_classes o k = Some [c1; c2] ->
-  value_x cttable_ge e c1 v1 = Some (WInt n1) ->
-  value_x cttable_ge e c2 v2 = Some (WInt n2) ->
-  value_t te c1 v1 = Some (WTInt t1) ->
-  value_t te c2 v2 = Some (WTInt t2) ->
-  is_zero_idiom o k [v1; v2] = false ->
-  op_checks_vartime pol_strict o k = false ->
-  alu o k [WInt n1; WInt n2] = Some (WInt n) ->
-  ▷ WP (PRun (mkFrame f (put d (WInt n) e) ls None (Exec l rest j))
-        (put d (WTInt (taint_join t1 t2)) te) : pexprL) {{ Φ }} -∗
-  WP (PRun (mkFrame f e ls None (Exec l (Let d k o [v1; v2] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof using Type.
-  intros Hp Hfk Hfc1 Hc Hx1 Hx2 Ht1 Ht2 Hz Hvt Halu.
-  assert (Hg : general_op o = true) by (destruct o; cbn in Hp |- *; try discriminate; reflexivity).
-  iApply (wp_plet pol_strict cttable_ge f e te ls l d k o [v1; v2] rest j
-    [c1; c2] [WInt n1; WInt n2] (WInt n) (WTInt (taint_join t1 t2)));
-    [exact Hg | exact Hc | | |].
-  - cbn [map2_option]; rewrite Hx1 Hx2; reflexivity.
-  - intros m.
-    destruct k; try discriminate Hfk;
-      destruct c1; try discriminate Hfc1;
-      destruct o; cbn in Hp, Hc; try discriminate;
-      try (injection Hc as ? ?; subst);
-      unfold op_res, op_res_int, additive_res; cbn [fmt_of];
-      rewrite Halu; reflexivity.
-  - intros pm paux. unfold let_tstep. rewrite Hz.
-    cbn [ps_tenv ps_callers ps_mem ps_aux].
-    destruct k; try discriminate Hfk;
-      destruct o; cbn in Hp, Hc; try discriminate;
-      try (injection Hc as ? ?; subst);
-      cbn [op_arg_classes map2_option]; rewrite Ht1 Ht2;
-      cbn [join_taints map_option pure_scalar_op scalar_wt]; rewrite Hvt;
-      cbn [andb]; rewrite ?taint_join_bot_r; reflexivity.
-Qed.
-
-Definition un_int_opb (o : op) : bool :=
-  match o with Copy | Ext _ => true | _ => false end.
-
-(** Stepping a pure unary integer `Let` (`Copy` or `Ext Uw`). *)
-Lemma wp_plet_int_un f e te ls l d k o v1 rest j c1 n1 n t1 Φ :
-  un_int_opb o = true ->
-  int_classb k = true ->
-  op_arg_classes o k = Some [c1] ->
-  value_x cttable_ge e c1 v1 = Some (WInt n1) ->
-  value_t te c1 v1 = Some (WTInt t1) ->
-  is_zero_idiom o k [v1] = false ->
-  op_checks_vartime pol_strict o k = false ->
-  alu o k [WInt n1] = Some (WInt n) ->
-  ▷ WP (PRun (mkFrame f (put d (WInt n) e) ls None (Exec l rest j))
-        (put d (WTInt t1) te) : pexprL) {{ Φ }} -∗
-  WP (PRun (mkFrame f e ls None (Exec l (Let d k o [v1] :: rest) j)) te : pexprL) {{ Φ }}.
-Proof using Type.
-  intros Hp Hfk Hc Hx1 Ht1 Hz Hvt Halu.
-  assert (Hg : general_op o = true) by (destruct o; cbn in Hp |- *; try discriminate; reflexivity).
-  iApply (wp_plet pol_strict cttable_ge f e te ls l d k o [v1] rest j
-    [c1] [WInt n1] (WInt n) (WTInt t1));
-    [exact Hg | exact Hc | | |].
-  - cbn [map2_option]; rewrite Hx1; reflexivity.
-  - intros m.
-    destruct k; try discriminate Hfk;
-      destruct o; cbn in Hp, Hc; try discriminate;
-      try (injection Hc as ?; subst);
-      unfold op_res, op_res_int; cbn [fmt_of];
-      rewrite Halu; reflexivity.
-  - intros pm paux. unfold let_tstep. rewrite Hz.
-    cbn [ps_tenv ps_callers ps_mem ps_aux].
-    destruct k; try discriminate Hfk;
-      destruct o; cbn in Hp, Hc; try discriminate;
-      try (injection Hc as ?; subst);
-      cbn [op_arg_classes map2_option]; rewrite Ht1;
-      cbn [join_taints map_option pure_scalar_op scalar_wt]; rewrite ?Hvt;
-      cbn [andb]; rewrite ?taint_join_bot_r; reflexivity.
-Qed.
-
-(** The inner loop `L55` scans all remaining entries `k .. 15` of the exact
-    16-byte `tbl` buffer using public index `‹k›` and exits to `L58` with
-    all heap ownership restored and a secret accumulated table byte in
-    `‹expected›`. *)
-Lemma scan_ct_inner_spec b_tbl cap_tbl reg_tbl tbl_xs dq pdq
-    (k_rem : nat) (k_start : Z) (i_val exp_val : Z) (ti texp : taint)
-    (e : env) (te : tenv) Φ :
-  cap_tbl = Obj b_tbl \/ cap_tbl = Ro b_tbl ->
-  0 <= b_tbl -> b_tbl + 16 < 2 ^ 64 -> b_tbl + 16 <= r_end reg_tbl ->
-  length tbl_xs = 16%nat ->
-  0 <= k_start -> k_start + Z.of_nat k_rem = 16 ->
-  lookup ‹tbl› e = Some (WPtr (mkPtr b_tbl cap_tbl)) ->
-  lookup ‹tbl› te = Some (WTPtr taint_bot taint_bot) ->
-  lookup ‹i› e = Some (WInt i_val) ->
-  lookup ‹i› te = Some (WTInt ti) ->
-  lookup ‹k› e = Some (WInt k_start) ->
-  lookup ‹k› te = Some (WTInt taint_bot) ->
-  lookup ‹expected› e = Some (WInt exp_val) ->
-  lookup ‹expected› te = Some (WTInt texp) ->
-  ptsq dq [(PLive b_tbl, VLive reg_tbl)] -∗
-  ptsq dq (bytes_ps b_tbl 0 tbl_xs) -∗
-  pptsq pdq (pbytes_ps b_tbl 0 (replicate 16 (pb_secret taint_all))) -∗
-  (∀ e' te' exp_out texp_out,
-    ⌜(forall x, x <> ‹k› -> x <> ‹expected› ->
-       x <> ‹k<u16› -> x <> ‹k==i› -> x <> ‹eq_mask› ->
-       x <> TAtom "v69" -> x <> TAtom "chk1" -> x <> TAtom "v70" ->
-       x <> TAtom "v72" -> x <> ‹expected@L56› -> x <> ‹k@L56› ->
-       lookup x e' = lookup x e /\ lookup x te' = lookup x te)⌝ -∗
-    ⌜lookup ‹expected› e' = Some (WInt exp_out)⌝ -∗
-    ⌜lookup ‹expected› te' = Some (WTInt texp_out)⌝ -∗
-    ptsq dq [(PLive b_tbl, VLive reg_tbl)] -∗
-    ptsq dq (bytes_ps b_tbl 0 tbl_xs) -∗
-    pptsq pdq (pbytes_ps b_tbl 0 (replicate 16 (pb_secret taint_all))) -∗
-    WP (PRun (mkFrame fn_scan_ct e' [] None (Enter (TAtom "L58") (Some (TAtom "L55"))))
-          te' : pexprL) {{ Φ }}) -∗
-  WP (PRun (mkFrame fn_scan_ct e [] None
-        (Exec (TAtom "L55")
-          [Let ‹k<u16› W (Cmp Ult L) [Tmp ‹k›; Const 16]]
-          (JBranch (Tmp ‹k<u16›) (To (TAtom "L56")) (To (TAtom "L58")))))
-        te : pexprL) {{ Φ }}.
-Proof using Type.
-  intros Hcap Hb Hlim Hrend Hlen.
-  induction k_rem as [|k_rem IH] in k_start, exp_val, texp, e, te |- *.
-  - intros Hk0 Hk16 Hv10 Htv10 Hpr2 Htpr2 Hpr5 Htpr5 Hpr4 Htpr4.
-    iIntros "Hlp Hxsp Hpbsp Hcont".
-    assert (Hk : k_start = 16) by lia. subst k_start.
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L 16 16 0 taint_bot taint_bot);
-      try solve_plet_side.
-    iNext.
-    iApply (wp_pbranch pol_strict cttable_ge _ _ _ _ _ _ _ _ 0 taint_bot);
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity|].
-    iNext.
-    iApply ("Hcont" $! (put ‹k<u16› (WInt 0) e)
-      (put ‹k<u16› (WTInt (taint_join taint_bot taint_bot)) te)
-      exp_val texp with "[] [] [] Hlp Hxsp Hpbsp").
-    + iPureIntro; intros x _ _ H60 _ _ _ _ _ _ _ _;
-        split; apply lookup_put_neq; exact H60.
-    + iPureIntro; rewrite lookup_put_other; [exact Hpr4 | reflexivity].
-    + iPureIntro; rewrite lookup_put_other; [exact Htpr4 | reflexivity].
-  - intros Hk0 Hk16 Hv10 Htv10 Hpr2 Htpr2 Hpr5 Htpr5 Hpr4 Htpr4.
-    iIntros "Hlp Hxsp Hpbsp Hcont".
-    assert (Hk_lt : k_start < 16) by lia.
-    assert (Hk_mod : k_start mod 2 ^ 64 = k_start) by (apply Z.mod_small; lia).
-    assert (Hcmp : (k_start <? 16) = true) by (apply Z.ltb_lt; lia).
-    (* ‹k<u16› = cmp ult ‹k›, 16 *)
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L k_start 16 1 taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hcmp; reflexivity|].
-    iNext.
-    (* branch ‹k<u16› -> L56 *)
-    iApply (wp_pbranch pol_strict cttable_ge _ _ _ _ _ _ _ _ 1 taint_bot);
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity|].
-    iNext.
-    (* Enter L56 from L55 *)
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity | reflexivity | reflexivity |].
-    iNext.
-    cbn [b_insts b_jump].
-    (* ‹k==i› = cmp eq ‹k›, ‹i› *)
-    set (eq_b := if k_start =? (i_val mod 2 ^ 64) then 1 else 0).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L k_start (i_val mod 2 ^ 64) eq_b taint_bot ti);
-      try solve_plet_side.
-    iNext.
-    (* ‹eq_mask› = sub 0, ‹k==i› *)
-    destruct (alu_int_total_bin Sub W 0 (eq_b mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [eq_mask H65].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W 0 (eq_b mod 2 ^ 32) eq_mask taint_bot (taint_join taint_bot ti));
-      try solve_plet_side.
-    iNext.
-    (* v69 = ‹tbl› +p ‹k› *)
-    assert (Haddr_mod : (b_tbl + k_start) mod 2 ^ 64 = b_tbl + k_start)
-      by (apply Z.mod_small; lia).
-    iApply (wp_pflight pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _
-              [WInt b_tbl; WInt k_start] [taint_bot; taint_bot]
-              (b_tbl + k_start) cap_tbl taint_bot);
-      [cbn [map_option flight_arg_x value_x word_at_class modulus];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Hv10 Hpr5; cbn [word_at_class modulus ptr_addr];
-       rewrite (Z.mod_small b_tbl (2 ^ 64) ltac:(lia)) Hk_mod; reflexivity
-      |cbn [map_option flight_arg_t value_t];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Htv10 Htpr5; reflexivity
-      |cbn [alu cond_bit modulus]; rewrite Haddr_mod; reflexivity
-      |cbn [flight_cap value_x];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Hv10; reflexivity
-      |cbn [flight_cap_t value_t];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Htv10; reflexivity
-      |reflexivity|].
-    iNext.
-    (* chk1 = check 0 1 read 1 [v69] *)
-    iApply (wp_pcheck_read pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _ _
-              (mkPtr (b_tbl + k_start) cap_tbl) taint_bot taint_bot b_tbl reg_tbl dq with "Hlp");
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity
-      |exact Hcap
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Haddr_mod; lia
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Haddr_mod; lia
-      |unfold raw_address; cbn [ptr_addr]; apply Z.mod_1_r|].
-    iNext. iIntros "Hlp".
-    (* v70 = raw_load ub 0 [chk1] *)
-    set (k_nat := Z.to_nat k_start).
-    assert (Hk_nat : Z.of_nat k_nat = k_start) by (subst k_nat; lia).
-    destruct (nth_error_some_lt tbl_xs k_nat ltac:(lia)) as [tb Htb].
-    assert (Hpb : nth_error (replicate 16 (pb_secret taint_all)) k_nat = Some (pb_secret taint_all))
-      by (apply nth_error_replicate_some; lia).
-    iApply (wp_praw_load_byte_at pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _ _
-              (mkPtr (b_tbl + k_start) cap_tbl) b_tbl reg_tbl 0 k_nat
-              tbl_xs tb (replicate 16 (pb_secret taint_all)) (pb_secret taint_all)
-              (WInt (tb mod 256)) taint_bot taint_bot dq pdq
-              with "Hlp Hxsp Hpbsp");
-      [reflexivity
-      |cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity
-      |unfold extended; cbn; rewrite (Z.mod_small (tb mod 256) (2 ^ 32)
-          ltac:(pose proof (Z.mod_pos_bound tb 256 ltac:(lia)); lia)); reflexivity
-      |exact Hcap
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Z.add_0_l Haddr_mod Hk_nat; lia
-      |exact Htb
-      |exact Hpb
-      |reflexivity | reflexivity | reflexivity|].
-    iNext. iIntros "Hlp Hxsp Hpbsp".
-    (* v72 = and v70, ‹eq_mask› *)
-    set (tb_u := tb mod 256).
-    destruct (alu_int_total_bin And W (tb_u mod 2 ^ 32) (eq_mask mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [masked H72].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W (tb_u mod 2 ^ 32) (eq_mask mod 2 ^ 32) masked
-              taint_all (taint_join taint_bot (taint_join taint_bot ti)));
-      try solve_plet_side.
-    iNext.
-    (* ‹expected@L56› = or ‹expected›, v72 *)
-    destruct (alu_int_total_bin Or W (exp_val mod 2 ^ 32) (masked mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [exp_next H73].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W (exp_val mod 2 ^ 32) (masked mod 2 ^ 32) exp_next
-              texp (taint_join taint_all (taint_join taint_bot (taint_join taint_bot ti))));
-      try solve_plet_side.
-    iNext.
-    (* ‹k@L56› = add ‹k›, 1 *)
-    assert (Hk1_mod : (k_start + 1) mod 2 ^ 64 = k_start + 1) by (apply Z.mod_small; lia).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L k_start 1 (k_start + 1) taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hk1_mod; reflexivity|].
-    iNext.
-    (* goto poll L55 *)
-    iApply (wp_pgoto pol_strict cttable_ge).
-    iNext.
-    (* Enter L55 from L56 *)
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity
-      |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-        reflexivity
-      |cbn [b_phis phis_tenv fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_t];
-        reflexivity|].
-    iNext.
-    cbn [b_insts b_jump].
-    (* Apply IH for k_start + 1 *)
-    iApply (IH (k_start + 1) (exp_next mod 2 ^ 32)
-      (taint_join texp (taint_join taint_all (taint_join taint_bot (taint_join taint_bot ti))))
-      with "Hlp Hxsp Hpbsp [Hcont]");
-      [lia | lia | solve_lookup | solve_lookup | solve_lookup | solve_lookup
-      | solve_lookup | solve_lookup | solve_lookup | solve_lookup |].
-    iIntros (e' te' exp_out texp_out Hpres Hpr4' Htpr4') "Hlp Hxsp Hpbsp".
-    iApply ("Hcont" $! e' te' exp_out texp_out with "[] [] [] Hlp Hxsp Hpbsp");
-      try (iPureIntro; assumption).
-    iPureIntro. intros x Hx5 Hx4 H60 H64 H65' H69 Hchk1 H70 H72' H73' H75.
-    destruct (Hpres x Hx5 Hx4 H60 H64 H65' H69 Hchk1 H70 H72' H73' H75) as [He Hte].
-    rewrite He Hte.
-    split; repeat (rewrite lookup_put_neq; [|assumption]); reflexivity.
-Qed.
-
-(** The outer loop `L28` iterates over every remaining byte `j .. win + 15`
-    of the public tail window, loading `p[j]` at public address `b_buf + p_off + j`,
-    invoking [scan_ct_inner_spec] on the exact 16-byte table, and returning a
-    secret integer result at `L31`. *)
-Lemma scan_ct_outer_spec b_buf cap_buf reg_buf buf_xs
-    b_tbl cap_tbl reg_tbl tbl_xs dq pdq
-    len win start p_off
-    (j_rem : nat) (j_start i_val res_val : Z) (ti tres : taint)
-    (e : env) (te : tenv) :
-  cap_buf = Obj b_buf \/ cap_buf = Ro b_buf ->
-  cap_tbl = Obj b_tbl \/ cap_tbl = Ro b_tbl ->
-  0 <= b_buf -> b_buf + len < 2 ^ 64 -> b_buf + len <= r_end reg_buf ->
-  0 <= b_tbl -> b_tbl + 16 < 2 ^ 64 -> b_tbl + 16 <= r_end reg_tbl ->
-  0 <= win -> win + 16 <= len ->
-  p_off = len - win - 16 ->
-  length buf_xs = Z.to_nat len ->
-  length tbl_xs = 16%nat ->
-  0 <= j_start -> j_start + Z.of_nat j_rem = win + 16 ->
-  lookup ‹win› e = Some (WInt win) ->
-  lookup ‹win› te = Some (WTInt taint_bot) ->
-  lookup ‹start› e = Some (WInt start) ->
-  lookup ‹start› te = Some (WTInt taint_all) ->
-  lookup ‹tbl› e = Some (WPtr (mkPtr b_tbl cap_tbl)) ->
-  lookup ‹tbl› te = Some (WTPtr taint_bot taint_bot) ->
-  lookup ‹p› e = Some (WPtr (mkPtr (b_buf + p_off) cap_buf)) ->
-  lookup ‹p› te = Some (WTPtr taint_bot taint_bot) ->
-  lookup ‹j› e = Some (WInt j_start) ->
-  lookup ‹j› te = Some (WTInt taint_bot) ->
-  lookup ‹i› e = Some (WInt i_val) ->
-  lookup ‹i› te = Some (WTInt ti) ->
-  lookup ‹res› e = Some (WInt res_val) ->
-  lookup ‹res› te = Some (WTInt tres) ->
-  ptsq dq [(PLive b_buf, VLive reg_buf)] -∗
-  ptsq dq (bytes_ps b_buf 0 buf_xs) -∗
-  pptsq pdq (pbytes_ps b_buf 0 (replicate (length buf_xs) (pb_secret taint_all))) -∗
-  ptsq dq [(PLive b_tbl, VLive reg_tbl)] -∗
-  ptsq dq (bytes_ps b_tbl 0 tbl_xs) -∗
-  pptsq pdq (pbytes_ps b_tbl 0 (replicate 16 (pb_secret taint_all))) -∗
-  WP (PRun (mkFrame fn_scan_ct e [] None
+(** The three reachable block checkpoints of `scan_ct`: function entry, outer
+    loop header `L28`, and inner loop header `L55`. Every checkpoint preserves
+    the initial region layout `m_regions m0`, so garbage-collector safepoints
+    at any step keep both slices live and readable. *)
+Inductive scan_ct_inv (buf tbl : ptr) (len win : Z) (m0 : mem) : config -> Prop :=
+| sci_start skip start m fuel :
+    m_regions m = m_regions m0 ->
+    scan_ct_inv buf tbl len win m0
+      (mkConfig (scan_ct_entry buf tbl len win skip start) [] m fuel)
+| sci_outer e j i_val res_val start_val m fuel :
+    m_regions m = m_regions m0 ->
+    0 <= j <= win + 16 ->
+    lookup ‹win› e = Some (WInt win) ->
+    lookup ‹start› e = Some (WInt start_val) ->
+    lookup ‹tbl› e = Some (WPtr tbl) ->
+    lookup ‹p› e = Some (WPtr (mkPtr (ptr_addr buf + (len - win - 16)) (ptr_cap buf))) ->
+    lookup ‹j› e = Some (WInt j) ->
+    lookup ‹i› e = Some (WInt i_val) ->
+    lookup ‹res› e = Some (WInt res_val) ->
+    scan_ct_inv buf tbl len win m0
+      (mkConfig (mkFrame fn_scan_ct e [] None
         (Exec (TAtom "L28")
           [Let (TAtom "v34") L Add [Tmp ‹win›; Const 16];
            Let (TAtom "v35") W (Cmp Ult L) [Tmp ‹j›; Tmp (TAtom "v34")]]
           (JBranch (Tmp (TAtom "v35")) (To (TAtom "L29")) (To (TAtom "L31")))))
-        te : pexprL)
-    {{ v, ∃ n t, ⌜v = (Ret (WInt n), [WTInt t])⌝ }}.
-Proof using Type.
-  intros Hcap_buf Hcap_tbl Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-    Hwin Hlen_ge Hpoff Hlen_buf Hlen_tbl.
-  assert (Hwin_mod : win mod 2 ^ 64 = win) by (apply Z.mod_small; lia).
-  assert (Hlim_mod : (win + 16) mod 2 ^ 64 = win + 16) by (apply Z.mod_small; lia).
-  induction j_rem as [|j_rem IH] in j_start, i_val, res_val, ti, tres, e, te |- *.
-  - intros Hj0 Hjlim Hv4 Htv4 Hv8 Htv8 Hv10 Htv10 Hv24 Htv24
-      Hpr3 Htpr3 Hpr2 Htpr2 Hpr1 Htpr1.
-    iIntros "Hlo Hxso Hpbso Hlp Hxsp Hpbsp".
-    assert (Hj : j_start = win + 16) by lia. subst j_start.
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L win 16 (win + 16) taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hlim_mod; reflexivity|].
-    iNext.
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L (win + 16) (win + 16) 0 taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Z.ltb_irrefl; reflexivity|].
-    iNext.
-    iApply (wp_pbranch pol_strict cttable_ge _ _ _ _ _ _ _ _ 0 taint_bot);
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity|].
-    iNext.
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity | reflexivity | reflexivity |].
-    iNext.
-    cbn [b_insts b_jump].
-    iApply (wp_pret pol_strict cttable_ge _ _ _ _ _ W (WInt (res_val mod 2 ^ 32)));
-      [reflexivity
-      |cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup|].
-    iNext. iExists (res_val mod 2 ^ 32), tres. iPureIntro. reflexivity.
-  - intros Hj0 Hjlim Hv4 Htv4 Hv8 Htv8 Hv10 Htv10 Hv24 Htv24
-      Hpr3 Htpr3 Hpr2 Htpr2 Hpr1 Htpr1.
-    iIntros "Hlo Hxso Hpbso Hlp Hxsp Hpbsp".
-    assert (Hj_lt : j_start < win + 16) by lia.
-    assert (Hj_mod : j_start mod 2 ^ 64 = j_start) by (apply Z.mod_small; lia).
-    assert (Hcmp : (j_start <? win + 16) = true) by (apply Z.ltb_lt; lia).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L win 16 (win + 16) taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hlim_mod; reflexivity|].
-    iNext.
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L j_start (win + 16) 1 taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hcmp; reflexivity|].
-    iNext.
-    iApply (wp_pbranch pol_strict cttable_ge _ _ _ _ _ _ _ _ 1 taint_bot);
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity|].
-    iNext.
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity | reflexivity | reflexivity |].
-    iNext.
-    cbn [b_insts b_jump].
-    (* v39 = ‹p› +p ‹j› *)
-    assert (Hpoff_addr_mod : (b_buf + p_off) mod 2 ^ 64 = b_buf + p_off)
-      by (apply Z.mod_small; lia).
-    assert (Haddr_mod : (b_buf + p_off + j_start) mod 2 ^ 64 = b_buf + p_off + j_start)
-      by (apply Z.mod_small; lia).
-    iApply (wp_pflight pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _
-              [WInt (b_buf + p_off); WInt j_start] [taint_bot; taint_bot]
-              (b_buf + p_off + j_start) cap_buf taint_bot);
-      [cbn [map_option flight_arg_x value_x word_at_class modulus];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Hv24 Hpr3; cbn [word_at_class modulus ptr_addr];
-       rewrite Hpoff_addr_mod Hj_mod; reflexivity
-      |cbn [map_option flight_arg_t value_t];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Htv24 Htpr3; reflexivity
-      |cbn [alu cond_bit modulus]; rewrite Haddr_mod; reflexivity
-      |cbn [flight_cap value_x];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Hv24; reflexivity
-      |cbn [flight_cap_t value_t];
-       repeat (rewrite lookup_put_other; [|reflexivity]);
-       rewrite Htv24; reflexivity
-      |reflexivity|].
-    iNext.
-    (* chk0 = check 0 1 read 1 [v39] *)
-    iApply (wp_pcheck_read pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _ _
-              (mkPtr (b_buf + p_off + j_start) cap_buf) taint_bot taint_bot b_buf reg_buf dq with "Hlo");
-      [cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity
-      |exact Hcap_buf
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Haddr_mod; lia
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Haddr_mod; lia
-      |unfold raw_address; cbn [ptr_addr]; apply Z.mod_1_r|].
-    iNext. iIntros "Hlo".
-    (* ‹c› = raw_load ub 0 [chk0] *)
-    set (j_idx := Z.to_nat (p_off + j_start)).
-    assert (Hj_idx : Z.of_nat j_idx = p_off + j_start) by (subst j_idx; lia).
-    destruct (nth_error_some_lt buf_xs j_idx ltac:(lia)) as [cb Hcb].
-    assert (Hpb_buf : nth_error (replicate (length buf_xs) (pb_secret taint_all)) j_idx = Some (pb_secret taint_all))
-      by (apply nth_error_replicate_some; lia).
-    iApply (wp_praw_load_byte_at pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _ _
-              (mkPtr (b_buf + p_off + j_start) cap_buf) b_buf reg_buf 0 j_idx
-              buf_xs cb (replicate (length buf_xs) (pb_secret taint_all)) (pb_secret taint_all)
-              (WInt (cb mod 256)) taint_bot taint_bot dq pdq
-              with "Hlo Hxso Hpbso");
-      [reflexivity
-      |cbn [value_x word_at_class modulus]; solve_lookup
-      |cbn [value_t]; solve_lookup
-      |reflexivity
-      |unfold extended; cbn; rewrite (Z.mod_small (cb mod 256) (2 ^ 32)
-          ltac:(pose proof (Z.mod_pos_bound cb 256 ltac:(lia)); lia)); reflexivity
-      |exact Hcap_buf
-      |unfold raw_address; cbn [ptr_addr]; rewrite Z.add_0_r Z.add_0_l Haddr_mod Hj_idx; lia
-      |exact Hcb
-      |exact Hpb_buf
-      |reflexivity | reflexivity | reflexivity|].
-    iNext. iIntros "Hlo Hxso Hpbso".
-    (* ‹j>=ustart› = cmp uge l ‹j›, ‹start› *)
-    set (c44 := if (start mod 2 ^ 64) <=? j_start then 1 else 0).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L j_start (start mod 2 ^ 64) c44 taint_bot taint_all);
-      try solve_plet_side.
-    iNext.
-    (* v47 = add l ‹start›, 16 *)
-    destruct (alu_int_total_bin Add L (start mod 2 ^ 64) 16 ltac:(auto) ltac:(auto)) as [n47 H47].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L (start mod 2 ^ 64) 16 n47 taint_all taint_bot);
-      try solve_plet_side.
-    iNext.
-    (* v48 = cmp ult l ‹j›, v47 *)
-    set (c48 := if j_start <? (n47 mod 2 ^ 64) then 1 else 0).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L j_start (n47 mod 2 ^ 64) c48 taint_bot (taint_join taint_all taint_bot));
-      try solve_plet_side.
-    iNext.
-    (* ‹in_range› = and w ‹j>=ustart›, v48 *)
-    destruct (alu_int_total_bin And W (c44 mod 2 ^ 32) (c48 mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [n49 H49].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W (c44 mod 2 ^ 32) (c48 mod 2 ^ 32) n49
-              (taint_join taint_bot taint_all) (taint_join taint_bot (taint_join taint_all taint_bot)));
-      try solve_plet_side.
-    iNext.
-    (* ‹mask› = sub w 0, ‹in_range› *)
-    destruct (alu_int_total_bin Sub W 0 (n49 mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [n52 H52].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W 0 (n49 mod 2 ^ 32) n52
-              taint_bot (taint_join (taint_join taint_bot taint_all) (taint_join taint_bot (taint_join taint_all taint_bot))));
-      try solve_plet_side.
-    iNext.
-    (* goto L55 *)
-    iApply (wp_pgoto pol_strict cttable_ge).
-    iNext.
-    (* Enter L55 from L29 *)
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity | reflexivity | reflexivity |].
-    iNext.
-    cbn [b_insts b_jump].
-    (* Run inner loop scan_ct_inner_spec *)
-    iApply (scan_ct_inner_spec b_tbl cap_tbl reg_tbl tbl_xs dq pdq 16%nat 0 i_val 0 ti taint_bot
-              with "Hlp Hxsp Hpbsp [Hlo Hxso Hpbso]");
-      [exact Hcap_tbl | lia | lia | lia | exact Hlen_tbl | lia | lia
-      | solve_lookup | solve_lookup | solve_lookup | solve_lookup
-      | solve_lookup | solve_lookup | solve_lookup | solve_lookup |].
-    iIntros (e1 te1 exp_out texp_out Hpres Hpr4' Htpr4') "Hlp Hxsp Hpbsp".
-    (* Enter L58 from L55 *)
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity | reflexivity | reflexivity |].
-    iNext.
-    cbn [b_insts b_jump].
-    assert (He1_v40 : lookup ‹c› e1 = Some (WInt (cb mod 256))).
-    { destruct (Hpres ‹c› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_v40 : lookup ‹c› te1 = Some (WTInt taint_all)).
-    { destruct (Hpres ‹c› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    assert (He1_v49 : lookup ‹in_range› e1 = Some (WInt n49)).
-    { destruct (Hpres ‹in_range› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_v49 : lookup ‹in_range› te1 = Some (WTInt taint_all)).
-    { destruct (Hpres ‹in_range› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    assert (He1_v52 : lookup ‹mask› e1 = Some (WInt n52)).
-    { destruct (Hpres ‹mask› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_v52 : lookup ‹mask› te1 = Some (WTInt taint_all)).
-    { destruct (Hpres ‹mask› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    assert (He1_pr1 : lookup ‹res› e1 = Some (WInt res_val)).
-    { destruct (Hpres ‹res› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_pr1 : lookup ‹res› te1 = Some (WTInt tres)).
-    { destruct (Hpres ‹res› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    assert (He1_pr2 : lookup ‹i› e1 = Some (WInt i_val)).
-    { destruct (Hpres ‹i› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_pr2 : lookup ‹i› te1 = Some (WTInt ti)).
-    { destruct (Hpres ‹i› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    assert (He1_pr3 : lookup ‹j› e1 = Some (WInt j_start)).
-    { destruct (Hpres ‹j› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _].
-      rewrite H; solve_lookup. }
-    assert (Hte1_pr3 : lookup ‹j› te1 = Some (WTInt taint_bot)).
-    { destruct (Hpres ‹j› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-        ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H].
-      rewrite H; solve_lookup. }
-    (* v79 = xor ‹c›, ‹expected› *)
-    destruct (alu_int_total_bin Xor W ((cb mod 256) mod 2 ^ 32) (exp_out mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [n79 H79].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W ((cb mod 256) mod 2 ^ 32) (exp_out mod 2 ^ 32) n79 taint_all texp_out);
-      try solve_plet_side.
-    iNext.
-    (* v81 = and v79, ‹mask› *)
-    destruct (alu_int_total_bin And W (n79 mod 2 ^ 32) (n52 mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [n81 H81].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W (n79 mod 2 ^ 32) (n52 mod 2 ^ 32) n81
-              (taint_join taint_all texp_out) taint_all);
-      try solve_plet_side.
-    iNext.
-    (* ‹res@L58› = or ‹res›, v81 *)
-    destruct (alu_int_total_bin Or W (res_val mod 2 ^ 32) (n81 mod 2 ^ 32) ltac:(auto) ltac:(auto)) as [n82 H82].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ W W (res_val mod 2 ^ 32) (n81 mod 2 ^ 32) n82
-              tres (taint_join (taint_join taint_all texp_out) taint_all));
-      try solve_plet_side.
-    iNext.
-    (* v85 = ext uw ‹in_range› *)
-    set (n85 := ((n49 mod 2 ^ 32) mod 2 ^ 32) mod 2 ^ 64).
-    iApply (wp_plet_int_un _ _ _ _ _ _ _ _ _ _ _ W (n49 mod 2 ^ 32) n85 taint_all);
-      try solve_plet_side.
-    iNext.
-    (* ‹i@L58› = add ‹i›, v85 *)
-    destruct (alu_int_total_bin Add L (i_val mod 2 ^ 64) (n85 mod 2 ^ 64) ltac:(auto) ltac:(auto)) as [n86 H86].
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L (i_val mod 2 ^ 64) (n85 mod 2 ^ 64) n86 ti taint_all);
-      try solve_plet_side.
-    iNext.
-    (* ‹j@L58› = add ‹j›, 1 *)
-    assert (Hj1_mod : (j_start + 1) mod 2 ^ 64 = j_start + 1) by (apply Z.mod_small; lia).
-    iApply (wp_plet_int_bin _ _ _ _ _ _ _ _ _ _ _ _ L L j_start 1 (j_start + 1) taint_bot taint_bot);
-      try solve_plet_side;
-      [cbn [alu cond_bit modulus]; rewrite Hj1_mod; reflexivity|].
-    iNext.
-    (* goto poll L28 *)
-    iApply (wp_pgoto pol_strict cttable_ge).
-    iNext.
-    (* Enter L28 from L58 *)
-    iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-      [reflexivity
-      |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-        reflexivity
-      |cbn [b_phis phis_tenv fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_t];
-        reflexivity|].
-    iNext.
-    cbn [b_insts b_jump].
-    (* Apply IH for j_start + 1 *)
-    iApply (IH (j_start + 1) (n86 mod 2 ^ 64) (n82 mod 2 ^ 32)
-      (taint_join ti taint_all)
-      (taint_join tres (taint_join (taint_join taint_all texp_out) taint_all))
-      with "Hlo Hxso Hpbso Hlp Hxsp Hpbsp").
-    + lia.
-    + lia.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹win› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹win› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹start› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹start› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹tbl› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹tbl› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹p› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [H _];
-        rewrite H; solve_lookup.
-    + repeat (rewrite lookup_put_other; [|reflexivity]);
-        destruct (Hpres ‹p› ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)
-          ltac:(discriminate) ltac:(discriminate) ltac:(discriminate) ltac:(discriminate)) as [_ H];
-        rewrite H; solve_lookup.
-    + solve_lookup.
-    + solve_lookup.
-    + solve_lookup.
-    + solve_lookup.
-    + solve_lookup.
-    + solve_lookup.
+        [] m fuel)
+| sci_inner e j k i_val res_val start_val c_val inr_val mask_val exp_val m fuel :
+    m_regions m = m_regions m0 ->
+    0 <= j < win + 16 ->
+    0 <= k <= 16 ->
+    lookup ‹win› e = Some (WInt win) ->
+    lookup ‹start› e = Some (WInt start_val) ->
+    lookup ‹tbl› e = Some (WPtr tbl) ->
+    lookup ‹p› e = Some (WPtr (mkPtr (ptr_addr buf + (len - win - 16)) (ptr_cap buf))) ->
+    lookup ‹j› e = Some (WInt j) ->
+    lookup ‹i› e = Some (WInt i_val) ->
+    lookup ‹res› e = Some (WInt res_val) ->
+    lookup ‹c› e = Some (WInt c_val) ->
+    lookup ‹in_range› e = Some (WInt inr_val) ->
+    lookup ‹mask› e = Some (WInt mask_val) ->
+    lookup ‹k› e = Some (WInt k) ->
+    lookup ‹expected› e = Some (WInt exp_val) ->
+    scan_ct_inv buf tbl len win m0
+      (mkConfig (mkFrame fn_scan_ct e [] None
+        (Exec (TAtom "L55")
+          [Let ‹k<u16› W (Cmp Ult L) [Tmp ‹k›; Const 16]]
+          (JBranch (Tmp ‹k<u16›) (To (TAtom "L56")) (To (TAtom "L58")))))
+        [] m fuel).
+
+(** Region-preserving collector safepoints preserve [scan_ct_inv]. *)
+Lemma scan_ct_inv_regions buf tbl len win m0 c m' :
+  scan_ct_inv buf tbl len win m0 c ->
+  m_regions m' = m_regions (c_mem c) ->
+  scan_ct_inv buf tbl len win m0 (RM.with_mem c m').
+Proof.
+  intros Hinv Hm'.
+  destruct Hinv; cbn [c_mem RM.with_mem] in *;
+    [eapply sci_start | eapply sci_outer | eapply sci_inner];
+    try (rewrite Hm'; exact H); eassumption.
 Qed.
 
-(** Full weakest-precondition specification of `scan_ct`: given ownership of
-    `buf[0..len-1]` and an exact 16-byte `tbl[0..15]`, `scan_ct` finishes
-    without panics or [pol_strict] poison faults and returns a secret integer. *)
-Lemma scan_ct_spec b_buf cap_buf reg_buf buf_xs
-    b_tbl cap_tbl reg_tbl tbl_xs dq pdq
-    len win skip start :
-  cap_buf = Obj b_buf \/ cap_buf = Ro b_buf ->
-  cap_tbl = Obj b_tbl \/ cap_tbl = Ro b_tbl ->
-  0 <= b_buf -> b_buf + len < 2 ^ 64 -> b_buf + len <= r_end reg_buf ->
-  0 <= b_tbl -> b_tbl + 16 < 2 ^ 64 -> b_tbl + 16 <= r_end reg_tbl ->
+(** Non-failure of [OutOfFuel] and [Ret]. *)
+Lemma not_failure_out_of_fuel : ~ failure OutOfFuel.
+Proof. unfold failure, refusal. intros H; exact H. Qed.
+
+Lemma not_failure_ret w : ~ failure (Ret w).
+Proof. unfold failure. intros H; exact H. Qed.
+
+(** Stepping helper: advance one instruction under [bs_step] and refresh the
+    memory hypothesis across any intervening collector safepoint. *)
+Local Ltac advance_mem m Hreg :=
+  let m' := fresh "m" in
+  let Hm' := fresh "Hreg" in
+  intros m' Hm'; cbn [c_mem] in Hm';
+  unfold RM.with_mem; cbn [c_frame c_callers c_fuel];
+  rewrite Hreg in Hm'; clear Hreg;
+  let prev := fresh "prev_mem" in rename m into prev;
+  rename m' into m, Hm' into Hreg.
+
+(** Entering a block either stops cleanly with [OutOfFuel] when `fuel = 0` or
+    steps via [rule_enter] and refreshes the memory invariant. *)
+Local Ltac step_enter_or_fuel fuel m Hreg :=
+  let Hfuel := fresh "Hfuel" in
+  destruct (Z.eqb_spec fuel 0) as [-> | Hfuel];
+  [ eapply TC.bs_done; [apply rule_out_of_fuel | apply not_failure_out_of_fuel]
+  | eapply TC.bs_step;
+    [ eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel);
+      [ reflexivity
+      | cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
+        reflexivity ]
+    | cbn [b_insts b_jump]; advance_mem m Hreg ] ].
+
+(** Every checkpoint of [scan_ct_inv] satisfies [block_safe] by straight-line
+    symbolic execution of its basic block. *)
+Lemma scan_ct_block_safe buf tbl len win m0 :
+  readable_slice m0 buf len ->
+  readable_slice m0 tbl 16 ->
   0 <= win -> win + 16 <= len ->
-  length buf_xs = Z.to_nat len ->
-  length tbl_xs = 16%nat ->
-  ptsq dq [(PLive b_buf, VLive reg_buf)] -∗
-  ptsq dq (bytes_ps b_buf 0 buf_xs) -∗
-  pptsq pdq (pbytes_ps b_buf 0 (replicate (length buf_xs) (pb_secret taint_all))) -∗
-  ptsq dq [(PLive b_tbl, VLive reg_tbl)] -∗
-  ptsq dq (bytes_ps b_tbl 0 tbl_xs) -∗
-  pptsq pdq (pbytes_ps b_tbl 0 (replicate 16 (pb_secret taint_all))) -∗
-  WP (PRun (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip start)
-        scan_ct_te : pexprL)
-    {{ v, ∃ n t, ⌜v = (Ret (WInt n), [WTInt t])⌝ }}.
-Proof using Type.
-  intros Hcap_buf Hcap_tbl Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-    Hwin Hlen_ge Hlen_buf Hlen_tbl.
-  iIntros "Hlo Hxso Hpbso Hlp Hxsp Hpbsp".
-  iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-    [reflexivity | reflexivity | reflexivity |].
-  iNext.
-  cbn [b_insts b_jump].
+  forall c, scan_ct_inv buf tbl len win m0 c ->
+    TC.block_safe cttable_ge (scan_ct_inv buf tbl len win m0) c.
+Proof.
+  intros Hbuf Htbl Hwin Hlen_ge c Hinv.
+  pose proof Hbuf as [_ Hb_buf _ Hbuf_wrap _].
+  pose proof Htbl as [_ Hb_tbl _ Htbl_wrap _].
   assert (Hlen_mod : len mod 2 ^ 64 = len) by (apply Z.mod_small; lia).
   assert (Hwin_mod : win mod 2 ^ 64 = win) by (apply Z.mod_small; lia).
-  (* v21 = ‹buf› +p ‹len› *)
-  assert (Hm21 : (b_buf + len) mod 2 ^ 64 = b_buf + len) by (apply Z.mod_small; lia).
-  iApply (wp_pflight pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _
-            [WInt b_buf; WInt len] [taint_bot; taint_bot] (b_buf + len) cap_buf taint_bot);
-    [cbn; rewrite (Z.mod_small b_buf (2 ^ 64) ltac:(lia)) Hlen_mod; reflexivity
-    |reflexivity
-    |cbn [alu cond_bit modulus]; rewrite Hm21; reflexivity
-    |reflexivity | reflexivity | reflexivity|].
-  iNext.
-  (* v23 = flight sub [address(v21), ‹win›] *)
-  assert (Hm23 : (b_buf + len - win) mod 2 ^ 64 = b_buf + len - win) by (apply Z.mod_small; lia).
-  iApply (wp_pflight pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _
-            [WInt (b_buf + len); WInt win] [taint_bot; taint_bot]
-            (b_buf + len - win) cap_buf taint_bot);
-    [cbn; rewrite Hm21 Hwin_mod; reflexivity
-    |reflexivity | cbn [alu cond_bit modulus]; rewrite Hm23; reflexivity
-    |reflexivity | reflexivity | reflexivity|].
-  iNext.
-  (* ‹p› = flight sub [address(v23), 16] *)
+  assert (Hlim_mod : (win + 16) mod 2 ^ 64 = win + 16) by (apply Z.mod_small; lia).
+  assert (Hb_buf_mod : ptr_addr buf mod 2 ^ 64 = ptr_addr buf) by (apply Z.mod_small; lia).
+  assert (Hb_tbl_mod : ptr_addr tbl mod 2 ^ 64 = ptr_addr tbl) by (apply Z.mod_small; lia).
   set (p_off := len - win - 16).
-  assert (Hm24 : (b_buf + len - win - 16) mod 2 ^ 64 = b_buf + p_off).
-  { subst p_off. replace (b_buf + len - win - 16) with (b_buf + (len - win - 16)) by lia.
-    apply Z.mod_small; lia. }
-  iApply (wp_pflight pol_strict cttable_ge _ _ _ _ _ _ _ _ _ _ _
-            [WInt (b_buf + len - win); WInt 16] [taint_bot; taint_bot]
-            (b_buf + p_off) cap_buf taint_bot);
-    [cbn; rewrite Hm23; reflexivity
-    |reflexivity | cbn [alu cond_bit modulus]; rewrite Hm24; reflexivity
-    |reflexivity | reflexivity | reflexivity|].
-  iNext.
-  (* goto L28 *)
-  iApply (wp_pgoto pol_strict cttable_ge).
-  iNext.
-  (* Enter L28 from start *)
-  iApply (wp_penter pol_strict cttable_ge _ _ _ _ _ _ _ _ _);
-    [reflexivity | reflexivity | reflexivity |].
-  iNext.
-  cbn [b_insts b_jump].
-  iApply (scan_ct_outer_spec b_buf cap_buf reg_buf buf_xs
-            b_tbl cap_tbl reg_tbl tbl_xs dq pdq
-            len win start p_off
-            (Z.to_nat (win + 16)) 0 0 0 taint_bot taint_bot _ _
-            Hcap_buf Hcap_tbl Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-            Hwin Hlen_ge eq_refl Hlen_buf Hlen_tbl ltac:(lia) ltac:(lia)
-            with "Hlo Hxso Hpbso Hlp Hxsp Hpbsp");
-    try (cbn [lookup]; unfold name_eqb; cbn [term_eqb]; reflexivity).
+  assert (Hp_addr_mod : (ptr_addr buf + p_off) mod 2 ^ 64 = ptr_addr buf + p_off)
+    by (apply Z.mod_small; subst p_off; lia).
+  destruct Hinv as
+    [skip start m fuel Hreg
+    |e j i_val res_val start_val m fuel Hreg Hj Hwin_e Hstart_e Htbl_e Hp_e Hj_e Hi_e Hres_e
+    |e j k i_val res_val start_val c_val inr_val mask_val exp_val m fuel
+       Hreg Hj Hk Hwin_e Hstart_e Htbl_e Hp_e Hj_e Hi_e Hres_e Hc_e Hinr_e Hmask_e Hk_e Hexp_e].
+  - (* Case 1: entry block `start` -> `L28` *)
+    unfold scan_ct_entry.
+    step_enter_or_fuel fuel m Hreg.
+    (* v21 = ‹buf› +p ‹len› *)
+    assert (Hm21 : (ptr_addr buf + len) mod 2 ^ 64 = ptr_addr buf + len) by (apply Z.mod_small; lia).
+    eapply TC.bs_step.
+    { apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+        [WInt (ptr_addr buf); WInt len] (ptr_addr buf + len) (ptr_cap buf));
+        [cbn; rewrite Hb_buf_mod, Hlen_mod; reflexivity
+        |cbn [alu cond_bit modulus]; rewrite Hm21; reflexivity
+        |reflexivity]. }
+    advance_mem m Hreg.
+    (* v23 = v21 -p ‹win› *)
+    assert (Hm23 : (ptr_addr buf + len - win) mod 2 ^ 64 = ptr_addr buf + len - win)
+      by (apply Z.mod_small; lia).
+    eapply TC.bs_step.
+    { apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+        [WInt (ptr_addr buf + len); WInt win] (ptr_addr buf + len - win) (ptr_cap buf));
+        [cbn; rewrite Hm21, Hwin_mod; reflexivity
+        |cbn [alu cond_bit modulus]; rewrite Hm23; reflexivity
+        |reflexivity]. }
+    advance_mem m Hreg.
+    (* ‹p› = v23 -p 16 *)
+    assert (Hm24 : (ptr_addr buf + len - win - 16) mod 2 ^ 64 = ptr_addr buf + p_off).
+    { subst p_off. replace (ptr_addr buf + len - win - 16) with (ptr_addr buf + (len - win - 16)) by lia.
+      apply Z.mod_small; lia. }
+    eapply TC.bs_step.
+    { apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+        [WInt (ptr_addr buf + len - win); WInt 16] (ptr_addr buf + p_off) (ptr_cap buf));
+        [cbn; rewrite Hm23; reflexivity
+        |cbn [alu cond_bit modulus]; rewrite Hm24; reflexivity
+        |reflexivity]. }
+    advance_mem m Hreg.
+    (* goto L28 *)
+    eapply TC.bs_step; [apply rule_goto | advance_mem m Hreg].
+    cbn [edge_label].
+    (* Enter L28 from start *)
+    destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel1].
+    { rewrite Hfuel0. eapply TC.bs_done; [apply rule_out_of_fuel | apply not_failure_out_of_fuel]. }
+    eapply TC.bs_inv.
+    { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity. }
+    cbn [b_insts b_jump].
+    eapply (sci_outer buf tbl len win m0 _ 0 0 0 start m);
+      try assumption; try lia; solve_lookup.
+  - (* Case 2: outer loop header `L28` -> `L31` (done) or `L29` -> `L55` *)
+    assert (Hj_mod : j mod 2 ^ 64 = j) by (apply Z.mod_small; lia).
+    (* v34 = add ‹win›, 16 *)
+    eapply TC.bs_step.
+    { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt win; WInt 16] (WInt (win + 16)) m);
+        [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+        | unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Hlim_mod; reflexivity]. }
+    advance_mem m Hreg.
+    (* v35 = cmp ult ‹j›, v34 *)
+    set (cond := if j <? win + 16 then 1 else 0).
+    eapply TC.bs_step.
+    { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt j; WInt (win + 16)] (WInt cond) m);
+        [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+        | unfold op_res, op_res_int; cbn [alu cond_bit modulus]; reflexivity]. }
+    advance_mem m Hreg.
+    destruct (Z.ltb_spec j (win + 16)) as [Hj_lt | Hj_ge]; subst cond; cbn [Z.ltb] in *.
+    + (* j < win + 16: branch to L29 *)
+      eapply TC.bs_step.
+      { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1). cbn [value_x]; solve_lookup. }
+      advance_mem m Hreg.
+      cbn [edge_label Z.eqb].
+      step_enter_or_fuel fuel m Hreg.
+      (* v39 = ‹p› +p ‹j› *)
+      assert (Haddr_mod : (ptr_addr buf + p_off + j) mod 2 ^ 64 = ptr_addr buf + p_off + j)
+        by (apply Z.mod_small; subst p_off; lia).
+      eapply TC.bs_step.
+      { apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+          [WInt (ptr_addr buf + p_off); WInt j] (ptr_addr buf + p_off + j) (ptr_cap buf));
+          [cbn [map_option flight_arg_x value_x]; repeat (rewrite lookup_put_other; [|reflexivity]);
+           rewrite Hp_e, Hj_e; cbn [word_at_class modulus ptr_addr]; fold p_off; rewrite Hp_addr_mod, Hj_mod; reflexivity
+          |cbn [alu cond_bit modulus]; rewrite Haddr_mod; reflexivity
+          |cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hp_e; reflexivity]. }
+      advance_mem m Hreg.
+      (* chk0 = check 0 1 read 1 [v39] *)
+      assert (Hbuf_m : readable_slice m buf len) by (eapply readable_slice_regions; [symmetry; exact Hreg | exact Hbuf]).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
+          [WPtr (mkPtr (ptr_addr buf + p_off + j) (ptr_cap buf))]
+          (WPtr (mkPtr (ptr_addr buf + p_off + j) (ptr_cap buf))) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1;
+            replace (ptr_addr buf + p_off + j) with (ptr_addr buf + (p_off + j)) by lia;
+            rewrite (readable_slice_byte_access m buf len (p_off + j) Hbuf_m ltac:(subst p_off; lia));
+            reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹c› = raw_load ub 0 [chk0] *)
+      assert (Hbuf_m2 : readable_slice m buf len) by (eapply readable_slice_regions; [symmetry; exact Hreg | exact Hbuf]).
+      set (cv := (m_bytes m (ptr_addr buf + (p_off + j)) mod 256) mod 2 ^ 32).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
+          [WPtr (mkPtr (ptr_addr buf + p_off + j) (ptr_cap buf))] (WInt cv) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | cbn [op_res op_res_int ptr_addr ptr_cap];
+            replace (ptr_addr buf + p_off + j) with (ptr_addr buf + (p_off + j)) by lia;
+            rewrite (readable_slice_load_byte m buf len (p_off + j) Hbuf_m2 ltac:(subst p_off; lia));
+            reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹j>=ustart› = cmp uge ‹j›, ‹start› *)
+      set (smod := start_val mod 2 ^ 64).
+      set (c44 := if smod <=? j then 1 else 0).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt j; WInt smod] (WInt c44) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* v47 = add ‹start›, 16 *)
+      set (n47 := (smod + 16) mod 2 ^ 64).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt smod; WInt 16] (WInt n47) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* v48 = cmp ult ‹j›, v47 *)
+      set (c48 := if j <? (n47 mod 2 ^ 64) then 1 else 0).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt j; WInt (n47 mod 2 ^ 64)] (WInt c48) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹in_range› = and ‹j>=ustart›, v48 *)
+      set (n49 := Z.land (c44 mod 2 ^ 32) (c48 mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (c44 mod 2 ^ 32); WInt (c48 mod 2 ^ 32)] (WInt n49) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹mask› = sub 0, ‹in_range› *)
+      set (n52 := (0 - (n49 mod 2 ^ 32)) mod 2 ^ 32).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt 0; WInt (n49 mod 2 ^ 32)] (WInt n52) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* goto L55 *)
+      eapply TC.bs_step; [apply rule_goto | advance_mem m Hreg].
+      cbn [edge_label].
+      (* Enter L55 from L29 *)
+      destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel1].
+      { rewrite Hfuel0. eapply TC.bs_done; [apply rule_out_of_fuel | apply not_failure_out_of_fuel]. }
+      eapply TC.bs_inv.
+      { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity. }
+      cbn [b_insts b_jump].
+      eapply (sci_inner buf tbl len win m0 _ j 0 i_val res_val start_val cv n49 n52 0 m);
+        try assumption; try lia; solve_lookup.
+    + (* j = win + 16: branch to L31 and return ‹res› *)
+      eapply TC.bs_step.
+      { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0). cbn [value_x]; solve_lookup. }
+      advance_mem m Hreg.
+      cbn [edge_label Z.eqb].
+      step_enter_or_fuel fuel m Hreg.
+      eapply TC.bs_done; [| apply not_failure_ret].
+      rewrite (rule_ret _ _ _ _ _ _ _ _ _ W (WInt (res_val mod 2 ^ 32)));
+        [apply (rule_return_top _ _ _ _ m); reflexivity
+        |reflexivity
+        |cbn [value_x]; solve_lookup].
+  - (* Case 3: inner loop header `L55` -> `L56` (next k) or `L58` (next j) *)
+    assert (Hk_mod : k mod 2 ^ 64 = k) by (apply Z.mod_small; lia).
+    assert (Hj_mod : j mod 2 ^ 64 = j) by (apply Z.mod_small; lia).
+    set (kcond := if k <? 16 then 1 else 0).
+    eapply TC.bs_step.
+    { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt k; WInt 16] (WInt kcond) m);
+        [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+    advance_mem m Hreg.
+    destruct (Z.ltb_spec k 16) as [Hk_lt | Hk_ge]; subst kcond; cbn [Z.ltb] in *.
+    + (* k < 16: branch to L56 *)
+      eapply TC.bs_step.
+      { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1). cbn [value_x]; solve_lookup. }
+      advance_mem m Hreg.
+      cbn [edge_label Z.eqb].
+      step_enter_or_fuel fuel m Hreg.
+      (* ‹k==i› = cmp eq ‹k›, ‹i› *)
+      set (imod := i_val mod 2 ^ 64).
+      set (eqb := if k =? imod then 1 else 0).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt k; WInt imod] (WInt eqb) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹eq_mask› = sub 0, ‹k==i› *)
+      set (eqm := (0 - (eqb mod 2 ^ 32)) mod 2 ^ 32).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt 0; WInt (eqb mod 2 ^ 32)] (WInt eqm) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* v69 = ‹tbl› +p ‹k› *)
+      assert (Haddr_mod : (ptr_addr tbl + k) mod 2 ^ 64 = ptr_addr tbl + k) by (apply Z.mod_small; lia).
+      eapply TC.bs_step.
+      { apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+          [WInt (ptr_addr tbl); WInt k] (ptr_addr tbl + k) (ptr_cap tbl));
+          [cbn [map_option flight_arg_x value_x]; repeat (rewrite lookup_put_other; [|reflexivity]);
+           rewrite Htbl_e, Hk_e; cbn [word_at_class modulus ptr_addr]; rewrite Hb_tbl_mod, Hk_mod; reflexivity
+          |cbn [alu cond_bit modulus]; rewrite Haddr_mod; reflexivity
+          |cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Htbl_e; reflexivity]. }
+      advance_mem m Hreg.
+      (* chk1 = check 0 1 read 1 [v69] *)
+      assert (Htbl_m : readable_slice m tbl 16) by (eapply readable_slice_regions; [symmetry; exact Hreg | exact Htbl]).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
+          [WPtr (mkPtr (ptr_addr tbl + k) (ptr_cap tbl))]
+          (WPtr (mkPtr (ptr_addr tbl + k) (ptr_cap tbl))) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1;
+            rewrite (readable_slice_byte_access m tbl 16 k Htbl_m ltac:(lia)); reflexivity]. }
+      advance_mem m Hreg.
+      (* v70 = raw_load ub 0 [chk1] *)
+      assert (Htbl_m2 : readable_slice m tbl 16) by (eapply readable_slice_regions; [symmetry; exact Hreg | exact Htbl]).
+      set (tbv := (m_bytes m (ptr_addr tbl + k) mod 256) mod 2 ^ 32).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
+          [WPtr (mkPtr (ptr_addr tbl + k) (ptr_cap tbl))] (WInt tbv) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | cbn [op_res op_res_int ptr_addr ptr_cap];
+            rewrite (readable_slice_load_byte m tbl 16 k Htbl_m2 ltac:(lia)); reflexivity]. }
+      advance_mem m Hreg.
+      (* v72 = and v70, ‹eq_mask› *)
+      set (n72 := Z.land (tbv mod 2 ^ 32) (eqm mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (tbv mod 2 ^ 32); WInt (eqm mod 2 ^ 32)] (WInt n72) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹expected@L56› = or ‹expected›, v72 *)
+      set (n73 := Z.lor (exp_val mod 2 ^ 32) (n72 mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (exp_val mod 2 ^ 32); WInt (n72 mod 2 ^ 32)] (WInt n73) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹k@L56› = add ‹k›, 1 *)
+      assert (Hk1_mod : (k + 1) mod 2 ^ 64 = k + 1) by (apply Z.mod_small; lia).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt k; WInt 1] (WInt (k + 1)) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Hk1_mod; reflexivity]. }
+      advance_mem m Hreg.
+      (* goto poll L55 *)
+      eapply TC.bs_step; [apply rule_goto | advance_mem m Hreg].
+      cbn [edge_label].
+      (* Enter L55 from L56 *)
+      destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel1].
+      { rewrite Hfuel0. eapply TC.bs_done; [apply rule_out_of_fuel | apply not_failure_out_of_fuel]. }
+      eapply TC.bs_inv.
+      { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1);
+          [reflexivity
+          |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
+           reflexivity]. }
+      cbn [b_insts b_jump].
+      eapply (sci_inner buf tbl len win m0 _ j (k + 1) i_val res_val start_val c_val inr_val mask_val (n73 mod 2 ^ 32) m);
+        try assumption; try lia; solve_lookup.
+    + (* k = 16: branch to L58 -> L28 *)
+      eapply TC.bs_step.
+      { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0). cbn [value_x]; solve_lookup. }
+      advance_mem m Hreg.
+      cbn [edge_label Z.eqb].
+      step_enter_or_fuel fuel m Hreg.
+      (* v79 = xor ‹c›, ‹expected› *)
+      set (n79 := Z.lxor (c_val mod 2 ^ 32) (exp_val mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (c_val mod 2 ^ 32); WInt (exp_val mod 2 ^ 32)] (WInt n79) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* v81 = and v79, ‹mask› *)
+      set (n81 := Z.land (n79 mod 2 ^ 32) (mask_val mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (n79 mod 2 ^ 32); WInt (mask_val mod 2 ^ 32)] (WInt n81) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹res@L58› = or ‹res›, v81 *)
+      set (n82 := Z.lor (res_val mod 2 ^ 32) (n81 mod 2 ^ 32)).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W] [WInt (res_val mod 2 ^ 32); WInt (n81 mod 2 ^ 32)] (WInt n82) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* v85 = ext uw ‹in_range› *)
+      set (n85 := ((inr_val mod 2 ^ 32) mod 2 ^ 32) mod 2 ^ 64).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W] [WInt (inr_val mod 2 ^ 32)] (WInt n85) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹i@L58› = add ‹i›, v85 *)
+      set (n86 := ((i_val mod 2 ^ 64) + (n85 mod 2 ^ 64)) mod 2 ^ 64).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt (i_val mod 2 ^ 64); WInt (n85 mod 2 ^ 64)] (WInt n86) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup | reflexivity]. }
+      advance_mem m Hreg.
+      (* ‹j@L58› = add ‹j›, 1 *)
+      assert (Hj1_mod : (j + 1) mod 2 ^ 64 = j + 1) by (apply Z.mod_small; lia).
+      eapply TC.bs_step.
+      { apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L] [WInt j; WInt 1] (WInt (j + 1)) m);
+          [reflexivity | reflexivity | cbn [map2_option value_x]; solve_lookup
+          | unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Hj1_mod; reflexivity]. }
+      advance_mem m Hreg.
+      (* goto poll L28 *)
+      eapply TC.bs_step; [apply rule_goto | advance_mem m Hreg].
+      cbn [edge_label].
+      (* Enter L28 from L58 *)
+      destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel1].
+      { rewrite Hfuel0. eapply TC.bs_done; [apply rule_out_of_fuel | apply not_failure_out_of_fuel]. }
+      eapply TC.bs_inv.
+      { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1);
+          [reflexivity
+          |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
+           reflexivity]. }
+      cbn [b_insts b_jump].
+      eapply (sci_outer buf tbl len win m0 _ (j + 1) (n86 mod 2 ^ 64) (n82 mod 2 ^ 32) start_val m);
+        try assumption; try lia; solve_lookup.
 Qed.
 
-End proof.
-
-(** ## From one-run Iris safety to universal two-run constant time
-
-    Instantiating the Iris ghost heaps once eliminates every logical parameter
-    and lifts [scan_ct_spec] to ordinary machine adequacy. Any two runs with
-    different secret `skip`, `start`, `buf` bytes, and `tbl` bytes then emit
-    the identical plain operational leakage trace under [pol_strict]. *)
-
-Definition cttableΣ : gFunctors := #[invΣ; gen_heapΣ piece pval; gen_heapΣ ppiece ppval].
-Local Instance cttableΣ_inv : invGpreS cttableΣ.
-Proof. apply subG_invΣ. apply _. Qed.
-Local Instance cttableΣ_heap : gen_heapGpreS piece pval cttableΣ.
-Proof. apply subG_gen_heapGpreS. apply _. Qed.
-Local Instance cttableΣ_poison : gen_heapGpreS ppiece ppval cttableΣ.
-Proof. apply subG_gen_heapGpreS. apply _. Qed.
-
-(** Disjoint objects have non-overlapping value pieces for adequacy setup. *)
-Lemma NoDup_two_slices b_buf reg_buf buf_xs b_tbl reg_tbl tbl_xs :
-  b_buf <> b_tbl ->
-  NoDup ((((PLive b_buf, VLive reg_buf) :: bytes_ps b_buf 0 buf_xs) ++
-          ((PLive b_tbl, VLive reg_tbl) :: bytes_ps b_tbl 0 tbl_xs)).*1).
-Proof.
-  intros Hne. rewrite fmap_app. apply NoDup_app.
-  repeat split.
-  - cbn. apply NoDup_cons; split; [apply live_not_in_bytes_ps | apply NoDup_bytes_ps].
-  - intros l Hin1 Hin2. cbn in Hin1, Hin2.
-    apply elem_of_cons in Hin1 as [-> | Hin1];
-      apply elem_of_cons in Hin2 as [H2 | Hin2].
-    + injection H2; congruence.
-    + exact (live_not_in_bytes_ps _ _ _ _ Hin2).
-    + subst l. exact (live_not_in_bytes_ps _ _ _ _ Hin1).
-    + pose proof (bytes_ps_piece_id _ _ _ _ Hin1) as H1.
-      pose proof (bytes_ps_piece_id _ _ _ _ Hin2) as H2. congruence.
-  - cbn. apply NoDup_cons; split; [apply live_not_in_bytes_ps | apply NoDup_bytes_ps].
-Qed.
-
-(** Disjoint objects have non-overlapping poison pieces for adequacy setup. *)
-Lemma NoDup_two_pslices b_buf pbs_buf b_tbl pbs_tbl :
-  b_buf <> b_tbl ->
-  NoDup ((pbytes_ps b_buf 0 pbs_buf ++ pbytes_ps b_tbl 0 pbs_tbl).*1).
-Proof.
-  intros Hne. rewrite fmap_app. apply NoDup_app.
-  repeat split.
-  - apply NoDup_pbytes_ps.
-  - intros l Hin1 Hin2.
-    pose proof (pbytes_ps_ppiece_id _ _ _ _ Hin1) as H1.
-    pose proof (pbytes_ps_ppiece_id _ _ _ _ Hin2) as H2. congruence.
-  - apply NoDup_pbytes_ps.
-Qed.
-
-(** Building the byte list from a memory region records every byte in `[0, n)`. *)
-Definition read_bytes_list (m : mem) (b : Z) (n : nat) : list Z :=
-  map (fun k => m_bytes m (b + Z.of_nat k)) (seq 0 n).
-
-Lemma length_read_bytes_list m b n :
-  length (read_bytes_list m b n) = n.
-Proof. unfold read_bytes_list. rewrite length_map length_seq. reflexivity. Qed.
-
-Lemma nth_error_read_bytes_list m b n k x :
-  nth_error (read_bytes_list m b n) k = Some x ->
-  m_bytes m (b + 0 + Z.of_nat k) = x.
-Proof.
-  unfold read_bytes_list. rewrite nth_error_map.
-  destruct (nth_error (seq 0 n) k) as [j|] eqn:Ej; [|discriminate].
-  cbn. intros [= <-].
-  assert (Hk : (k < n)%nat).
-  { destruct (Nat.lt_ge_cases k n); [exact H|].
-    rewrite (proj2 (nth_error_None (seq 0 n) k) ltac:(rewrite length_seq; lia)) in Ej.
-    discriminate Ej. }
-  assert (Heq : j = k).
-  { assert (Hgen : forall s k j, nth_error (seq s n) k = Some j -> j = (s + k)%nat).
-    { clear k j Ej Hk. induction n as [|n IH]; intros s [|k] j Ej; cbn in Ej; try discriminate.
-      - injection Ej as <-. lia.
-      - pose proof (IH (S s) k j Ej). lia. }
-    pose proof (Hgen 0%nat k j Ej). lia. }
-  subst j. rewrite Z.add_0_r. reflexivity.
-Qed.
-
-(** Every valid call to `scan_ct` avoids panics and [pol_strict] poison
-    faults across all reachable machine states and finite driver runs. *)
-Theorem scan_ct_safe b_buf cap_buf reg_buf b_tbl cap_tbl reg_tbl
-    len win skip start m pm paux s fuel :
-  b_buf <> b_tbl ->
-  cap_buf = Obj b_buf \/ cap_buf = Ro b_buf ->
-  cap_tbl = Obj b_tbl \/ cap_tbl = Ro b_tbl ->
-  R.ready s m -> live_disjoint m ->
-  live_at m b_buf reg_buf -> live_at m b_tbl reg_tbl ->
-  0 <= b_buf -> b_buf + len < 2 ^ 64 -> b_buf + len <= r_end reg_buf ->
-  0 <= b_tbl -> b_tbl + 16 < 2 ^ 64 -> b_tbl + 16 <= r_end reg_tbl ->
+(** Plain memory safety for `scan_ct`: for every readable `buf` of length `len`,
+    exact 16-byte `tbl`, and valid public window `win + 16 <= len`, no reachable
+    machine state panics or goes stuck. *)
+Theorem scan_ct_plain_safe buf tbl len win skip start m s fuel :
+  readable_slice m buf len ->
+  readable_slice m tbl 16 ->
   0 <= win -> win + 16 <= len ->
-  (forall k, 0 <= k < len -> pm (b_buf + k) = pb_secret taint_all) ->
-  (forall k, 0 <= k < 16 -> pm (b_tbl + k) = pb_secret taint_all) ->
+  TC.plain_safe cttable_ge (scan_ct_entry buf tbl len win skip start) m s fuel.
+Proof.
+  intros Hbuf Htbl Hwin Hlen_ge.
+  eapply (TC.plain_safe_by_block_safe cttable_ge (scan_ct_inv buf tbl len win m)).
+  - apply sci_start. reflexivity.
+  - apply scan_ct_inv_regions.
+  - apply scan_ct_block_safe; assumption.
+Qed.
+
+(** Universal poison safety for `scan_ct`: combining [scan_ct_plain_safe] with
+    the reflective check [scan_ct_taint_ok] proves that `scan_ct` avoids every
+    panic and [pol_strict] poison fault for any poison map without
+    `CannotLoad` redzones. *)
+Theorem scan_ct_safe buf tbl len win skip start m pm paux s fuel :
+  readable_slice m buf len ->
+  readable_slice m tbl 16 ->
+  0 <= win -> win + 16 <= len ->
+  (forall a, pb_no_load (pm a) = false) ->
   poison_safe pol_strict cttable_ge
-    (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip start)
+    (scan_ct_entry buf tbl len win skip start)
     scan_ct_te m pm paux s fuel.
 Proof.
-  intros Hne Hcap_buf Hcap_tbl Hr Hd Hlv_buf Hlv_tbl
-    Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-    Hwin Hlen_ge Hpm_buf Hpm_tbl.
-  set (buf_xs := read_bytes_list m b_buf (Z.to_nat len)).
-  set (tbl_xs := read_bytes_list m b_tbl 16%nat).
-  set (ps := ((PLive b_buf, VLive reg_buf) :: bytes_ps b_buf 0 buf_xs) ++
-             ((PLive b_tbl, VLive reg_tbl) :: bytes_ps b_tbl 0 tbl_xs)).
-  set (pps := pbytes_ps b_buf 0 (replicate (length buf_xs) (pb_secret taint_all)) ++
-              pbytes_ps b_tbl 0 (replicate 16 (pb_secret taint_all))).
-  apply (wp_poison_safe _ _ _ _ _ _ _ _ _
-    (fun v _ => exists n t, v = (Ret (WInt n), [WTInt t]))).
-  apply (poison_pieces_adequate cttableΣ pol_strict cttable_ge _ _ _ _ _ _ fuel ps pps
-    (fun v => exists n t, v = (Ret (WInt n), [WTInt t])));
-    try assumption.
-  - apply all_agree_app; split; cbn [all_agree]; split.
-    + exact Hlv_buf.
-    + apply (all_agree_bytes_ps m b_buf reg_buf 0 buf_xs Hlv_buf ltac:(lia));
-        [subst buf_xs; rewrite length_read_bytes_list; lia
-        |intros k x Hk; exact (nth_error_read_bytes_list m b_buf (Z.to_nat len) k x Hk)].
-    + exact Hlv_tbl.
-    + apply (all_agree_bytes_ps m b_tbl reg_tbl 0 tbl_xs Hlv_tbl ltac:(lia));
-        [subst tbl_xs; rewrite length_read_bytes_list; lia
-        |intros k x Hk; exact (nth_error_read_bytes_list m b_tbl 16%nat k x Hk)].
-  - apply all_p_agree_app; split.
-    + apply (all_p_agree_pbytes_ps m pm paux b_buf reg_buf 0 _ Hlv_buf ltac:(lia)).
-      * subst buf_xs. rewrite length_replicate length_read_bytes_list. lia.
-      * intros k pb Hk.
-        assert (Hlt : (k < length buf_xs)%nat).
-        { destruct (Nat.lt_ge_cases k (length buf_xs)); [exact H|].
-          rewrite (proj2 (nth_error_None (replicate (length buf_xs) (pb_secret taint_all)) k)
-            ltac:(rewrite length_replicate; lia)) in Hk.
-          discriminate Hk. }
-        pose proof (nth_error_replicate_inv _ _ _ _ Hk) as ->.
-        rewrite Z.add_0_r. apply Hpm_buf. subst buf_xs; rewrite length_read_bytes_list in Hlt; lia.
-    + apply (all_p_agree_pbytes_ps m pm paux b_tbl reg_tbl 0 _ Hlv_tbl ltac:(lia)).
-      * rewrite length_replicate. lia.
-      * intros k pb Hk.
-        assert (Hlt : (k < 16)%nat).
-        { destruct (Nat.lt_ge_cases k 16); [exact H|].
-          rewrite (proj2 (nth_error_None (replicate 16 (pb_secret taint_all)) k)
-            ltac:(rewrite length_replicate; lia)) in Hk.
-          discriminate Hk. }
-        pose proof (nth_error_replicate_inv _ _ _ _ Hk) as ->.
-        rewrite Z.add_0_r. apply Hpm_tbl. lia.
-  - apply NoDup_two_slices; exact Hne.
-  - apply NoDup_two_pslices; exact Hne.
-  - intros Hinv Hheap Hpoison. simpl.
-    iIntros "Hps Hpps".
-    subst ps pps.
-    rewrite !pts_ptsq !ppts_pptsq !ptsq_app !pptsq_app.
-    iDestruct "Hps" as "[Hbuf Htbl]".
-    iDestruct "Hpps" as "[Hpbuf Hptbl]".
-    change ((PLive b_buf, VLive reg_buf) :: bytes_ps b_buf 0 buf_xs)
-      with ([(PLive b_buf, VLive reg_buf)] ++ bytes_ps b_buf 0 buf_xs).
-    change ((PLive b_tbl, VLive reg_tbl) :: bytes_ps b_tbl 0 tbl_xs)
-      with ([(PLive b_tbl, VLive reg_tbl)] ++ bytes_ps b_tbl 0 tbl_xs).
-    rewrite !ptsq_app.
-    iDestruct "Hbuf" as "[Hlo Hxso]".
-    iDestruct "Htbl" as "[Hlp Hxsp]".
-    iApply (wp_wand with "[Hlo Hxso Hpbuf Hlp Hxsp Hptbl]").
-    + iApply (scan_ct_spec b_buf cap_buf reg_buf buf_xs
-                b_tbl cap_tbl reg_tbl tbl_xs (DfracOwn 1) (DfracOwn 1)
-                len win skip start
-                Hcap_buf Hcap_tbl Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-                Hwin Hlen_ge
-                ltac:(subst buf_xs; apply length_read_bytes_list)
-                ltac:(subst tbl_xs; apply length_read_bytes_list)
-                with "Hlo Hxso Hpbuf Hlp Hxsp Hptbl").
-    + iIntros (v) "H". iDestruct "H" as (n t) "%H". eauto.
+  intros Hbuf Htbl Hwin Hlen_ge Hnoload.
+  eapply (TC.taint_check_poison_safe pol_strict cttable_ge scan_ct_tspecs
+            (TAtom "scan_ct") fn_scan_ct scan_ct_tspec);
+    try exact scan_ct_taint_ok; try reflexivity; try assumption.
+  - exists (TAtom "start"). split; reflexivity.
+  - exists scan_ct_te. split; reflexivity.
+  - repeat split; [apply Hnoload | apply taint_le_all_r | discriminate | intro; apply taint_le_all_r].
+  - eapply scan_ct_plain_safe; eassumption.
 Qed.
 
-(** Universal two-run constant-time theorem for `scan_ct`: for every public
-    `len` and `win` (`win + 16 <= len`), any two executions differing in
-    secret `skip`, `start`, `buf` bytes, or exact 16-byte `tbl` bytes emit
-    the identical plain operational leakage trace under [pol_strict]. *)
-Theorem scan_ct_constant_time b_buf cap_buf reg_buf b_tbl cap_tbl reg_tbl
-    len win skip1 start1 skip2 start2 m1 m2 pm paux s fuel :
-  b_buf <> b_tbl ->
-  cap_buf = Obj b_buf \/ cap_buf = Ro b_buf ->
-  cap_tbl = Obj b_tbl \/ cap_tbl = Ro b_tbl ->
-  R.ready s m1 -> R.ready s m2 -> live_disjoint m1 ->
-  live_at m1 b_buf reg_buf -> live_at m1 b_tbl reg_tbl ->
-  0 <= b_buf -> b_buf + len < 2 ^ 64 -> b_buf + len <= r_end reg_buf ->
-  0 <= b_tbl -> b_tbl + 16 < 2 ^ 64 -> b_tbl + 16 <= r_end reg_tbl ->
+(** Universal two-run constant-time theorem for `scan_ct`: for every readable
+    buffer `buf` of public length `len`, exact 16-byte table `tbl`, and valid
+    public window `win + 16 <= len`, any two executions with the same live
+    region layout emit the exact same plain operational leakage trace under
+    [pol_strict], no matter how `skip`, `start`, or any byte or capability in
+    memory differ. *)
+Theorem scan_ct_constant_time buf tbl len win skip1 start1 skip2 start2 m1 m2 s fuel :
+  readable_slice m1 buf len ->
+  readable_slice m1 tbl 16 ->
   0 <= win -> win + 16 <= len ->
-  (forall k, 0 <= k < len -> pm (b_buf + k) = pb_secret taint_all) ->
-  (forall k, 0 <= k < 16 -> pm (b_tbl + k) = pb_secret taint_all) ->
   m_regions m1 = m_regions m2 ->
-  (forall a, m_bytes m1 a <> m_bytes m2 a -> pb_taint (pm a) = taint_all) ->
-  (forall a, m_aux m1 a <> m_aux m2 a -> paux a = taint_all) ->
+  R.ready s m1 -> R.ready s m2 ->
   forall steps, exists tr,
     PD.driver_trace pol_strict cttable_ge steps
-      (mkConfig (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip1 start1) [] m1 fuel) s = Some tr /\
+      (mkConfig (scan_ct_entry buf tbl len win skip1 start1) [] m1 fuel) s = Some tr /\
     PD.driver_trace pol_strict cttable_ge steps
-      (mkConfig (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip2 start2) [] m2 fuel) s = Some tr.
+      (mkConfig (scan_ct_entry buf tbl len win skip2 start2) [] m2 fuel) s = Some tr.
 Proof.
-  intros Hne Hcap_buf Hcap_tbl Hr1 Hr2 Hd Hlv_buf Hlv_tbl
-    Hb_buf Hbuf_lim Hrend_buf Hb_tbl Htbl_lim Hrend_tbl
-    Hwin Hlen_ge Hpm_buf Hpm_tbl Hreg Hbytes Haux steps.
-  eapply (wp_ct_driver_plain pol_strict cttable_ge
-            (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip1 start1)
-            (scan_ct_entry (mkPtr b_buf cap_buf) (mkPtr b_tbl cap_tbl) len win skip2 start2)
-            scan_ct_te m1 m2 pm paux s fuel);
-    try reflexivity; try assumption.
-  - apply scan_ct_inputs_related; assumption.
-  - apply (scan_ct_safe b_buf cap_buf reg_buf b_tbl cap_tbl reg_tbl
-      len win skip1 start1 m1 pm paux s fuel); assumption.
+  intros Hbuf Htbl Hwin Hlen_ge Hreg Hr1 Hr2 steps.
+  eapply (TC.taint_check_constant_time pol_strict cttable_ge scan_ct_tspecs
+            (TAtom "scan_ct") fn_scan_ct scan_ct_tspec
+            (scan_ct_entry buf tbl len win skip1 start1)
+            (scan_ct_entry buf tbl len win skip2 start2)
+            scan_ct_te m1 m2 (fun _ => pb_secret taint_all) (fun _ => taint_all) s fuel);
+    try exact scan_ct_taint_ok; try reflexivity; try assumption.
+  - exists (TAtom "start"). split; reflexivity.
+  - exists scan_ct_te. split; reflexivity.
+  - repeat split; reflexivity.
+  - apply scan_ct_inputs_related. exact Hreg.
+  - eapply scan_ct_plain_safe; eassumption.
 Qed.
 
 End CtTableScan.
@@ -1287,40 +884,39 @@ End CtTableScan.
 
     Optimizing compilers sometimes rebase a public loop induction variable by a
     secret offset, computing `base = buf + sec`, `lim = len - sec`, and
-    `k = j - sec`. Single-run dynamic taint flags both `base + k` and `k == lim`
-    as secret-dependent even though the secret cancels modulo 2^64 at every
-    step.
+    `k = j - sec`. Single-run taint tracking flags both `base + k` and
+    `k == lim` as secret-dependent even though the secret cancels modulo
+    `2 ^ 64` at every step.
 
-    The minimal validated IR function below models
-    this transformation and proves both sides of the separation: single-run
-    poison tracking rejects it with both [CannotBranch] and [CannotIndex],
-    whereas its plain two-run operational leakage trace is provably identical
-    for all secrets. *)
+    The minimal validated IR function below models this transformation in
+    [IRNotation] and proves both sides of the separation. Both the static
+    checker [taint_check_fn] and dynamic [prun] reject it with [CannotBranch]
+    and [CannotIndex], whereas direct two-run simulation proves that its plain
+    operational leakage trace is identical for every pair of secret offsets. *)
 
 (** Minimal checked-IR loop rebasing both the base pointer and the loop counter
     by the secret offset `sec`. *)
 Definition rebased_scan_fn : func :=
-  mkFunc (TAtom "rebased_scan") (TAtom "export") (RClass W)
-    [(P, TAtom "buf"); (L, TAtom "len"); (L, TAtom "sec")]
-    [mkBlock (TAtom "start") []
-       [Flight (TAtom "base") Add [FAddress (Tmp (TAtom "buf")); FValue (Tmp (TAtom "sec"))] (LowerOf (Tmp (TAtom "buf")));
-        Let (TAtom "lim") L Sub [Tmp (TAtom "len"); Tmp (TAtom "sec")];
-        Let (TAtom "k0") L Sub [Const 0; Tmp (TAtom "sec")]]
-       (JGoto (To (TAtom "loop")));
-     mkBlock (TAtom "loop")
-       [Phi (TAtom "k") L [(TAtom "start", Tmp (TAtom "k0")); (TAtom "body", Tmp (TAtom "k1"))];
-        Phi (TAtom "acc") W [(TAtom "start", Const 0); (TAtom "body", Tmp (TAtom "acc1"))]]
-       [Let (TAtom "done") W (Cmp Eq L) [Tmp (TAtom "k"); Tmp (TAtom "lim")]]
-       (JBranch (Tmp (TAtom "done")) (To (TAtom "exit")) (To (TAtom "body")));
-     mkBlock (TAtom "body") []
-       [Flight (TAtom "addr") Add [FAddress (Tmp (TAtom "base")); FValue (Tmp (TAtom "k"))] (LowerOf (Tmp (TAtom "base")));
-        Let (TAtom "chk") A (Check 0 1 Read 1) [Tmp (TAtom "addr")];
-        Let (TAtom "b") W (RawLoad (LdNarrow Ub) 0) [Tmp (TAtom "chk")];
-        Let (TAtom "acc1") W Xor [Tmp (TAtom "acc"); Tmp (TAtom "b")];
-        Let (TAtom "k1") L Add [Tmp (TAtom "k"); Const 1]]
-       (JGoto (Poll (TAtom "loop")));
-     mkBlock (TAtom "exit") [] []
-       (JRet (Tmp (TAtom "acc")))].
+  ir_fn{ "export" "rebased_scan"(P %"buf", L %"len", L %"sec") -> (RClass W) {
+  @"start":
+    %"base" = %"buf" +p %"sec";
+    %"lim" : L = Sub %"len", %"sec";
+    %"k0" : L = Sub #0, %"sec"
+    => goto "loop";
+  @"loop" [%"k" : L = phi("start" => %"k0", "body" => %"k1");
+           %"acc" : W = phi("start" => #0, "body" => %"acc1")]:
+    %"done" : W = (Cmp Eq L) %"k", %"lim"
+    => br %"done" ? "exit" : "body";
+  @"body":
+    %"addr" = %"base" +p %"k";
+    %"chk" : A = (Check 0 1 Read 1) %"addr";
+    %"b" : W = (RawLoad (LdNarrow Ub) 0) %"chk";
+    %"acc1" : W = Xor %"acc", %"b";
+    %"k1" : L = Add %"k", #1
+    => goto poll "loop";
+  @"exit":
+    => ret %"acc"
+} }.
 
 Definition rebased_module : module := [IFunc rebased_scan_fn].
 Definition rebased_ge : genv := mkGenv rebased_module [] free_res.
@@ -1329,9 +925,24 @@ Definition rebased_ge : genv := mkGenv rebased_module [] free_res.
 Theorem rebased_scan_valid : valid rebased_module = Some true.
 Proof. vm_compute. reflexivity. Qed.
 
-Definition rebased_entry (p_buf : ptr) (len sec : Z) : frame :=
+(** Static taint contract marking `sec` secret and `buf`, `len` public. *)
+Definition rebased_tspec : tspec :=
+  {| ts_args := [WTPtr taint_bot taint_bot; WTInt taint_bot; WTInt taint_all];
+     ts_ret := Some (WTInt taint_all);
+     ts_mem := taint_bot;
+     ts_aux := taint_bot;
+     ts_writes := false |}.
+
+(** The static reflective taint checker rejects [rebased_scan_fn] under both
+    [pol_strict] and [pol_erased]. *)
+Theorem rebased_scan_taint_rejected :
+  taint_check_fn pol_strict rebased_module [] rebased_scan_fn rebased_tspec = false /\
+  taint_check_fn pol_erased rebased_module [] rebased_scan_fn rebased_tspec = false.
+Proof. vm_compute. split; reflexivity. Qed.
+
+Definition rebased_entry (buf : ptr) (len sec : Z) : frame :=
   mkFrame rebased_scan_fn
-    [(TAtom "sec", WInt sec); (TAtom "len", WInt len); (TAtom "buf", WPtr p_buf)]
+    [(TAtom "sec", WInt sec); (TAtom "len", WInt len); (TAtom "buf", WPtr buf)]
     [] None (Enter (TAtom "start") None).
 
 Definition rebased_te (t_sec : taint) : tenv :=
@@ -1352,8 +963,8 @@ Theorem rebased_scan_taint_rejects :
     PTrap CannotIndex.
 Proof. vm_compute. split; reflexivity. Qed.
 
-(** Modular cancellation identities modulo 2^64 that make the rebased loop's
-    exit comparison and dereferenced address independent of `sec`. *)
+(** Modular cancellation identities modulo `2 ^ 64` that make the rebased
+    loop's exit comparison and dereferenced address independent of `sec`. *)
 Lemma mod64_cancel_eq (a b s : Z) :
   0 <= a < 2 ^ 64 -> 0 <= b < 2 ^ 64 ->
   (((a - s) mod 2 ^ 64) =? ((b - s) mod 2 ^ 64)) = (a =? b).
@@ -1364,7 +975,7 @@ Proof.
   - apply Z.eqb_neq. intros Heq.
     apply Hne.
     assert (Hdiff : ((a - s) - (b - s)) mod 2 ^ 64 = 0).
-    { rewrite Zminus_mod Heq Z.sub_diag Zmod_0_l. reflexivity. }
+    { rewrite Zminus_mod, Heq, Z.sub_diag, Zmod_0_l. reflexivity. }
     replace ((a - s) - (b - s)) with (a - b) in Hdiff by lia.
     apply Z.mod_divide in Hdiff; [|lia].
     destruct Hdiff as [q Hq].
@@ -1374,7 +985,7 @@ Qed.
 Lemma mod64_cancel_add (b s j : Z) :
   (((b + s) mod 2 ^ 64) + ((j - s) mod 2 ^ 64)) mod 2 ^ 64 = (b + j) mod 2 ^ 64.
 Proof.
-  rewrite -Zplus_mod.
+  rewrite <- Zplus_mod.
   replace (b + s + (j - s)) with (b + j) by lia.
   reflexivity.
 Qed.
@@ -1394,7 +1005,7 @@ Lemma run_trace_step_eq pol ge n c1 c2 c1' c2' :
   run_trace pol ge n c1' = run_trace pol ge n c2' ->
   run_trace pol ge (S n) c1 = run_trace pol ge (S n) c2.
 Proof.
-  intros Hl Hs1 Hs2 Hrest. cbn [run_trace]. rewrite Hs1 Hs2 Hl Hrest. reflexivity.
+  intros Hl Hs1 Hs2 Hrest. cbn [run_trace]. rewrite Hs1, Hs2, Hl, Hrest. reflexivity.
 Qed.
 
 Lemma run_trace_done_eq pol ge n c1 c2 o1 o2 :
@@ -1403,23 +1014,21 @@ Lemma run_trace_done_eq pol ge n c1 c2 o1 o2 :
   Semantics.step ge c2 = Done o2 ->
   run_trace pol ge (S n) c1 = run_trace pol ge (S n) c2.
 Proof.
-  intros Hl Hs1 Hs2. cbn [run_trace]. rewrite Hs1 Hs2 Hl. reflexivity.
+  intros Hl Hs1 Hs2. cbn [run_trace]. rewrite Hs1, Hs2, Hl. reflexivity.
 Qed.
 
 (** Loop-level simulation: at the start of any iteration `j`, two rebased
     executions with arbitrary secrets `s1` and `s2` emit the exact same plain
     [run_trace] under any policy [pol]. *)
-Lemma rebased_loop_traces_equal pol b cap reg m len s1 s2 :
-  cap = Obj b \/ cap = Ro b ->
-  live_at m b reg ->
-  0 <= b -> 0 <= len -> b + len < 2 ^ 64 -> b + len <= r_end reg ->
+Lemma rebased_loop_traces_equal pol buf m len s1 s2 :
+  readable_slice m buf len ->
   forall steps j acc fuel e1 e2,
     0 <= j <= len ->
-    lookup (TAtom "base") e1 = Some (WPtr (mkPtr ((b + s1) mod 2 ^ 64) cap)) ->
+    lookup (TAtom "base") e1 = Some (WPtr (mkPtr ((ptr_addr buf + s1) mod 2 ^ 64) (ptr_cap buf))) ->
     lookup (TAtom "lim") e1 = Some (WInt ((len - s1) mod 2 ^ 64)) ->
     lookup (TAtom "k") e1 = Some (WInt ((j - s1) mod 2 ^ 64)) ->
     lookup (TAtom "acc") e1 = Some (WInt acc) ->
-    lookup (TAtom "base") e2 = Some (WPtr (mkPtr ((b + s2) mod 2 ^ 64) cap)) ->
+    lookup (TAtom "base") e2 = Some (WPtr (mkPtr ((ptr_addr buf + s2) mod 2 ^ 64) (ptr_cap buf))) ->
     lookup (TAtom "lim") e2 = Some (WInt ((len - s2) mod 2 ^ 64)) ->
     lookup (TAtom "k") e2 = Some (WInt ((j - s2) mod 2 ^ 64)) ->
     lookup (TAtom "acc") e2 = Some (WInt acc) ->
@@ -1436,7 +1045,8 @@ Lemma rebased_loop_traces_equal pol b cap reg m len s1 s2 :
           (JBranch (Tmp (TAtom "done")) (To (TAtom "exit")) (To (TAtom "body")))))
         [] m fuel).
 Proof.
-  intros Hcap Hlv Hb Hlen Hblim Hrend steps.
+  intros Hsl steps.
+  pose proof Hsl as [_ Hb Hlen Hblim _].
   induction steps as [steps IH] using lt_wf_ind.
   intros j acc fuel e1 e2 Hj Hbase1 Hlim1 Hk1 Hacc1 Hbase2 Hlim2 Hk2 Hacc2.
   destruct steps as [|n1]; [reflexivity|].
@@ -1454,19 +1064,19 @@ Proof.
   - apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
       [WInt ((j - s1) mod 2 ^ 64); WInt ((len - s1) mod 2 ^ 64)] (WInt done_val) m);
       try reflexivity.
-    + cbn [map2_option value_x]; rewrite Hk1 Hlim1; cbn [word_at_class modulus];
-        rewrite Hmod_k1 Hmod_l1; reflexivity.
+    + cbn [map2_option value_x]; rewrite Hk1, Hlim1; cbn [word_at_class modulus];
+        rewrite Hmod_k1, Hmod_l1; reflexivity.
     + unfold op_res, op_res_int; cbn; rewrite Hcmp1; reflexivity.
   - apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
       [WInt ((j - s2) mod 2 ^ 64); WInt ((len - s2) mod 2 ^ 64)] (WInt done_val) m);
       try reflexivity.
-    + cbn [map2_option value_x]; rewrite Hk2 Hlim2; cbn [word_at_class modulus];
-        rewrite Hmod_k2 Hmod_l2; reflexivity.
+    + cbn [map2_option value_x]; rewrite Hk2, Hlim2; cbn [word_at_class modulus];
+        rewrite Hmod_k2, Hmod_l2; reflexivity.
     + unfold op_res, op_res_int; cbn; rewrite Hcmp2; reflexivity.
   - destruct n1 as [|n2]; [reflexivity|].
     destruct (Z.eqb_spec j len) as [-> | Hj_ne]; subst done_val; cbn [Z.eqb] in *.
     + eapply run_trace_step_eq.
-      * cbn [leak_of c_frame fr_at fr_env value_x]; rewrite !lookup_put_same; reflexivity.
+      * cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
       * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1).
         cbn [value_x]; rewrite lookup_put_same; reflexivity.
       * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1).
@@ -1478,6 +1088,7 @@ Proof.
         eapply run_trace_step_eq; [reflexivity
           | eapply (rule_enter _ _ _ _ _ _ _ _ _ (mkBlock (TAtom "exit") [] [] (JRet (Tmp (TAtom "acc")))) _ Hfuel); reflexivity
           | eapply (rule_enter _ _ _ _ _ _ _ _ _ (mkBlock (TAtom "exit") [] [] (JRet (Tmp (TAtom "acc")))) _ Hfuel); reflexivity |].
+        cbn [b_insts b_jump].
         destruct n3 as [|n4]; [reflexivity|].
         eapply run_trace_done_eq; [reflexivity | |].
         -- rewrite (rule_ret _ _ _ _ _ _ _ _ _ W (WInt (acc mod 2 ^ 32)));
@@ -1489,7 +1100,7 @@ Proof.
              |reflexivity
              |cbn [value_x]; solve_lookup].
     + eapply run_trace_step_eq.
-      * cbn [leak_of c_frame fr_at fr_env value_x]; rewrite !lookup_put_same; reflexivity.
+      * cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
       * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0).
         cbn [value_x]; rewrite lookup_put_same; reflexivity.
       * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0).
@@ -1503,60 +1114,55 @@ Proof.
           | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity |].
         cbn [b_insts b_jump].
         destruct n3 as [|n4]; [reflexivity|].
-        assert (Hbj : (b + j) mod 2 ^ 64 = b + j) by (apply Z.mod_small; lia).
-        assert (Hadd1 : (((b + s1) mod 2 ^ 64) + ((j - s1) mod 2 ^ 64)) mod 2 ^ 64 = b + j)
+        assert (Hbj : (ptr_addr buf + j) mod 2 ^ 64 = ptr_addr buf + j) by (apply Z.mod_small; lia).
+        assert (Hadd1 : (((ptr_addr buf + s1) mod 2 ^ 64) + ((j - s1) mod 2 ^ 64)) mod 2 ^ 64 = ptr_addr buf + j)
           by (rewrite mod64_cancel_add; exact Hbj).
-        assert (Hadd2 : (((b + s2) mod 2 ^ 64) + ((j - s2) mod 2 ^ 64)) mod 2 ^ 64 = b + j)
+        assert (Hadd2 : (((ptr_addr buf + s2) mod 2 ^ 64) + ((j - s2) mod 2 ^ 64)) mod 2 ^ 64 = ptr_addr buf + j)
           by (rewrite mod64_cancel_add; exact Hbj).
-        assert (Hbs1 : ((b + s1) mod 2 ^ 64) mod 2 ^ 64 = (b + s1) mod 2 ^ 64) by apply Zmod_mod.
-        assert (Hbs2 : ((b + s2) mod 2 ^ 64) mod 2 ^ 64 = (b + s2) mod 2 ^ 64) by apply Zmod_mod.
+        assert (Hbs1 : ((ptr_addr buf + s1) mod 2 ^ 64) mod 2 ^ 64 = (ptr_addr buf + s1) mod 2 ^ 64) by apply Zmod_mod.
+        assert (Hbs2 : ((ptr_addr buf + s2) mod 2 ^ 64) mod 2 ^ 64 = (ptr_addr buf + s2) mod 2 ^ 64) by apply Zmod_mod.
         eapply run_trace_step_eq; [reflexivity | | |].
         -- apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-             [WInt ((b + s1) mod 2 ^ 64); WInt ((j - s1) mod 2 ^ 64)] (b + j) cap).
+             [WInt ((ptr_addr buf + s1) mod 2 ^ 64); WInt ((j - s1) mod 2 ^ 64)] (ptr_addr buf + j) (ptr_cap buf)).
            ++ cbn [map_option flight_arg_x value_x];
               repeat (rewrite lookup_put_other; [|reflexivity]);
-              rewrite Hbase1 Hk1;
-              cbn [word_at_class modulus ptr_addr]; rewrite Hbs1 Hmod_k1; reflexivity.
+              rewrite Hbase1, Hk1;
+              cbn [word_at_class modulus ptr_addr]; rewrite Hbs1, Hmod_k1; reflexivity.
            ++ cbn [alu cond_bit modulus]; rewrite Hadd1; reflexivity.
            ++ cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hbase1; reflexivity.
         -- apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-             [WInt ((b + s2) mod 2 ^ 64); WInt ((j - s2) mod 2 ^ 64)] (b + j) cap).
+             [WInt ((ptr_addr buf + s2) mod 2 ^ 64); WInt ((j - s2) mod 2 ^ 64)] (ptr_addr buf + j) (ptr_cap buf)).
            ++ cbn [map_option flight_arg_x value_x];
               repeat (rewrite lookup_put_other; [|reflexivity]);
-              rewrite Hbase2 Hk2;
-              cbn [word_at_class modulus ptr_addr]; rewrite Hbs2 Hmod_k2; reflexivity.
+              rewrite Hbase2, Hk2;
+              cbn [word_at_class modulus ptr_addr]; rewrite Hbs2, Hmod_k2; reflexivity.
            ++ cbn [alu cond_bit modulus]; rewrite Hadd2; reflexivity.
            ++ cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hbase2; reflexivity.
         -- destruct n4 as [|n5]; [reflexivity|].
-           assert (Hchk_ok : access_res m (raw_address (b + j) 0) cap 1 Read 1 = Some (RVal tt)).
-           { unfold access_res, raw_address; rewrite Z.add_0_r Hbj.
-             destruct Hlv as [Hobj _].
-             destruct Hcap as [-> | ->]; unfold cap_access_res, readonly_access_res, aligned_res;
-               rewrite Hobj;
-               replace (b <=? b + j) with true by (symmetry; apply Z.leb_le; lia);
-               replace (b + j + 1 <=? r_end reg) with true by (symmetry; apply Z.leb_le; lia);
-               rewrite Z.mod_1_r; reflexivity. }
+           pose proof (readable_slice_byte_access m buf len j Hsl ltac:(lia)) as Hchk_ok.
            eapply run_trace_step_eq.
-           ++ cbn [leak_of c_frame fr_at fr_env value_x]; rewrite !lookup_put_same; reflexivity.
-           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P] [WPtr (mkPtr (b + j) cap)] (WPtr (mkPtr (b + j) cap)) m);
+           ++ cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
+           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
+                [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))]
+                (WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))) m);
                 try reflexivity;
-                cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hchk_ok; reflexivity.
-           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P] [WPtr (mkPtr (b + j) cap)] (WPtr (mkPtr (b + j) cap)) m);
+                cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1; rewrite Hchk_ok; reflexivity.
+           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
+                [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))]
+                (WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))) m);
                 try reflexivity;
-                cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hchk_ok; reflexivity.
+                cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1; rewrite Hchk_ok; reflexivity.
            ++ destruct n5 as [|n6]; [reflexivity|].
-              set (bv := (m_bytes m (b + j) mod 256) mod 2 ^ 32).
-              assert (Hload_ok : int_load_res (LdNarrow Ub) W m (raw_address (b + j) 0) cap = Some (RVal (WInt bv))).
-              { unfold int_load_res; cbn [fst narrow_type]; rewrite Hchk_ok.
-                unfold load_bytes, raw_address, extended, extension; cbn [modulus].
-                rewrite Z.add_0_r Hbj. change (Z.to_nat 1) with 1%nat.
-                cbn; rewrite Z.add_0_r; reflexivity. }
+              set (bv := (m_bytes m (ptr_addr buf + j) mod 256) mod 2 ^ 32).
+              pose proof (readable_slice_load_byte m buf len j Hsl ltac:(lia)) as Hload_ok.
               eapply run_trace_step_eq.
-              ** cbn [leak_of c_frame fr_at fr_env value_x]; rewrite !lookup_put_same; reflexivity.
-              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A] [WPtr (mkPtr (b + j) cap)] (WInt bv) m);
+              ** cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
+              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
+                   [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))] (WInt bv) m);
                    try reflexivity;
                    cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hload_ok; reflexivity.
-              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A] [WPtr (mkPtr (b + j) cap)] (WInt bv) m);
+              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
+                   [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))] (WInt bv) m);
                    try reflexivity;
                    cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hload_ok; reflexivity.
               ** destruct n6 as [|n7]; [reflexivity|].
@@ -1618,19 +1224,19 @@ Proof.
 Qed.
 
 (** Full two-run constant-time theorem for [rebased_scan_fn]: for any policy
-    [pol], any live buffer of length `len`, and any two secret offsets `s1` and
-    `s2`, both executions emit the identical plain operational trace. Together
-    with [rebased_scan_taint_rejects], this formally separates single-run
-    dynamic taint from two-run constant-time noninterference. *)
-Theorem rebased_scan_two_run_constant_time pol b cap reg m len s1 s2 fuel steps :
-  cap = Obj b \/ cap = Ro b ->
-  live_at m b reg ->
-  0 <= b -> 0 <= len -> b + len < 2 ^ 64 -> b + len <= r_end reg ->
-  run_trace pol rebased_ge steps (mkConfig (rebased_entry (mkPtr b cap) len s1) [] m fuel) =
-  run_trace pol rebased_ge steps (mkConfig (rebased_entry (mkPtr b cap) len s2) [] m fuel).
+    [pol], any readable buffer slice of length `len`, and any two secret
+    offsets `s1` and `s2`, both executions emit the identical plain operational
+    trace. Together with [rebased_scan_taint_rejected] and
+    [rebased_scan_taint_rejects], this formally separates single-run taint
+    from two-run constant-time noninterference. *)
+Theorem rebased_scan_two_run_constant_time pol buf m len s1 s2 fuel steps :
+  readable_slice m buf len ->
+  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s1) [] m fuel) =
+  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s2) [] m fuel).
 Proof.
-  intros Hcap Hlv Hb Hlen Hblim Hrend.
-  assert (Hb_mod : b mod 2 ^ 64 = b) by (apply Z.mod_small; lia).
+  intros Hsl.
+  pose proof Hsl as [_ Hb Hlen Hblim _].
+  assert (Hb_mod : ptr_addr buf mod 2 ^ 64 = ptr_addr buf) by (apply Z.mod_small; lia).
   assert (Hlen_mod : len mod 2 ^ 64 = len) by (apply Z.mod_small; lia).
   destruct steps as [|n1]; [reflexivity|].
   destruct (Z.eqb_spec fuel 0) as [-> | Hfuel1].
@@ -1641,12 +1247,14 @@ Proof.
   cbn [b_insts b_jump].
   destruct n1 as [|n2]; [reflexivity|].
   eapply run_trace_step_eq; [reflexivity | | |].
-  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ [WInt b; WInt (s1 mod 2 ^ 64)] ((b + s1) mod 2 ^ 64) cap);
+  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+      [WInt (ptr_addr buf); WInt (s1 mod 2 ^ 64)] ((ptr_addr buf + s1) mod 2 ^ 64) (ptr_cap buf));
       [cbn [map_option flight_arg_x value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus ptr_addr];
         rewrite Hb_mod; reflexivity
       |cbn [alu cond_bit modulus]; rewrite Zplus_mod_idemp_r; reflexivity
       |cbn [flight_cap value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb]; reflexivity].
-  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _ [WInt b; WInt (s2 mod 2 ^ 64)] ((b + s2) mod 2 ^ 64) cap);
+  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+      [WInt (ptr_addr buf); WInt (s2 mod 2 ^ 64)] ((ptr_addr buf + s2) mod 2 ^ 64) (ptr_cap buf));
       [cbn [map_option flight_arg_x value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus ptr_addr];
         rewrite Hb_mod; reflexivity
       |cbn [alu cond_bit modulus]; rewrite Zplus_mod_idemp_r; reflexivity
@@ -1697,7 +1305,7 @@ Proof.
             |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
              reflexivity] |].
         cbn [b_insts b_jump].
-        eapply (rebased_loop_traces_equal pol b cap reg m len s1 s2 Hcap Hlv Hb Hlen Hblim Hrend
+        eapply (rebased_loop_traces_equal pol buf m len s1 s2 Hsl
                   n6 0 0 (fuel - 1 - 1));
           first
             [ lia
@@ -1705,3 +1313,19 @@ Proof.
               cbn [lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb];
               rewrite ?Zmod_mod; reflexivity ].
 Qed.
+
+(** ## Concrete runtime instantiation
+
+    Instantiating [CtTableScan] with the reference interpreter runtime
+    [InterpRuntime] lets Rocq check the assumptions of the safety and
+    constant-time theorems for that runtime. *)
+
+Module InterpCtTableScan := CtTableScan InterpRuntime.
+Print Assumptions cttable_valid.
+Print Assumptions scan_ct_taint_ok.
+Print Assumptions scan_indexed_taint_rejected.
+Print Assumptions InterpCtTableScan.scan_ct_plain_safe.
+Print Assumptions InterpCtTableScan.scan_ct_safe.
+Print Assumptions InterpCtTableScan.scan_ct_constant_time.
+Print Assumptions rebased_scan_taint_rejected.
+Print Assumptions rebased_scan_two_run_constant_time.
