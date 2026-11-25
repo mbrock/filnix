@@ -79,7 +79,9 @@ jobs:
           python3 packages/site/history.py _site .
           # PDF generation (deploy/site/equity.sh) is paused on the publish path;
           # the scripts and Typst templates remain in the repo for standalone builds.
-          python3 deploy/site/prepare.py _site "$GITHUB_SHA"
+          # Pages stay byte-identical across unchanged commits so content-addressed
+          # blob publication uploads only changed files and canonical URLs revalidate
+          # with strong SHA-256 ETags.
       - name: Publish the release
         id: publish
         env:

@@ -5,9 +5,10 @@ set -euo pipefail
 bucket=filnix-site
 endpoint="https://d66b4fdcf8b2d4b0949d7fa3518b9b58.r2.cloudflarestorage.com"
 
-# Content-addressed manifest mode (requires the manifest-aware worker.mjs to be
-# deployed on Cloudflare first).
-if [[ ${FILNIX_MANIFEST_PUBLISH:-0} == 1 ]]; then
+# Content-addressed manifest mode is the default now that worker.mjs reads
+# releases/<sha>/manifest.json and blobs/<sha256>. Set FILNIX_LEGACY_PUBLISH=1
+# only to force a legacy full-tree upload.
+if [[ ${FILNIX_LEGACY_PUBLISH:-0} != 1 ]]; then
   exec python3 "$(dirname "$0")/publish_manifest.py" _site "$GITHUB_SHA" \
     --bucket "$bucket" --endpoint-url "$endpoint"
 fi

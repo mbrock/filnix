@@ -10,17 +10,20 @@ historical `github-pages` name and `artifact.tar` format so
 manual recovery works for both old and new runs; it is a normal Actions artifact.
 
 `filnix-site` is a private Standard R2 bucket. `worker.mjs` is its only public
-front end, bound as `SITE`. The Worker serves canonical paths directly from
-one read of `current.json`, with `no-store` so reloads see the current release.
-Before packaging, `prepare.py` pins local scripts, styles, media, frames and
-explicit downloads to `/__releases/<commit>/…`, while page-navigation links
-stay canonical. The playground resolves its worker and examples relative to
-its pinned module URL. Thus a promotion cannot mix a page's assets with another
-release, without putting a release prefix in the address bar. No cookie or
-browser-history workaround is involved. Retained release URLs still work.
-It streams downloads, supports HEAD, conditional and range requests, and caches
-immutable release responses up to Cloudflare's ordinary 512 MiB object limit.
-`/commit.txt` reports the canonical release without caching.
+front end, bound as `SITE`. Each release stores unique file bytes under
+`blobs/<sha256>` and writes one immutable `releases/<commit>/manifest.json`
+mapping paths to content hashes, sizes, and media types. The Worker serves
+canonical paths from one read of `current.json` and the cached release manifest,
+sending `cache-control: no-cache` with a strong SHA-256 `ETag` so reloads
+always reflect the current release while unchanged files return `304 Not
+Modified` without reading blobs from R2. Relative asset URLs stay clean, so
+unchanged HTML pages remain byte-identical across releases and delta uploads
+send only new blobs. Pinned `/__releases/<commit>/…` URLs remain immutable
+for edge caching and browser checks, and legacy `releases/<commit>/…` trees
+stay readable during retention. The Worker streams downloads, supports HEAD,
+conditional, and range requests, and caches immutable release responses up to
+Cloudflare's ordinary 512 MiB object limit. `/commit.txt` reports the canonical
+release without caching.
 
 The Site workflow builds, prepares and publishes on one GitHub Ubuntu runner,
 without artifact handoffs or browser gates. One active run finishes and seeds
