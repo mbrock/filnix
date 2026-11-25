@@ -46,7 +46,10 @@ dl.rq-files dd code { font-size: 0.84em; overflow-wrap: anywhere; }
 }
 /* A long path as a page's title breaks where it must. */
 .dterm-rocq h1.source-title { overflow-wrap: anywhere; }
-:is(.dterm-rocq, code.rq) { --ty: #6b3d7a; --lem: #7a4a14; }
+:is(.dterm-rocq, code.rq) {
+  --ty: #6b3d7a; --lem: #7a4a14;
+  --ir-memory: #94570c; --ir-check: var(--accent); --ir-control: #2f6f8f; --ir-global: #3d7a3d;
+}
 
 :is(.dterm-rocq, code.rq) .ty { color: var(--ty); }
 :is(.dterm-rocq, code.rq) .ty.def, :is(.dterm-rocq, code.rq) .lem.def, :is(.dterm-rocq, code.rq) .a.def, :is(.dterm-rocq, code.rq) .f.def { font-weight: 700; }
@@ -470,4 +473,141 @@ html[data-case-layout="table"] .tactic { display: block; max-width: 100%; overfl
      such as option (contract (LK.callback_world payload)) has no space
      to break at. */
   .rule-vars { overflow-wrap: anywhere; }
+}
+
+/* Checked IR (IRNotation.v): a function is its signature over a grid of
+   labeled basic blocks, matching the playground's role palette (play.css)
+   while keeping dterm's typography, bows and cross-file links. */
+.rq-ir { margin: 0.2rem 0 0.35rem; min-width: 0; }
+.rq-ir-head { margin: 0 0 0.35rem; font-size: 0.96rem; }
+:is(.dterm-rocq, code.rq) .rq-ir-linkage { color: var(--muted); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-fn-name { color: var(--ink); font-weight: 700; }
+.rq-ir-fn-sig > .args { margin-left: var(--paren-outside); }
+:is(.dterm-rocq, code.rq) .args.rq-ir-empty { padding: 0 0.14em; }
+
+.rq-ir-blocks {
+  display: grid;
+  grid-template-columns: fit-content(10em) minmax(0, 1fr);
+  column-gap: 1.1em;
+}
+.rq-ir-blocks > :is(.note, .rq-doc) { grid-column: 1 / -1; contain: inline-size; margin: 0.25em 0; }
+.rq-ir-block {
+  display: grid;
+  grid-column: 1 / -1;
+  grid-template-columns: subgrid;
+  padding: 0.32em 0 0.38em;
+  border-top: 1px solid color-mix(in srgb, var(--rule) 75%, transparent);
+  line-height: 1.42;
+  scroll-margin-top: 3rem;
+}
+.rq-ir-block:target { background: color-mix(in srgb, var(--accent) 7%, transparent); }
+.rq-ir-block-escape > .rq-ir-escape-block { grid-column: 1 / -1; }
+.rq-ir-label {
+  min-width: 4.2em;
+  font-weight: 700;
+  color: var(--ir-control);
+  overflow-wrap: anywhere;
+  align-self: start;
+}
+.rq-ir-label .neck { margin-left: 0.08em; font-weight: 500; }
+.rq-ir-block > .goals, .rq-ir-seq {
+  display: grid;
+  grid-template-columns: minmax(0, 1fr);
+  row-gap: 0.08em;
+  min-width: 0;
+}
+.rq-ir-seq {
+  padding-left: 0.9em;
+  border-left: 1px solid var(--rule);
+}
+.rq-ir-phi + .rq-ir-inst { margin-top: 0.14em; }
+:is(.rq-ir-phi, .rq-ir-inst) + .rq-ir-jump { margin-top: 0.14em; }
+
+/* Fil-C safety margin bar: checks, raw accesses, raw calls and pollchecks. */
+.rq-ir .goal { position: relative; }
+.rq-ir .goal.pz::before {
+  content: "";
+  position: absolute;
+  left: -0.5em;
+  top: -0.04em;
+  bottom: -0.04em;
+  width: 2px;
+  background: color-mix(in srgb, var(--ir-check) 42%, transparent);
+}
+
+/* Role colours and badges (matching nanofil/web/play/play.css). */
+:is(.dterm-rocq, code.rq) .rq-ir-sigil { opacity: 0.52; font-weight: 400; margin-right: 0.03em; }
+:is(.dterm-rocq, code.rq) .rq-ir-colon { color: var(--muted); }
+:is(.dterm-rocq, code.rq) .rq-ir-term-arrow { color: var(--ir-control); opacity: 0.72; font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-store-arrow { color: var(--ir-memory); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-void { color: var(--muted); font-style: italic; }
+:is(.dterm-rocq, code.rq) .rq-ir-local { color: var(--ink); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-global { color: var(--ir-global); font-weight: 600; white-space: nowrap; }
+:is(.dterm-rocq, code.rq) .rq-ir-const { white-space: nowrap; }
+:is(.dterm-rocq, code.rq) :is(.rq-ir-global, .rq-ir-const) > .value-role { opacity: 0.55; font-weight: 400; margin-right: 0.04em; }
+:is(.dterm-rocq, code.rq) .ir-value { font-weight: 500; }
+:is(.dterm-rocq, code.rq) .ir-value.def { font-weight: 650; }
+:is(.dterm-rocq, code.rq) .ir-value > .value-role { font-weight: 400; }
+:is(.dterm-rocq, code.rq) .ir-value sub { font-variant-numeric: tabular-nums; }
+:is(.dterm-rocq, code.rq) .rq-ir-op { color: var(--atom); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-op-memory { color: var(--ir-memory); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-op-check { color: var(--ir-check); font-weight: 700; }
+:is(.dterm-rocq, code.rq) .rq-ir-op-control { color: var(--ir-control); font-weight: 600; }
+:is(.dterm-rocq, code.rq) .rq-ir-lbl { color: var(--ir-control); font-weight: 600; white-space: nowrap; }
+:is(.dterm-rocq, code.rq) .rq-ir-class,
+:is(.dterm-rocq, code.rq) .rq-ir-type,
+:is(.dterm-rocq, code.rq) .rq-ir-cond,
+:is(.dterm-rocq, code.rq) .rq-ir-right-write {
+  display: inline;
+  padding: 0 0.24em;
+  border-radius: 3px;
+  font: 600 0.78em var(--mono-font);
+  white-space: nowrap;
+}
+:is(.dterm-rocq, code.rq) .rq-ir-class,
+:is(.dterm-rocq, code.rq) .rq-ir-type {
+  background: color-mix(in srgb, var(--atom) 9%, transparent);
+  color: color-mix(in srgb, var(--atom) 82%, var(--ink));
+}
+:is(.dterm-rocq, code.rq) .rq-ir-class.rq-ir-void { font-style: normal; color: var(--muted); }
+:is(.dterm-rocq, code.rq) .rq-ir-cond {
+  background: color-mix(in srgb, var(--ir-control) 11%, transparent);
+  color: var(--ir-control);
+}
+:is(.dterm-rocq, code.rq) .rq-ir-right-write {
+  background: color-mix(in srgb, var(--ir-memory) 11%, transparent);
+  color: var(--ir-memory);
+}
+:is(.dterm-rocq, code.rq) .rq-ir-range { white-space: nowrap; }
+:is(.dterm-rocq, code.rq) .rq-ir-range > .op.tight { color: var(--muted); margin-inline: 0.04em; }
+:is(.dterm-rocq, code.rq) .rq-ir-addr { padding-inline: 0.22em; margin-right: 0.08em; }
+:is(.dterm-rocq, code.rq) .rq-ir-lhs { white-space: nowrap; }
+:is(.dterm-rocq, code.rq) a:is(.rq-ir-op, .rq-ir-op-memory, .rq-ir-op-check, .rq-ir-op-control, .rq-ir-lbl, .rq-ir-class, .rq-ir-type, .rq-ir-cond, .rq-ir-right-write) {
+  text-decoration: none;
+}
+:is(.dterm-rocq, code.rq) a:is(.rq-ir-op, .rq-ir-op-memory, .rq-ir-op-check, .rq-ir-op-control, .rq-ir-lbl, .rq-ir-class, .rq-ir-type, .rq-ir-cond, .rq-ir-right-write):hover {
+  text-decoration: underline;
+}
+.rq-ir [data-ir-label].lit {
+  background: color-mix(in srgb, var(--ir-control) 14%, transparent);
+  border-radius: 3px;
+}
+
+/* Narrow containers and Stacked layout put each block label over its
+   instructions, giving long instructions the full width of the screen. */
+@container (max-width: 34rem) {
+  .rq-ir-blocks { grid-template-columns: minmax(0, 1fr); }
+  .rq-ir-block { display: block; padding: 0.35em 0; }
+  .rq-ir-label { min-width: 0; margin-bottom: 0.14em; }
+  .rq-ir-block > .goals { padding-left: 0.85em; }
+}
+html[data-case-layout="stack"] .rq-ir-blocks { grid-template-columns: minmax(0, 1fr); }
+html[data-case-layout="stack"] .rq-ir-block { display: block; padding: 0.35em 0; }
+html[data-case-layout="stack"] .rq-ir-label { min-width: 0; margin-bottom: 0.14em; }
+html[data-case-layout="stack"] .rq-ir-block > .goals { padding-left: 0.85em; }
+html[data-case-layout="table"] .rq-ir-blocks { grid-template-columns: fit-content(10em) minmax(0, 1fr); }
+html[data-case-layout="table"] .rq-ir-block { display: grid; grid-template-columns: subgrid; }
+html[data-case-layout="table"] .rq-ir-block > .goals { padding-left: 0; }
+@media (max-width: 700px) {
+  .rq-ir :is(.ir-value, .rq-ir-global, .rq-ir-lbl) { white-space: normal; overflow-wrap: anywhere; }
 }

@@ -290,6 +290,13 @@ term_(list(_, Es), Env) --> el(span, l, ['data-d'=args], sep_items(Es, Env, ";")
 term_(record(_, Fs), Env) --> el(span, "c rec", ['data-d'=args], el(span, "args recbr", rec_fields(Fs, Env))).
 term_(scope(_, E, K), Env) --> term(E, Env), el(span, scope, [title="scope"], ( "%", esc(K) )).
 term_(mixfix(_, Parts), Env) --> seq(Parts, mixfix_part(Env)).
+term_(ir_inst(_, I), Env) --> el(span, "rq-ir-inline", ir_ssa_draw(I, Env)).
+term_(ir_list(_, Is), Env) -->
+    el(span, "c rq-ir-inline rq-ir-inline-list", ['data-d'=args],
+       el(span, "args l", ir_inline_ssa_items(Is, Env))).
+term_(ir_blk(_, B), Env) --> el(span, "rq-ir-inline rq-ir-inline-blk", ir_blk_inline(B, Env)).
+term_(ir_fn(_, Lk, Name, Ps, Ret, Bs), Env) -->
+    el(span, "rq-ir-inline rq-ir-inline-fn", ir_fn_inline(Lk, Name, Ps, Ret, Bs, Env)).
 term_(braces(_, E), Env) --> el(span, braces, term(E, Env)).
 term_(sig(_, n(_, X), T, Q), Env) -->
     el(span, "braces sig", ( var_def(X), "\u00A0", el(span, "op wide", ":"), " ", term(T, Env), " ",
@@ -575,6 +582,9 @@ block(letpat(_, _, _, _)).
 block(letq(_, _, _, _)).
 block(letfix(_, _, _, _, _, _)).
 block(fix(_, _, _, _, _)).
+block(ir_fn(_, _, _, _, _, _)).
+block(ir_blk(_, _)).
+block(ir_list(_, [_|_])).
 block(fun(_, _, B)) :- block(B).
 block(forall(_, _, B)) :- block(B).
 block(exists(_, _, B)) :- block(B).
@@ -588,6 +598,9 @@ block(scope(_, E, _)) :- block(E).
 blk_(paren(_, E), Env) --> blk(E, Env).
 %  A block's scope (match … end%I) only told Rocq how to read it.
 blk_(scope(_, E, _), Env) --> blk(E, Env).
+blk_(ir_fn(_, Lk, Name, Ps, Ret, Bs), Env) --> ir_fn_block(Lk, Name, Ps, Ret, Bs, Env).
+blk_(ir_blk(_, B), Env) --> ir_blk_standalone(B, Env).
+blk_(ir_list(_, Is), Env) --> ir_list_block(Is, Env).
 blk_(bin(_, Op, L, R), Env) -->
     el(div, "rq-equation", ( blk(L, Env), el(div, "goal", op_(Op)), blk(R, Env) )).
 blk_(tuple(_, Es), Env) --> el(div, "rq-tuple", seq(Es, tuple_part(Env))).
@@ -669,6 +682,659 @@ if_rows([if(C, T)|Cs], Env) -->
 if_rows([else(E)|Cs], Env) -->
     el(div, "case plain", ( el(div, cond, kw("else")), el(div, arrow, []), el(div, then, el(div, goals, blk(E, Env))) )),
     if_rows(Cs, Env).
+
+%% Checked IR (IRNotation.v)
+
+%  Checked IR functions, blocks and instruction sequences drawn in the
+%  playground's visual grammar (play_view.pl): a function is its signature
+%  over a grid of labeled blocks, each block its entry phis, body
+%  instructions and jump terminator, one row per operation so dterm.js
+%  breaks wide lines at the width each block receives. Constructors link
+%  to Syntax.v, temporaries highlight across the function via data-v,
+%  block labels link and highlight within the function, and Fil-C checks,
+%  raw accesses and pollchecks carry the safety margin rule.
+
+ir_fn_block(Lk, Name, Ps, Ret, Bs, Env) -->
+    { ( nb_current(rq_ir_labels, Prev) -> true ; Prev = none ),
+      (   Bs = blocks(BlockList), \+ nb_current(rq_button, true)
+      ->  next_ir_prefix(Prefix),
+          findall(Lab, member(ir_block(_, str(_, Lab), _, _, _), BlockList), Labels),
+          nb_setval(rq_ir_labels, prefix(Prefix, Labels))
+      ;   nb_setval(rq_ir_labels, none)
+      ) },
+    el(div, "rq-ir rq-ir-fn",
+       ( el(div, "goal rq-ir-head", ir_fn_head(Lk, Name, Ps, Ret, Env)),
+         ir_body_blocks(Bs, Env) )),
+    { nb_setval(rq_ir_labels, Prev) }.
+
+ir_blk_standalone(B, Env) -->
+    el(div, "rq-ir rq-ir-blk", el(div, "rq-ir-blocks", ir_block_row(Env, B))).
+
+ir_list_block(Is, Env) -->
+    el(div, "rq-ir rq-ir-seq", seq(Is, ir_inst_row(Env))).
+
+next_ir_prefix(Prefix) :-
+    ( nb_current(rq_ir_seq, N0) -> N is N0 + 1 ; N = 1 ),
+    nb_setval(rq_ir_seq, N),
+    format(atom(Prefix), "ir~d--", [N]).
+
+ir_block_anchor(Lab, Id) :-
+    nb_current(rq_ir_labels, prefix(Prefix, Labels)),
+    memberchk(Lab, Labels),
+    uri_encoded(fragment, Lab, Frag),
+    atom_concat(Prefix, Frag, Id).
+
+ir_fn_head(Lk, Name, Ps, Ret, Env) -->
+    el(span, "c rq-ir-fn-sig", ['data-d'=args],
+       ( ir_linkage(Lk, Env), "\u00A0", ir_fn_name(Name, Env),
+         ir_param_list(Ps, Env) )),
+    "\u00A0", el(span, "op wide", [title="->"], "→"), "\u00A0", ir_ret_type(Ret, Env).
+
+ir_linkage(str(_, S), _) --> !,
+    { format(string(Tip), "linkage: ~s", [S]) },
+    el(span, "rq-ir-linkage", [title=Tip], esc(S)).
+ir_linkage(E, Env) --> term(E, Env).
+
+ir_fn_name(str(_, S), _) --> !,
+    { format(string(Tip), "IR function symbol \"~s\"", [S]) },
+    el(span, "rq-ir-fn-name", [title=Tip], esc(S)).
+ir_fn_name(E, Env) --> term(E, Env).
+
+ir_param_list([], _) --> !, el(span, "args rq-ir-empty", []).
+ir_param_list(Ps, Env) --> el(span, args, ir_params(Ps, Env)).
+
+ir_params([ir_param(K, D)], Env) --> !,
+    el(span, arg, ( ir_class_badge(K, Env), "\u00A0", ir_tmp_def(D, Env) )).
+ir_params([ir_param(K, D)|Ps], Env) -->
+    el(span, arg, ( ir_class_badge(K, Env), "\u00A0", ir_tmp_def(D, Env), el(span, sep, ",") )), " ",
+    ir_params(Ps, Env).
+
+ir_ret_type(E, Env) --> { ir_unparen(E, app(_, id(_, 'RClass'), [K])) }, !,
+    ir_class_badge(K, Env).
+ir_ret_type(E, _) --> { ir_unparen(E, id(_, 'RVoid')) }, !,
+    ir_sym('RVoid', "void", "rq-ir-class rq-ir-void", "RVoid: no return value").
+ir_ret_type(E, Env) --> { ir_unparen(E, app(_, id(_, 'RTuple'), [list(_, Ks)])) }, !,
+    el(span, "c tuple", ['data-d'=args], el(span, args, ir_class_tuple(Ks, Env))).
+ir_ret_type(E, Env) --> term(E, Env).
+
+ir_class_tuple([K], Env) --> !, el(span, arg, ir_class_badge(K, Env)).
+ir_class_tuple([K|Ks], Env) -->
+    el(span, arg, ( ir_class_badge(K, Env), el(span, sep, ",") )), " ", ir_class_tuple(Ks, Env).
+
+ir_body_blocks(blocks([]), _) --> !,
+    el(div, "rq-ir-blocks rq-ir-empty-body", el(div, "goal rq-ir-void", "{ }")).
+ir_body_blocks(blocks(Bs), Env) --> !,
+    el(div, "rq-ir-blocks", seq(Bs, ir_block_row(Env))).
+ir_body_blocks(expr(Xs), Env) -->
+    el(div, "rq-ir-blocks",
+       el(div, "goal rq-ir-escape-block", ( kw("blocks"), " ", term(Xs, Env) ))).
+
+ir_block_row(Env, ir_escape(X)) --> !,
+    { node_pos(X, F-T) },
+    notes_before(F),
+    el(div, "rq-ir-block rq-ir-block-escape",
+       el(div, "goal rq-ir-escape-block", ( term(X, Env), aside_after(T) ))).
+ir_block_row(Env, ir_block(F-_, L, Phis, Ins, J)) -->
+    notes_before(F),
+    { L = str(_, Lab), \+ nb_current(rq_button, true), ir_block_anchor(Lab, Id) -> As = [id=Id] ; As = [] },
+    el(div, "rq-ir-block", As,
+       ( ir_block_label_cell(L, Env),
+         el(div, goals,
+            ( seq(Phis, ir_phi_row(Env)),
+              ir_block_insts(Ins, Env),
+              ir_jump_row(J, Env) )) )).
+
+ir_block_label_cell(str(_, Lab), _) --> !,
+    { format(string(Tip), "basic block @\"~s\"", [Lab]) },
+    el(div, "rq-ir-label", ['data-ir-label'=Lab, title=Tip],
+       ( el(span, "rq-ir-sigil", "@"), esc(Lab), el(span, neck, ":") )).
+ir_block_label_cell(E, Env) -->
+    el(div, "rq-ir-label", ( el(span, "rq-ir-sigil", "@"), term(E, Env), el(span, neck, ":") )).
+
+ir_phi_row(Env, ir_escape(X)) --> !,
+    { node_pos(X, F-T) },
+    notes_before(F),
+    el(div, "goal rq-ir-phi", term(X, Env)), aside_after(T).
+ir_phi_row(Env, ir_phi(F-T, D, K, Incs)) -->
+    notes_before(F),
+    el(div, "goal rq-ir-phi", ir_phi_draw(D, K, Incs, Env)), aside_after(T).
+
+ir_phi_draw(D, K, Incs, Env) -->
+    el(span, o, ['data-d'=op],
+       ( el(span, "rq-ir-lhs", ( ir_tmp_def(D, Env), "\u00A0", el(span, "rq-ir-colon", [title=":"], ":"), "\u00A0",
+                                 ir_class_badge(K, Env) )),
+         "\u00A0", el(span, "op wide", [title="="], "="), " ",
+         el(span, "c rq-ir-phi-call", ['data-d'=args],
+            ( ir_sym('Phi', "phi", "rq-ir-op-control", "Phi: selects the incoming value for the predecessor block control arrived from"),
+              el(span, args, ir_incomings(Incs, Env)) )) )).
+
+ir_incomings([ir_inc(Lab, V)], Env) --> !,
+    el(span, arg, ( ir_label_ref(Lab, Env), "\u00A0", el(span, "op wide", [title="=>"], "⇒"), "\u00A0", ir_opnd(V, Env) )).
+ir_incomings([ir_inc(Lab, V)|Is], Env) -->
+    el(span, arg, ( ir_label_ref(Lab, Env), "\u00A0", el(span, "op wide", [title="=>"], "⇒"), "\u00A0", ir_opnd(V, Env),
+                    el(span, sep, ",") )), " ",
+    ir_incomings(Is, Env).
+
+ir_block_insts(insts(Is), Env) --> !, seq(Is, ir_inst_row(Env)).
+ir_block_insts(code(Xs), Env) --> { ir_unparen(Xs, ir_list(_, Is)) }, !, seq(Is, ir_inst_row(Env)).
+ir_block_insts(code(Xs), Env) -->
+    { node_pos(Xs, F-T) },
+    notes_before(F),
+    el(div, "goal rq-ir-inst", ( kw("code"), " ", term(Xs, Env) )), aside_after(T).
+
+ir_inst_row(Env, ir_s(F-T, I)) -->
+    { ir_ssa_pz(I) -> C = "goal rq-ir-inst pz" ; C = "goal rq-ir-inst" },
+    notes_before(F),
+    el(div, C, ir_ssa_draw(I, Env)), aside_after(T).
+
+ir_jump_row(ir_s(F-T, J), Env) -->
+    { ir_ssa_pz(J) -> C = "goal rq-ir-jump pz" ; C = "goal rq-ir-jump" },
+    notes_before(F),
+    el(div, C, ( el(span, "op rq-ir-term-arrow", [title="=>"], "⇒"), "\u00A0", ir_ssa_draw(J, Env) )),
+    aside_after(T).
+
+ir_ssa_draw(ir_s(_, I), Env) --> !, ir_ssa_draw(I, Env).
+ir_ssa_draw(ir_escape(X), Env) --> { ir_escape_draw(X, Env, Goal) }, !, call(Goal).
+ir_ssa_draw(ir_escape(X), Env) --> !, term(X, Env).
+ir_ssa_draw(ir_let(D, K, Op, Args), Env) --> !,
+    el(span, o, ['data-d'=op],
+       ( el(span, "rq-ir-lhs", ( ir_tmp_def(D, Env), "\u00A0", el(span, "rq-ir-colon", [title=":"], ":"), "\u00A0",
+                                 ir_class_badge(K, Env) )),
+         "\u00A0", el(span, "op wide", [title="="], "="), " ",
+         ir_op_applied(Op, Args, Env) )).
+ir_ssa_draw(ir_flight(D, Base, Off), Env) --> !,
+    el(span, o, ['data-d'=op],
+       ( ir_tmp_def(D, Env), "\u00A0", el(span, "op wide", [title="="], "="), " ",
+         el(span, o, ['data-d'=op],
+            ( ir_opnd(Base, Env), "\u00A0",
+              ir_sym('Flight', "+p", "op wide rq-ir-op", "Flight Add (LowerOf base): pointer arithmetic preserving base's Fil-C capability"),
+              " ", ir_opnd(Off, Env) )) )).
+ir_ssa_draw(ir_store(Sz, Addr, Off, Src), Env) --> !,
+    el(span, o, ['data-d'=op],
+       ( el(span, "rq-ir-lhs",
+            ( ir_sym('RawStore', "store", "rq-ir-op-memory", "RawStore: write value to memory at proven address + offset"),
+              "\u00A0", ir_type_badge(Sz, Env), "\u00A0", ir_mem_addr(Addr, Off, Env) )),
+         "\u00A0", el(span, "op wide rq-ir-store-arrow", [title="<-"], "←"), " ",
+         ir_opnd(Src, Env) )).
+ir_ssa_draw(ir_store_ptr(Addr, Off, Src), Env) --> !,
+    el(span, o, ['data-d'=op],
+       ( el(span, "rq-ir-lhs",
+            ( ir_sym('RawStorePointer', "store.ptr", "rq-ir-op-memory", "RawStorePointer: write pointer and capability at proven address + offset"),
+              "\u00A0", ir_mem_addr(Addr, Off, Env) )),
+         "\u00A0", el(span, "op wide rq-ir-store-arrow", [title="<-"], "←"), " ",
+         ir_opnd(Src, Env) )).
+ir_ssa_draw(ir_alloca(X, Sz), Env) --> !,
+    ir_sym('LocalAlloc', "alloca", "rq-ir-op-memory", "LocalAlloc: allocate zeroed stack local object"),
+    "\u00A0", ir_local_name(X, Env), "\u00A0", ir_num_or_term(Sz, Env).
+ir_ssa_draw(ir_call(Kw, Res, Fn, Args), Env) --> !,
+    { ( Kw == rawcall -> Ctor = 'RawCall', KwS = "rawcall", Cls = "rq-ir-op-check",
+        Tip = "RawCall: call proven function address (class F) with no check"
+      ; Ctor = 'Call', KwS = "call", Cls = "rq-ir-op-control",
+        Tip = "Call: check callee capability and invoke function" ) },
+    (   { Res = res(D, K) }
+    ->  el(span, o, ['data-d'=op],
+           ( el(span, "rq-ir-lhs",
+                ( ir_sym(Ctor, KwS, Cls, Tip), "\u00A0", ir_tmp_def(D, Env), "\u00A0",
+                  el(span, "rq-ir-colon", [title=":"], ":"), "\u00A0", ir_class_badge(K, Env) )),
+             "\u00A0", el(span, "op wide", [title="="], "="), " ",
+             ir_call_target(Fn, Args, Env) ))
+    ;   ir_sym(Ctor, KwS, Cls, Tip), "\u00A0",
+        ir_sym('CVoid', "void", "rq-ir-void", "CVoid: no return value"), "\u00A0",
+        ir_call_target(Fn, Args, Env)
+    ).
+ir_ssa_draw(ir_goto(Edge), Env) --> !,
+    ir_sym('JGoto', "goto", "rq-ir-op-control", "JGoto: jump unconditionally to block"),
+    "\u00A0", ir_edge_draw(Edge, Env).
+ir_ssa_draw(ir_br(Cond, Yes, No), Env) --> !,
+    ir_sym('JBranch', "br", "rq-ir-op-control", "JBranch: jump to first block if condition is nonzero, else second"),
+    "\u00A0",
+    el(span, o, ['data-d'=op],
+       ( ir_opnd(Cond, Env), "\u00A0", el(span, "op wide", [title="?"], "?"), " ",
+         el(span, o, ['data-d'=op],
+            ( ir_edge_draw(Yes, Env), "\u00A0", el(span, "op wide", [title=":"], ":"), " ",
+              ir_edge_draw(No, Env) )) )).
+ir_ssa_draw(ir_ret(void), _) --> !,
+    ir_sym('JRetVoid', "ret", "rq-ir-op-control", "JRetVoid: return from void function"),
+    "\u00A0", el(span, "rq-ir-void", "void").
+ir_ssa_draw(ir_ret(val(V)), Env) --> !,
+    ir_sym('JRet', "ret", "rq-ir-op-control", "JRet: return value from function"),
+    "\u00A0", ir_opnd(V, Env).
+ir_ssa_draw(ir_unreachable, _) -->
+    ir_sym('JUnreachable', "unreachable", "rq-ir-op-control", "JUnreachable: traps immediately if control reaches this point").
+
+ir_mem_addr(Addr, Off, Env) -->
+    el(span, "l rq-ir-addr",
+       ( ir_opnd(Addr, Env), "\u00A0", el(span, op, "+"), "\u00A0", ir_num_or_term(Off, Env) )).
+
+%  Common Gallina instruction escapes that IRNotation has no short
+%  spelling for: Flight with Sub (or a different capability donor) and
+%  Touch. Drawing them in the same IR visual grammar keeps temporary
+%  subscripts and hover highlights consistent across the function.
+ir_escape_draw(X0, Env, ir_flight_sub_draw(Dst, Base, Off, Env)) :-
+    ir_unparen(X0, app(_, id(_, 'Flight'), [Dst0, Op0, list(_, [A1, A2]), Lower0])),
+    ir_name_str(Dst0, Dst),
+    ir_unparen(Op0, id(_, 'Sub')),
+    ir_flight_arg(A1, addr(Base)),
+    ir_flight_arg(A2, val(Off)),
+    ir_flight_lower(Lower0, of(Donor)),
+    ir_opnd_same(Base, Donor), !.
+ir_escape_draw(X0, Env, ir_flight_gen_draw(Dst, Op0, FArgs, Lower, Env)) :-
+    ir_unparen(X0, app(_, id(_, 'Flight'), [Dst0, Op0, list(_, FArgs0), Lower0])),
+    ir_name_str(Dst0, Dst),
+    maplist(ir_flight_arg, FArgs0, FArgs),
+    ir_flight_lower(Lower0, Lower), !.
+ir_escape_draw(X0, Env, ir_touch_draw(Q, Env)) :-
+    ir_unparen(X0, app(_, id(_, 'Touch'), [Q0])),
+    ir_name_str(Q0, Q), !.
+
+ir_name_str(E0, str(P, S)) :-
+    ir_unparen(E0, app(_, id(_, F), [str(P, S)])),
+    memberchk(F, ['TAtom', a]).
+
+ir_gallina_opnd(E0, tmp(str(P, S))) :-
+    ir_unparen(E0, app(_, id(_, t), [str(P, S)])), !.
+ir_gallina_opnd(E0, tmp(Dst)) :-
+    ir_unparen(E0, app(_, id(_, 'Tmp'), [Dst0])), ir_name_str(Dst0, Dst), !.
+ir_gallina_opnd(E0, global(G)) :-
+    ir_unparen(E0, app(_, id(_, 'Global'), [G0])), ir_name_str(G0, G), !.
+ir_gallina_opnd(E0, const(N)) :-
+    ir_unparen(E0, app(_, id(_, 'Const'), [N])), !.
+ir_gallina_opnd(E, val(E)).
+
+ir_flight_arg(E0, addr(V)) :-
+    ir_unparen(E0, app(_, id(_, 'FAddress'), [V0])), !, ir_gallina_opnd(V0, V).
+ir_flight_arg(E0, val(V)) :-
+    ir_unparen(E0, app(_, id(_, 'FValue'), [V0])), !, ir_gallina_opnd(V0, V).
+
+ir_flight_lower(E0, none) :- ir_unparen(E0, id(_, 'LowerNone')), !.
+ir_flight_lower(E0, of(V)) :-
+    ir_unparen(E0, app(_, id(_, 'LowerOf'), [V0])), !, ir_gallina_opnd(V0, V).
+
+ir_opnd_same(tmp(str(_, S)), tmp(str(_, S))).
+ir_opnd_same(global(str(_, S)), global(str(_, S))).
+
+ir_flight_sub_draw(Dst, Base, Off, Env) -->
+    el(span, o, ['data-d'=op],
+       ( ir_tmp_def(Dst, Env), "\u00A0", el(span, "op wide", [title="="], "="), " ",
+         el(span, o, ['data-d'=op],
+            ( ir_opnd(Base, Env), "\u00A0",
+              ir_sym('Flight', "−p", "op wide rq-ir-op", "Flight Sub (LowerOf base): pointer subtraction preserving base's Fil-C capability"),
+              " ", ir_opnd(Off, Env) )) )).
+
+ir_flight_gen_draw(Dst, Op, FArgs, Lower, Env) -->
+    el(span, o, ['data-d'=op],
+       ( ir_tmp_def(Dst, Env), "\u00A0", el(span, "op wide", [title="="], "="), " ",
+         el(span, "c app rq-ir-op-app", ['data-d'=args],
+            ( el(span, "c rq-ir-op-call", ['data-d'=args],
+                 ( ir_sym('Flight', "Flight", "rq-ir-op", "Flight: pointer arithmetic with explicit capability donor"),
+                   el(span, args, ( el(span, arg, ( ir_op_draw(Op, Env), el(span, sep, ",") )), " ",
+                                    el(span, arg, ir_lower_draw(Lower, Env)) )) )),
+              el(span, args, ir_flight_args_draw(FArgs, Env)) )) )).
+
+ir_lower_draw(none, _) -->
+    ir_sym('LowerNone', "lower none", "rq-ir-void", "LowerNone: null capability").
+ir_lower_draw(of(V), Env) -->
+    ir_sym('LowerOf', "lower", "rq-ir-op", "LowerOf: copy capability from this pointer"), "\u00A0", ir_opnd(V, Env).
+
+ir_flight_args_draw([A], Env) --> !, el(span, arg, ir_flight_arg_draw(A, Env)).
+ir_flight_args_draw([A|As], Env) -->
+    el(span, arg, ( ir_flight_arg_draw(A, Env), el(span, sep, ",") )), " ", ir_flight_args_draw(As, Env).
+
+ir_flight_arg_draw(addr(V), Env) --> ir_opnd(V, Env).
+ir_flight_arg_draw(val(V), Env) --> ir_opnd(V, Env).
+
+ir_touch_draw(Q, Env) -->
+    ir_sym('Touch', "touch", "rq-ir-op-check", "Touch: consume proof temporary from a preceding vector check"),
+    "\u00A0", ir_tmp_use(Q, Env).
+
+ir_local_name(str(_, S), _) --> !,
+    { format(string(Tip), "stack local \"~s\"", [S]) },
+    el(span, "rq-ir-local", [title=Tip], esc(S)).
+ir_local_name(E, Env) --> term(E, Env).
+
+ir_call_target(Fn, Args, Env) -->
+    el(span, "c rq-ir-call-args", ['data-d'=args],
+       ( ir_opnd(Fn, Env),
+         ( { Args == [] } -> el(span, "args rq-ir-empty", [])
+         ; el(span, args, ir_call_args(Args, Env)) ) )).
+
+ir_call_args([ir_arg(K, V)], Env) --> !,
+    el(span, arg, ( ir_class_badge(K, Env), "\u00A0", ir_opnd(V, Env) )).
+ir_call_args([ir_arg(K, V)|As], Env) -->
+    el(span, arg, ( ir_class_badge(K, Env), "\u00A0", ir_opnd(V, Env), el(span, sep, ",") )), " ",
+    ir_call_args(As, Env).
+
+ir_op_applied(Op, [], Env) --> !, ir_op_draw(Op, Env).
+ir_op_applied(Op, Args, Env) -->
+    el(span, "c app rq-ir-op-app", ['data-d'=args],
+       ( ir_op_draw(Op, Env), el(span, args, ir_opnd_args(Args, Env)) )).
+
+ir_opnd_args([A], Env) --> !, el(span, arg, ir_opnd(A, Env)).
+ir_opnd_args([A|As], Env) -->
+    el(span, arg, ( ir_opnd(A, Env), el(span, sep, ",") )), " ", ir_opnd_args(As, Env).
+
+%  Operations: unwrap Rocq's level-0 parentheses around compound ops and
+%  group static parameters in dterm bows, coloured by role (compute,
+%  memory, Fil-C check), while keeping every constructor linked to Syntax.v.
+ir_op_draw(Op0, Env) --> { ir_unparen(Op0, Op) }, ir_op_draw_(Op, Env).
+
+ir_op_draw_(id(_, Name), _) --> { ir_op_gloss(Name, Role, Tip) }, !,
+    { ir_role_class(Role, Cls) },
+    ir_sym(Name, Name, Cls, Tip).
+ir_op_draw_(app(_, id(_, 'Cmp'), [Cond, Cls]), Env) --> !,
+    ir_op_call('Cmp', op, [cond(Cond), cls(Cls)], Env).
+ir_op_draw_(app(_, id(_, 'Ext'), [Ty]), Env) --> !,
+    ir_op_call('Ext', op, [ty(Ty)], Env).
+ir_op_draw_(app(_, id(_, 'ExtF'), [Cls]), Env) --> !,
+    ir_op_call('ExtF', op, [cls(Cls)], Env).
+ir_op_draw_(app(_, id(_, 'FloatToInt'), [Cls, Sg]), Env) --> !,
+    ir_op_call('FloatToInt', op, [cls(Cls), ty(Sg)], Env).
+ir_op_draw_(app(_, id(_, 'IntToFloat'), [Cls, Sg]), Env) --> !,
+    ir_op_call('IntToFloat', op, [cls(Cls), ty(Sg)], Env).
+ir_op_draw_(app(_, id(_, 'Setjmp'), [Kind]), Env) --> !,
+    ir_op_call('Setjmp', op, [raw(Kind)], Env).
+ir_op_draw_(app(_, id(_, 'Alloc'), [Align]), Env) --> !,
+    ir_op_call('Alloc', memory, [num(Align)], Env).
+ir_op_draw_(app(_, id(_, Head), [Lo, Hi, R, Align]), Env) -->
+    { memberchk(Head, ['Check', 'Renew', 'RenewHull', 'RenewIf', 'CheckLimit']) }, !,
+    ir_op_call(Head, check, [range(Lo, Hi), right(R), num(Align)], Env).
+ir_op_draw_(app(_, id(_, 'CheckAhead'), [Lo, Hi, R, Align, Ahi]), Env) --> !,
+    ir_op_call('CheckAhead', check, [range(Lo, Hi), right(R), num(Align), num(Ahi)], Env).
+ir_op_draw_(app(_, id(_, 'HalfCheck'), [B, Lo, Hi, R, Align]), Env) --> !,
+    ir_op_call('HalfCheck', check, [cond(B), range(Lo, Hi), right(R), num(Align)], Env).
+ir_op_draw_(app(_, id(_, 'SpanTest'), [Lo, Hi]), Env) --> !,
+    ir_op_call('SpanTest', check, [range(Lo, Hi)], Env).
+ir_op_draw_(app(_, id(_, 'Limit'), [Sz]), Env) --> !,
+    ir_op_call('Limit', check, [num(Sz)], Env).
+ir_op_draw_(app(_, id(_, 'CheckLocal'), [X, Off, Bytes, R, Align]), Env) --> !,
+    ir_op_call('CheckLocal', check, [raw(X), num(Off), num(Bytes), right(R), num(Align)], Env).
+ir_op_draw_(app(_, id(_, 'RawLoad'), [LdTy, Off]), Env) --> !,
+    ir_op_call('RawLoad', memory, [load_ty(LdTy), num(Off)], Env).
+ir_op_draw_(app(_, id(_, 'RawLoadPointer'), [Off, Es]), Env) --> !,
+    ir_op_call('RawLoadPointer', memory, [num(Off), raw(Es)], Env).
+ir_op_draw_(app(_, id(_, 'RawCas'), [CasTy, Off]), Env) --> !,
+    ir_op_call('RawCas', memory, [cas_ty(CasTy), num(Off)], Env).
+ir_op_draw_(Op, Env) --> term(Op, Env).
+
+ir_op_call(Head, Role, Params, Env) -->
+    { ( ir_op_gloss(Head, _, Tip) -> true ; atom_string(Head, Tip) ),
+      ir_role_class(Role, Cls) },
+    el(span, "c rq-ir-op-call", ['data-d'=args],
+       ( ir_sym(Head, Head, Cls, Tip),
+         el(span, args, ir_op_params(Params, Env)) )).
+
+ir_op_params([P], Env) --> !, el(span, arg, ir_op_param(P, Env)).
+ir_op_params([P|Ps], Env) -->
+    el(span, arg, ( ir_op_param(P, Env), el(span, sep, ",") )), " ", ir_op_params(Ps, Env).
+
+ir_op_param(cls(E), Env) --> !, ir_class_badge(E, Env).
+ir_op_param(cond(E), Env) --> !, ir_cond_badge(E, Env).
+ir_op_param(ty(E), Env) --> !, ir_type_badge(E, Env).
+ir_op_param(right(E), Env) --> !, ir_right_badge(E, Env).
+ir_op_param(range(Lo, Hi), Env) --> !,
+    el(span, "rq-ir-range", [title="byte offset range [lo, hi)"],
+       ( ir_num_or_term(Lo, Env), el(span, "op tight", ".."), ir_num_or_term(Hi, Env) )).
+ir_op_param(load_ty(E), Env) --> !,
+    (   { ir_unparen(E, app(_, id(_, 'LdNarrow'), [N])) } -> ir_type_badge(N, Env)
+    ;   ir_type_badge(E, Env)
+    ).
+ir_op_param(cas_ty(E), Env) --> !,
+    (   { ir_unparen(E, app(_, id(_, 'CasNarrow'), [N])) } -> ir_type_badge(N, Env)
+    ;   ir_type_badge(E, Env)
+    ).
+ir_op_param(num(E), Env) --> !, ir_num_or_term(E, Env).
+ir_op_param(raw(E), Env) --> term(E, Env).
+
+ir_num_or_term(num(_, N), _) --> !, el(span, n, esc(N)).
+ir_num_or_term(E, _) --> { ir_neg_num(E, N) }, !, el(span, n, ( "−", esc(N) )).
+ir_num_or_term(E, Env) --> term(E, Env).
+
+ir_neg_num(pre(_, '-', num(_, N)), N) :- !.
+ir_neg_num(paren(_, E), N) :- ir_neg_num(E, N).
+
+ir_unparen(paren(_, E0), E) :- !, ir_unparen(E0, E).
+ir_unparen(E, E).
+
+%  Operands: %tmp (purple SSA value with trailing-digit subscript and
+%  hover highlighting via data-v), $global (green), #const (gold).
+ir_tmp_def(X, Env) --> ir_tmp_(def, X, Env).
+ir_tmp_use(X, Env) --> ir_tmp_(use, X, Env).
+
+ir_tmp_(Role, str(_, Name), _) --> !,
+    { atom_string(Raw, Name),
+      atom_concat('%', Raw, VarKey),
+      ir_raw_value_name(Raw, Stem, Sub),
+      ( Role == def -> Cls = "v ir-value def" ; Cls = "v ir-value" ),
+      format(string(Tip), "SSA temporary %\"~s\"", [Name]) },
+    el(span, Cls, ['data-v'=VarKey, 'data-tmp'=Raw, title=Tip],
+       ( el(span, "value-role", "%"), esc(Stem),
+         ( { Sub == none } -> [] ; el(sub, none, esc(Sub)) ) )).
+ir_tmp_(Role, E, Env) -->
+    { Role == def -> Cls = "ir-value def" ; Cls = "ir-value" },
+    el(span, Cls, ( el(span, "value-role", "%"), term(E, Env) )).
+
+%  Subscript trailing digits of unnamed compiler temporaries (v12, chk3,
+%  pr.2, k0, acc1), matching dterm.pl's raw_value_name/3.
+ir_raw_value_name(Raw, Stem, Digits) :-
+    atom_codes(Raw, Cs), append(Stem0, Digits, Cs),
+    Stem0 \== [], Digits \== [], last(Stem0, Last), \+ between(0'0, 0'9, Last),
+    maplist([C]>>between(0'0, 0'9, C), Digits), !,
+    ( append(S, [Sep], Stem0), memberchk(Sep, [0'., 0'_]), S \== [] -> Stem = S ; Stem = Stem0 ).
+ir_raw_value_name(Raw, Raw, none).
+
+ir_opnd(tmp(X), Env) --> !, ir_tmp_use(X, Env).
+ir_opnd(global(str(_, S)), _) --> !,
+    { format(string(Tip), "global symbol $\"~s\"", [S]) },
+    el(span, "rq-ir-global", [title=Tip], ( el(span, "value-role", "$"), esc(S) )).
+ir_opnd(global(X), Env) --> !,
+    el(span, "rq-ir-global", ( el(span, "value-role", "$"), term(X, Env) )).
+ir_opnd(const(X), Env) --> !,
+    (   { X = num(_, N) }
+    ->  { format(string(Tip), "constant #~w", [N]) },
+        el(span, "rq-ir-const", [title=Tip], ( el(span, "value-role", "#"), el(span, n, esc(N)) ))
+    ;   { ir_neg_num(X, N) }
+    ->  { format(string(Tip), "constant #(-~w)", [N]) },
+        el(span, "rq-ir-const", [title=Tip], ( el(span, "value-role", "#"), el(span, n, ( "−", esc(N) )) ))
+    ;   el(span, "rq-ir-const", ( el(span, "value-role", "#"), term(X, Env) ))
+    ).
+ir_opnd(val(X), Env) --> term(X, Env).
+
+ir_edge_draw(to(L), Env) --> !, ir_label_ref(L, Env).
+ir_edge_draw(poll(L), Env) --> !,
+    ir_sym('Poll', "poll", "rq-ir-op-check", "Poll: garbage-collection safepoint check on this edge"),
+    "\u00A0", ir_label_ref(L, Env).
+ir_edge_draw(edge(X), Env) --> term(X, Env).
+
+ir_label_ref(str(_, Lab), _) --> !,
+    { format(string(Tip), "block @\"~s\"", [Lab]) },
+    (   { \+ nb_current(rq_button, true), ir_block_anchor(Lab, Id) }
+    ->  { atom_concat('#', Id, Href) },
+        el(a, "rq-ir-lbl", [href=Href, 'data-ir-label'=Lab, title=Tip],
+           ( el(span, "rq-ir-sigil", "@"), esc(Lab) ))
+    ;   el(span, "rq-ir-lbl", ['data-ir-label'=Lab, title=Tip],
+           ( el(span, "rq-ir-sigil", "@"), esc(Lab) ))
+    ).
+ir_label_ref(E, Env) -->
+    el(span, "rq-ir-lbl", ( el(span, "rq-ir-sigil", "@"), term(E, Env) )).
+
+ir_class_badge(id(_, K), _) --> { ir_class_gloss(K, Tip) }, !,
+    ir_sym(K, K, "rq-ir-class", Tip).
+ir_class_badge(E, Env) --> term(E, Env).
+
+ir_type_badge(id(_, T), _) --> { ir_type_gloss(T, Tip) }, !,
+    ir_sym(T, T, "rq-ir-type", Tip).
+ir_type_badge(E, Env) --> term(E, Env).
+
+ir_cond_badge(id(_, C), _) --> { ir_cond_gloss(C, Tip) }, !,
+    ir_sym(C, C, "rq-ir-cond", Tip).
+ir_cond_badge(E, Env) --> term(E, Env).
+
+ir_right_badge(id(_, R), _) --> { ir_right_gloss(R, Cls, Tip) }, !,
+    ir_sym(R, R, Cls, Tip).
+ir_right_badge(E, Env) --> term(E, Env).
+
+ir_sym(RocqName, Label, Class, Tip) -->
+    (   { \+ nb_current(rq_button, true), global_ref(RocqName, Href, _) }
+    ->  el(a, Class, [href=Href, title=Tip], esc(Label))
+    ;   el(span, Class, [title=Tip], esc(Label))
+    ).
+
+%  Inline fallback when an IR block, list or function appears inside a
+%  Gallina expression (where only inline spans are valid HTML).
+ir_inline_ssa_items([I], Env) --> !, el(span, arg, ir_ssa_draw(I, Env)).
+ir_inline_ssa_items([I|Is], Env) -->
+    el(span, arg, ( ir_ssa_draw(I, Env), el(span, sep, ";") )), " ", ir_inline_ssa_items(Is, Env).
+
+ir_blk_inline(ir_escape(X), Env) --> !, term(X, Env).
+ir_blk_inline(ir_block(_, L, Phis, Ins, J), Env) -->
+    ir_label_ref(L, Env),
+    ( { Phis == [] } -> el(span, neck, ":") ; " ", el(span, l, ir_inline_phis(Phis, Env)), el(span, neck, ":") ),
+    " ", ir_inline_insts(Ins, Env), el(span, "op rq-ir-term-arrow", [title="=>"], "⇒"), " ", ir_ssa_draw(J, Env).
+
+ir_inline_phis([P], Env) --> !, ir_inline_phi(P, Env).
+ir_inline_phis([P|Ps], Env) --> ir_inline_phi(P, Env), el(span, sep, ";"), " ", ir_inline_phis(Ps, Env).
+ir_inline_phi(ir_escape(X), Env) --> !, term(X, Env).
+ir_inline_phi(ir_phi(_, D, K, Incs), Env) --> ir_phi_draw(D, K, Incs, Env).
+
+ir_inline_insts(insts([]), _) --> !, [].
+ir_inline_insts(insts(Is), Env) --> !, ir_inline_ssa_items(Is, Env), " ".
+ir_inline_insts(code(Xs), Env) --> kw("code"), " ", term(Xs, Env), " ".
+
+ir_fn_inline(Lk, Name, Ps, Ret, Bs, Env) -->
+    ir_fn_head(Lk, Name, Ps, Ret, Env), " ",
+    (   { Bs = blocks(BlockList) }
+    ->  el(span, braces, ir_inline_blocks(BlockList, Env))
+    ;   { Bs = expr(Xs) }, kw("blocks"), " ", term(Xs, Env)
+    ).
+
+ir_inline_blocks([], _) --> [].
+ir_inline_blocks([B], Env) --> !, ir_blk_inline(B, Env).
+ir_inline_blocks([B|Bs], Env) --> ir_blk_inline(B, Env), el(span, sep, ";"), " ", ir_inline_blocks(Bs, Env).
+
+%  Rows pizlonation wrote: capability checks, raw accesses, raw calls
+%  and safepoint poll edges.
+ir_ssa_pz(ir_s(_, I)) :- !, ir_ssa_pz(I).
+ir_ssa_pz(ir_let(_, _, Op, _)) :- !, ir_op_pz(Op).
+ir_ssa_pz(ir_store(_, _, _, _)) :- !.
+ir_ssa_pz(ir_store_ptr(_, _, _)) :- !.
+ir_ssa_pz(ir_call(rawcall, _, _, _)) :- !.
+ir_ssa_pz(ir_goto(poll(_))) :- !.
+ir_ssa_pz(ir_br(_, Y, N)) :- !, ( Y = poll(_) ; N = poll(_) ).
+ir_ssa_pz(ir_escape(X)) :-
+    ir_unparen(X, app(_, id(_, F), _)),
+    memberchk(F, ['RawStore', 'RawStorePointer', 'RawCall', 'Touch']).
+
+ir_op_pz(Op0) :-
+    ir_unparen(Op0, Op),
+    ( Op = id(_, H) ; Op = app(_, id(_, H), _) ),
+    memberchk(H, ['Check', 'CheckAhead', 'Renew', 'RenewHull', 'HalfCheck', 'SpanTest',
+                  'RenewIf', 'Limit', 'CheckLimit', 'CheckLocal', 'CheckFunction',
+                  'RawLoad', 'RawLoadPointer', 'RawCas']).
+
+ir_role_class(op, "rq-ir-op").
+ir_role_class(memory, "rq-ir-op-memory").
+ir_role_class(check, "rq-ir-op-check").
+ir_role_class(control, "rq-ir-op-control").
+
+ir_class_gloss('W', "W: 32-bit integer (word)").
+ir_class_gloss('L', "L: 64-bit integer (long)").
+ir_class_gloss('P', "P: pointer with Fil-C capability").
+ir_class_gloss('A', "A: proven address cleared by a capability check").
+ir_class_gloss('F', "F: proven function entry address").
+ir_class_gloss('Single', "Single: 32-bit IEEE float").
+ir_class_gloss('Double', "Double: 64-bit IEEE float").
+ir_class_gloss('Extended', "Extended: 80-bit extended float").
+
+ir_type_gloss('Wb', "Wb: 1-byte (8-bit) width").
+ir_type_gloss('Wh', "Wh: 2-byte (16-bit) width").
+ir_type_gloss('Ww', "Ww: 4-byte (32-bit) width").
+ir_type_gloss('Wl', "Wl: 8-byte (64-bit) width").
+ir_type_gloss('Wp', "Wp: 8-byte pointer with capability").
+ir_type_gloss('Ws', "Ws: 4-byte float width").
+ir_type_gloss('Wd', "Wd: 8-byte double width").
+ir_type_gloss('Wx', "Wx: 10-byte extended float width").
+ir_type_gloss('Sb', "Sb: signed 8-bit byte").
+ir_type_gloss('Ub', "Ub: unsigned 8-bit byte").
+ir_type_gloss('Sh', "Sh: signed 16-bit halfword").
+ir_type_gloss('Uh', "Uh: unsigned 16-bit halfword").
+ir_type_gloss('Sw', "Sw: signed 32-bit word").
+ir_type_gloss('Uw', "Uw: unsigned 32-bit word").
+ir_type_gloss('LdL', "LdL: load 64-bit integer").
+ir_type_gloss('LdS', "LdS: load 32-bit float").
+ir_type_gloss('LdD', "LdD: load 64-bit float").
+ir_type_gloss('LdX', "LdX: load 80-bit extended float").
+ir_type_gloss('CasL', "CasL: 64-bit integer compare-and-exchange").
+ir_type_gloss('CasP', "CasP: pointer compare-and-exchange").
+ir_type_gloss('Signed', "Signed: two's-complement signed integer").
+ir_type_gloss('Unsigned', "Unsigned: unsigned integer").
+
+ir_cond_gloss('Eq', "Eq: =").
+ir_cond_gloss('Ne', "Ne: ≠").
+ir_cond_gloss('Slt', "Slt: <, signed").
+ir_cond_gloss('Sle', "Sle: ≤, signed").
+ir_cond_gloss('Sgt', "Sgt: >, signed").
+ir_cond_gloss('Sge', "Sge: ≥, signed").
+ir_cond_gloss('Ult', "Ult: <, unsigned").
+ir_cond_gloss('Ule', "Ule: ≤, unsigned").
+ir_cond_gloss('Ugt', "Ugt: >, unsigned").
+ir_cond_gloss('Uge', "Uge: ≥, unsigned").
+ir_cond_gloss('Lt', "Lt: <").
+ir_cond_gloss('Le', "Le: ≤").
+ir_cond_gloss('Gt', "Gt: >").
+ir_cond_gloss('Ge', "Ge: ≥").
+ir_cond_gloss('Ord', "Ord: ordered (neither is NaN)").
+ir_cond_gloss('Unord', "Unord: unordered (one is NaN)").
+ir_cond_gloss('Upper', "Upper: check upper bound only").
+ir_cond_gloss('Lower', "Lower: check lower bound only").
+
+ir_right_gloss('Read', "rq-ir-cond", "Read: read access right").
+ir_right_gloss('Write', "rq-ir-right-write", "Write: write access right (rejected by read-only capabilities)").
+
+ir_op_gloss('Add', op, "Add: +").
+ir_op_gloss('Sub', op, "Sub: −").
+ir_op_gloss('Mul', op, "Mul: ×").
+ir_op_gloss('Div', op, "Div: ÷, signed").
+ir_op_gloss('Udiv', op, "Udiv: ÷, unsigned").
+ir_op_gloss('Rem', op, "Rem: remainder, signed").
+ir_op_gloss('Urem', op, "Urem: remainder, unsigned").
+ir_op_gloss('And', op, "And: bitwise and").
+ir_op_gloss('Or', op, "Or: bitwise or").
+ir_op_gloss('Xor', op, "Xor: bitwise exclusive or").
+ir_op_gloss('Shl', op, "Shl: shift left").
+ir_op_gloss('Shr', op, "Shr: logical shift right (zero-fill)").
+ir_op_gloss('Sar', op, "Sar: arithmetic shift right (sign-extending)").
+ir_op_gloss('Neg', op, "Neg: negate").
+ir_op_gloss('Copy', op, "Copy: value copy (or materialize global pointer)").
+ir_op_gloss('Ptoi', op, "Ptoi: pointer to integer (drops capability)").
+ir_op_gloss('Itop', op, "Itop: integer to pointer (null capability)").
+ir_op_gloss('Select', op, "Select: second value if first is nonzero, else third").
+ir_op_gloss('Cmp', op, "Cmp: compare two values (1 if condition holds, else 0)").
+ir_op_gloss('Ext', op, "Ext: sign- or zero-extend narrow integer").
+ir_op_gloss('ExtF', op, "ExtF: widen floating-point value").
+ir_op_gloss('Truncd', op, "Truncd: double to single").
+ir_op_gloss('Truncx', op, "Truncx: extended float to narrower format").
+ir_op_gloss('FloatToInt', op, "FloatToInt: truncate float to integer").
+ir_op_gloss('IntToFloat', op, "IntToFloat: convert integer to float").
+ir_op_gloss('Cast', op, "Cast: reinterpret bit pattern between integer and float").
+ir_op_gloss('Sqrt', op, "Sqrt: IEEE square root").
+ir_op_gloss('VaArgs', op, "VaArgs: variadic argument cursor").
+ir_op_gloss('VaArg', op, "VaArg: read next variadic argument").
+ir_op_gloss('Setjmp', op, "Setjmp: save return context").
+ir_op_gloss('Alloc', memory, "Alloc: allocate zeroed heap object with fresh Fil-C capability").
+ir_op_gloss('RawLoad', memory, "RawLoad: read memory at proven address + offset (no check of its own)").
+ir_op_gloss('RawLoadPointer', memory, "RawLoadPointer: read pointer and capability at proven address + offset").
+ir_op_gloss('RawCas', memory, "RawCas: atomic compare-and-exchange at proven address + offset").
+ir_op_gloss('Check', check, "Check: verify pointer bounds [lo, hi), rights and alignment; yields proven address A").
+ir_op_gloss('CheckAhead', check, "CheckAhead: verify current span [lo, ahi) and ahead span [ahi, hi)").
+ir_op_gloss('Renew', check, "Renew: reuse a dominating check's bounds for a derived pointer").
+ir_op_gloss('RenewHull', check, "RenewHull: reuse bounds within the hull of two dominating checks").
+ir_op_gloss('HalfCheck', check, "HalfCheck: test one bound when the other is already proved").
+ir_op_gloss('SpanTest', check, "SpanTest: return 1 if pointer object covers [lo, hi), else 0").
+ir_op_gloss('RenewIf', check, "RenewIf: reuse bounds guarded by a passing SpanTest").
+ir_op_gloss('Limit', check, "Limit: capture opaque bounds snapshot for accesses of size bytes").
+ir_op_gloss('CheckLimit', check, "CheckLimit: verify access against a captured Limit").
+ir_op_gloss('CheckLocal', check, "CheckLocal: prove in-bounds access to a named stack local").
+ir_op_gloss('CheckFunction', check, "CheckFunction: verify pointer is an exact function entry").
 
 %% Statements as rules
 
@@ -1675,7 +2341,7 @@ rocq_only(match(_, _, _, _)).
 %  Iris: P ∗ Q, P -∗ Q, ℓ ↦ v, ▷ P, ⌜φ⌝, |==> P, WP e {{ Φ }} and the like.
 rocq_only(bin(_, Op, _, _)) :- memberchk(Op, ['∗', '-∗', '⊢', '⊣⊢', '==∗', '∗-∗', '~~>']).
 rocq_only(pre(_, Op, _)) :- memberchk(Op, ['▷', '□', '◇', '■', '⊢', '|==>', '✓']) ; sub_atom(Op, 0, _, _, '<').
-rocq_only(E) :- functor(E, F, _), memberchk(F, [pure, laterN, fupd, fupdw, stepupd, stepupdw, pointsto, indexed, wp, triple, bigop, bigall]).
+rocq_only(E) :- functor(E, F, _), memberchk(F, [pure, laterN, fupd, fupdw, stepupd, stepupdw, pointsto, indexed, wp, triple, bigop, bigall, ir_fn, ir_blk, ir_list, ir_inst]).
 rocq_only(app(_, id(_, F), _)) :- memberchk(F, [own, inv, iProp, uPred]).
 rocq_only(scope(_, _, 'I')).
 

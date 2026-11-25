@@ -145,6 +145,64 @@ test(quoted_temporary_name) :-
     assertion(sub_term(element(span, [class=g], ['‹s->_lock›']), DOM)),
     assertion(\+ ( sub_term(element(_, As, _), DOM), memberchk(class=C, As), sub_atom(C, _, _, _, unparsed) )).
 
+% IRNotation functions draw as structured block grids with role colours,
+% badges, temporary subscripts, block anchors and Fil-C safety markers.
+test(ir_notation_function) :-
+    fence_dom([
+        "Definition f : func :=",
+        "  ir_fn{ \"export\" \"scan\"(P %\"buf\", L %\"len\") -> (RClass W) {",
+        "  @\"start\":",
+        "    %\"base\" = %\"buf\" +p %\"len\";",
+        "    (Flight (a \"v23\") Sub [(FAddress (t \"base\")); (FValue (Const 16))] (LowerOf (t \"base\")));",
+        "    %\"chk0\" : A = (Check 0 1 Read 1) %\"v23\";",
+        "    %\"b\" : W = (RawLoad (LdNarrow Ub) 0) %\"chk0\";",
+        "    store Ww [%\"chk0\" + 0] <- %\"b\";",
+        "    call %\"r\" : W = $\"helper\"(W %\"b\")",
+        "    => goto poll \"loop\";",
+        "  @\"loop\" [%\"k\" : L = phi(\"start\" => #0, \"loop\" => %\"k1\")]:",
+        "    %\"k1\" : L = Add %\"k\", #1;",
+        "    %\"done\" : W = (Cmp Eq L) %\"k\", %\"len\"",
+        "    => br %\"done\" ? \"exit\" : \"loop\";",
+        "  @\"exit\":",
+        "    => ret %\"r\"",
+        "} }."
+    ], DOM),
+    assertion(( sub_term(element(div, As, _), DOM), memberchk(class='rq-ir rq-ir-fn', As) )),
+    findall(L, ( sub_term(element(div, BAs, _), DOM), memberchk(class='rq-ir-label', BAs),
+                 memberchk('data-ir-label'=L, BAs) ), Labels),
+    assertion(Labels == [start, loop, exit]),
+    % Block jump targets link to their block anchors within the function.
+    assertion(( sub_term(element(a, LAs, _), DOM), memberchk(class='rq-ir-lbl', LAs),
+                memberchk('data-ir-label'=loop, LAs), memberchk(href=Href, LAs),
+                sub_atom(Href, 0, 1, _, '#') )),
+    % Check, RawLoad, RawStore and poll rows carry the safety margin marker.
+    findall(C, ( sub_term(element(div, RAs, _), DOM), memberchk(class=C, RAs),
+                 sub_atom(C, _, _, _, ' pz') ), PzRows),
+    assertion(length(PzRows, 4)),
+    % Temporaries carry data-v with trailing digits subscripted (k1 -> k sub 1).
+    assertion(( sub_term(element(span, TAs, Kids), DOM), memberchk('data-v'='%k1', TAs),
+                memberchk('data-tmp'=k1, TAs), sub_term(element(sub, [], ['1']), Kids) )),
+    % LHS wraps temp and class so dterm.js breaks after = rather than after :.
+    assertion(( sub_term(element(span, [class='rq-ir-lhs'], _), DOM) )),
+    % Compound ops unwrap outer parens and badges; Flight Sub escape formats as -p.
+    assertion(( sub_term(element(span, CAs, ['Check']), DOM), memberchk(class='rq-ir-op-check', CAs) )),
+    assertion(( sub_term(element(span, MAs, ['RawLoad']), DOM), memberchk(class='rq-ir-op-memory', MAs) )),
+    assertion(( sub_term(element(span, BAs2, ['Ub']), DOM), memberchk(class='rq-ir-type', BAs2) )),
+    assertion(( sub_term(element(span, FAs, ['−p']), DOM), memberchk(class='op wide rq-ir-op', FAs) )),
+    assertion(( sub_term(element(span, GAs, _), DOM), memberchk(class='rq-ir-global', GAs) )).
+
+% Standalone ir_blk, ir[...] and inline ir{...} forms parse and draw cleanly.
+test(ir_notation_forms) :-
+    fence_dom([
+        "Definition blk : block := ir_blk{ @\"entry\": alloca \"x\" 8 => ret void }.",
+        "Definition seq : list inst := ir[ %\"v0\" : W = Add #1, #2; store.ptr [%\"p\" + 0] <- %\"q\" ].",
+        "Definition one : inst := ir{ rawcall void %\"fn\"() }."
+    ], DOM),
+    assertion(( sub_term(element(div, As1, _), DOM), memberchk(class='rq-ir rq-ir-blk', As1) )),
+    assertion(( sub_term(element(div, As2, _), DOM), memberchk(class='rq-ir rq-ir-seq', As2) )),
+    assertion(( sub_term(element(span, As3, _), DOM), memberchk(class='rq-ir-inline', As3) )),
+    assertion(\+ ( sub_term(element(pre, As4, _), DOM), memberchk(class='rq-raw', As4) )).
+
 fence_dom(Lines, DOM) :-
     call_with_time_limit(2, phrase(rocq_fence(Lines), Codes)),
     string_codes(Html, Codes),

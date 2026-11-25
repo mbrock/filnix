@@ -178,6 +178,12 @@ pr(list(_, Es)) :- !, write("["), sep(Es, "; "), write("]").
 pr(record(_, Fs)) :- !, write("{| "), fsep(Fs), write(" |}").
 pr(scope(_, E, K)) :- !, write("("), pr(E), format(")%~w", [K]).
 pr(mixfix(_, Parts)) :- !, write("("), forall(member(X, Parts), (string(X) -> write(X) ; pr(X))), write(")").
+pr(ir_inst(_, I)) :- !, write("(ir{ "), pr_ir_ssa(I), write(" })").
+pr(ir_blk(_, B)) :- !, write("(ir_blk{ "), pr_ir_block(B), write(" })").
+pr(ir_list(_, Is)) :- !, write("(ir[ "), pr_ir_seq(pr_ir_ssa, "; ", Is), write(" ])").
+pr(ir_fn(_, Lk, Name, Ps, Ret, Bs)) :- !,
+    write("(ir_fn{ "), pr(Lk), write(" "), pr(Name), pr_ir_formals(Ps),
+    write(" -> "), pr(Ret), write(" "), pr_ir_body(Bs), write(" })").
 pr(braces(_, E)) :- !, write("{"), pr(E), write("}").
 pr(pure(_, E)) :- !, write("⌜"), pr(E), write("⌝").
 pr(const(_, C)) :- !, write(C).
@@ -310,3 +316,70 @@ pt_intro_arms([Ps|Arms]) :- pt_intro_seq(Ps), write(" | "), pt_intro_arms(Arms).
 
 count(none) :- !.
 count(N) :- write("^("), pr(N), write(")").
+
+pr_ir_seq(_, _, []).
+pr_ir_seq(G, _, [X]) :- !, call(G, X).
+pr_ir_seq(G, Sep, [X|Xs]) :- call(G, X), write(Sep), pr_ir_seq(G, Sep, Xs).
+
+pr_ir_formals([]) :- !, write("()").
+pr_ir_formals(Ps) :- write("("), pr_ir_seq(pr_ir_formal, ", ", Ps), write(")").
+pr_ir_formal(ir_param(K, D)) :- pr(K), write(" %"), pr(D).
+
+pr_ir_body(expr(Xs)) :- !, write("blocks("), pr(Xs), write(")").
+pr_ir_body(blocks([])) :- !, write("{}").
+pr_ir_body(blocks(Bs)) :- write("{\n  "), pr_ir_seq(pr_ir_block, ";\n  ", Bs), write("\n}").
+
+pr_ir_block(ir_escape(X)) :- !, write("("), pr(X), write(")").
+pr_ir_block(ir_block(_, L, Phis, Ins, J)) :-
+    write("@"), pr(L), pr_ir_phis(Phis), pr_ir_insts(Ins), pr_ir_ssa(J).
+
+pr_ir_phis([]) :- !, write(":").
+pr_ir_phis(Ps) :- write(" ["), pr_ir_seq(pr_ir_phi, "; ", Ps), write("]:").
+
+pr_ir_phi(ir_escape(X)) :- !, write("("), pr(X), write(")").
+pr_ir_phi(ir_phi(_, D, K, Incs)) :-
+    write("%"), pr(D), write(" : "), pr(K), write(" = phi("),
+    pr_ir_seq(pr_ir_inc, ", ", Incs), write(")").
+pr_ir_inc(ir_inc(Lab, V)) :- pr(Lab), write(" => "), pr_ir_opnd(V).
+
+pr_ir_insts(insts([])) :- !, write(" => ").
+pr_ir_insts(code(Xs)) :- !, write(" code("), pr(Xs), write(") => ").
+pr_ir_insts(insts(Is)) :- write("\n    "), pr_ir_seq(pr_ir_ssa, ";\n    ", Is), write("\n    => ").
+
+pr_ir_opnd(val(X)) :- !, write("val("), pr(X), write(")").
+pr_ir_opnd(tmp(X)) :- !, write("%"), pr(X).
+pr_ir_opnd(global(X)) :- !, write("$"), pr(X).
+pr_ir_opnd(const(X)) :- write("#"), pr(X).
+
+pr_ir_edge(edge(X)) :- !, write("edge("), pr(X), write(")").
+pr_ir_edge(poll(L)) :- !, write("poll "), pr(L).
+pr_ir_edge(to(L)) :- pr(L).
+
+pr_ir_args([]) :- !, write("()").
+pr_ir_args(As) :- write("("), pr_ir_seq(pr_ir_arg, ", ", As), write(")").
+pr_ir_arg(ir_arg(K, V)) :- pr(K), write(" "), pr_ir_opnd(V).
+
+pr_ir_ssa(ir_s(_, I)) :- !, pr_ir_ssa(I).
+pr_ir_ssa(ir_escape(X)) :- !, write("("), pr(X), write(")").
+pr_ir_ssa(ir_let(D, K, Op, Args)) :- !,
+    write("%"), pr(D), write(" : "), pr(K), write(" = "), pr(Op),
+    ( Args == [] -> true ; write(" "), pr_ir_seq(pr_ir_opnd, ", ", Args) ).
+pr_ir_ssa(ir_flight(D, Base, Off)) :- !,
+    write("%"), pr(D), write(" = "), pr_ir_opnd(Base), write(" +p "), pr_ir_opnd(Off).
+pr_ir_ssa(ir_store(Sz, A, Off, V)) :- !,
+    write("store "), pr(Sz), write(" ["), pr_ir_opnd(A), write(" + "), pr(Off),
+    write("] <- "), pr_ir_opnd(V).
+pr_ir_ssa(ir_store_ptr(A, Off, V)) :- !,
+    write("store.ptr ["), pr_ir_opnd(A), write(" + "), pr(Off),
+    write("] <- "), pr_ir_opnd(V).
+pr_ir_ssa(ir_alloca(X, Sz)) :- !, write("alloca "), pr(X), write(" "), pr(Sz).
+pr_ir_ssa(ir_goto(Dst)) :- !, write("goto "), pr_ir_edge(Dst).
+pr_ir_ssa(ir_br(X, Y, N)) :- !,
+    write("br "), pr_ir_opnd(X), write(" ? "), pr_ir_edge(Y), write(" : "), pr_ir_edge(N).
+pr_ir_ssa(ir_ret(void)) :- !, write("ret void").
+pr_ir_ssa(ir_ret(val(V))) :- !, write("ret "), pr_ir_opnd(V).
+pr_ir_ssa(ir_unreachable) :- !, write("unreachable").
+pr_ir_ssa(ir_call(Kw, Res, Fn, Args)) :-
+    format("~w ", [Kw]),
+    ( Res = res(D, K) -> write("%"), pr(D), write(" : "), pr(K), write(" = ") ; write("void ") ),
+    pr_ir_opnd(Fn), pr_ir_args(Args).

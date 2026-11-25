@@ -3,6 +3,18 @@
 if (matchMedia("(max-width: 900px)").matches)
   for (const d of document.querySelectorAll(".rq-nav .nav-block")) d.open = false;
 
+// Hovering an IR block label or jump target lights up all occurrences
+// of that block within its IR function.
+document.addEventListener("mouseover", (event) => {
+  const lbl = event.target.closest("[data-ir-label]");
+  for (const lit of document.querySelectorAll("[data-ir-label].lit")) lit.classList.remove("lit");
+  if (!lbl) return;
+  const scope = lbl.closest(".rq-ir, .clause") || document;
+  for (const el of scope.querySelectorAll("[data-ir-label]")) {
+    if (el.dataset.irLabel === lbl.dataset.irLabel) el.classList.add("lit");
+  }
+});
+
 (() => {
   const select = document.querySelector("#rq-layout");
   if (!select) return;

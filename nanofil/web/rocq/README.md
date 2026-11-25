@@ -82,7 +82,9 @@ relations `≡{n}≡ ≼{n} ✓{n}`, and std++'s `!! <$> <[k:=v]> .*1 λ`. A fil
 `Infix "**" := star` folds as a Notation does, also in the files that
 `Require` it. The proof mode's strings are read as intro, selection and
 specialization patterns (`iIntros (x) "[H1 #H2]"`, `iApply ("H" $! x with
-"[$HP]")`), not as opaque text.
+"[$HP]")`), not as opaque text. It also reads checked-IR notation from
+`IRNotation.v` (`ir_fn{…}`, `ir_blk{…}`, `ir[…]`, `ir{…}`) into structured
+functions, blocks, phis, instructions, operands and control-flow edges.
 
 `tests/parse.sh` compiles each `.v` file, then reprints its tree with
 every subterm in parentheses (`tests/reprint.pl`) and compiles that: if
@@ -150,6 +152,15 @@ or tactics fail this check. Making `->` left-associative fails four Campaign
   scripts, `WP` with the postcondition's binder, triples in ⦃ ⦄, a big
   operator with its binders and list under it, `ℓ ↦` with its fraction
   above. A proof-mode tactic's hypotheses are names, its marks operators.
+- Checked-IR functions (`ir_fn{…}`) are drawn as a signature over a grid of
+  labeled basic blocks, following the playground's role colours: compute
+  operations in slate blue, memory operations in amber, Fil-C checks and
+  safepoint `poll` edges in crimson with a margin rule, control flow in
+  teal, and classes, widths and conditions as monospace badges linked to
+  `Syntax.v`. SSA temporaries subscript their trailing digits and highlight
+  every occurrence on hover, while jump targets link to and highlight their
+  target blocks. On narrow screens and in the Stacked layout, block labels
+  sit above their instructions.
 
 ## Rocq in documents
 
