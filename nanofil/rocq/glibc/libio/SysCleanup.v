@@ -1,19 +1,15 @@
 From Glibc Require Import Unit_nptl_libcZ2dcleanup_os.
 From Glibc Require Import GlibcProgram.
-(** Triples for user glibc's `c: __libc_cleanup_push_defer` here and
-    `c: __libc_cleanup_pop_restore` in SysCleanupPop.v (SysCode.v,
-    nptl/libc-cleanup.c)
-    over FileInv.v's [tcb_cleanup_inv]: libio's
-    `c: _IO_cleanup_region_start_noarg` pushes a cleanup buffer on the
-    caller's stack around the walks of the stream list, and pops it
-    after.
+(** Libio pushes a cleanup buffer on the caller's stack before it walks
+    the stream list. This file proves that `c: __libc_cleanup_push_defer`
+    links the buffer into the thread's cleanup list. The proof takes
+    [tcb_cleanup_inv] to [tcb_pushed]. SysCleanupPop.v proves the matching pop.
 
-    The thread's `c: cancelhandling` is 0, so the push stores canceltype
-    0 (deferred) and the pop, reading it back, neither CASes the
-    cancel type nor reaches `c: __pthread_unwind`: each run is one path
-    of loads and stores, taken here step by step. *)
+    The thread's `c: cancelhandling` is zero. The final block stores
+    zero in the buffer's cancel type field to record deferred
+    cancellation, then stores the buffer pointer in the thread. *)
 
-From Glibc Require Import GlibcTactics OsTactics.
+From Glibc Require Import GlibcTactics OsTactics GlibcSym.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -38,6 +34,8 @@ Import SysWrappers Fix.ML0 Fix.LG0 Fix.LG0.L OsWorld FileInv LibioLogic.
 Import ProgramAbbreviations.
 Section rules.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
+Local Existing Instance program_irisGS.
+Local Instance cleanup_stable : SafepointStable (os_wi w0) := os_wi_stable w0.
 Context (Hreg : holds_os registry)
   (Hext : sys_external ge).
 
@@ -75,11 +73,8 @@ Proof using Type*.
   iDestruct "Hch" as "[%Hch0 Hch]".
   load_bytes_dq "Htl Hch" decode (cbn; reflexivity) by ar.
   iNext. iIntros "Htl Hch". step. step. step. closed_ints. branch. step. step. step. closed_ints. branch. step. step. step. norm.
-  check "Hbl".
-  store_word "Hbl Hct" by (ar) preserving wi_store.
-  iNext. iIntros "Hbl Hct". step. norm. check "Htl".
-  store_pointer "Htl Hcl" by (ar) preserving wi_store.
-  iNext. iIntros "Htl Hcl". iApply wp_ret_void. iNext.
+  sym_run "Hbl Hct Htl Hcl".
+  iApply wp_ret_void. iNext.
   iApply ("HK" with "[Htl Hcl Hjb Hch] Hbl Hpv [Hct]").
   - iExists tb, treg, jb. iFrame. iPureIntro. unfold off_cancelhandling. repeat split; try reflexivity; lia.
   - iSplit; [iPureIntro; lia|]. iExact "Hct".

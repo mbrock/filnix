@@ -18,6 +18,8 @@ Ltac wi_store :=
   intros ? ? ? Hh Hw; eapply os_wi_store_life; [reflexivity | | exact Hh | exact Hw];
   first [apply no_life_cell | apply no_life_byte_ps | apply no_life_pcell | apply no_life_byte].
 
+#[export] Hint Resolve os_wi_store_life no_life_byte_ps no_life_cell no_life_pcell : store_world.
+
 (** Drop each wrap to 64 or 32 bits of the goal that arithmetic shows
     the identity. *)
 Ltac unwrap :=

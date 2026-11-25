@@ -13,7 +13,7 @@ From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
   Machine Pieces Heap Language Logic ExternalCalls StepRules.
-From Glibc Require Import Fix GlibcTactics GlibcSym.
+From Glibc Require Import Fix GlibcTactics GlibcEnv GlibcSym.
 Import ListNotations LG0 LG0.L.
 Open Scope Z_scope.
 
@@ -583,6 +583,27 @@ Ltac sym_guard_env gamma :=
       end
   end.
 
+(** A path preserves the caller's registers if every recorded assignment belongs
+    to a set of names that the caller avoids. This includes assignments by phi nodes. *)
+Lemma sym_path_keeps ρ ups ks writes e :
+  forallb (fun u => existsb (name_eqb (fst u)) writes) ups = true ->
+  avoids ks writes = true -> keeps ks e (apply_ups ρ ups e).
+Proof.
+  intros Hnames Havoid. revert e. induction ups as [|[k v] rest IH]; intros e.
+  - apply keeps_refl.
+  - apply andb_true_iff in Hnames as [Hk Hrest]. cbn [apply_ups fold_left].
+    eapply keeps_trans; [eapply keeps_put_avoid; [exact Hk | exact Havoid | apply keeps_refl] | apply IH; exact Hrest].
+Qed.
+
+(** When the caller supplies an avoidance premise, check the computed path once
+    and leave its preservation fact available at the join. *)
+Ltac sym_leaf_keeps :=
+  try match goal with
+  | H : avoids ?ks ?writes = true |- context [apply_ups ?rho ?ups ?e] =>
+      let kept := fresh "Hsym_kept" in
+      pose proof (sym_path_keeps rho ups ks writes e ltac:(vm_compute; reflexivity) H) as kept
+  end.
+
 (** Named leaves expose ordinary proof goals without framing or restoring names through Iris tactics. *)
 Ltac sym_context_finish fs Hfacts solve tree :=
   lazymatch tree with
@@ -598,7 +619,7 @@ Ltac sym_context_finish fs Hfacts solve tree :=
       | |- match ?app with Some _ => _ | None => _ end =>
           let out := pm_eval app in change app with out
       end;
-      unfold sym_leaf_frame;
+      unfold sym_leaf_frame; sym_leaf_keeps;
       cbn [leaf_state st_ups apply_ups fold_left fst snd
         atom_den wden cden zden vz vp vr nth nth_error edge_label];
       rewrite ?sym_ptr_eta]

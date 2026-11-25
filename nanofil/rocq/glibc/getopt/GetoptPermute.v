@@ -98,10 +98,9 @@ Proof using Type.
       - step. iApply ("HK" $! _ ps f l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs"); [| icell | icell | icell | icell].
         split; [done|]. split; [xkeep|]. split; [lia|]. split; lk_prove.
       - step. sym_run "Hl Hib Hfb".
-        store_word "Hl Hfb" by (arith) preserving wi_store.
-        iNext. iIntros "Hl Hfb". step. step.
+        step.
         iApply ("HK" $! _ ps i l1 with "[%] Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs");
-          [| icell | icell | (iApply cell_mod; [lia | iAssumption]) | icell].
+          [| icell | icell | icell | icell].
         split; [done|]. split; [xkeep|]. split; [lia|]. split; lk_prove. }
     destruct (Z.eqb_spec f l1) as [Efl | Efl]; close_br.
     * step. brz. iApply ("Hrestart" with "[%] Hl [Hib] [Hfb] [Hlab]"); [| icell | icell | icell].

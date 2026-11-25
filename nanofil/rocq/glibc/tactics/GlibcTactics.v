@@ -61,6 +61,9 @@ Qed.
 
 Create HintDb offs.
 
+(** Memory interpretations can supply their own proof that a store preserves the world. *)
+Create HintDb store_world.
+
 (** This lemma reads past an update to a different temporary. *)
 Lemma lookup_put_miss {A : Type} k k' (v : A) e r :
   name_eqb k k' = false -> lookup k e = r -> lookup k (put k' v e) = r.

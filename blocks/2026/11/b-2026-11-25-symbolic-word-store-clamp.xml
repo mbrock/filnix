@@ -1,0 +1,19 @@
+<block id="b-2026-11-25-symbolic-word-store-clamp" kind="finding" actor="mbrock" created="2026-11-25T01:14:43Z">
+  <title>The symbolic executor follows both getopt clamp paths to their join</title>
+  <about path="nanofil/rocq/glibc/getopt/GetoptClamp.v" symbol="wp_clamp_last"/>
+  <about path="nanofil/rocq/glibc/libio/SysCleanup.v" symbol="wp_glibc___libc_cleanup_push_defer"/>
+  <tag name="formal"/>
+  <p>The getopt scanner clamps the last nonoption index to the public
+    index. The symbolic executor now runs both branches to their common
+    block, including the four-byte store on the branch that lowers the
+    index. Both paths use the same proof at the join. The executor uses
+    the registers assigned on each path to prove that the caller's
+    protected registers keep their values.</p>
+  <p>The libio cleanup proof uses the same store rule to overwrite the
+    cancel type in a cleanup buffer. The old contents can be any four
+    bytes. The executor checks ownership and width, then follows the
+    pointer store that links the buffer into the thread's cleanup list.
+    Removing ownership, supplying read-only bytes, or shortening the
+    field to three bytes stopped execution at the first store in
+    separate proof runs.</p>
+</block>

@@ -24,7 +24,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run
-  Machine Pieces Heap Language Logic MemLogic ExternalCalls StepRules.
+  Machine Pieces Heap Language Logic StringLogic MemLogic ExternalCalls StepRules.
 From Nanofil Require Validate WordBits Interval.
 From Glibc Require Import Fix GlibcTactics.
 Module sym_ML := Fix.ML0.
@@ -269,8 +269,19 @@ Inductive atom : Type :=
   | APCell (b o a : zexp) (c : scap)
   | ALiveCap (c : scap) (r : nat)
   | ANarrow (n : narrow) (b o v : zexp)
-  | ABytes (q : nat) (b o : zexp) (l : nat)
+  | ABytes (q : nat) (b o : zexp) (l : nat) (writable_word : bool)
   | ALiveQ (q : nat) (b : zexp) (r : nat).
+
+(** A four-byte destination may hold an encoded integer or an arbitrary owned
+    byte sequence. A store needs the old bytes only to update the world. *)
+Inductive word32_source := Encoded32 (v : zexp) | Slice32 (q l : nat).
+
+Definition word32_view (a : atom) : option (zexp * zexp * word32_source) :=
+  match a with
+  | ANarrow Sw b o v | ANarrow Uw b o v => Some (b, o, Encoded32 v)
+  | ABytes q b o l true => Some (b, o, Slice32 q l)
+  | _ => None
+  end.
 
 (** ## What the executor returns
 
@@ -287,6 +298,7 @@ Inductive ob : Type :=
   | OLe (a b : zexp)
   | OLt (a b : zexp)
   | OEq (a b : zexp)
+  | OStore32 (b o : zexp) (r : nat) (old : word32_source) (new : zexp)
   | OStoreW (b o : zexp) (r : nat) (old new : zexp)
   | OStoreP (b o : zexp) (r : nat) (old new : sword).
 
@@ -1071,7 +1083,7 @@ Definition creadable (fs : facts) (c : scap) (b : zexp) : bool :=
 (** A byte slice permits reads through either writable or read-only capabilities. *)
 Definition is_bytes (fs : facts) (c : scap) (a : atom) : bool :=
   match a with
-  | ABytes _ b _ _ => creadable fs c b
+  | ABytes _ b _ _ _ => creadable fs c b
   | _ => false
   end.
 
@@ -1106,8 +1118,8 @@ Proof.
 Qed.
 
 (** Selecting a byte slice identifies a capability accepted by the read rule. *)
-Lemma is_bytes_sound ρ fs c q b o l :
-  facts_hold ρ fs -> is_bytes fs c (ABytes q b o l) = true ->
+Lemma is_bytes_sound ρ fs c q b o l writable :
+  facts_hold ρ fs -> is_bytes fs c (ABytes q b o l writable) = true ->
   cden ρ c = Obj (zden ρ b) \/ cden ρ c = Ro (zden ρ b).
 Proof. apply creadable_sound. Qed.
 
@@ -1116,7 +1128,7 @@ Definition sbyte_memory (fs : facts) (s : sstate) (d : name)
     (off : Z) (a : zexp) (c : scap) : (stop_reason + sstate)%type :=
   let addr := sraw fs a off in
   match pick_atom (is_bytes fs c) (st_heap s) with
-  | Some (pre, ABytes q b o l, post) =>
+  | Some (pre, ABytes q b o l _, post) =>
       match pick_atom (is_read_live fs b) (pre ++ post) with
       | Some _ =>
           let i := zclean fs (ZSub addr (ZAdd b o)) in
@@ -1290,6 +1302,43 @@ Definition sstore (fs : facts) (s : sstate) (pointer : bool) (off : Z)
       end
   end.
 
+(** The store selects the four bytes at the checked address. It returns
+    their new encoding so a following signed or unsigned load can read it. *)
+Definition is_word32 fs b addr off cell :=
+  match word32_view cell with
+  | Some (base, o, _) =>
+      let dest := ZAdd base o in
+      zlinear_eqb fs b base &&
+        (zlinear_eqb fs (sraw fs addr off) dest || zlinear_eqb fs (ZAdd addr (ZK off)) dest)
+  | None => false
+  end.
+
+Definition sstore32 fs s off v p why : (stop_reason + sstate)%type :=
+  match v, p with
+  | SWInt new, SWPtr addr c =>
+      match object_base fs c with
+      | None => inl (NotObject c)
+      | Some b =>
+          let a := sraw fs addr off in
+          match pick_atom (is_live fs b) (st_heap s) with
+          | None => inl (NoLive b)
+          | Some (pre, life, post) =>
+              match pick_atom (is_word32 fs b addr off) (pre ++ post) with
+              | Some (pre', cell, post') =>
+                  match word32_view cell with
+                  | Some (base, o, old) =>
+                      inr (mkSState (st_env s) (st_ups s)
+                        (life :: pre' ++ ANarrow Uw base o new :: post')
+                        (st_obs s ++ [OEq a (ZAdd base o); OStore32 base o (atom_region life) old new]))
+                  | None => inl why
+                  end
+              | None => inl (NoCell b (ZSub a b))
+              end
+          end
+      end
+  | _, _ => inl why
+  end.
+
 (** One instruction either advances the symbolic state or explains why it cannot advance. *)
 Definition sym_step (ge : genv) (fs : facts) (s : sstate) (i : inst) : (stop_reason + sstate)%type :=
   let se := st_env s in let fallback := operand_stop se i in
@@ -1314,6 +1363,11 @@ Definition sym_step (ge : genv) (fs : facts) (s : sstate) (i : inst) : (stop_rea
           | Some (SWInt a) => inr (sbind d (SWPtr a c) s)
           | _ => inl fallback
           end
+      | _, _ => inl fallback
+      end
+  | RawStore Ww off v p =>
+      match svalue ge fs se W v, svalue ge fs se A p with
+      | Some v, Some p => sstore32 fs s off v p fallback
       | _, _ => inl fallback
       end
   | RawStore Wl off v p =>
@@ -1373,7 +1427,7 @@ Fixpoint sym_prefix (ge : genv) (fs : facts) (s : sstate)
     se and the atoms h. It handles integer arithmetic, flag operations,
     shifts, extensions, copies, comparisons and flights. Memory operations
     include checks, half checks, renewals, integer and pointer loads,
-    narrow loads, and 64-bit integer and pointer stores with writable object capabilities.
+    narrow loads, four-byte and eight-byte integer stores, and pointer stores with writable object capabilities.
     It finds an atom by comparing base expressions
     and offsets after removing wraps that the bounds make redundant,
     settles comparisons between constants itself, and leaves every
@@ -1437,6 +1491,34 @@ Proof.
   repeat (apply Forall_cons; [vm_compute; split; reflexivity|]). apply Forall_nil.
 Qed.
 
+(** A word store leaves the high bit in memory. A signed reload extends it,
+    while an unsigned reload preserves the same bits as a positive integer. *)
+Example sym_store32_reload ge :
+  let base := ZK 4096 in let p := Tmp (TAtom "p") in
+  let h := [ALive base 0; ANarrow Sw base (ZK 4) (ZK 0)] in
+  let code := [RawStore Ww 0 (Const (2^31)) p;
+               Let (TAtom "s") L (RawLoad (LdNarrow Sw) 0) [p];
+               Let (TAtom "u") L (RawLoad (LdNarrow Uw) 0) [p]] in
+  match sym_block ge (mkFacts [] []) [(TAtom "p", SWPtr (ZK 4100) (SCObj base))]
+          h (TAtom "entry") code (JGoto (To (TAtom "done"))) with
+  | LGoto _ s =>
+      option_map (wden (mkVal [] [] [])) (lookup (TAtom "s") (st_env s)) = Some (WInt (2^64 - 2^31)) /\
+      option_map (wden (mkVal [] [] [])) (lookup (TAtom "u") (st_env s)) = Some (WInt (2^31))
+  | _ => False
+  end.
+Proof. vm_compute. auto. Qed.
+
+(** A lifetime alone, a two-byte cell, and a read-only byte slice each leave
+    the store waiting for ownership of the four-byte destination. *)
+Example sym_store32_requires_word :
+  let b := ZK 4096 in let o := ZK 0 in
+  Forall (fun cells =>
+    match sstore32 (mkFacts [] []) (mkSState [] [] (ALive b 0 :: cells) []) 0
+            (SWInt o) (SWPtr b (SCObj b)) NotYet with
+    | inl (NoCell _ _) => True | _ => False
+    end) [[]; [ANarrow Uh b o o]; [ABytes 0 b o 0 false]].
+Proof. repeat (apply Forall_cons; [vm_compute; exact I|]). apply Forall_nil. Qed.
+
 (** Flag operations and wrapped shift counts agree with concrete register arithmetic. *)
 Example sym_flag_operations :
   map (fun test => let '(o, k, x, y) := test in
@@ -1469,7 +1551,7 @@ Definition atom_den (ρ : valuation) (a : atom) : iProp Σ :=
   | APCell b o a c => pcell (zden ρ b) (zden ρ o) (mkPtr (zden ρ a) (cden ρ c))
   | ALiveCap c r => match nth_error (vr ρ) r with Some reg => live_cap (cden ρ c) reg | None => False end
   | ANarrow n b o v => sym_ML.bytes (zden ρ b) (zden ρ o) (sym_bytes n (zden ρ v))
-  | ABytes q b o l =>
+  | ABytes q b o l _ =>
       match nth_error (vfrac ρ) q, nth_error (vbytes ρ) l with
       | Some dq, Some xs => sym_ML.bytesq dq (zden ρ b) (zden ρ o) xs
       | _, _ => False
@@ -1498,6 +1580,14 @@ Definition cell_pieces (b o : Z) (reg : region) (w : word) : list (piece * pval)
   | WLimit _ _ => []
   end.
 
+(** A byte-slice store requires full ownership and exactly four bytes.
+    The soundness proof checks both facts even for a manually constructed atom. *)
+Definition word32_bytes (ρ : valuation) (old : word32_source) (xs : list Z) : Prop :=
+  match old with
+  | Encoded32 v => xs = sym_bytes Uw (zden ρ v)
+  | Slice32 q l => nth_error (vfrac ρ) q = Some (DfracOwn 1) /\ nth_error (vbytes ρ) l = Some xs
+  end.
+
 (** A condition means the corresponding proposition. The world
     condition of a store is the premise that [wp_raw_store] and
     [wp_raw_store_pointer] take. *)
@@ -1506,6 +1596,13 @@ Definition ob_den (ρ : valuation) (o : ob) : Prop :=
   | OLe a b => zden ρ a <= zden ρ b
   | OLt a b => zden ρ a < zden ρ b
   | OEq a b => zden ρ a = zden ρ b
+  | OStore32 b o r old new =>
+      exists reg xs, nth_error (vr ρ) r = Some reg /\ word32_bytes ρ old xs /\ List.length xs = 4%nat /\
+      let b' := zden ρ b in let o' := zden ρ o in let y := zden ρ new in
+      forall m wd h,
+        (forall l v, (l, v) ∈ (PLive b', VLive reg) :: byte_ps b' o' xs -> h !! l = Some v) ->
+        wi m wd h -> wi (store_bytes m (b' + o') 4 y) wd
+          (overwrite ((PLive b', VLive reg) :: byte_ps b' o' (le_bytes y 4)) h)
   | OStoreW b o r old new =>
       exists reg, nth_error (vr ρ) r = Some reg /\
       let b' := zden ρ b in let o' := zden ρ o in
@@ -1862,11 +1959,11 @@ Qed.
 
 (** Reading one byte preserves the complete slice and its lifetime permission. *)
 Lemma sym_load_bytes_rule ρ fs h pre post pre' life post'
-    f e ls l d k off args rest j classes a c q b o bl Φ :
+    f e ls l d k off args rest j classes a c q b o bl writable Φ :
   facts_hold ρ fs -> (k = W \/ k = L) ->
   op_arg_classes (RawLoad (LdNarrow Ub) off) k = Some classes ->
   map2_option (value_x ge e) classes args = Some [wden ρ (SWPtr a c)] ->
-  pick_atom (is_bytes fs c) h = Some (pre, ABytes q b o bl, post) ->
+  pick_atom (is_bytes fs c) h = Some (pre, ABytes q b o bl writable, post) ->
   pick_atom (is_read_live fs b) (pre ++ post) = Some (pre', life, post') ->
   let i := zclean fs (ZSub (sraw fs a off) (ZAdd b o)) in
   obs_den ρ [OLe (ZK 0) i; OLt i (ZLen bl)] ->
@@ -1880,7 +1977,7 @@ Proof using SafepointStable0.
   intros Hfs Hk Hclasses Hargs Hb Hl i Hobs.
   destruct (pick_atom_sound _ _ _ _ _ Hb) as [_ Hbytes].
   destruct (pick_atom_sound _ _ _ _ _ Hl) as [_ Hlive].
-  pose proof (is_bytes_sound _ _ _ _ _ _ _ Hfs Hbytes) as Hcap.
+  pose proof (is_bytes_sound _ _ _ _ _ _ _ _ Hfs Hbytes) as Hcap.
   rewrite (heap_den_pick _ _ _ _ _ _ Hb) (heap_den_pick _ _ _ _ _ _ Hl)
     (is_read_live_den _ _ _ _ Hfs Hlive).
   cbn [atom_den].
@@ -1989,6 +2086,45 @@ Proof using SafepointStable0.
   rewrite Hb. rewrite Hb in Hcap.
   iIntros "(Hl & Hcell & Hrest) HK".
   iApply (wp_raw_store with "Hl Hcell"); [exact Hv|exact Hp|exact Hcap|exact Ha|exact Hwi|].
+  iNext. iIntros "Hl Hcell". iApply "HK". iFrame.
+Qed.
+
+(** Matching a word destination recovers the byte ownership needed by the machine rule. *)
+Lemma word32_view_den ρ cell b o old xs :
+  word32_view cell = Some (b, o, old) -> word32_bytes ρ old xs ->
+  atom_den ρ cell ⊣⊢ sym_ML.bytes (zden ρ b) (zden ρ o) xs.
+Proof using Type.
+  destruct cell; cbn [word32_view]; try discriminate.
+  - destruct n; try discriminate; intros E; injection E as <- <- <-; intros ->; done.
+  - destruct writable_word; try discriminate. intros E; injection E as <- <- <-.
+    intros [Hq Hl]. cbn [atom_den]. rewrite Hq Hl. done.
+Qed.
+
+(** The four-byte rule consumes the old bytes and returns the new bytes at the same address. *)
+Lemma sym_store32_rule ρ fs h pre life post pre' cell post' f e ls l off v p rest j a c b b' o old new Φ :
+  facts_hold ρ fs -> value_x ge e W v = Some (wden ρ (SWInt new)) ->
+  value_x ge e A p = Some (wden ρ (SWPtr a c)) ->
+  object_base fs c = Some b -> pick_atom (is_live fs b) h = Some (pre, life, post) ->
+  pick_atom (is_word32 fs b a off) (pre ++ post) = Some (pre', cell, post') ->
+  word32_view cell = Some (b', o, old) -> ob_den ρ (OEq (sraw fs a off) (ZAdd b' o)) ->
+  ob_den ρ (OStore32 b' o (atom_region life) old new) ->
+  heap_den ρ h -∗
+  ▷ (heap_den ρ (life :: pre' ++ ANarrow Uw b' o new :: post') -∗
+    WP (ERun (mkFrame f e ls None (Exec l rest j)) : gexpr) {{ Φ }}) -∗
+  WP (ERun (mkFrame f e ls None (Exec l (RawStore Ww off v p :: rest) j)) : gexpr) {{ Φ }}.
+Proof using SafepointStable0.
+  intros Hfs Hv Hp Hobj Hlife Hcell Hview Ha (reg & xs & Hr & Hbytes & Hlen & Hwi).
+  pose proof (object_base_sound _ _ _ _ Hfs Hobj) as Hcap.
+  destruct (pick_atom_sound _ _ _ _ _ Hlife) as [_ Hl].
+  destruct (pick_atom_sound _ _ _ _ _ Hcell) as [_ Haddr]. unfold is_word32 in Haddr.
+  rewrite Hview in Haddr. apply andb_true_iff in Haddr as [Hb _].
+  apply (zlinear_eqb_sound _ _ _ _ Hfs) in Hb. cbn [ob_den] in Ha.
+  rewrite (sraw_sound _ _ _ _ Hfs) in Ha. cbn [zden] in Ha.
+  rewrite (heap_den_pick _ _ _ _ _ _ Hlife) (heap_den_pick _ _ _ _ _ _ Hcell).
+  cbn [heap_den]. rewrite (is_live_den _ _ _ _ Hfs Hl) !heap_den_app Hr Hb.
+  rewrite (word32_view_den _ _ _ _ _ _ Hview Hbytes). rewrite Hb in Hcap.
+  iIntros "(Hl & Hcell & Hrest) HK".
+  iApply (sym_ML.wp_raw_store_w registry wi ge with "Hl Hcell"); [exact Hv|exact Hp|exact Hcap|exact Ha|exact Hlen|exact Hwi|].
   iNext. iIntros "Hl Hcell". iApply "HK". iFrame.
 Qed.
 
@@ -2138,6 +2274,22 @@ Proof using SafepointStable0.
   all: iNext; iIntros "Hheap"; iApply ("HK" with "Hheap"); iPureIntro; exact Henv.
 Qed.
 
+(** Running a four-byte store preserves the environment and appends its world obligation. *)
+Lemma sstore32_rule ρ fs s s' f e ls l off v p rest j sv sp why Φ :
+  facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
+  value_x ge (apply_ups ρ (st_ups s) e) W v = Some (wden ρ sv) ->
+  value_x ge (apply_ups ρ (st_ups s) e) A p = Some (wden ρ sp) ->
+  sstore32 fs s off sv sp why = inr s' -> obs_den ρ (st_obs s') ->
+  heap_den ρ (st_heap s) -∗ ▷ next_den ρ f e ls l rest j Φ s' -∗
+  WP (ERun (mkFrame f (apply_ups ρ (st_ups s) e) ls None (Exec l (RawStore Ww off v p :: rest) j)) : gexpr) {{ Φ }}.
+Proof using SafepointStable0.
+  intros Hfs Henv Hv Hp Hstep Hobs. unfold sstore32 in Hstep. sym_cases Hstep.
+  injection Hstep as <-. unfold next_den. cbn [st_env st_heap st_ups st_obs] in Hobs |- *.
+  apply Forall_app in Hobs as [_ Hobs]. inversion Hobs as [|? ? Ha Htail]; subst.
+  inversion Htail; subst. iIntros "Hheap HK". iApply (sym_store32_rule with "Hheap"); try eassumption.
+  iNext. iIntros "Hheap". iApply ("HK" with "Hheap"). iPureIntro. exact Henv.
+Qed.
+
 (** Every successful symbolic instruction is justified by its corresponding machine rule. *)
 Lemma sym_step_rule ρ fs s s' f e ls l i rest j Φ :
   facts_hold ρ fs -> env_models ρ (st_env s) (apply_ups ρ (st_ups s) e) ->
@@ -2165,6 +2317,9 @@ Proof using SafepointStable0.
     + exact (sflight_cap_sound _ _ _ _ _ _ _ Hfs Henv Hcap).
     + iNext. iApply ("HK" with "Hheap"). iPureIntro. apply env_models_put. exact Henv.
   - destruct w; try discriminate.
+    { destruct (svalue ge fs (st_env s) W v) as [sv|] eqn:Hv; [|discriminate].
+      destruct (svalue ge fs (st_env s) A a) as [sp|] eqn:Hp; [|discriminate].
+      eapply sstore32_rule; try eassumption; eapply svalue_sound; eassumption. }
     destruct (svalue ge fs (st_env s) L v) as [sv|] eqn:Hv; [|discriminate].
     destruct (svalue ge fs (st_env s) A a) as [sp|] eqn:Hp; [|discriminate].
     eapply (sstore_rule _ _ _ _ _ _ _ _ _ _ _ _ _ false sv sp _ _ Hfs Henv);
@@ -2196,7 +2351,7 @@ Lemma sym_step_obs fs s i s' : sym_step ge fs s i = inr s' ->
   exists os, st_obs s' = st_obs s ++ os.
 Proof using Type.
   intros H. unfold sym_step in H. sym_cases H.
-  all: try unfold smemory in H; try unfold sstore in H; sym_cases H.
+  all: try unfold smemory in H; try unfold sstore in H; try unfold sstore32 in H; sym_cases H.
   all: try solve [eapply sbyte_memory_obs; eassumption].
   all: try solve [eapply sread_check_obs; eassumption].
   all: injection H as <-; cbn [sbind sobserve st_obs];
@@ -2457,7 +2612,11 @@ Ltac sym_quote_bytes rho dq b o xs :=
       lazymatch qq with (?q, mkValuation ?zs ?ps ?rs ?bs ?qs) =>
         let ql := sym_intern xs bs in
         lazymatch ql with (?l, ?bs') =>
-          constr:((ABytes q b' o' l, mkValuation zs ps rs bs' qs))
+          let writable := match goal with
+          | _ => let _ := constr:(eq_refl dq : dq = DfracOwn 1) in
+                 let _ := constr:(ltac:(first [assumption | reflexivity]) : List.length xs = 4%nat) in constr:(true)
+          | _ => constr:(false) end in
+          constr:((ABytes q b' o' l writable, mkValuation zs ps rs bs' qs))
         end
       end
     end
@@ -2500,8 +2659,12 @@ Ltac sym_quote_atom rho P :=
   | liveq ?dq ?b ?reg =>
       let qb := sym_quote_z rho b in
       lazymatch qb with (?b', ?r1) => let qr := sym_quote_r r1 reg in
-        lazymatch qr with (?r, ?r2) => let qq := sym_quote_q r2 dq in
-          lazymatch qq with (?q, ?r3) => constr:((ALiveQ q b' r, r3)) end end end
+        lazymatch qr with (?r, ?r2) =>
+          match dq with
+          | DfracOwn 1 => constr:((ALive b' r, r2))
+          | _ => let qq := sym_quote_q r2 dq in
+                 lazymatch qq with (?q, ?r3) => constr:((ALiveQ q b' r, r3)) end
+          end end end
   | live_cap ?c ?reg =>
       let qc := sym_quote_c rho c in
       lazymatch qc with (?c', ?r1) => let qr := sym_quote_r r1 reg in
@@ -2730,10 +2893,11 @@ Definition atom_slot (fs : facts) (a b : atom) : bool :=
   | ALiveCap c r, ALiveCap d s => csame fs c d && Nat.eqb r s
   | ACell x o _, ACell y p _ | APCell x o _ _, APCell y p _ _ =>
       zlinear_eqb fs x y && zlinear_eqb fs o p
+  | ANarrow Uw x o _, ABytes _ y p _ true => zlinear_eqb fs x y && zlinear_eqb fs o p
   | ANarrow n x o _, ANarrow m y p _ =>
       Z.eqb (fst (narrow_type n)) (fst (narrow_type m)) &&
       zlinear_eqb fs x y && zlinear_eqb fs o p
-  | ABytes q x o l, ABytes r y p m =>
+  | ABytes q x o l _, ABytes r y p m _ =>
       Nat.eqb q r && Nat.eqb l m && zlinear_eqb fs x y && zlinear_eqb fs o p
   | ALiveQ q x r, ALiveQ p y s =>
       Nat.eqb q p && Nat.eqb r s && zlinear_eqb fs x y
@@ -2882,9 +3046,17 @@ Ltac sym_run_with names solve :=
   end)
   else idtac "sym_run stopped: symbolic register name".
 
+(** The selected region and old bytes determine the witnesses for a four-byte store.
+    The caller's world supplies the last premise of the machine rule. *)
+Ltac sym_store_obligation :=
+  first [eexists; eexists; split; [reflexivity|]; split;
+         [solve [reflexivity | split; reflexivity]|]; split;
+         [first [assumption | reflexivity] | solve [intros; eauto with store_world]]
+        | eexists; split; [reflexivity | unfold cell_pieces; solve [intros; eauto with store_world]]].
+
 (** The default solver tries integer arithmetic first, then removes remainders whose inputs already fit.
     Only the remaining goals need division and modulo equations. *)
-Ltac sym_lia := first [assumption | reflexivity | lia |
+Ltac sym_lia := first [assumption | reflexivity | sym_store_obligation | lia |
   match goal with H : ?P \/ ?Q |- ?Q \/ ?P => clear -H; tauto end |
   progress (repeat match goal with
     | |- context [?x mod ?m] =>

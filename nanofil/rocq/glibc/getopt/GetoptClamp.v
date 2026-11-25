@@ -4,7 +4,7 @@
     followed them, or restarts the nonoption block at i. This file proves
     those blocks safe and tracks the endpoints they leave. *)
 
-From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv GlibcSym.
+From Glibc Require Import OsMemLogic GetoptTactics GlibcProgram GlibcTactics OsTactics GlibcEnv GlibcSym GlibcSymFunc.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -75,16 +75,13 @@ Local Lemma wp_clamp_last ks e from av b r i last Φ :
 Proof using Type.
   intros Havoid (Hargv & Hdata & Hopterr & Hindex) Hi Hlast Hb Hal Hfit Hr.
   iIntros "Hl [%Hi32 Hib] [%Hlast32 Hlab] Hclamped".
-  step. sym_run "Hl Hlab Hib".
-  rewrite (index_gt last i ltac:(lia) ltac:(lia)).
-  destruct (Z.ltb_spec i last) as [Hgt | Hle]; close_br.
-  - rewrite Z.min_r; last lia. step. sym_run "Hl Hib Hlab".
-    store_word "Hl Hlab" by (arith) preserving wi_store.
-    iNext. iIntros "Hl Hlab". step.
-    iApply ("Hclamped" $! _ with "[%] Hl [Hib] [Hlab]"); [| icell | (iApply cell_mod; [lia | iAssumption])].
-    split; [xkeep|]. repeat split; lk_prove.
-  - rewrite Z.min_l; last lia. iApply ("Hclamped" $! _ with "[%] Hl [Hib] [Hlab]"); [| icell | icell].
-    split; [xkeep|]. repeat split; lk_prove.
+  step. sym_frun "Hl Hlab Hib" [TAtom "L93"].
+  all: first [rename Hsym_yes into Hpath | rename Hsym_no into Hpath].
+  all: rewrite (index_gt last i Hlast Hi) in Hpath;
+    destruct (Z.ltb_spec i last); vm_compute in Hpath; try contradiction; try discriminate.
+  all: first [rewrite Z.min_r; last lia | rewrite Z.min_l; last lia].
+  all: iApply ("Hclamped" with "[%] Hl [Hib] [Hlab]"); [|icell|icell].
+  all: split; [assumption|]; repeat split; lk_prove.
 Qed.
 
 (** A caller may rewind the public index between calls, so the scanner
