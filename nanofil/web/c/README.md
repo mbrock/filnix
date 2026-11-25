@@ -12,6 +12,7 @@ on the Prolog pages, and in Rocq comments. [docs/dterm.md](../../docs/dterm.md)
 |---|---|
 | [c_read.pl](c_read.pl) | Reads C with [c_lex.pl](../../src/c_lex.pl) and [c_parse.pl](../../src/c_parse.pl): a fence one external declaration at a time, with the comments, directives and integer spellings the lexer drops (`c_read_text/3`); inline code as an expression, type, statement or declaration (`c_snippet/2`) |
 | [c_draw.pl](c_draw.pl) | Draws them: `c_fence//1`, `c_inline//1` for `` `c: …` ``, `c_inline_auto//1` for unmarked code that is C beyond doubt |
+| [c_batch.pl](c_batch.pl) | Renders a deduplicated batch of C snippets in one `swipl` process for the OCaml `dterm-rocq` site builder |
 
 The styles are in nanofil's [dterm.css](../dterm.css) (`.dterm-c` for
 fences, `code.cx` inline), so every page that sets terms sets C. The

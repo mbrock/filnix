@@ -13,7 +13,8 @@ written in [formal.md](../../docs/formal.md) is drawn the same way on
 |---|---|
 | [rocq_syntax.pl](rocq_syntax.pl) | A lexer and DCG for the vernacular and Gallina: every node keeps its span, comments come back beside the sentences, a file's own infix notations become operators |
 | [rocq_draw.pl](rocq_draw.pl) | Draws the terms: sentences for the pages, and inline Rocq and ```` ```rocq ```` fences for the documents (dterm_guide.pl) |
-| [dterm_rocq.pl](dterm_rocq.pl) | One page per `.v` file, with its contents, and an index |
+| [dterm_rocq.pl](dterm_rocq.pl) | One page per `.v` file, with its contents, and an index (Prolog reference implementation, also used for `--states` proof capture) |
+| [ocaml/](ocaml/) | Zero-dependency OCaml 5 translation of `rocq_syntax.pl`, `rocq_draw.pl`, and `dterm_rocq.pl` used by the site build |
 | [dterm-rocq.css](dterm-rocq.css), [dterm-rocq.js](dterm-rocq.js) | The Rocq layouts, over nanofil's `dterm.css` |
 | [tests/parse.sh](tests/parse.sh) | Checks the grammar against Rocq itself |
 
