@@ -998,229 +998,350 @@ Proof.
   reflexivity.
 Qed.
 
-Lemma run_trace_step_eq pol ge n c1 c2 c1' c2' :
-  leak_of pol ge c1 = leak_of pol ge c2 ->
-  Semantics.step ge c1 = Next c1' ->
-  Semantics.step ge c2 = Next c2' ->
-  run_trace pol ge n c1' = run_trace pol ge n c2' ->
-  run_trace pol ge (S n) c1 = run_trace pol ge (S n) c2.
+(** Loop-header environment for [rebased_scan_fn]: at public iteration `j`,
+    the base pointer is shifted up by `s` while `lim` and `k` are shifted down
+    by `s`, all modulo `2 ^ 64`. *)
+Record rebased_loop_env (e : env) (buf : ptr) (len j s : Z) : Prop :=
+  mkRebasedLoopEnv {
+    rle_base : lookup (TAtom "base") e =
+      Some (WPtr (mkPtr ((ptr_addr buf + s) mod 2 ^ 64) (ptr_cap buf)));
+    rle_lim : lookup (TAtom "lim") e = Some (WInt ((len - s) mod 2 ^ 64));
+    rle_k : lookup (TAtom "k") e = Some (WInt ((j - s) mod 2 ^ 64));
+    rle_acc : exists acc, lookup (TAtom "acc") e = Some (WInt acc)
+  }.
+
+(** Machine configuration at the `loop` header of [rebased_scan_fn]. *)
+Definition rebased_loop_cfg (e : env) (m : mem) (fuel : Z) : config :=
+  mkConfig (mkFrame rebased_scan_fn e [] None
+    (Exec (TAtom "loop")
+      ir[ %"done" : W = (Cmp Eq L) %"k", %"lim" ]
+      ir{ br %"done" ? "exit" : "body" }))
+    [] m fuel.
+
+(** Emit at most `steps` events from a straight-line block `evs`, then continue
+    with `rest` on any remaining step budget. *)
+Fixpoint prefix_then (steps : nat) (evs : list leak_event)
+    (rest : nat -> list leak_event) : list leak_event :=
+  match steps, evs with
+  | O, _ => []
+  | S n, [] => rest (S n)
+  | S n, ev :: tl => ev :: prefix_then n tl rest
+  end.
+
+(** Secret-independent leakage events emitted by one iteration of `body` at
+    public byte offset `j`. *)
+Definition rebased_body_events (pol : poison_policy) (buf : ptr) (j : Z)
+    : list leak_event :=
+  [LeakEnter (TAtom "body") (Some (TAtom "loop"));
+   LeakPure;
+   if pol_check_branches pol
+   then LeakCheck (Check 0 1 Read 1) (mkPtr (ptr_addr buf + j) (ptr_cap buf))
+   else LeakPure;
+   LeakMem Read (ptr_addr buf + j) 1;
+   LeakPure;
+   LeakPure;
+   LeakGoto (TAtom "loop")].
+
+(** Secret-independent reference trace of [rebased_scan_fn] from iteration `j`
+    with `rem` iterations remaining (`j + rem = len`). *)
+Fixpoint rebased_loop_trace (pol : poison_policy) (buf : ptr)
+    (rem : nat) (j fuel : Z) (steps : nat) : list leak_event :=
+  match rem with
+  | O =>
+      prefix_then steps [LeakPure; LeakBranch true (TAtom "exit")]
+        (fun n =>
+          if fuel =? 0 then prefix_then n [LeakDone "out_of_fuel"] (fun _ => [])
+          else prefix_then n
+            [LeakEnter (TAtom "exit") (Some (TAtom "loop")); LeakRet]
+            (fun _ => []))
+  | S rem' =>
+      prefix_then steps [LeakPure; LeakBranch false (TAtom "body")]
+        (fun n =>
+          if fuel =? 0 then prefix_then n [LeakDone "out_of_fuel"] (fun _ => [])
+          else
+            prefix_then n (rebased_body_events pol buf j)
+              (fun m =>
+                if (fuel - 1) =? 0 then prefix_then m [LeakDone "out_of_fuel"] (fun _ => [])
+                else prefix_then m [LeakEnter (TAtom "loop") (Some (TAtom "body"))]
+                  (rebased_loop_trace pol buf rem' (j + 1) (fuel - 2))))
+  end.
+
+(** Secret-independent reference trace of [rebased_scan_fn] from entry. *)
+Definition rebased_scan_trace (pol : poison_policy) (buf : ptr)
+    (len fuel : Z) (steps : nat) : list leak_event :=
+  if fuel =? 0 then
+    prefix_then steps [LeakDone "out_of_fuel"] (fun _ => [])
+  else
+    prefix_then steps
+      [LeakEnter (TAtom "start") None; LeakPure; LeakPure; LeakPure;
+       LeakGoto (TAtom "loop")]
+      (fun n =>
+        if (fuel - 1) =? 0 then prefix_then n [LeakDone "out_of_fuel"] (fun _ => [])
+        else prefix_then n [LeakEnter (TAtom "loop") (Some (TAtom "start"))]
+          (rebased_loop_trace pol buf (Z.to_nat len) 0 (fuel - 2))).
+
+(** Advancing one non-terminal step matches the head event of [prefix_then]. *)
+Lemma run_trace_prefix_next pol ge n c c' ev evs rest :
+  Semantics.step ge c = Next c' ->
+  leak_of pol ge c = ev ->
+  run_trace pol ge n c' = Some (prefix_then n evs rest) ->
+  run_trace pol ge (S n) c = Some (prefix_then (S n) (ev :: evs) rest).
 Proof.
-  intros Hl Hs1 Hs2 Hrest. cbn [run_trace]. rewrite Hs1, Hs2, Hl, Hrest. reflexivity.
+  intros Hst Hlk Hrest. cbn [run_trace prefix_then].
+  rewrite Hst, Hlk, Hrest. reflexivity.
 Qed.
 
-Lemma run_trace_done_eq pol ge n c1 c2 o1 o2 :
-  leak_of pol ge c1 = leak_of pol ge c2 ->
-  Semantics.step ge c1 = Done o1 ->
-  Semantics.step ge c2 = Done o2 ->
-  run_trace pol ge (S n) c1 = run_trace pol ge (S n) c2.
+(** Advancing one terminal step matches a one-event [prefix_then] tail. *)
+Lemma run_trace_prefix_done pol ge n c o ev :
+  Semantics.step ge c = Done o ->
+  leak_of pol ge c = ev ->
+  run_trace pol ge (S n) c = Some (prefix_then (S n) [ev] (fun _ => [])).
 Proof.
-  intros Hl Hs1 Hs2. cbn [run_trace]. rewrite Hs1, Hs2, Hl. reflexivity.
+  intros Hst Hlk. cbn [run_trace prefix_then].
+  rewrite Hst, Hlk. destruct n; reflexivity.
 Qed.
 
-(** Loop-level simulation: at the start of any iteration `j`, two rebased
-    executions with arbitrary secrets `s1` and `s2` emit the exact same plain
-    [run_trace] under any policy [pol]. *)
-Lemma rebased_loop_traces_equal pol buf m len s1 s2 :
+(** Handing off an empty [prefix_then] block to its continuation `rest`. *)
+Lemma run_trace_prefix_nil pol ge n c rest :
+  (forall m, n = S m -> run_trace pol ge (S m) c = Some (rest (S m))) ->
+  run_trace pol ge n c = Some (prefix_then n [] rest).
+Proof.
+  destruct n as [|m]; intros H; [reflexivity | exact (H m eq_refl)].
+Qed.
+
+(** Single-step helpers for advancing a straight-line trace proof. *)
+Local Ltac trace_next rule_tac leak_tac :=
+  match goal with
+  | |- run_trace _ _ (S _) _ = Some _ =>
+      eapply run_trace_prefix_next; [rule_tac | leak_tac |]
+  | |- run_trace _ _ ?steps _ = Some _ =>
+      destruct steps as [|steps]; [reflexivity|];
+      eapply run_trace_prefix_next; [rule_tac | leak_tac |]
+  end.
+
+Local Ltac trace_done rule_tac leak_tac :=
+  match goal with
+  | |- run_trace _ _ (S _) _ = Some _ =>
+      eapply run_trace_prefix_done; [rule_tac | leak_tac]
+  | |- run_trace _ _ ?steps _ = Some _ =>
+      destruct steps as [|steps]; [reflexivity|];
+      eapply run_trace_prefix_done; [rule_tac | leak_tac]
+  end.
+
+(** Single-run characterization of the `loop` block: for any secret offset `s`,
+    the loop emits the secret-independent reference trace [rebased_loop_trace]. *)
+Lemma rebased_loop_trace_eq pol buf m len s :
   readable_slice m buf len ->
-  forall steps j acc fuel e1 e2,
-    0 <= j <= len ->
-    lookup (TAtom "base") e1 = Some (WPtr (mkPtr ((ptr_addr buf + s1) mod 2 ^ 64) (ptr_cap buf))) ->
-    lookup (TAtom "lim") e1 = Some (WInt ((len - s1) mod 2 ^ 64)) ->
-    lookup (TAtom "k") e1 = Some (WInt ((j - s1) mod 2 ^ 64)) ->
-    lookup (TAtom "acc") e1 = Some (WInt acc) ->
-    lookup (TAtom "base") e2 = Some (WPtr (mkPtr ((ptr_addr buf + s2) mod 2 ^ 64) (ptr_cap buf))) ->
-    lookup (TAtom "lim") e2 = Some (WInt ((len - s2) mod 2 ^ 64)) ->
-    lookup (TAtom "k") e2 = Some (WInt ((j - s2) mod 2 ^ 64)) ->
-    lookup (TAtom "acc") e2 = Some (WInt acc) ->
-    run_trace pol rebased_ge steps
-      (mkConfig (mkFrame rebased_scan_fn e1 [] None
-        (Exec (TAtom "loop")
-          [Let (TAtom "done") W (Cmp Eq L) [Tmp (TAtom "k"); Tmp (TAtom "lim")]]
-          (JBranch (Tmp (TAtom "done")) (To (TAtom "exit")) (To (TAtom "body")))))
-        [] m fuel) =
-    run_trace pol rebased_ge steps
-      (mkConfig (mkFrame rebased_scan_fn e2 [] None
-        (Exec (TAtom "loop")
-          [Let (TAtom "done") W (Cmp Eq L) [Tmp (TAtom "k"); Tmp (TAtom "lim")]]
-          (JBranch (Tmp (TAtom "done")) (To (TAtom "exit")) (To (TAtom "body")))))
-        [] m fuel).
+  forall rem j fuel e steps,
+    0 <= j -> j + Z.of_nat rem = len ->
+    rebased_loop_env e buf len j s ->
+    run_trace pol rebased_ge steps (rebased_loop_cfg e m fuel) =
+      Some (rebased_loop_trace pol buf rem j fuel steps).
 Proof.
-  intros Hsl steps.
+  intros Hsl rem.
   pose proof Hsl as [_ Hb Hlen Hblim _].
-  induction steps as [steps IH] using lt_wf_ind.
-  intros j acc fuel e1 e2 Hj Hbase1 Hlim1 Hk1 Hacc1 Hbase2 Hlim2 Hk2 Hacc2.
-  destruct steps as [|n1]; [reflexivity|].
-  assert (Hcmp1 : ((j - s1) mod 2 ^ 64 =? (len - s1) mod 2 ^ 64) = (j =? len))
-    by (apply mod64_cancel_eq; lia).
-  assert (Hcmp2 : ((j - s2) mod 2 ^ 64 =? (len - s2) mod 2 ^ 64) = (j =? len))
-    by (apply mod64_cancel_eq; lia).
-  assert (Hmod_k1 : ((j - s1) mod 2 ^ 64) mod 2 ^ 64 = (j - s1) mod 2 ^ 64) by apply Zmod_mod.
-  assert (Hmod_l1 : ((len - s1) mod 2 ^ 64) mod 2 ^ 64 = (len - s1) mod 2 ^ 64) by apply Zmod_mod.
-  assert (Hmod_k2 : ((j - s2) mod 2 ^ 64) mod 2 ^ 64 = (j - s2) mod 2 ^ 64) by apply Zmod_mod.
-  assert (Hmod_l2 : ((len - s2) mod 2 ^ 64) mod 2 ^ 64 = (len - s2) mod 2 ^ 64) by apply Zmod_mod.
-  set (done_val := if j =? len then 1 else 0).
-  eapply run_trace_step_eq.
-  - reflexivity.
-  - apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-      [WInt ((j - s1) mod 2 ^ 64); WInt ((len - s1) mod 2 ^ 64)] (WInt done_val) m);
-      try reflexivity.
-    + cbn [map2_option value_x]; rewrite Hk1, Hlim1; cbn [word_at_class modulus];
-        rewrite Hmod_k1, Hmod_l1; reflexivity.
-    + unfold op_res, op_res_int; cbn; rewrite Hcmp1; reflexivity.
-  - apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-      [WInt ((j - s2) mod 2 ^ 64); WInt ((len - s2) mod 2 ^ 64)] (WInt done_val) m);
-      try reflexivity.
-    + cbn [map2_option value_x]; rewrite Hk2, Hlim2; cbn [word_at_class modulus];
-        rewrite Hmod_k2, Hmod_l2; reflexivity.
-    + unfold op_res, op_res_int; cbn; rewrite Hcmp2; reflexivity.
-  - destruct n1 as [|n2]; [reflexivity|].
-    destruct (Z.eqb_spec j len) as [-> | Hj_ne]; subst done_val; cbn [Z.eqb] in *.
-    + eapply run_trace_step_eq.
-      * cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
-      * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1).
-        cbn [value_x]; rewrite lookup_put_same; reflexivity.
-      * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1).
-        cbn [value_x]; rewrite lookup_put_same; reflexivity.
-      * cbn [edge_label Z.eqb].
-        destruct n2 as [|n3]; [reflexivity|].
-        destruct (Z.eqb_spec fuel 0) as [-> | Hfuel].
-        { eapply run_trace_done_eq; [reflexivity | apply rule_out_of_fuel | apply rule_out_of_fuel]. }
-        eapply run_trace_step_eq; [reflexivity
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ (mkBlock (TAtom "exit") [] [] (JRet (Tmp (TAtom "acc")))) _ Hfuel); reflexivity
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ (mkBlock (TAtom "exit") [] [] (JRet (Tmp (TAtom "acc")))) _ Hfuel); reflexivity |].
-        cbn [b_insts b_jump].
-        destruct n3 as [|n4]; [reflexivity|].
-        eapply run_trace_done_eq; [reflexivity | |].
-        -- rewrite (rule_ret _ _ _ _ _ _ _ _ _ W (WInt (acc mod 2 ^ 32)));
-             [apply (rule_return_top _ _ _ _ m); reflexivity
-             |reflexivity
-             |cbn [value_x]; solve_lookup].
-        -- rewrite (rule_ret _ _ _ _ _ _ _ _ _ W (WInt (acc mod 2 ^ 32)));
-             [apply (rule_return_top _ _ _ _ m); reflexivity
-             |reflexivity
-             |cbn [value_x]; solve_lookup].
-    + eapply run_trace_step_eq.
-      * cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
-      * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0).
-        cbn [value_x]; rewrite lookup_put_same; reflexivity.
-      * apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0).
-        cbn [value_x]; rewrite lookup_put_same; reflexivity.
-      * cbn [edge_label Z.eqb].
-        destruct n2 as [|n3]; [reflexivity|].
-        destruct (Z.eqb_spec fuel 0) as [-> | Hfuel].
-        { eapply run_trace_done_eq; [reflexivity | apply rule_out_of_fuel | apply rule_out_of_fuel]. }
-        eapply run_trace_step_eq; [reflexivity
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity |].
-        cbn [b_insts b_jump].
-        destruct n3 as [|n4]; [reflexivity|].
-        assert (Hbj : (ptr_addr buf + j) mod 2 ^ 64 = ptr_addr buf + j) by (apply Z.mod_small; lia).
-        assert (Hadd1 : (((ptr_addr buf + s1) mod 2 ^ 64) + ((j - s1) mod 2 ^ 64)) mod 2 ^ 64 = ptr_addr buf + j)
-          by (rewrite mod64_cancel_add; exact Hbj).
-        assert (Hadd2 : (((ptr_addr buf + s2) mod 2 ^ 64) + ((j - s2) mod 2 ^ 64)) mod 2 ^ 64 = ptr_addr buf + j)
-          by (rewrite mod64_cancel_add; exact Hbj).
-        assert (Hbs1 : ((ptr_addr buf + s1) mod 2 ^ 64) mod 2 ^ 64 = (ptr_addr buf + s1) mod 2 ^ 64) by apply Zmod_mod.
-        assert (Hbs2 : ((ptr_addr buf + s2) mod 2 ^ 64) mod 2 ^ 64 = (ptr_addr buf + s2) mod 2 ^ 64) by apply Zmod_mod.
-        eapply run_trace_step_eq; [reflexivity | | |].
-        -- apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-             [WInt ((ptr_addr buf + s1) mod 2 ^ 64); WInt ((j - s1) mod 2 ^ 64)] (ptr_addr buf + j) (ptr_cap buf)).
-           ++ cbn [map_option flight_arg_x value_x];
-              repeat (rewrite lookup_put_other; [|reflexivity]);
-              rewrite Hbase1, Hk1;
-              cbn [word_at_class modulus ptr_addr]; rewrite Hbs1, Hmod_k1; reflexivity.
-           ++ cbn [alu cond_bit modulus]; rewrite Hadd1; reflexivity.
-           ++ cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hbase1; reflexivity.
-        -- apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-             [WInt ((ptr_addr buf + s2) mod 2 ^ 64); WInt ((j - s2) mod 2 ^ 64)] (ptr_addr buf + j) (ptr_cap buf)).
-           ++ cbn [map_option flight_arg_x value_x];
-              repeat (rewrite lookup_put_other; [|reflexivity]);
-              rewrite Hbase2, Hk2;
-              cbn [word_at_class modulus ptr_addr]; rewrite Hbs2, Hmod_k2; reflexivity.
-           ++ cbn [alu cond_bit modulus]; rewrite Hadd2; reflexivity.
-           ++ cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hbase2; reflexivity.
-        -- destruct n4 as [|n5]; [reflexivity|].
-           pose proof (readable_slice_byte_access m buf len j Hsl ltac:(lia)) as Hchk_ok.
-           eapply run_trace_step_eq.
-           ++ cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
-           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
+  induction rem as [|rem IH]; intros j fuel e steps Hj Hrem [Hbase Hlim Hk [acc Hacc]];
+    unfold rebased_loop_cfg; cbn [rebased_loop_trace].
+  - (* Exit iteration: j = len *)
+    assert (Hj_eq : j = len) by lia. subst j.
+    assert (Hcmp : ((len - s) mod 2 ^ 64 =? (len - s) mod 2 ^ 64) = true) by apply Z.eqb_refl.
+    trace_next
+      ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
+              [WInt ((len - s) mod 2 ^ 64); WInt ((len - s) mod 2 ^ 64)] (WInt 1) m);
+            try reflexivity;
+            [cbn [map2_option value_x]; rewrite Hk, Hlim; cbn [word_at_class modulus];
+             repeat rewrite Zmod_mod; reflexivity
+            |unfold op_res, op_res_int; cbn; rewrite Hcmp; reflexivity])
+      ltac:(reflexivity).
+    trace_next
+      ltac:(apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 1); cbn [value_x]; solve_lookup)
+      ltac:(cbn [leak_of c_frame fr_at fr_env value_x]; rewrite lookup_put_same; reflexivity).
+    cbn [edge_label Z.eqb].
+    apply run_trace_prefix_nil. intros n _.
+    destruct (Z.eqb_spec fuel 0) as [-> | Hfuel].
+    + trace_done ltac:(apply rule_out_of_fuel) ltac:(reflexivity).
+    + trace_next
+        ltac:(eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity)
+        ltac:(cbn [leak_of rebased_entry c_frame c_fuel fr_at]; rewrite (proj2 (Z.eqb_neq fuel 0) Hfuel); reflexivity).
+      cbn [b_insts b_jump].
+      trace_done
+        ltac:(rewrite (rule_ret _ _ _ _ _ _ _ _ _ W (WInt (acc mod 2 ^ 32)));
+              [apply (rule_return_top _ _ _ _ m); reflexivity
+              |reflexivity | cbn [value_x]; solve_lookup])
+        ltac:(reflexivity).
+  - (* Body iteration: j < len *)
+    assert (Hcmp : ((j - s) mod 2 ^ 64 =? (len - s) mod 2 ^ 64) = false).
+    { rewrite mod64_cancel_eq by lia. apply Z.eqb_neq; lia. }
+    assert (Hbj : (ptr_addr buf + j) mod 2 ^ 64 = ptr_addr buf + j) by (apply Z.mod_small; lia).
+    assert (Hadd : (((ptr_addr buf + s) mod 2 ^ 64) + ((j - s) mod 2 ^ 64)) mod 2 ^ 64 = ptr_addr buf + j)
+      by (rewrite mod64_cancel_add; exact Hbj).
+    set (bv := (m_bytes m (ptr_addr buf + j) mod 256) mod 2 ^ 32).
+    set (acc' := Z.lxor (acc mod 2 ^ 32) (bv mod 2 ^ 32)).
+    trace_next
+      ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
+              [WInt ((j - s) mod 2 ^ 64); WInt ((len - s) mod 2 ^ 64)] (WInt 0) m);
+            try reflexivity;
+            [cbn [map2_option value_x]; rewrite Hk, Hlim; cbn [word_at_class modulus];
+             repeat rewrite Zmod_mod; reflexivity
+            |unfold op_res, op_res_int; cbn; rewrite Hcmp; reflexivity])
+      ltac:(reflexivity).
+    trace_next
+      ltac:(apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0); cbn [value_x]; solve_lookup)
+      ltac:(cbn [leak_of c_frame fr_at fr_env value_x]; rewrite lookup_put_same; reflexivity).
+    cbn [edge_label Z.eqb].
+    apply run_trace_prefix_nil. intros n _.
+    destruct (Z.eqb_spec fuel 0) as [-> | Hfuel].
+    + trace_done ltac:(apply rule_out_of_fuel) ltac:(reflexivity).
+    + unfold rebased_body_events.
+      trace_next
+        ltac:(eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity)
+        ltac:(cbn [leak_of rebased_entry c_frame c_fuel fr_at]; rewrite (proj2 (Z.eqb_neq fuel 0) Hfuel); reflexivity).
+      cbn [b_insts b_jump].
+      trace_next
+        ltac:(apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+                [WInt ((ptr_addr buf + s) mod 2 ^ 64); WInt ((j - s) mod 2 ^ 64)] (ptr_addr buf + j) (ptr_cap buf));
+              [cbn [map_option flight_arg_x value_x]; repeat (rewrite lookup_put_other; [|reflexivity]);
+               rewrite Hbase, Hk; cbn [word_at_class modulus ptr_addr]; repeat rewrite Zmod_mod; reflexivity
+              |cbn [alu cond_bit modulus]; rewrite Hadd; reflexivity
+              |cbn [flight_cap value_x]; repeat (rewrite lookup_put_other; [|reflexivity]); rewrite Hbase; reflexivity])
+        ltac:(reflexivity).
+      trace_next
+        ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
                 [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))]
                 (WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))) m);
-                try reflexivity;
-                cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1; rewrite Hchk_ok; reflexivity.
-           ++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [P]
-                [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))]
-                (WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))) m);
-                try reflexivity;
-                cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1; rewrite Hchk_ok; reflexivity.
-           ++ destruct n5 as [|n6]; [reflexivity|].
-              set (bv := (m_bytes m (ptr_addr buf + j) mod 256) mod 2 ^ 32).
-              pose proof (readable_slice_load_byte m buf len j Hsl ltac:(lia)) as Hload_ok.
-              eapply run_trace_step_eq.
-              ** cbn [leak_of c_frame fr_at fr_env value_x]; repeat rewrite lookup_put_same; reflexivity.
-              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
-                   [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))] (WInt bv) m);
-                   try reflexivity;
-                   cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hload_ok; reflexivity.
-              ** apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
-                   [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))] (WInt bv) m);
-                   try reflexivity;
-                   cbn [op_res op_res_int ptr_addr ptr_cap]; rewrite Hload_ok; reflexivity.
-              ** destruct n6 as [|n7]; [reflexivity|].
-                 set (acc' := Z.lxor (acc mod 2 ^ 32) (bv mod 2 ^ 32)).
-                 eapply run_trace_step_eq; [reflexivity | | |].
-                 --- apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W]
-                       [WInt (acc mod 2 ^ 32); WInt (bv mod 2 ^ 32)] (WInt acc') m);
-                       try reflexivity;
-                       cbn [map2_option value_x];
-                       repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-                       rewrite Hacc1; reflexivity.
-                 --- apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W]
-                       [WInt (acc mod 2 ^ 32); WInt (bv mod 2 ^ 32)] (WInt acc') m);
-                       try reflexivity;
-                       cbn [map2_option value_x];
-                       repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-                       rewrite Hacc2; reflexivity.
-                 --- destruct n7 as [|n8]; [reflexivity|].
-                     eapply run_trace_step_eq; [reflexivity | | |].
-                     +++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-                           [WInt ((j - s1) mod 2 ^ 64); WInt 1] (WInt (((j + 1) - s1) mod 2 ^ 64)) m);
-                           try reflexivity.
-                         *** cbn [map2_option value_x];
-                             repeat (rewrite lookup_put_other; [|reflexivity]);
-                             rewrite Hk1; cbn [word_at_class modulus]; rewrite Hmod_k1; reflexivity.
-                         *** unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus];
-                             rewrite mod64_step_k; reflexivity.
-                     +++ apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-                           [WInt ((j - s2) mod 2 ^ 64); WInt 1] (WInt (((j + 1) - s2) mod 2 ^ 64)) m);
-                           try reflexivity.
-                         *** cbn [map2_option value_x];
-                             repeat (rewrite lookup_put_other; [|reflexivity]);
-                             rewrite Hk2; cbn [word_at_class modulus]; rewrite Hmod_k2; reflexivity.
-                         *** unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus];
-                             rewrite mod64_step_k; reflexivity.
-                     +++ destruct n8 as [|n9]; [reflexivity|].
-                         eapply run_trace_step_eq; [reflexivity | apply rule_goto | apply rule_goto |].
-                         cbn [edge_label].
-                         destruct n9 as [|n10]; [reflexivity|].
-                         destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel'].
-                         *** rewrite Hfuel0.
-                             eapply run_trace_done_eq; [reflexivity | apply rule_out_of_fuel | apply rule_out_of_fuel].
-                         *** eapply run_trace_step_eq; [reflexivity
-                               | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel');
-                                 [reflexivity
-                                 |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-                                   reflexivity]
-                               | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel');
-                                 [reflexivity
-                                 |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-                                   reflexivity] |].
-                             cbn [b_insts b_jump].
-                             eapply (IH n10 ltac:(lia) (j + 1) (acc' mod 2 ^ 32) (fuel - 1 - 1));
-                               first
-                                 [ lia
-                                 | repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-                                   try rewrite Hbase1; try rewrite Hlim1; try rewrite Hbase2; try rewrite Hlim2;
-                                   rewrite ?Zmod_mod; reflexivity ].
+              try reflexivity;
+              cbn [op_res op_res_int ptr_addr ptr_cap]; change (1 - 0) with 1;
+              rewrite (readable_slice_byte_access m buf len j Hsl ltac:(lia)); reflexivity)
+        ltac:(cbn [leak_of c_frame fr_at fr_env value_x]; rewrite lookup_put_same; reflexivity).
+      trace_next
+        ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [A]
+                [WPtr (mkPtr (ptr_addr buf + j) (ptr_cap buf))] (WInt bv) m);
+              try reflexivity;
+              cbn [op_res op_res_int ptr_addr ptr_cap];
+              rewrite (readable_slice_load_byte m buf len j Hsl ltac:(lia)); reflexivity)
+        ltac:(cbn [leak_of c_frame fr_at fr_env value_x load_type_bytes];
+              rewrite lookup_put_same; cbn [word_at_class ptr_addr]; unfold raw_address;
+              rewrite Z.add_0_r, Hbj; reflexivity).
+      trace_next
+        ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [W; W]
+                [WInt (acc mod 2 ^ 32); WInt (bv mod 2 ^ 32)] (WInt acc') m);
+              try reflexivity; cbn [map2_option value_x]; solve_lookup)
+        ltac:(reflexivity).
+      trace_next
+        ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
+                [WInt ((j - s) mod 2 ^ 64); WInt 1] (WInt (((j + 1) - s) mod 2 ^ 64)) m);
+              try reflexivity;
+              [cbn [map2_option value_x]; repeat (rewrite lookup_put_other; [|reflexivity]);
+               rewrite Hk; cbn [word_at_class modulus]; rewrite Zmod_mod; reflexivity
+              |unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite mod64_step_k; reflexivity])
+        ltac:(reflexivity).
+      trace_next ltac:(apply rule_goto) ltac:(reflexivity).
+      cbn [edge_label].
+      apply run_trace_prefix_nil. intros m_rem _.
+      destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel1 | Hfuel1].
+      * trace_done
+          ltac:(rewrite Hfuel1; apply rule_out_of_fuel)
+          ltac:(cbn [leak_of c_frame c_fuel fr_at]; rewrite Hfuel1; reflexivity).
+      * trace_next
+          ltac:(eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1);
+                [reflexivity
+                |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
+                 reflexivity])
+          ltac:(cbn [leak_of c_frame c_fuel fr_at]; rewrite (proj2 (Z.eqb_neq (fuel - 1) 0) Hfuel1); reflexivity).
+        cbn [b_insts b_jump].
+        apply run_trace_prefix_nil. intros k_rem _.
+        replace (fuel - 1 - 1) with (fuel - 2) by lia.
+        apply (IH (j + 1) (fuel - 2)); [lia | lia |].
+        constructor;
+          [solve_lookup
+          |solve_lookup
+          |cbn [lookup]; repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
+           rewrite Zmod_mod; reflexivity
+          |eexists; solve_lookup].
+Qed.
+
+(** Loop-level simulation: at any public iteration `j`, two rebased executions
+    with arbitrary secrets `s1` and `s2` emit the exact same plain [run_trace]
+    under any policy [pol]. *)
+Lemma rebased_loop_traces_equal pol buf m len s1 s2 steps j fuel e1 e2 :
+  readable_slice m buf len ->
+  0 <= j <= len ->
+  rebased_loop_env e1 buf len j s1 ->
+  rebased_loop_env e2 buf len j s2 ->
+  run_trace pol rebased_ge steps (rebased_loop_cfg e1 m fuel) =
+  run_trace pol rebased_ge steps (rebased_loop_cfg e2 m fuel).
+Proof.
+  intros Hsl Hj He1 He2.
+  rewrite (rebased_loop_trace_eq pol buf m len s1 Hsl (Z.to_nat (len - j)) j fuel e1 steps ltac:(lia) ltac:(lia) He1).
+  rewrite (rebased_loop_trace_eq pol buf m len s2 Hsl (Z.to_nat (len - j)) j fuel e2 steps ltac:(lia) ltac:(lia) He2).
+  reflexivity.
+Qed.
+
+(** Single-run characterization from function entry: for any secret offset `s`,
+    [rebased_scan_fn] emits the secret-independent reference trace
+    [rebased_scan_trace]. *)
+Lemma rebased_scan_trace_eq pol buf m len s fuel steps :
+  readable_slice m buf len ->
+  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s) [] m fuel) =
+    Some (rebased_scan_trace pol buf len fuel steps).
+Proof.
+  intros Hsl.
+  pose proof Hsl as [_ Hb Hlen Hblim _].
+  assert (Hb_mod : ptr_addr buf mod 2 ^ 64 = ptr_addr buf) by (apply Z.mod_small; lia).
+  assert (Hlen_mod : len mod 2 ^ 64 = len) by (apply Z.mod_small; lia).
+  unfold rebased_scan_trace.
+  destruct (Z.eqb_spec fuel 0) as [-> | Hfuel].
+  - trace_done ltac:(apply rule_out_of_fuel) ltac:(reflexivity).
+  - trace_next
+      ltac:(eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel); reflexivity)
+      ltac:(cbn [leak_of rebased_entry c_frame c_fuel fr_at]; rewrite (proj2 (Z.eqb_neq fuel 0) Hfuel); reflexivity).
+    cbn [b_insts b_jump].
+    trace_next
+      ltac:(apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
+              [WInt (ptr_addr buf); WInt (s mod 2 ^ 64)] ((ptr_addr buf + s) mod 2 ^ 64) (ptr_cap buf));
+            [cbn [map_option flight_arg_x value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus ptr_addr];
+             rewrite Hb_mod; reflexivity
+            |cbn [alu cond_bit modulus]; rewrite Zplus_mod_idemp_r; reflexivity
+            |cbn [flight_cap value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb]; reflexivity])
+      ltac:(reflexivity).
+    trace_next
+      ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
+              [WInt len; WInt (s mod 2 ^ 64)] (WInt ((len - s) mod 2 ^ 64)) m);
+            try reflexivity;
+            [cbn [map2_option value_x]; repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
+             cbn [lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus];
+             rewrite Hlen_mod; reflexivity
+            |unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Zminus_mod_idemp_r; reflexivity])
+      ltac:(reflexivity).
+    trace_next
+      ltac:(apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
+              [WInt 0; WInt (s mod 2 ^ 64)] (WInt ((0 - s) mod 2 ^ 64)) m);
+            try reflexivity;
+            unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Zminus_mod_idemp_r; reflexivity)
+      ltac:(reflexivity).
+    trace_next ltac:(apply rule_goto) ltac:(reflexivity).
+    cbn [edge_label].
+    apply run_trace_prefix_nil. intros n _.
+    destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel1 | Hfuel1].
+    + trace_done
+        ltac:(rewrite Hfuel1; apply rule_out_of_fuel)
+        ltac:(cbn [leak_of c_frame c_fuel fr_at]; rewrite Hfuel1; reflexivity).
+    + trace_next
+        ltac:(eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1);
+              [reflexivity
+              |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
+               reflexivity])
+        ltac:(cbn [leak_of c_frame c_fuel fr_at]; rewrite (proj2 (Z.eqb_neq (fuel - 1) 0) Hfuel1); reflexivity).
+      cbn [b_insts b_jump].
+      apply run_trace_prefix_nil. intros k_rem _.
+      replace (fuel - 1 - 1) with (fuel - 2) by lia.
+      apply (rebased_loop_trace_eq pol buf m len s Hsl (Z.to_nat len) 0 (fuel - 2)); [lia | lia |].
+      constructor;
+        [solve_lookup
+        |solve_lookup
+        |cbn [lookup]; repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
+         rewrite Zmod_mod; reflexivity
+        |eexists; solve_lookup].
 Qed.
 
 (** Full two-run constant-time theorem for [rebased_scan_fn]: for any policy
@@ -1235,83 +1356,9 @@ Theorem rebased_scan_two_run_constant_time pol buf m len s1 s2 fuel steps :
   run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s2) [] m fuel).
 Proof.
   intros Hsl.
-  pose proof Hsl as [_ Hb Hlen Hblim _].
-  assert (Hb_mod : ptr_addr buf mod 2 ^ 64 = ptr_addr buf) by (apply Z.mod_small; lia).
-  assert (Hlen_mod : len mod 2 ^ 64 = len) by (apply Z.mod_small; lia).
-  destruct steps as [|n1]; [reflexivity|].
-  destruct (Z.eqb_spec fuel 0) as [-> | Hfuel1].
-  { eapply run_trace_done_eq; [reflexivity | apply rule_out_of_fuel | apply rule_out_of_fuel]. }
-  eapply run_trace_step_eq; [reflexivity
-    | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity
-    | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity |].
-  cbn [b_insts b_jump].
-  destruct n1 as [|n2]; [reflexivity|].
-  eapply run_trace_step_eq; [reflexivity | | |].
-  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-      [WInt (ptr_addr buf); WInt (s1 mod 2 ^ 64)] ((ptr_addr buf + s1) mod 2 ^ 64) (ptr_cap buf));
-      [cbn [map_option flight_arg_x value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus ptr_addr];
-        rewrite Hb_mod; reflexivity
-      |cbn [alu cond_bit modulus]; rewrite Zplus_mod_idemp_r; reflexivity
-      |cbn [flight_cap value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb]; reflexivity].
-  - apply (rule_flight _ _ _ _ _ _ _ _ _ _ _ _ _ _
-      [WInt (ptr_addr buf); WInt (s2 mod 2 ^ 64)] ((ptr_addr buf + s2) mod 2 ^ 64) (ptr_cap buf));
-      [cbn [map_option flight_arg_x value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus ptr_addr];
-        rewrite Hb_mod; reflexivity
-      |cbn [alu cond_bit modulus]; rewrite Zplus_mod_idemp_r; reflexivity
-      |cbn [flight_cap value_x lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb]; reflexivity].
-  - destruct n2 as [|n3]; [reflexivity|].
-    eapply run_trace_step_eq; [reflexivity | | |].
-    + apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-        [WInt len; WInt (s1 mod 2 ^ 64)] (WInt ((len - s1) mod 2 ^ 64)) m);
-        try reflexivity.
-      * cbn [map2_option value_x];
-        repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-        cbn [lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus];
-        rewrite Hlen_mod; reflexivity.
-      * unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Zminus_mod_idemp_r; reflexivity.
-    + apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-        [WInt len; WInt (s2 mod 2 ^ 64)] (WInt ((len - s2) mod 2 ^ 64)) m);
-        try reflexivity.
-      * cbn [map2_option value_x];
-        repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-        cbn [lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb word_at_class modulus];
-        rewrite Hlen_mod; reflexivity.
-      * unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus]; rewrite Zminus_mod_idemp_r; reflexivity.
-    + destruct n3 as [|n4]; [reflexivity|].
-      eapply run_trace_step_eq; [reflexivity | | |].
-      * apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-          [WInt 0; WInt (s1 mod 2 ^ 64)] (WInt ((0 - s1) mod 2 ^ 64)) m);
-          try reflexivity;
-          unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus];
-          rewrite Zminus_mod_idemp_r; reflexivity.
-      * apply (rule_let _ _ _ _ _ _ _ _ _ _ _ _ _ _ [L; L]
-          [WInt 0; WInt (s2 mod 2 ^ 64)] (WInt ((0 - s2) mod 2 ^ 64)) m);
-          try reflexivity;
-          unfold op_res, op_res_int; cbn [additive_res alu cond_bit modulus];
-          rewrite Zminus_mod_idemp_r; reflexivity.
-      * destruct n4 as [|n5]; [reflexivity|].
-        eapply run_trace_step_eq; [reflexivity | apply rule_goto | apply rule_goto |].
-        cbn [edge_label].
-        destruct n5 as [|n6]; [reflexivity|].
-        destruct (Z.eqb_spec (fuel - 1) 0) as [Hfuel0 | Hfuel2].
-        { rewrite Hfuel0. eapply run_trace_done_eq; [reflexivity | apply rule_out_of_fuel | apply rule_out_of_fuel]. }
-        eapply run_trace_step_eq; [reflexivity
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel2);
-            [reflexivity
-            |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-             reflexivity]
-          | eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel2);
-            [reflexivity
-            |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
-             reflexivity] |].
-        cbn [b_insts b_jump].
-        eapply (rebased_loop_traces_equal pol buf m len s1 s2 Hsl
-                  n6 0 0 (fuel - 1 - 1));
-          first
-            [ lia
-            | repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
-              cbn [lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb];
-              rewrite ?Zmod_mod; reflexivity ].
+  rewrite (rebased_scan_trace_eq pol buf m len s1 fuel steps Hsl).
+  rewrite (rebased_scan_trace_eq pol buf m len s2 fuel steps Hsl).
+  reflexivity.
 Qed.
 
 (** ## Concrete runtime instantiation
