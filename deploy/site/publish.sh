@@ -3,8 +3,17 @@
 # AWS credentials are object-only, restricted to this bucket.
 set -euo pipefail
 bucket=filnix-site
+endpoint="https://d66b4fdcf8b2d4b0949d7fa3518b9b58.r2.cloudflarestorage.com"
+
+# Content-addressed manifest mode (requires the manifest-aware worker.mjs to be
+# deployed on Cloudflare first).
+if [[ ${FILNIX_MANIFEST_PUBLISH:-0} == 1 ]]; then
+  exec python3 "$(dirname "$0")/publish_manifest.py" _site "$GITHUB_SHA" \
+    --bucket "$bucket" --endpoint-url "$endpoint"
+fi
+
 prefix="releases/$GITHUB_SHA/"
-aws_args=(--endpoint-url "https://d66b4fdcf8b2d4b0949d7fa3518b9b58.r2.cloudflarestorage.com")
+aws_args=(--endpoint-url "$endpoint")
 
 # A failed read (other than an absent object) stops publication. In
 # particular, a temporary network/auth failure cannot erase a newer release.

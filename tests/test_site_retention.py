@@ -145,6 +145,45 @@ else:
         self.assertNotEqual(run.returncode, 0)
         self.assertIn(b"current must be a full commit SHA", run.stderr)
 
+    def test_blob_gc_protects_retained_manifest_blobs_and_recent_uploads(self):
+        now = datetime.now(timezone.utc)
+        current = "a" * 40
+        expired = "b" * 40
+        h_live = "1" * 64
+        h_dead_old = "2" * 64
+        h_dead_young = "3" * 64
+        with tempfile.TemporaryDirectory() as tmp:
+            root = Path(tmp)
+            aws = root / "aws"
+            manifest = json.dumps({"files": {"/index.html": [h_live, 10, "text/html"]}})
+            aws.write_text(f"#!{sys.executable}\nimport sys\n"
+                           f"assert 'releases/{current}/manifest.json' in sys.argv[5], sys.argv\n"
+                           f"print({manifest!r})\n")
+            aws.chmod(0o755)
+            inv = root / "releases.json"
+            inv.write_text(json.dumps({"Contents": [
+                {"Key": f"releases/{current}/manifest.json", "LastModified": (now - timedelta(days=20)).isoformat(), "Size": 50},
+                {"Key": f"releases/{expired}/manifest.json", "LastModified": (now - timedelta(days=10)).isoformat(), "Size": 50},
+                *[{"Key": f"releases/{i:040x}/index.html", "LastModified": (now - timedelta(days=2 + i)).isoformat(), "Size": 50}
+                  for i in range(5)],
+            ]}))
+            blobs = root / "blobs.json"
+            blobs.write_text(json.dumps({"Contents": [
+                {"Key": f"blobs/{h_live}", "LastModified": (now - timedelta(days=10)).isoformat(), "Size": 10},
+                {"Key": f"blobs/{h_dead_old}", "LastModified": (now - timedelta(days=10)).isoformat(), "Size": 10},
+                {"Key": f"blobs/{h_dead_young}", "LastModified": (now - timedelta(hours=6)).isoformat(), "Size": 10},
+            ]}))
+            env = {**os.environ, "PATH": f"{tmp}:{os.environ['PATH']}"}
+            run = subprocess.run(
+                [sys.executable, str(PRUNE), str(inv), current,
+                 "--endpoint-url", "https://unused.invalid",
+                 "--blobs-inventory", str(blobs), "--dry-run"],
+                env=env, capture_output=True, text=True, check=True,
+            )
+            plan = json.loads(run.stdout)
+            self.assertEqual(plan["delete_blobs"], [f"blobs/{h_dead_old}"])
+            self.assertEqual(plan["delete"], [f"releases/{expired}/manifest.json", f"blobs/{h_dead_old}"])
+
 
 if __name__ == "__main__":
     unittest.main()

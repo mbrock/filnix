@@ -126,4 +126,7 @@ jobs:
           sha=$(python3 -c 'import json; print(json.load(open("current.json"))["sha"])')
           aws --endpoint-url "$endpoint" s3api list-objects-v2 \
             --bucket filnix-site --prefix releases/ --output json > bucket.json
-          python3 deploy/site/prune.py bucket.json "$sha" --endpoint-url "$endpoint"
+          aws --endpoint-url "$endpoint" s3api list-objects-v2 \
+            --bucket filnix-site --prefix blobs/ --output json > blobs.json
+          python3 deploy/site/prune.py bucket.json "$sha" \
+            --blobs-inventory blobs.json --endpoint-url "$endpoint"

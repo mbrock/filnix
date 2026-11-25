@@ -34,12 +34,11 @@ distribution/image jobs. Cold proof edits can still be slower than prose edits.
 
 Web prose and drawn terms use Public Sans; code uses DM Mono.
 Equity, mbrock's licensed typeface for PDF prose, is not in the repository.
-Its three OTFs are in this bucket under `private/fonts/equity/`, a key the
-Worker never serves (it maps only `releases/` and `current.json`). The
-build job's `equity.sh` reads them with the same credentials and sets each
-nanofil document as a PDF beside its page. The OTFs never enter the site,
-and the build publishes no Equity webfonts. Without the credentials the
-web pages build as usual, but no PDFs are made.
+Its three OTFs remain in this bucket under `private/fonts/equity/`, a key the
+Worker never serves (it maps only `releases/`, `blobs/`, and `current.json`).
+Automatic PDF generation (`deploy/site/equity.sh`) is currently paused on the
+publish path to keep deploys fast; the script and `nanofil/web/typst/` remain
+in the repository for standalone ebook or PDF builds.
 
 The Actions `filnix-org` environment shows deployment status and its public URL.
 Local phone checks remain independent of publication. The separate **Site

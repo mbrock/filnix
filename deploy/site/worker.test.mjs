@@ -31,7 +31,7 @@ function site() {
       let body = files.get(key);
       if (body === undefined) return null;
       if (options?.range) body = body.slice(options.range.offset, options.range.offset + options.range.length);
-      return { body };
+      return { body, async text() { return body; }, async json() { return JSON.parse(body); } };
     },
   } };
   return {
@@ -151,4 +151,95 @@ test("a page a restructuring moved redirects to where it lives now", async () =>
     `${rocq}rocq-theories-HelloMain.html`, `${rocq}rocq-theories-programs-Hi.html`]) {
     assert.equal((await s.fetch(path)).status, 404, path);
   }
+});
+
+test("manifest releases serve content-addressed blobs with ETag 304 and immutable pins", async () => {
+  const msha = "c".repeat(40), mnext = "d".repeat(40);
+  const hIndex = "1".repeat(64), hDocs = "2".repeat(64), hBin = "3".repeat(64), hCommit = "4".repeat(64);
+  let current = msha;
+  let blobReads = 0;
+  const objects = new Map([
+    [`blobs/${hIndex}`, "<h1>manifest</h1>"],
+    [`blobs/${hDocs}`, "manifest docs"],
+    [`blobs/${hBin}`, "0123456789abcdef"],
+    [`blobs/${hCommit}`, `${msha}\n`],
+    [`releases/${msha}/manifest.json`, JSON.stringify({
+      version: 1,
+      sha: msha,
+      created: uploaded.toISOString(),
+      files: {
+        "/index.html": [hIndex, 17, "text/html; charset=utf-8"],
+        "/docs/index.html": [hDocs, 13, "text/html; charset=utf-8"],
+        "/large.bin": [hBin, 16, "application/octet-stream"],
+        "/commit.txt": [hCommit, 41, "text/plain; charset=utf-8"],
+      },
+    })],
+    [`releases/${mnext}/manifest.json`, JSON.stringify({
+      version: 1,
+      sha: mnext,
+      created: uploaded.toISOString(),
+      files: {
+        "/index.html": [hIndex, 17, "text/html; charset=utf-8"],
+      },
+    })],
+  ]);
+  globalThis.caches = { default: { async match() {}, async put() {} } };
+  const env = { SITE: {
+    async head(key) {
+      return objects.has(key) ? { size: Buffer.byteLength(objects.get(key)), uploaded, httpEtag: '"legacy"', writeHttpMetadata() {} } : null;
+    },
+    async get(key, options) {
+      if (key === "current.json") return { async json() { return { sha: current }; } };
+      let body = objects.get(key);
+      if (body === undefined) return null;
+      if (key.startsWith("blobs/")) blobReads++;
+      if (options?.range) body = body.slice(options.range.offset, options.range.offset + options.range.length);
+      return { body, async text() { return body; }, async json() { return JSON.parse(body); } };
+    },
+  } };
+  const req = (path, options) => worker.fetch(new Request(`https://filnix.org${path}`, options), env, { waitUntil() {} });
+
+  // Canonical HTML serves with strong SHA-256 ETag and no-cache.
+  const first = await req("/");
+  assert.equal(first.status, 200);
+  assert.equal(first.headers.get("cache-control"), "no-cache");
+  assert.equal(first.headers.get("etag"), `"${hIndex}"`);
+  assert.equal(first.headers.get("content-type"), "text/html; charset=utf-8");
+  assert.equal(await first.text(), "<h1>manifest</h1>");
+  assert.equal(blobReads, 1);
+
+  // Matching If-None-Match returns 304 without reading the blob from R2.
+  const reval = await req("/", { headers: { "if-none-match": `"${hIndex}"` } });
+  assert.equal(reval.status, 304);
+  assert.equal(blobReads, 1);
+
+  // HEAD also avoids fetching the blob from R2.
+  const head = await req("/large.bin", { method: "HEAD" });
+  assert.equal(head.status, 200);
+  assert.equal(head.headers.get("content-length"), "16");
+  assert.equal(blobReads, 1);
+
+  // Range requests read from blobs/<hash>.
+  const ranged = await req("/large.bin", { headers: { range: "bytes=2-5" } });
+  assert.equal(ranged.status, 206);
+  assert.equal(ranged.headers.get("content-range"), "bytes 2-5/16");
+  assert.equal(await ranged.text(), "2345");
+
+  // Directory redirect and moved page work from the manifest without R2 HEAD.
+  assert.equal((await req("/docs")).status, 308);
+  assert.equal((await req("/docs")).headers.get("location"), "https://filnix.org/docs/");
+  const movedResp = await req("/nanofil/rocq/rocq-theories-Machine.html");
+  assert.equal(movedResp.status, 301);
+
+  // Pinned URLs remain immutable and survive promotion; expired manifests redirect 302.
+  const pinned = await req(`/__releases/${msha}/commit.txt`);
+  assert.equal(pinned.status, 200);
+  assert.match(pinned.headers.get("cache-control"), /immutable/);
+  assert.equal((await req(`/__releases/${msha}/missing.html`)).status, 404);
+  current = mnext;
+  objects.delete(`releases/${msha}/manifest.json`);
+  const expired = await req(`/__releases/${msha}/docs/`);
+  assert.equal(expired.status, 302);
+  assert.equal(expired.headers.get("location"), "https://filnix.org/docs/");
+  assert.equal((await req(`/__releases/${msha}/large.bin`)).status, 404);
 });
