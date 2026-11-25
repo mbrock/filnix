@@ -28,19 +28,11 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The "--" test assigns these names. *)
 Definition dash_test_names : list name := Eval vm_compute in
-  List.map TAtom ["chk68"; "v205"; "v207"; "v212"; "v213"; "v214"; "v215"; "chk70"; "v216"; "v217";
-    "v218"; "v219"; "v221"]%string.
+  scanner_writes ["L119"; "L208"; "L209"]%string.
 
 
 (** When the argument is "--", the scanner runs the blocks that GetoptDash.v proves. *)
 Import GetoptDash GetoptIdleThree GetoptExchangeTwo GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
-(** The strcmp module proves glibc's own strcmp. *)
-
-(** This tactic enters a block and evaluates its phi assignments. *)
-
-
-(** This tactic loads an owned private integer field as a signed 32-bit value. *)
-
 
 Import ProgramAbbreviations.
 Section test_values.
@@ -142,22 +134,13 @@ Proof using Type.
   intros Hkx Hkd Hkt Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc2 Hc23 Hfl Hli Hin Hn Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hf Hla Ha Hc #Hs #Hdd HK".
   iApply (wp_dash_test (ks ++ dash_keys) e i n b r av ar ps pdd sdd with "Hl Hi Ha Hc Hs Hdd [Hf Hla HK]");
-    [ apply avoids_app_r; [exact Hkt | vm_compute; reflexivity] | exact Hg | exact Hdd
-    | exact Hv0 | exact Hv2 | exact Hv12 | exact Hc2 | lia | lia | exact Hlen
-    | lia | lia | lia | lia | lia | lia | lia | lia |].
+    try solve [assumption | extend_avoids | lia].
   iSplit.
   - iIntros (e' Hk) "Hl Hi Ha Hc". apply keeps_app in Hk as [Hk _].
     iApply ("HK" with "[%] Hl Hi Hf Hla Ha Hc Hs"). split; [done|]. split; [exact Hk | lia].
   - iIntros (e' (Hk & Hlt)) "Hl Hi Ha Hc". apply keeps_app in Hk as [Hk Hk'].
     iApply (wp_getopt_dash ks e' i n f l b r av ar ps with "Hl Hi Hf Hla Ha Hc Hs [HK]");
-      [ exact Hkx | exact Hkd
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hv0 | cbn; tauto]
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hv2 | cbn; tauto]
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hv12 | cbn; tauto]
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hc0 | cbn; tauto]
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hc2 | cbn; tauto]
-      | rewrite (keeps_in _ _ _ _ Hk'); [exact Hc23 | cbn; tauto]
-      | lia | lia | lia | lia | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia |].
+      try solve [assumption | kept_lookup | lia].
     iIntros (e2 ps2 f2 (Hp & Hk2 & Hf2)) "Hl Hi Hf Hla Ha Hc Hs2".
     iApply ("HK" with "[%] Hl Hi Hf Hla Ha Hc Hs2").
     split; [exact Hp|]. split; [eapply keeps_trans; [exact Hk | exact Hk2] | lia].

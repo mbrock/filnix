@@ -1,0 +1,19 @@
+<block id="b-2026-11-25-getopt-scanner-register-writes" kind="finding" actor="mbrock" created="2026-11-25T00:18:36Z">
+  <title>The getopt proof follows a compiler temporary through a rename</title>
+  <about path="nanofil/rocq/glibc/getopt/GetoptExchange.v" symbol="scanner_writes"/>
+  <about path="nanofil/rocq/glibc/getopt/GetoptIdlePath.v" symbol="wp_getopt_idle"/>
+  <tag name="formal"/>
+  <p>The scanner promises to preserve registers that its blocks never
+    assign. Five steps of the proof used to list those assignments by
+    hand. They now read the instruction results and phi nodes from the
+    captured blocks. Rocq checked that all five lists have exactly the
+    same contents in the same order as before.</p>
+  <p>In a scratch capture we renamed the temporary holding the address
+    of the last nonoption. The clamp proof passed without edits. Restoring
+    the handwritten list made the same proof fail when it had to show
+    that the block preserved the caller's registers.</p>
+  <p>The two scanner modes now share one proof at the test for "--".
+    The mode that skips nonoptions first borrows the two index cells it
+    needs for the loop. The other mode passes the four named fields
+    directly from the clamp to the shared test.</p>
+</block>

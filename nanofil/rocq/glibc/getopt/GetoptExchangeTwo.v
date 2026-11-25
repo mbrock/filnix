@@ -27,6 +27,10 @@ Local Arguments Z.opp : simpl nomatch.
 Lemma avoids_app_r ks1 ks2 W : avoids ks1 W = true -> avoids ks2 W = true -> avoids (ks1 ++ ks2) W = true.
 Proof. unfold avoids. rewrite forallb_app. by intros -> ->. Qed.
 
+(** A call may preserve extra registers when its blocks never assign them.
+    The caller supplies its own avoidance fact, and Rocq checks the extra names. *)
+Ltac extend_avoids :=
+  apply avoids_app_r; [first [assumption | extend_avoids] | vm_compute; reflexivity].
 
 (** This module proves the lower swap loop of the first copy. *)
 (** This module proves the upper swap loop of the first copy. *)

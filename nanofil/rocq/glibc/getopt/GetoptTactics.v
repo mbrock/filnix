@@ -74,6 +74,14 @@ Ltac icell := iSplit; [iPureIntro; lia | iAssumption].
 (** This tactic reads a lookup through names that a report keeps. *)
 Ltac viakeep H := erewrite (keeps_in _ _ _ _ H); [lk_prove | cbn; tauto].
 
+(** A later block may read a register that several earlier blocks preserved.
+    Follow each preservation fact back to the environment that supplied the value. *)
+Ltac kept_lookup :=
+  first [assumption | match goal with
+    | H : keeps ?ks ?before ?after |- lookup ?k ?after = _ =>
+        rewrite (keeps_in ks k before after H); [clear H; kept_lookup | cbn; tauto]
+    end].
+
 (** This tactic closes a bound on a raw address inside a shared string. *)
 Ltac rawa := unfold raw_address, ptr_add; cbn [ptr_addr]; rewrite ?(Z.mod_small _ (2 ^ 64)); lia.
 

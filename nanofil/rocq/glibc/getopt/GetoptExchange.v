@@ -11,7 +11,7 @@ From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
 From stdpp Require Import list.
 From Stdlib Require Import String ZArith Lia.
-From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run Machine
+From Nanofil Require Import AbsInfer Term Syntax Values Memory Runtime Ops Semantics Run Machine
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic.
 From Glibc Require Import OsWorld WordString GetoptModule ByteRead
     GetoptArgv.
@@ -31,6 +31,15 @@ Local Transparent glibc_getopt_internal_r.
 Definition x_blk (l : string) : block := Eval vm_compute in
   match find_block (TAtom l) (fn_blocks glibc_getopt_internal_r) with
   | Some b => b | None => mkBlock (TAtom l) [] [] JUnreachable end.
+
+(** The scanner must preserve the caller's registers as it runs a sequence
+    of blocks. Each block can assign the results of its phi nodes and instructions. *)
+Definition scanner_writes (labels : list string) : list name :=
+  flat_map (fun label =>
+    let b := x_blk label in
+    (map (fun ph => match ph with Phi dest _ _ => dest end) (b_phis b) ++
+     flat_map inst_defs (b_insts b))%list) labels.
+
 (** The lower swap loop of the first exchange starts here. *)
 Definition x2_blk44 : block := Eval vm_compute in x_blk "iw_2.L44".
 (** The upper swap loop of the first exchange starts here. *)

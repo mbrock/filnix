@@ -14,7 +14,7 @@ From Nanofil Require Import Term Syntax Values Memory Runtime Ops Semantics Run 
   ExternalCalls ExternalMachine Pieces StepRules Heap Language Logic StringLogic MemLogic FrameNotation.
 From Glibc Require Import OsWorld WordString GetoptModule
     GetoptArgv GetoptExchange
-  GetoptIdle GetoptPermute GetoptNames GetoptLayout CStruct.
+  GetoptIdle GetoptPermute GetoptLayout CStruct.
 From Glibc Require Import Fix.
 Import ListNotations.
 Open Scope string_scope.
@@ -33,7 +33,7 @@ Proof. intros Hx. rewrite of_bytes_int; [|exact Hx]. cbn. by rewrite !(Z.mod_sma
 Import GetoptPermute GetoptIdle GetoptExchange Fix.ML0 Fix.LG0 Fix.LG0.L GetoptArgv.
 
 Import ProgramAbbreviations.
-Import GetoptNames.fn__getopt_internal_r Fix.LG0.L.RunNotation.
+Import Fix.LG0.L.RunNotation.
 
 (** Both indices fit in a signed C int, so the compiled greater-than
     comparison agrees with the comparison of their mathematical values. *)
@@ -53,25 +53,6 @@ Definition clamp_fields `{!gen_heapGS piece pval Σ} b i ordering first last : i
      ("__first_nonopt", VInt first); ("__last_nonopt", VInt last)].
 
 #[global] Hint Unfold clamp_fields : structs.
-
-(** The scanner carries argv and its private state into the clamp. Earlier
-    checks also leave pointers to the state and its opterr field. *)
-Definition clamp_inputs (e : env) av b :=
-  e.[‹argv›] = Some (WPtr (mkPtr av (Obj av))) /\
-  e.[‹d›] = Some (WPtr (mkPtr b (Obj b))) /\
-  e.[‹chk(d+4)›] = Some (WPtr (mkPtr (b + 4) (Obj b))) /\
-  e.[‹chk(d)›] = Some (WPtr (mkPtr b (Obj b))).
-
-(** Comparing the last nonoption with optind checks both field addresses.
-    The ordering test and the skip loop reuse those checked pointers. *)
-Definition clamp_checks (e : env) b :=
-  e.[‹chk(d+48)@L73›] = Some (WPtr (mkPtr (b + 48) (Obj b))) /\
-  e.[‹chk(d)@L73›] = Some (WPtr (mkPtr b (Obj b))).
-
-Local Abbreviation skip_nonoptions :=
-  (Exec (b_label getopt_blk159) (b_insts getopt_blk159) (b_jump getopt_blk159)).
-Local Abbreviation test_double_dash :=
-  (Exec (b_label getopt_blk119) (b_insts getopt_blk119) (b_jump getopt_blk119)).
 
 Section clamp.
 Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
@@ -152,7 +133,7 @@ Proof using Type.
   iDestruct "HK" as "[HK _]".
   iApply (GetoptPermute.wp_getopt_permute ks _ _ f (Z.min l i) i b r av ar n ps
     with "Hl [Hib] [Hob] [Hfb] [Hlab] Ha Hc Hs [HK]");
-    try solve [assumption | lk_prove | lia | icell].
+    try solve [assumption | repeat split; lk_prove | lia | icell].
   iIntros (e' ps' f' l' (Hp & Hk' & Hf' & H23' & H24')) "Hl Hib Hob Hfb Hlab Ha Hc Hs'".
   iApply ("HK" with "[%] Hl [Hib Hob Hfb Hlab] Ha Hc Hs'"); [|struct_close].
   split; [done|]. split; [eapply keeps_trans; [|exact Hk']; xkeep|]. split; [done|]. split; [lia|]. split; assumption.

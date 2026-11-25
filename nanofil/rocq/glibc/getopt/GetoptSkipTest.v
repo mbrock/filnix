@@ -26,8 +26,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The nonoption test assigns these names. *)
 Definition test_names : list name := Eval vm_compute in
-  List.map TAtom ["v170"; "v171"; "v172"; "v173"; "chk59"; "v174"; "chk60"; "v176"; "v177"; "v182";
-    "v183"; "v184"; "v185"; "chk62"; "v186"; "v187"; "chk63"; "v188"; "v189"; "v193"]%string.
+  scanner_writes ["L166"; "L178"; "L167"]%string.
 
 (** A string whose first character is a dash has a second byte. *)
 Lemma dash_len (s : list Z) : sbyte s 0 = 45 -> (1 <= List.length s)%nat.

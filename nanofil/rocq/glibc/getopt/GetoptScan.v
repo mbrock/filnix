@@ -5,7 +5,7 @@
     it reaches the option parser with an argument that starts with a
     dash and has a second character. *)
 
-From Glibc Require Import OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
+From Glibc Require Import GetoptTactics CStruct OsMemLogic Unit_string_strcmp_os GlibcProgram GlibcTactics OsTactics GlibcEnv.
 From iris.proofmode Require Import proofmode.
 From iris.base_logic.lib Require Import gen_heap.
 From iris.program_logic Require Import language weakestpre.
@@ -35,9 +35,6 @@ Context `{glibc_program : !GlibcProgram (hlc := hlc) Σ}.
 Local Instance scan_stable : SafepointStable (os_wi w0) := OsWorld.os_wi_stable w0.
 (** This notation selects expressions of the linked language. *)
 Local Notation gexpr := (language.expr (nanofil_lang registry ge)).
-
-(** This tactic proves a lookup that the kept names Hk carry over. *)
-Local Ltac kin Hk H := rewrite (keeps_in _ _ _ _ Hk); [exact H | cbn; tauto].
 
 (** The call must stay inside the argument vector and its own state
     whatever the arguments are. It starts with the positions in order,
@@ -91,17 +88,16 @@ Proof using Type.
   intros Hki Hks Hg Hdd Hv0 Hv2 Hv12 Hc0 Hc1 Hc2 Hfl Hln Hfi Hin Hlen Hb Hal Hend Hr Hav Hala Hda Hra.
   iIntros "Hl Hi Hab Ho Hf Hla Ha Hc #Hs #Hdd HK".
   iApply (GetoptIdlePath.wp_getopt_idle (ks ++ scan_keys) e fr0 n i o f l b r av ar ps pdd sdd
-            with "Hl Hi Ho Hf Hla Ha Hc Hs Hdd [Hab HK]");
-    [ apply avoids_app_r; [exact Hki | vm_compute; reflexivity] | exact Hg | exact Hdd
-    | exact Hv0 | exact Hv2 | exact Hv12 | exact Hc0 | exact Hc2
-    | lia | lia | lia | lia | exact Hlen | lia | lia | lia | lia | lia | lia | lia | lia |].
-  iIntros (e1 ps1 i1 f1 l1 (Hp & Hk & Hfl1 & Hli1 & Hii & H23)) "Hl Hi Ho Hf Hla Ha Hc #Hs1".
+            with "Hl [Hi Ho Hf Hla] Ha Hc Hs Hdd [Hab HK]");
+    try solve [assumption | extend_avoids
+              | repeat split; assumption | lia | struct_close].
+  iIntros (e1 ps1 i1 f1 l1 (Hp & Hk & Hfl1 & Hli1 & Hii & H23)) "Hl Hfields Ha Hc #Hs1".
+  struct_open "Hfields" as "(Hi & Ho & Hf & Hla & _)".
   apply keeps_app in Hk as [Hk Hk'].
   assert (Hlen1 : Z.of_nat (List.length ps1) = n) by (rewrite -(Permutation_length Hp); exact Hlen).
   iApply (GetoptScanEnd.wp_getopt_scan_end ks e1 i1 n o f1 l1 a b r av ar ps1
             with "Hl Hi Hab Ho Hf Hla Ha Hc Hs1 [HK]");
-    [ exact Hks | kin Hk' Hv0 | kin Hk' Hv2 | kin Hk' Hv12 | kin Hk' Hc0 | kin Hk' Hc1 | kin Hk' Hc2 | exact H23
-    | lia | lia | lia | lia | exact Hlen1 | lia | lia | lia | lia | lia | lia | lia | lia |].
+    try solve [assumption | kept_lookup | lia].
   iSplit; [|iSplit; [|iSplit]].
   - iIntros (e' fr (Hk2 & Hi1)) "Hl Hi Hab Ho Hf Hla Ha Hc". iDestruct "HK" as "[HK _]".
     iApply ("HK" with "[%] Hl Hi Hab Ho Hf Hla Ha Hc Hs1").

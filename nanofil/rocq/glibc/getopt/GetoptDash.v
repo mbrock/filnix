@@ -27,9 +27,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The blocks after "--" assign these names. *)
 Definition dash_names : list name := Eval vm_compute in
-  List.map TAtom ["chk71"; "v223"; "v224"; "chk72"; "v229"; "chk73"; "v230"; "v232"; "chk74"; "v233";
-    "v234"; "v238"; "v239"; "v241"; "v242"; "v244"; "v251"; "v252"; "v254"; "v255"; "v256"; "v258";
-    "v260"; "v262"; "chk98"; "chk99"]%string.
+  scanner_writes ["L201"; "L235"; "L236"; "L226"; "L247"; "L227"]%string.
 
 (** The end-of-scan test starts here. *)
 Definition getopt_blk203 : block := Eval vm_compute in x_blk "L203".

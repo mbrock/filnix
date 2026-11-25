@@ -27,7 +27,7 @@ Local Arguments Z.opp : simpl nomatch.
 
 (** The skip loop assigns these names. *)
 Definition skip_names : list name :=
-  List.map TAtom ["chk57"; "v163"; "v165"; "v195"; "v196"; "chk65"; "v198"; "v200"; "chk67"]%string ++ test_names.
+  scanner_writes ["L159"; "L160"; "L161"]%string ++ test_names.
 
 
 (** This module proves the nonoption test, and its exchange module supplies the argument vector. *)
