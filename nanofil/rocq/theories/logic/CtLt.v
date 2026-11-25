@@ -33,7 +33,7 @@ From iris.program_logic Require Import weakestpre adequacy.
 From iris.base_logic.lib Require Import gen_heap.
 From Nanofil Require Import Term Maps Syntax Values Validate Memory Runtime Ops Semantics
   Run Machine Panics Pieces Heap Language Logic PoisonModel PoisonLogic
-  TaintCheck CtLtCode CtLtNames.
+  TaintCheck FrameNotation CtLtCode CtLtNames.
 Import ListNotations.
 Open Scope string_scope.
 Open Scope Z_scope.
@@ -100,8 +100,7 @@ Import CtLtNames.fn_constant_time_msb.
 
 (** Entry frame for `constant_time_msb` with one secret integer parameter. *)
 Definition msb_entry (x : Z) : frame :=
-  mkFrame fn_constant_time_msb [(‹a›, WInt x)] [] None
-    (Enter (TAtom "start") None).
+  frame{ fn_constant_time_msb env: [(‹a›, WInt x)] | enter: @"start" }.
 
 (** Entry taint environment for `constant_time_msb`. *)
 Definition msb_te : tenv :=
@@ -111,8 +110,7 @@ Import CtLtNames.fn_constant_time_lt.
 
 (** Entry frame for `constant_time_lt` using C source-hint parameter names. *)
 Definition lt_entry (a b : Z) : frame :=
-  mkFrame fn_constant_time_lt [(‹b›, WInt b); (‹a›, WInt a)] [] None
-    (Enter (TAtom "start") None).
+  frame{ fn_constant_time_lt env: [(‹b›, WInt b); (‹a›, WInt a)] | enter: @"start" }.
 
 (** Entry taint environment tagging both `a` and `b` with [taint_all]. *)
 Definition lt_te : tenv :=
@@ -121,8 +119,8 @@ Definition lt_te : tenv :=
 (** Any two input pairs satisfy [ct_rel] because both integer parameters carry
     [taint_all] while memory and fuel stay identical. *)
 Lemma lt_inputs_related a b a' b' m pm paux fuel :
-  ct_rel (mkConfig (lt_entry a b) [] m fuel)
-    (mkConfig (lt_entry a' b') [] m fuel) (mkPState lt_te [] pm paux).
+  ct_rel cfg{ (lt_entry a b); mem: m; fuel: fuel }
+    cfg{ (lt_entry a' b'); mem: m; fuel: fuel } (mkPState lt_te [] pm paux).
 Proof.
   unfold ct_rel; cbn; repeat split; try congruence.
   intros x. unfold lt_te. cbn [lookup]. unfold name_eqb.
@@ -224,8 +222,8 @@ Qed.
 Theorem lt_constant_time a b a' b' m (pm : Z -> poison_byte) (paux : Z -> taint) s fuel :
   R.ready s m -> live_disjoint m ->
   forall steps, exists tr,
-    PD.driver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a b) [] m fuel) s = Some tr /\
-    PD.driver_trace pol_strict ctlt_ge steps (mkConfig (lt_entry a' b') [] m fuel) s = Some tr.
+    PD.driver_trace pol_strict ctlt_ge steps cfg{ (lt_entry a b); mem: m; fuel: fuel } s = Some tr /\
+    PD.driver_trace pol_strict ctlt_ge steps cfg{ (lt_entry a' b'); mem: m; fuel: fuel } s = Some tr.
 Proof.
   intros Hr Hd. apply (wp_ct_driver_plain pol_strict ctlt_ge
     (lt_entry a b) (lt_entry a' b') lt_te m m pm paux s fuel);
@@ -244,13 +242,12 @@ End CtLt.
 
 (** Entry frame for the branching control `leaky_lt`. *)
 Definition leaky_entry (a b : Z) : frame :=
-  mkFrame fn_leaky_lt [(‹b›, WInt b); (‹a›, WInt a)] [] None
-    (Enter (TAtom "start") None).
+  frame{ fn_leaky_lt env: [(‹b›, WInt b); (‹a›, WInt a)] | enter: @"start" }.
 
 (** Three steps enter `start`, compare the secret inputs, and trap on the
     branch. *)
 Theorem leaky_rejected m pm paux :
-  let run a b := prun pol_strict ctlt_ge 3 (mkConfig (leaky_entry a b) [] m 100)
+  let run a b := prun pol_strict ctlt_ge 3 cfg{ (leaky_entry a b); mem: m; fuel: 100 }
     (mkPState lt_te [] pm paux) in
   run 0 1 = PTrap CannotBranch /\
   run 1 0 = PTrap CannotBranch /\
@@ -262,7 +259,7 @@ Proof. vm_compute. repeat split; reflexivity. Qed.
     with [taint_all]. *)
 Example lt_masks :
   let m := mkMem (fun _ => 0) [] (fun _ => CNone) in
-  let run a b := prun pol_strict ctlt_ge 20 (mkConfig (lt_entry a b) [] m 100)
+  let run a b := prun pol_strict ctlt_ge 20 cfg{ (lt_entry a b); mem: m; fuel: 100 }
     (mkPState lt_te [] (fun _ => pb_clean) (fun _ => taint_bot)) in
   run 0 0 = PDone (Ret (WInt 0)) [WTInt taint_all] /\
   run 0 4294967295 = PDone (Ret (WInt 4294967295)) [WTInt taint_all] /\

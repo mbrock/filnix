@@ -21,8 +21,8 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Values Validate Memory Runtime Ops Semantics
-  Run Machine Panics StepRules Pieces PoisonModel PoisonLogic TaintCheck IRNotation
-  CtTableScanCode CtTableScanNames.
+  Run Machine Panics StepRules Pieces PoisonModel PoisonLogic TaintCheck
+  IRNotation FrameNotation CtTableScanCode CtTableScanNames.
 
 Import ListNotations.
 Import CtTableScanNames.fn_scan_ct.
@@ -307,14 +307,14 @@ Qed.
 
 (** Entry frame binding all six arguments of `scan_ct`. *)
 Definition scan_ct_entry (buf tbl : ptr) (len win skip start : Z) : frame :=
-  mkFrame fn_scan_ct
+  frame{ fn_scan_ct env:
     [(‹tbl›, WPtr tbl);
      (‹start›, WInt start);
      (‹skip›, WInt skip);
      (‹win›, WInt win);
      (‹len›, WInt len);
      (‹buf›, WPtr buf)]
-    [] None (Enter (TAtom "start") None).
+    | enter: @"start" }.
 
 (** Entry taint environment matching [scan_ct_tspec]: `skip` and `start` carry
     full poison while the pointers and public window lengths stay clean. *)
@@ -332,8 +332,8 @@ Definition scan_ct_te : tenv :=
 Lemma scan_ct_inputs_related buf tbl len win skip1 start1 skip2 start2 m1 m2 fuel :
   m_regions m1 = m_regions m2 ->
   ct_rel
-    (mkConfig (scan_ct_entry buf tbl len win skip1 start1) [] m1 fuel)
-    (mkConfig (scan_ct_entry buf tbl len win skip2 start2) [] m2 fuel)
+    cfg{ (scan_ct_entry buf tbl len win skip1 start1); mem: m1; fuel: fuel }
+    cfg{ (scan_ct_entry buf tbl len win skip2 start2); mem: m2; fuel: fuel }
     (mkPState scan_ct_te [] (fun _ => pb_secret taint_all) (fun _ => taint_all)).
 Proof.
   intros Hreg.
@@ -394,46 +394,36 @@ Inductive scan_ct_inv (buf tbl : ptr) (len win : Z) (m0 : mem) : config -> Prop 
 | sci_start skip start m fuel :
     m_regions m = m_regions m0 ->
     scan_ct_inv buf tbl len win m0
-      (mkConfig (scan_ct_entry buf tbl len win skip start) [] m fuel)
-| sci_outer e j i_val res_val start_val m fuel :
+      cfg{ (scan_ct_entry buf tbl len win skip start); mem: m; fuel: fuel }
+| sci_outer e j m fuel :
     m_regions m = m_regions m0 ->
     0 <= j <= win + 16 ->
-    lookup ‹win› e = Some (WInt win) ->
-    lookup ‹start› e = Some (WInt start_val) ->
-    lookup ‹tbl› e = Some (WPtr tbl) ->
-    lookup ‹p› e = Some (WPtr (mkPtr (ptr_addr buf + (len - win - 16)) (ptr_cap buf))) ->
-    lookup ‹j› e = Some (WInt j) ->
-    lookup ‹i› e = Some (WInt i_val) ->
-    lookup ‹res› e = Some (WInt res_val) ->
+    e.[‹win›] = int_val win ->
+    e.[‹tbl›] = ptr_val tbl ->
+    e.[‹p›] = ptr_val (ptr_shift buf (len - win - 16)) ->
+    e.[‹j›] = int_val j ->
+    has_ints e [‹start›; ‹i›; ‹res›] ->
     scan_ct_inv buf tbl len win m0
-      (mkConfig (mkFrame fn_scan_ct e [] None
-        (Exec (TAtom "L28")
-          [Let (TAtom "v34") L Add [Tmp ‹win›; Const 16];
-           Let (TAtom "v35") W (Cmp Ult L) [Tmp ‹j›; Tmp (TAtom "v34")]]
-          (JBranch (Tmp (TAtom "v35")) (To (TAtom "L29")) (To (TAtom "L31")))))
-        [] m fuel)
-| sci_inner e j k i_val res_val start_val c_val inr_val mask_val exp_val m fuel :
+      cfg{ fn_scan_ct env: e | at @"L28" {
+             ir[ %"v34" : L = Add %"v4", #16;
+                 %"v35" : W = (Cmp Ult L) %"pr.3", %"v34" ]
+             => ir{ br %"v35" ? "L29" : "L31" }
+           }; mem: m; fuel: fuel }
+| sci_inner e j k m fuel :
     m_regions m = m_regions m0 ->
     0 <= j < win + 16 ->
     0 <= k <= 16 ->
-    lookup ‹win› e = Some (WInt win) ->
-    lookup ‹start› e = Some (WInt start_val) ->
-    lookup ‹tbl› e = Some (WPtr tbl) ->
-    lookup ‹p› e = Some (WPtr (mkPtr (ptr_addr buf + (len - win - 16)) (ptr_cap buf))) ->
-    lookup ‹j› e = Some (WInt j) ->
-    lookup ‹i› e = Some (WInt i_val) ->
-    lookup ‹res› e = Some (WInt res_val) ->
-    lookup ‹c› e = Some (WInt c_val) ->
-    lookup ‹in_range› e = Some (WInt inr_val) ->
-    lookup ‹mask› e = Some (WInt mask_val) ->
-    lookup ‹k› e = Some (WInt k) ->
-    lookup ‹expected› e = Some (WInt exp_val) ->
+    e.[‹win›] = int_val win ->
+    e.[‹tbl›] = ptr_val tbl ->
+    e.[‹p›] = ptr_val (ptr_shift buf (len - win - 16)) ->
+    e.[‹j›] = int_val j ->
+    e.[‹k›] = int_val k ->
+    has_ints e [‹start›; ‹i›; ‹res›; ‹c›; ‹in_range›; ‹mask›; ‹expected›] ->
     scan_ct_inv buf tbl len win m0
-      (mkConfig (mkFrame fn_scan_ct e [] None
-        (Exec (TAtom "L55")
-          [Let ‹k<u16› W (Cmp Ult L) [Tmp ‹k›; Const 16]]
-          (JBranch (Tmp ‹k<u16›) (To (TAtom "L56")) (To (TAtom "L58")))))
-        [] m fuel).
+      cfg{ fn_scan_ct env: e | at @"L55" {
+             ir[ %"v60" : W = (Cmp Ult L) %"pr.5", #16 ]
+             => ir{ br %"v60" ? "L56" : "L58" }
+           }; mem: m; fuel: fuel }.
 
 (** Region-preserving collector safepoints preserve [scan_ct_inv]. *)
 Lemma scan_ct_inv_regions buf tbl len win m0 c m' :
@@ -500,9 +490,12 @@ Proof.
     by (apply Z.mod_small; subst p_off; lia).
   destruct Hinv as
     [skip start m fuel Hreg
-    |e j i_val res_val start_val m fuel Hreg Hj Hwin_e Hstart_e Htbl_e Hp_e Hj_e Hi_e Hres_e
-    |e j k i_val res_val start_val c_val inr_val mask_val exp_val m fuel
-       Hreg Hj Hk Hwin_e Hstart_e Htbl_e Hp_e Hj_e Hi_e Hres_e Hc_e Hinr_e Hmask_e Hk_e Hexp_e].
+    |e j m fuel Hreg Hj Hwin_e Htbl_e Hp_e Hj_e
+       ([start_val Hstart_e] & [i_val Hi_e] & [res_val Hres_e] & _)
+    |e j k m fuel Hreg Hj Hk Hwin_e Htbl_e Hp_e Hj_e Hk_e
+       ([start_val Hstart_e] & [i_val Hi_e] & [res_val Hres_e] &
+        [c_val Hc_e] & [inr_val Hinr_e] & [mask_val Hmask_e] & [exp_val Hexp_e] & _)];
+    try (unfold ptr_shift in Hp_e).
   - (* Case 1: entry block `start` -> `L28` *)
     unfold scan_ct_entry.
     step_enter_or_fuel fuel m Hreg.
@@ -545,8 +538,9 @@ Proof.
     eapply TC.bs_inv.
     { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity. }
     cbn [b_insts b_jump].
-    eapply (sci_outer buf tbl len win m0 _ 0 0 0 start m);
-      try assumption; try lia; solve_lookup.
+    eapply (sci_outer buf tbl len win m0 _ 0 m);
+      try assumption; try lia; unfold ptr_shift; try solve_lookup;
+      repeat split; eexists; solve_lookup.
   - (* Case 2: outer loop header `L28` -> `L31` (done) or `L29` -> `L55` *)
     assert (Hj_mod : j mod 2 ^ 64 = j) by (apply Z.mod_small; lia).
     (* v34 = add ‹win›, 16 *)
@@ -644,8 +638,9 @@ Proof.
       eapply TC.bs_inv.
       { eapply (rule_enter _ _ _ _ _ _ _ _ _ _ _ Hfuel1); reflexivity. }
       cbn [b_insts b_jump].
-      eapply (sci_inner buf tbl len win m0 _ j 0 i_val res_val start_val cv n49 n52 0 m);
-        try assumption; try lia; solve_lookup.
+      eapply (sci_inner buf tbl len win m0 _ j 0 m);
+        try assumption; try lia; unfold ptr_shift; try solve_lookup;
+        repeat split; eexists; solve_lookup.
     + (* j = win + 16: branch to L31 and return ‹res› *)
       eapply TC.bs_step.
       { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0). cbn [value_x]; solve_lookup. }
@@ -746,8 +741,9 @@ Proof.
           |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
            reflexivity]. }
       cbn [b_insts b_jump].
-      eapply (sci_inner buf tbl len win m0 _ j (k + 1) i_val res_val start_val c_val inr_val mask_val (n73 mod 2 ^ 32) m);
-        try assumption; try lia; solve_lookup.
+      eapply (sci_inner buf tbl len win m0 _ j (k + 1) m);
+        try assumption; try lia; unfold ptr_shift; try solve_lookup;
+        repeat split; eexists; solve_lookup.
     + (* k = 16: branch to L58 -> L28 *)
       eapply TC.bs_step.
       { apply (rule_branch _ _ _ _ _ _ _ _ _ _ _ 0). cbn [value_x]; solve_lookup. }
@@ -803,8 +799,9 @@ Proof.
           |cbn [b_phis phis_env fold_left lookup name_eqb term_eqb String.eqb Ascii.eqb Bool.eqb andb value_x word_at_class modulus];
            reflexivity]. }
       cbn [b_insts b_jump].
-      eapply (sci_outer buf tbl len win m0 _ (j + 1) (n86 mod 2 ^ 64) (n82 mod 2 ^ 32) start_val m);
-        try assumption; try lia; solve_lookup.
+      eapply (sci_outer buf tbl len win m0 _ (j + 1) m);
+        try assumption; try lia; unfold ptr_shift; try solve_lookup;
+        repeat split; eexists; solve_lookup.
 Qed.
 
 (** Plain memory safety for `scan_ct`: for every readable `buf` of length `len`,
@@ -860,9 +857,9 @@ Theorem scan_ct_constant_time buf tbl len win skip1 start1 skip2 start2 m1 m2 s 
   R.ready s m1 -> R.ready s m2 ->
   forall steps, exists tr,
     PD.driver_trace pol_strict cttable_ge steps
-      (mkConfig (scan_ct_entry buf tbl len win skip1 start1) [] m1 fuel) s = Some tr /\
+      cfg{ (scan_ct_entry buf tbl len win skip1 start1); mem: m1; fuel: fuel } s = Some tr /\
     PD.driver_trace pol_strict cttable_ge steps
-      (mkConfig (scan_ct_entry buf tbl len win skip2 start2) [] m2 fuel) s = Some tr.
+      cfg{ (scan_ct_entry buf tbl len win skip2 start2); mem: m2; fuel: fuel } s = Some tr.
 Proof.
   intros Hbuf Htbl Hwin Hlen_ge Hreg Hr1 Hr2 steps.
   eapply (TC.taint_check_constant_time pol_strict cttable_ge scan_ct_tspecs
@@ -941,9 +938,9 @@ Theorem rebased_scan_taint_rejected :
 Proof. vm_compute. split; reflexivity. Qed.
 
 Definition rebased_entry (buf : ptr) (len sec : Z) : frame :=
-  mkFrame rebased_scan_fn
+  frame{ rebased_scan_fn env:
     [(TAtom "sec", WInt sec); (TAtom "len", WInt len); (TAtom "buf", WPtr buf)]
-    [] None (Enter (TAtom "start") None).
+    | enter: @"start" }.
 
 Definition rebased_te (t_sec : taint) : tenv :=
   [(TAtom "sec", WTInt t_sec); (TAtom "len", WTInt taint_bot);
@@ -954,11 +951,11 @@ Definition rebased_te (t_sec : taint) : tenv :=
 Theorem rebased_scan_taint_rejects :
   let m := scan_mem (fun k => k) sample_tbl 16 in
   prun pol_strict rebased_ge 10
-    (mkConfig (rebased_entry scan_buf_ptr 4 17) [] m 50)
+    cfg{ (rebased_entry scan_buf_ptr 4 17); mem: m; fuel: 50 }
     (mkPState (rebased_te taint_branch) [] (fun _ => pb_clean) (fun _ => taint_bot)) =
     PTrap CannotBranch /\
   prun pol_erased rebased_ge 15
-    (mkConfig (rebased_entry scan_buf_ptr 4 17) [] m 50)
+    cfg{ (rebased_entry scan_buf_ptr 4 17); mem: m; fuel: 50 }
     (mkPState (rebased_te taint_index) [] (fun _ => pb_clean) (fun _ => taint_bot)) =
     PTrap CannotIndex.
 Proof. vm_compute. split; reflexivity. Qed.
@@ -1003,20 +1000,18 @@ Qed.
     by `s`, all modulo `2 ^ 64`. *)
 Record rebased_loop_env (e : env) (buf : ptr) (len j s : Z) : Prop :=
   mkRebasedLoopEnv {
-    rle_base : lookup (TAtom "base") e =
-      Some (WPtr (mkPtr ((ptr_addr buf + s) mod 2 ^ 64) (ptr_cap buf)));
-    rle_lim : lookup (TAtom "lim") e = Some (WInt ((len - s) mod 2 ^ 64));
-    rle_k : lookup (TAtom "k") e = Some (WInt ((j - s) mod 2 ^ 64));
-    rle_acc : exists acc, lookup (TAtom "acc") e = Some (WInt acc)
+    rle_base : e.[@"base"] = ptr_val (ptr_shift_mod buf s);
+    rle_lim : e.[@"lim"] = int_val ((len - s) mod 2 ^ 64);
+    rle_k : e.[@"k"] = int_val ((j - s) mod 2 ^ 64);
+    rle_acc : has_int e (TAtom "acc")
   }.
 
 (** Machine configuration at the `loop` header of [rebased_scan_fn]. *)
 Definition rebased_loop_cfg (e : env) (m : mem) (fuel : Z) : config :=
-  mkConfig (mkFrame rebased_scan_fn e [] None
-    (Exec (TAtom "loop")
-      ir[ %"done" : W = (Cmp Eq L) %"k", %"lim" ]
-      ir{ br %"done" ? "exit" : "body" }))
-    [] m fuel.
+  cfg{ rebased_scan_fn env: e | at @"loop" {
+         ir[ %"done" : W = (Cmp Eq L) %"k", %"lim" ]
+         => ir{ br %"done" ? "exit" : "body" }
+       }; mem: m; fuel: fuel }.
 
 (** Emit at most `steps` events from a straight-line block `evs`, then continue
     with `rest` on any remaining step budget. *)
@@ -1141,7 +1136,7 @@ Proof.
   intros Hsl rem.
   pose proof Hsl as [_ Hb Hlen Hblim _].
   induction rem as [|rem IH]; intros j fuel e steps Hj Hrem [Hbase Hlim Hk [acc Hacc]];
-    unfold rebased_loop_cfg; cbn [rebased_loop_trace].
+    unfold rebased_loop_cfg; unfold ptr_shift_mod in Hbase; cbn [rebased_loop_trace].
   - (* Exit iteration: j = len *)
     assert (Hj_eq : j = len) by lia. subst j.
     assert (Hcmp : ((len - s) mod 2 ^ 64 =? (len - s) mod 2 ^ 64) = true) by apply Z.eqb_refl.
@@ -1252,7 +1247,7 @@ Proof.
         apply run_trace_prefix_nil. intros k_rem _.
         replace (fuel - 1 - 1) with (fuel - 2) by lia.
         apply (IH (j + 1) (fuel - 2)); [lia | lia |].
-        constructor;
+        constructor; unfold ptr_shift_mod;
           [solve_lookup
           |solve_lookup
           |cbn [lookup]; repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
@@ -1282,7 +1277,7 @@ Qed.
     [rebased_scan_trace]. *)
 Lemma rebased_scan_trace_eq pol buf m len s fuel steps :
   readable_slice m buf len ->
-  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s) [] m fuel) =
+  run_trace pol rebased_ge steps cfg{ (rebased_entry buf len s); mem: m; fuel: fuel } =
     Some (rebased_scan_trace pol buf len fuel steps).
 Proof.
   intros Hsl.
@@ -1336,7 +1331,7 @@ Proof.
       apply run_trace_prefix_nil. intros k_rem _.
       replace (fuel - 1 - 1) with (fuel - 2) by lia.
       apply (rebased_loop_trace_eq pol buf m len s Hsl (Z.to_nat len) 0 (fuel - 2)); [lia | lia |].
-      constructor;
+      constructor; unfold ptr_shift_mod;
         [solve_lookup
         |solve_lookup
         |cbn [lookup]; repeat (first [rewrite lookup_put_same | rewrite lookup_put_other; [|reflexivity]]);
@@ -1352,8 +1347,8 @@ Qed.
     from two-run constant-time noninterference. *)
 Theorem rebased_scan_two_run_constant_time pol buf m len s1 s2 fuel steps :
   readable_slice m buf len ->
-  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s1) [] m fuel) =
-  run_trace pol rebased_ge steps (mkConfig (rebased_entry buf len s2) [] m fuel).
+  run_trace pol rebased_ge steps cfg{ (rebased_entry buf len s1); mem: m; fuel: fuel } =
+  run_trace pol rebased_ge steps cfg{ (rebased_entry buf len s2); mem: m; fuel: fuel }.
 Proof.
   intros Hsl.
   rewrite (rebased_scan_trace_eq pol buf m len s1 fuel steps Hsl).
