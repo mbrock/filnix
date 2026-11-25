@@ -39,6 +39,26 @@ cp "$src"/dterm-nix/dterm-nix.css "$src"/dterm-nix/dterm-nix.js "$out/nix/"
 (cd "$src" && swipl dterm-nix/dterm_nix.pl "$out/nix" . --files="$files" \
   --options="$options" --nixpkgs="$nixpkgs" "$@" </dev/null)
 
+# Run pandoc conversions in parallel across available cores while preserving
+# strict failure propagation (portable across bash 3.2 and 5.x).
+pandoc_jobs=${NIX_BUILD_CORES:-$(nproc 2>/dev/null || sysctl -n hw.ncpu 2>/dev/null || echo 4)}
+[ "$pandoc_jobs" -ge 1 ] 2>/dev/null || pandoc_jobs=4
+pandoc_pids=()
+run_pandoc() {
+  pandoc "$@" &
+  pandoc_pids+=($!)
+  if [ "${#pandoc_pids[@]}" -ge "$pandoc_jobs" ]; then
+    flush_pandoc
+  fi
+}
+flush_pandoc() {
+  local pid
+  for pid in "${pandoc_pids[@]}"; do
+    wait "$pid"
+  done
+  pandoc_pids=()
+}
+
 for md in "$src"/docs/*.md; do
   name=$(basename "$md" .md)
   echo "$(date -u +%FT%TZ) site: render docs/$name.md"
@@ -58,7 +78,7 @@ for md in "$src"/docs/*.md; do
   fi
   grep -q '^```mermaid' "$md" && args+=(-V mermaid)
   [ "$name" = README ] && args+=(-V index)
-  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+  run_pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
     --template "$here/template.html" --lua-filter "$here/links.lua" \
     -V source="$name.md" "${args[@]}" -o "$out/docs/$html.html" "$md"
 done
@@ -81,7 +101,7 @@ for md in "$src"/docs/archive/*.md; do
   if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
     args+=(--toc --toc-depth=3)
   fi
-  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+  run_pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
     --template "$here/template.html" --lua-filter "$here/links.lua" \
     -M archived=true -V source="archive/$name.md" "${args[@]}" \
     -o "$out/docs/$name.html" "$md"
@@ -120,7 +140,7 @@ for md in "$src"/nanofil/docs/*.md; do
   if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
     args+=(--toc --toc-depth=3)
   fi
-  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+  run_pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
     --template "$here/template.html" --lua-filter "$here/nanofil-links.lua" \
     -V nanofil -V source="$name.md" "${args[@]}" -o "$out/nanofil/docs/$name.html" "$md"
 done
@@ -143,11 +163,12 @@ for md in "$src"/nanofil/docs/archive/*.md; do
   if [ "$(grep -c '^## ' "$md")" -ge 4 ]; then
     args+=(--toc --toc-depth=3)
   fi
-  pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
+  run_pandoc -f gfm -t html5 --standalone --shift-heading-level-by=-1 \
     --template "$here/template.html" --lua-filter "$here/nanofil-links.lua" \
     -V nanofil -M archived=true -V source="archive/$name.md" "${args[@]}" \
     -o "$out/nanofil/docs/$name.html" "$md"
 done
+flush_pandoc
 
 status=0
 for html in "$out"/nanofil/docs/*.html; do

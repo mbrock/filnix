@@ -77,7 +77,11 @@ rocq_parse_codes(Cs, Dir, Items, Cms) :-
     phrase(top(Items), Events), !.
 
 %  The notations a file declares (but not its Local ones), for each file
-%  of Dir that a Require Import or Export of Chunks names.
+%  of Dir that a Require Import or Export of Chunks names. Cache each
+%  sibling file's exported notations once per process so directories with
+%  hundreds of files (such as glibc/libio) do not re-lex shared headers.
+:- dynamic file_notation_cache/3.
+
 import_notations(Dir, Chunks) :-
     forall(( member(c(Ts, _), Chunks), Ts = [t(id(K), _, _)|_], memberchk(K, ['From', 'Require', 'Import', 'Export']),
              append(_, [t(id(I), _, _)|Ms], Ts), memberchk(I, ['Import', 'Export']),
@@ -86,10 +90,26 @@ import_notations(Dir, Chunks) :-
            file_notations(F)).
 
 file_notations(F) :-
-    read_file_to_string(F, Text, [encoding(utf8)]), string_codes(Text, Cs),
-    rocq_lex(Cs, Toks, _), chunks(Toks, Chunks),
-    forall(( member(c(Ts, To), Chunks), Ts = [t(id(K), From, _)|_], memberchk(K, ['Notation', 'Infix']) ),
-           ( sentence_(Ts, From-To, _) -> true ; true )).
+    file_notation_cache(F, Ops, Folds), !,
+    forall(member(op(O, L, A), Ops), ( notation_op(O, L, A) -> true ; assertz(notation_op(O, L, A)) )),
+    forall(member(fold(Fn, N, O), Folds), ( notation_fold(Fn, N, O) -> true ; assertz(notation_fold(Fn, N, O)) )).
+file_notations(F) :-
+    read_file_to_string(F, Text, [encoding(utf8)]),
+    (   ( sub_string(Text, _, _, _, "Notation") ; sub_string(Text, _, _, _, "Infix") )
+    ->  rocq_notations(Saved),
+        retractall(notation_op(_, _, _)), retractall(notation_fold(_, _, _)),
+        string_codes(Text, Cs),
+        rocq_lex(Cs, Toks, _), chunks(Toks, Chunks),
+        forall(( member(c(Ts, To), Chunks), Ts = [t(id(K), From, _)|_], memberchk(K, ['Notation', 'Infix']) ),
+               ( sentence_(Ts, From-To, _) -> true ; true )),
+        findall(op(O, L, A), notation_op(O, L, A), Ops),
+        findall(fold(Fn, N, O), notation_fold(Fn, N, O), Folds),
+        assertz(file_notation_cache(F, Ops, Folds)),
+        rocq_set_notations(Saved),
+        forall(member(op(O, L, A), Ops), ( notation_op(O, L, A) -> true ; assertz(notation_op(O, L, A)) )),
+        forall(member(fold(Fn, N, O), Folds), ( notation_fold(Fn, N, O) -> true ; assertz(notation_fold(Fn, N, O)) ))
+    ;   assertz(file_notation_cache(F, [], []))
+    ).
 
 %  rocq_notations(-Ns), rocq_set_notations(+Ns): the operators and folds
 %  the last file read declared, to draw its page with after others were
@@ -689,18 +709,18 @@ iris_op(Max, L, U) --> { Max >= 99 }, [t(sym('='), _, _), t(p('{'), _, _)], !,
     ;   tk(sym('=∗')), expr(200, R), { U = fupdw(F-T, Ms, L, R) }
     ),
     { start(L, F), end(R, T) }.
-
-%  The arrow after ▷, and its count: =>^n, lexed as one symbol.
-step_arrow(Arrow, N) --> [t(sym(S), _, _)],
-    (   { S == Arrow } -> { N = none }
-    ;   { atom_concat(Arrow, '^', S) }, atom(N)
-    ).
 iris_op(Max, L, pointsto(F-T, Op, L, Ms, R)) --> { Max >= 20 }, tk(sym(Op)), { memberchk(Op, ['↦', '↪']) }, !,
     ( tk(p('[')) -> term(G), tk(p(']')), { Ms = [name(G)|Ms1] } ; { Ms = Ms1 } ), dfrac(Ms1),
     expr(19, R), { start(L, F), end(R, T) }.
 iris_op(Max, L, indexed(F-T, Op, N, L, R)) --> { Max >= 70 }, [t(sym(Op), _, _), t(p('{'), _, _)],
     { memberchk(Op, ['≡', '≼']) }, !, term(N), tk(p('}')), ( { Op == '≡' } -> tk(sym('≡')) ; [] ),
     expr(69, R), { start(L, F), end(R, T) }.
+
+%  The arrow after ▷, and its count: =>^n, lexed as one symbol.
+step_arrow(Arrow, N) --> [t(sym(S), _, _)],
+    (   { S == Arrow } -> { N = none }
+    ;   { atom_concat(Arrow, '^', S) }, atom(N)
+    ).
 
 %  {#q}, the fraction q of ownership; {dq}, any fraction; □, discarded.
 dfrac([own(Q)]) --> tk(p('{')), tk(sym('#')), !, term(Q), tk(p('}')).

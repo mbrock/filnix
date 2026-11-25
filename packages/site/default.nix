@@ -90,6 +90,21 @@ let
     "nfb-guide-wonder"
     "nfb-guide-wonderful"
   ];
+  rocqFiles = dir: lib.fileset.fileFilter (f: f.hasExt "v") dir;
+  glibcGen = lib.fileset.maybeMissing ../../nanofil/rocq/glibc/gen;
+  allRocq = lib.fileset.difference (rocqFiles ../../nanofil) glibcGen;
+  theoriesRocq = rocqFiles ../../nanofil/rocq/theories;
+  backendRocq = rocqFiles ../../nanofil/rocq/backend;
+  spikesRocq = rocqFiles ../../nanofil/rocq/spikes;
+  glibcRocq = lib.fileset.difference (rocqFiles ../../nanofil/rocq/glibc) glibcGen;
+  otherRocq = lib.fileset.difference allRocq (
+    lib.fileset.unions [
+      theoriesRocq
+      backendRocq
+      spikesRocq
+      glibcRocq
+    ]
+  );
   # dterm reads Prolog, concepts, saved guide outputs and Rocq indexes.
   # Keep nanofil/docs for its document-link existence checks as well as
   # the rendered documents, but not unrelated site docs/pages/Nix.
@@ -108,26 +123,51 @@ let
       ../../nanofil/web/c
       ../../nanofil/web/rocq/rocq_draw.pl
       ../../nanofil/web/rocq/rocq_syntax.pl
-      (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil/rocq)
+      (lib.fileset.difference (rocqFiles ../../nanofil/rocq) glibcGen)
     ];
   };
-  # The Rocq pages read the complete Rocq/Prolog/concept index, but not
-  # ordinary Markdown or the rest of the website. Keep those edits from
-  # invalidating the cached rendering as well as the proof captures.
-  rocqSrc = lib.fileset.toSource {
+  # The Rocq pages share the renderer, Prolog index and concept cards, but
+  # are sharded by scope tree (theories, other, backend, spikes, glibc) so
+  # edits in one tree hit Cachix for the others. Each shard emits its HTML
+  # pages and meta.pl; downstream trees read theories' meta.pl for links.
+  rocqBase = lib.fileset.unions [
+    ../../nanofil/src
+    ../../nanofil/docs/concepts
+    ../../nanofil/web/rocq
+    ../../nanofil/web/concepts.pl
+    ../../nanofil/web/dterm_html.pl
+    ../../nanofil/web/c
+  ];
+  rocqBaseSrc = lib.fileset.toSource {
     root = ../..;
-    fileset = lib.fileset.unions [
-      ../../nanofil/src
-      ../../nanofil/docs/concepts
-      ../../nanofil/web/rocq
-      ../../nanofil/web/concepts.pl
-      ../../nanofil/web/dterm_html.pl
-      ../../nanofil/web/c
-      (lib.fileset.fileFilter (f: f.hasExt "v") ../../nanofil)
-    ];
+    fileset = rocqBase;
   };
-  # Independent renderers are cached separately. The Rocq invocation sees
-  # every source for its cross-file index. Proofs are drawn as written,
+  mkRocqShard =
+    name: fileset: globalsIn:
+    let
+      shardSrc = lib.fileset.toSource {
+        root = ../..;
+        fileset = lib.fileset.unions [
+          rocqBase
+          fileset
+        ];
+      };
+      globalsFlags = lib.concatMapStringsSep " " (
+        g: "--globals-in=${g}/meta.pl"
+      ) globalsIn;
+    in
+    pkgs.runCommand "filnix-rocq-pages-${name}" { nativeBuildInputs = [ swipl ]; }
+      ''
+        mkdir -p $out
+        # Skip generated IR fixtures (*Code.v, *Src.v, *Term.v) marked "Do not edit".
+        mapfile -t rocq < <(cd ${shardSrc} && find nanofil -name '*.v' -print | sort |
+          while read -r f; do head -c 1000 "$f" | grep -qi 'do not edit' || echo "$f"; done)
+        swipl ${shardSrc}/nanofil/web/rocq/dterm_rocq.pl $out ${shardSrc} \
+          --prolog=${shardSrc}/nanofil/src \
+          --concepts=${shardSrc}/nanofil/docs/concepts \
+          --no-index --meta-out=$out/meta.pl ${globalsFlags} "''${rocq[@]}" </dev/null
+      '';
+  # Independent renderers are cached separately. Proofs are drawn as written,
   # without captured proof states (nanofil/web/rocq/capture.nix), which
   # took the site's publishing minutes of coqc for little reading.
   prologPages =
@@ -145,20 +185,35 @@ let
           --rocq=${prologSrc}/nanofil/rocq/spikes --rocq=${prologSrc}/nanofil/rocq/backend \
           --rocq=${prologSrc}/nanofil/rocq/glibc </dev/null
       '';
+  rocqPagesTheories = mkRocqShard "theories" theoriesRocq [ ];
+  rocqPagesBackend = mkRocqShard "backend" backendRocq [ rocqPagesTheories ];
+  rocqPagesOther = mkRocqShard "other" otherRocq [
+    rocqPagesTheories
+    rocqPagesBackend
+  ];
+  rocqPagesSpikes = mkRocqShard "spikes" spikesRocq [ rocqPagesTheories ];
+  rocqPagesGlibc = mkRocqShard "glibc" glibcRocq [ rocqPagesTheories ];
+  rocqShards = [
+    rocqPagesTheories
+    rocqPagesOther
+    rocqPagesBackend
+    rocqPagesSpikes
+    rocqPagesGlibc
+  ];
   rocqPages =
     pkgs.runCommand "filnix-rocq-pages" { nativeBuildInputs = [ swipl ]; }
       ''
         mkdir -p $out
-        cp ${rocqSrc}/nanofil/web/rocq/dterm-rocq.css ${rocqSrc}/nanofil/web/rocq/dterm-rocq.js $out/
-        # Not the files a generator writes, such as the IR fixtures (*Code.v,
-        # *Src.v, *Term.v): every generator says "Do not edit" in the file's
-        # header, and nobody reads them on the web. dterm_guide.pl's Rocq
-        # index and links skip them by the same rule.
-        mapfile -t rocq < <(cd ${rocqSrc} && find nanofil -path nanofil/rocq/glibc/gen -prune -o -name '*.v' -print | sort |
-          while read -r f; do head -c 1000 "$f" | grep -qi 'do not edit' || echo "$f"; done)
-        swipl ${rocqSrc}/nanofil/web/rocq/dterm_rocq.pl $out ${rocqSrc} \
-          --prolog=${rocqSrc}/nanofil/src \
-          --concepts=${rocqSrc}/nanofil/docs/concepts "''${rocq[@]}" </dev/null
+        cp ${rocqBaseSrc}/nanofil/web/rocq/dterm-rocq.css ${rocqBaseSrc}/nanofil/web/rocq/dterm-rocq.js $out/
+        for shard in ${lib.concatStringsSep " " rocqShards}; do
+          cp "$shard"/*.html "$out/"
+        done
+        swipl ${rocqBaseSrc}/nanofil/web/rocq/dterm_rocq.pl $out ${rocqBaseSrc} \
+          --prolog=${rocqBaseSrc}/nanofil/src \
+          --concepts=${rocqBaseSrc}/nanofil/docs/concepts \
+          --index-only ${
+            lib.concatMapStringsSep " " (s: "--meta-in=${s}/meta.pl") rocqShards
+          } </dev/null
       '';
 in
 pkgs.runCommand "filnix-site"
@@ -173,6 +228,11 @@ pkgs.runCommand "filnix-site"
         play
         prologPages
         rocqPages
+        rocqPagesTheories
+        rocqPagesOther
+        rocqPagesBackend
+        rocqPagesSpikes
+        rocqPagesGlibc
         ;
     };
   }

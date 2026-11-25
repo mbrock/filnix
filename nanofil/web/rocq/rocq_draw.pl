@@ -66,9 +66,12 @@ github('https://github.com/mbrock/filnix/blob/main/').
 %% State
 
 %  rocq_set_source(+Text, +Comments): the source the positions are in and
-%  the comments still to draw, cm(From, To, Text, Kind).
+%  the comments still to draw, cm(From, To, Text, Kind). Precompute newline
+%  offsets once so line_of/2 is O(log Lines) rather than O(FileSize).
 rocq_set_source(Text, Cms) :-
-    nb_setval(rq_text, Text), nb_setval(rq_notes, Cms), nb_setval(rq_mod, []),
+    findall(P, sub_string(Text, P, 1, _, "\n"), Ps),
+    NLs =.. [nl|Ps],
+    nb_setval(rq_text, Text), nb_setval(rq_nls, NLs), nb_setval(rq_notes, Cms), nb_setval(rq_mod, []),
     rocq_set_states(none),
     ( nb_current(rq_page, _) -> true ; nb_setval(rq_page, none) ),
     ( nb_current(rq_file, _) -> true ; nb_setval(rq_file, none) ).
@@ -79,15 +82,31 @@ rocq_set_states(States) :- nb_setval(rq_states, States).
 
 src_text(F-T, S) :- nb_getval(rq_text, Text), L is T - F, sub_string(Text, F, L, _, S).
 
-line_of(O, L) :- nb_getval(rq_text, Text), sub_string(Text, 0, O, _, Pre),
-    split_string(Pre, "\n", "", Ls), length(Ls, L).
+line_of(O, L) :-
+    nb_getval(rq_nls, NLs),
+    functor(NLs, _, N),
+    nl_count_lt(1, N, NLs, O, Count),
+    L is Count + 1.
+
+nl_count_lt(Lo, Hi, _, _, Count) :- Lo > Hi, !, Count is Lo - 1.
+nl_count_lt(Lo, Hi, NLs, O, Count) :-
+    Mid is (Lo + Hi) >> 1,
+    arg(Mid, NLs, Pos),
+    (   Pos < O -> Lo1 is Mid + 1, nl_count_lt(Lo1, Hi, NLs, O, Count)
+    ;   Hi1 is Mid - 1, nl_count_lt(Lo, Hi1, NLs, O, Count)
+    ).
 
 note_kind(Text, cm(F, T, S), cm(F, T, S, Kind)) :-
-    sub_string(Text, 0, F, _, Pre),
-    % The last line, including an empty one after a newline. Searching
-    % every newline for a later one made comment placement quadratic.
-    split_string(Pre, "\n", "", Lines), last(Lines, Line),
-    ( split_string(Line, "", " \t", [""]) -> Kind = own ; Kind = trailing ).
+    ( line_indent_only(F, Text) -> Kind = own ; Kind = trailing ).
+
+%  True when only spaces/tabs appear between the preceding newline (or
+%  start of file) and 0-based character offset F.
+line_indent_only(0, _) :- !.
+line_indent_only(I, Text) :-
+    string_code(I, Text, C),
+    (   C =:= 0'\n -> true
+    ;   ( C =:= 0'  ; C =:= 0'\t ) -> I1 is I - 1, line_indent_only(I1, Text)
+    ).
 
 %% The index of names
 
@@ -2412,10 +2431,11 @@ rocq_fence(Lines) -->
       ( nb_current(rq_page, P0) -> true ; P0 = none ),
       ( nb_current(rq_file, F0) -> true ; F0 = none ),
       ( nb_current(rq_text, T0) -> true ; T0 = "" ),
+      ( nb_current(rq_nls, L0) -> true ; L0 = nl ),
       ( nb_current(rq_notes, N0) -> true ; N0 = [] ),
       nb_setval(rq_page, none), nb_setval(rq_file, none), rocq_set_source(Text, Cms) }, !,
     el(div, "dterm-rocq rq-fence", rocq_items(Items)),
-    { nb_setval(rq_page, P0), nb_setval(rq_file, F0), nb_setval(rq_text, T0), nb_setval(rq_notes, N0) }.
+    { nb_setval(rq_page, P0), nb_setval(rq_file, F0), nb_setval(rq_text, T0), nb_setval(rq_nls, L0), nb_setval(rq_notes, N0) }.
 rocq_fence(Lines) --> { atomic_list_concat(Lines, '\n', T) }, el(pre, "fence lang-rocq", esc(T)).
 
 %  prolog_ref(+Code, -Href): Code is name/N or module:name/N of nanofil's

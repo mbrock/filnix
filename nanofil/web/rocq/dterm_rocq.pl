@@ -42,48 +42,231 @@
 
 main :-
     current_prolog_flag(argv, [Out, Root|Args0]),
-    %  --states=FILE, once per capture (the theories', the spikes'): the
-    %  files of all of them.
-    partition([C]>>atom_concat('--states=', _, C), Args0, StateArgs, Args1),
-    (   StateArgs == [] -> nb_setval(rq_capture, none)
-    ;   foldl(read_states, StateArgs, _{files:_{}}, States), nb_setval(rq_capture, States)
+    parse_flags(Args0, Flags, Files),
+    (   memberchk(states(StateArgs), Flags), StateArgs \== []
+    ->  foldl(read_states, StateArgs, _{files:_{}}, States), nb_setval(rq_capture, States)
+    ;   nb_setval(rq_capture, none)
     ),
-    %  --concepts=DIR: [[name]] in comments links to DIR's concepts.
-    (   select(K, Args1, Args), atom_concat('--concepts=', CDir, K)
+    (   memberchk(concepts(CDir), Flags)
     ->  concepts_load(CDir), nb_setval(rq_concepts, '../')
-    ;   Args = Args1
+    ;   true
     ),
-    (   select(A, Args, Files), atom_concat('--prolog=', Dir, A)
+    (   memberchk(prolog(Dir), Flags)
     ->  index_prolog(Dir), nb_setval(rq_prolog, '../'),
         % C in comments is drawn from nanofil's parse (c/c_draw.pl).
         nb_setval(c_src_dir, Dir), nb_setval(c_play_root, '../play/'),
         % Load the C frontend here, before the workers fork, rather than
         % in the middle of whichever large page first draws C.
         (   current_predicate(c_draw:c_ready/0) -> ignore(c_draw:c_ready) ; true )
-    ;   Files = Args, nb_setval(rq_prolog, none)
+    ;   nb_setval(rq_prolog, none)
     ),
-    maplist(read_or_report(Root), Files, Read),
-    (   memberchk(failed, Read) -> format(user_error, "dterm-rocq: a file above does not read~n", []), halt(1)
-    ;   true
-    ),
-    nb_setval(rq_files, Files),
-    forall(member(page(F, _, Items, _), Read), ( page_name(F, P), rocq_index_items(P, F, Items) )),
-    forall(member(page(F, Text, Items, Cms), Read), ( page_head(Items, Text, Cms, Head, _), summarize(F, Text, Head) )),
-    write_source_pages(Out, Read),
-    % The index draws only prose, outside any page's source.
-    rocq_set_source("", []),
-    directory_file_path(Out, 'index.html', IPath),
-    write_page(IPath, index_page(Read)).
+    (   memberchk(index_only, Flags)
+    ->  findall(MF, member(meta_in(MF), Flags), MetaIns),
+        load_meta_files(MetaIns, Metas0),
+        sort(1, @<, Metas0, Metas),
+        rocq_set_source("", []),
+        directory_file_path(Out, 'index.html', IPath),
+        write_page(IPath, index_page(Metas))
+    ;   nb_setval(rq_files, Files),
+        worker_count(Files, N),
+        length(Files, NFiles),
+        (   N > 1, NFiles >= 16
+        ->  index_files_parallel(Out, Root, N, Files, ShardGlobals, Metas),
+            (   memberchk(meta_out(MetaOut), Flags) -> write_meta_file(MetaOut, ShardGlobals, Metas) ; true ),
+            % Load imported globals after this shard's own globals so a shard's
+            % own tree takes priority over imported theories, matching monolithic order.
+            forall(member(globals_in(GF), Flags), load_globals_file(GF)),
+            draw_files_parallel(Out, Root, N, Files)
+        ;   maplist(read_or_report(Root), Files, Read),
+            (   memberchk(failed, Read) -> format(user_error, "dterm-rocq: a file above does not read~n", []), halt(1)
+            ;   true
+            ),
+            index_read_pages(Read, ShardGlobals, Metas),
+            (   memberchk(meta_out(MetaOut), Flags) -> write_meta_file(MetaOut, ShardGlobals, Metas) ; true ),
+            forall(member(globals_in(GF), Flags), load_globals_file(GF)),
+            write_source_pages(Out, Read)
+        ),
+        (   memberchk(no_index, Flags)
+        ->  true
+        ;   rocq_set_source("", []),
+            directory_file_path(Out, 'index.html', IPath),
+            write_page(IPath, index_page(Metas))
+        )
+    ).
 
-%  Once every file is read and indexed, the pages are independent: forked
-%  workers, one per core up to 8, draw them. Each claims the next page,
-%  longest source first, by making its claim directory, which only one
-%  worker can do.
-write_source_pages(Out, Read) :-
+parse_flags(Args, [states(States)|RestFlags], Files) :-
+    partition(is_flag, Args, FlagArgs, Files),
+    findall(S, ( member(S, FlagArgs), atom_concat('--states=', _, S) ), States),
+    findall(F, ( member(A, FlagArgs), parse_flag(A, F) ), RestFlags).
+
+is_flag(A) :- atom_concat('--', _, A).
+
+parse_flag(A, concepts(D)) :- atom_concat('--concepts=', D, A), !.
+parse_flag(A, prolog(D)) :- atom_concat('--prolog=', D, A), !.
+parse_flag(A, globals_in(F)) :- atom_concat('--globals-in=', F, A), !.
+parse_flag(A, meta_in(F)) :- atom_concat('--meta-in=', F, A), !.
+parse_flag(A, meta_out(F)) :- atom_concat('--meta-out=', F, A), !.
+parse_flag('--no-index', no_index) :- !.
+parse_flag('--index-only', index_only) :- !.
+
+worker_count(Files, N) :-
     (   getenv('NIX_BUILD_CORES', C0), atom_number(C0, C), C > 0 -> true
     ;   current_prolog_flag(cpu_count, C)
     ),
-    length(Read, NPages), N is min(8, min(C, NPages)),
+    length(Files, NPages),
+    N is min(8, min(C, NPages)).
+
+sort_files_largest(Root, Files, Sorted) :-
+    map_list_to_pairs([F, Sz]>>(directory_file_path(Root, F, P), size_file(P, Sz)), Files, Sized),
+    keysort(Sized, Asc), reverse(Asc, Desc), pairs_values(Desc, Sorted).
+
+%  Pass 1 (parallel): each worker parses claimed files, emits any raw
+%  warnings, and writes only the tiny rocq_global/5 and page_meta/5 facts
+%  for that file so the parent never retains all ASTs in memory.
+index_files_parallel(Out, Root, N, Files, ShardGlobals, Metas) :-
+    sort_files_largest(Root, Files, Ordered),
+    directory_file_path(Out, '.idx-claims', Claims), make_directory(Claims),
+    directory_file_path(Out, '.idx-data', IdxDir), make_directory(IdxDir),
+    flush_output(user_output), flush_output(user_error),
+    numlist(1, N, Ws), maplist(index_worker(Root, Claims, IdxDir, Ordered), Ws, Pids),
+    maplist([Pid, S]>>wait(Pid, S), Pids, Statuses),
+    delete_directory_and_contents(Claims),
+    (   forall(member(S, Statuses), S == exited(0)) -> true
+    ;   delete_directory_and_contents(IdxDir),
+        format(user_error, "dterm-rocq: a file above does not read~n", []), halt(1)
+    ),
+    collect_idx_dir(IdxDir, Files, ShardGlobals, Metas),
+    delete_directory_and_contents(IdxDir).
+
+index_worker(Root, Claims, IdxDir, Files, _, Pid) :-
+    fork(Pid0),
+    (   Pid0 == child
+    ->  set_stream(user_error, buffer(line)), nb_setval(rq_failed, false),
+        forall(( member(File, Files), claim_file(Claims, File) ),
+               index_one_file(Root, IdxDir, File)),
+        (   nb_getval(rq_failed, false) -> halt(0) ; halt(1) )
+    ;   Pid = Pid0
+    ).
+
+index_one_file(Root, IdxDir, File) :-
+    read_or_report(Root, File, Page),
+    (   Page == failed
+    ->  nb_setval(rq_failed, true)
+    ;   Page = page(File, Text, Items, Cms),
+        page_name(File, P),
+        retractall(rocq_draw:rocq_global(_, _, P, _, _)),
+        rocq_index_items(P, File, Items),
+        findall(rocq_global(S, Q, P, K, File), rocq_draw:rocq_global(S, Q, P, K, File), Gs),
+        retractall(rocq_draw:rocq_global(_, _, P, _, _)),
+        page_meta_of(File, Text, Items, Cms, Meta),
+        file_name_extension(P, pl, Base), directory_file_path(IdxDir, Base, Path),
+        write_meta_file(Path, Gs, [Meta]),
+        garbage_collect
+    ).
+
+collect_idx_dir(IdxDir, Files, ShardGlobals, Metas) :-
+    maplist(read_idx_entry(IdxDir), Files, GsLists, Metas),
+    append(GsLists, ShardGlobals),
+    forall(member(rocq_global(S, Q, P, K, F), ShardGlobals), assert_global_once(S, Q, P, K, F)).
+
+read_idx_entry(IdxDir, File, Gs, Meta) :-
+    page_name(File, P),
+    file_name_extension(P, pl, Base), directory_file_path(IdxDir, Base, Path),
+    read_term_file(Path, Terms),
+    include([T]>>(T = rocq_global(_, _, _, _, _)), Terms, Gs),
+    Meta = page_meta(_, _, _, _, _),
+    memberchk(Meta, Terms).
+
+%  Pass 2 (parallel): parent now holds only the compact global index (no
+%  ASTs). Each worker parses and draws one file at a time, freeing its AST
+%  on backtracking.
+draw_files_parallel(Out, Root, N, Files) :-
+    sort_files_largest(Root, Files, Ordered),
+    directory_file_path(Out, '.claims', Claims), make_directory(Claims),
+    flush_output(user_output), flush_output(user_error),
+    numlist(1, N, Ws), maplist(draw_file_worker(Out, Root, Claims, Ordered), Ws, Pids),
+    maplist([Pid, S]>>wait(Pid, S), Pids, Statuses),
+    delete_directory_and_contents(Claims),
+    (   forall(member(S, Statuses), S == exited(0)) -> true
+    ;   format(user_error, "dterm-rocq: the pages named above were not drawn~n", []), halt(1)
+    ).
+
+draw_file_worker(Out, Root, Claims, Files, _, Pid) :-
+    fork(Pid0),
+    (   Pid0 == child
+    ->  set_stream(user_error, buffer(line)), nb_setval(rq_failed, false),
+        forall(( member(File, Files), claim_file(Claims, File) ),
+               draw_file_from_disk(Out, Root, File)),
+        (   nb_getval(rq_failed, false) -> halt(0) ; halt(1) )
+    ;   Pid = Pid0
+    ).
+
+draw_file_from_disk(Out, Root, File) :-
+    directory_file_path(Root, File, Path),
+    (   catch(rocq_read_file(Path, Text, rocq(Items, Cms0)), E, ( print_message(error, E), fail ))
+    ->  maplist(note_kind(Text), Cms0, Cms),
+        rocq_notations(Ns),
+        retractall(page_notations(File, _)), assertz(page_notations(File, Ns)),
+        draw_or_report(Out, page(File, Text, Items, Cms)),
+        retractall(page_notations(File, _))
+    ;   format(user_error, "dterm-rocq: cannot read ~w~n", [File]),
+        nb_setval(rq_failed, true)
+    ).
+
+index_read_pages(Read, ShardGlobals, Metas) :-
+    maplist(index_one_read, Read, GsLists, Metas),
+    append(GsLists, ShardGlobals).
+
+index_one_read(page(F, Text, Items, Cms), Gs, Meta) :-
+    page_name(F, P),
+    rocq_index_items(P, F, Items),
+    findall(rocq_global(S, Q, P, K, F), rocq_draw:rocq_global(S, Q, P, K, F), Gs),
+    page_meta_of(F, Text, Items, Cms, Meta).
+
+page_meta_of(File, Text, Items, Cms, page_meta(File, Sum, NL, NLem, NAx)) :-
+    page_head(Items, Text, Cms, Head, _),
+    summarize_text(File, Text, Head, Sum, NL),
+    rocq_items_names(Items, Ns),
+    aggregate_all(count, member(n(_, _, _, lemma), Ns), NLem),
+    aggregate_all(count, member(n(_, _, _, axiom), Ns), NAx).
+
+assert_global_once(S, Q, P, K, F) :-
+    ( rocq_draw:rocq_global(S, Q, P, _, _) -> true ; assertz(rocq_draw:rocq_global(S, Q, P, K, F)) ).
+
+write_meta_file(Path, Gs, Metas) :-
+    setup_call_cleanup(
+        open(Path, write, Out, [encoding(utf8)]),
+        (   forall(member(G, Gs), ( write_canonical(Out, G), write(Out, '.\n') )),
+            forall(member(M, Metas), ( write_canonical(Out, M), write(Out, '.\n') ))
+        ),
+        close(Out)
+    ).
+
+load_globals_file(Path) :-
+    read_term_file(Path, Terms),
+    forall(member(rocq_global(S, Q, P, K, F), Terms), assert_global_once(S, Q, P, K, F)).
+
+load_meta_files(Paths, Metas) :-
+    maplist(load_one_meta_file, Paths, MetaLists),
+    append(MetaLists, Metas).
+
+load_one_meta_file(Path, Metas) :-
+    read_term_file(Path, Terms),
+    forall(member(rocq_global(S, Q, P, K, F), Terms), assert_global_once(S, Q, P, K, F)),
+    include([T]>>(T = page_meta(_, _, _, _, _)), Terms, Metas).
+
+read_term_file(Path, Terms) :-
+    setup_call_cleanup(open(Path, read, In, [encoding(utf8)]), read_all_terms(In, Terms), close(In)).
+
+read_all_terms(In, Terms) :-
+    read_term(In, T, [double_quotes(string)]),
+    (   T == end_of_file -> Terms = []
+    ;   Terms = [T|Rest], read_all_terms(In, Rest)
+    ).
+
+%  Small-batch in-memory drawing (for tests and short file lists).
+write_source_pages(Out, Read) :-
+    worker_count(Read, N),
     (   N =< 1
     ->  nb_setval(rq_failed, false),
         forall(member(Page, Read), draw_or_report(Out, Page)),
@@ -124,7 +307,9 @@ draw_or_report(Out, Page) :-
         nb_setval(rq_failed, true)
     ).
 
-claim(Claims, page(File, _, _, _)) :-
+claim(Claims, page(File, _, _, _)) :- claim_file(Claims, File).
+
+claim_file(Claims, File) :-
     page_name(File, P), directory_file_path(Claims, P, Dir),
     catch(make_directory(Dir), error(existence_error(_, _), _), fail).
 
@@ -280,18 +465,16 @@ page_head(Items, Text, Cms, Head, Body) :-
 
 %  The index blurb of a file, or the first sentence of its header when
 %  a new file has no explicit blurb yet.
-:- dynamic page_summary/3.
-
-summarize(File, Text, Head) :-
-    split_string(Text, "\n", "", Ls), length(Ls, NL),
+summarize_text(File, Text, Head, Sum, NL) :-
+    aggregate_all(count, sub_string(Text, _, 1, _, "\n"), N0),
+    NL is N0 + 1,
     (   file_blurb(File, Sum) -> true
     ;   Head = [cm(_, _, T, _)|_], comment_prose_lines(T, Lines0),
         header_title(T, Lines0, _, Lines),
         blocks(Lines, [p(P)|_])
     ->  ( sub_string(P, B, _, _, ". "), B > 20 -> B1 is B + 1, sub_string(P, 0, B1, _, Sum) ; Sum = P )
     ;   Sum = ""
-    ),
-    assertz(page_summary(File, Sum, NL)).
+    ).
 
 %% Contents
 
@@ -326,15 +509,17 @@ nav_name(n(N, Q, K)) --> { uri_encoded(fragment, Q, F), atom_concat('#', F, H) }
     el(li, K, el(a, none, [href=H], esc(N))).
 
 files_nav(Current) -->
-    { nb_getval(rq_files, Files) },
+    { nb_getval(rq_files, Files),
+      file_directory_name(Current, Dir),
+      include([F]>>file_directory_name(F, Dir), Files, Siblings) },
     el(details, "nav-block files", [open=open],
        ( el(summary, "toc-title", "Files"),
          el(ul, "nav-top", ( el(li, none, el(a, none, [href="index.html"], "Index")),
-                             seq(Files, file_nav(Current)) )) )).
+                             seq(Siblings, file_nav(Current)) )) )).
 
 file_nav(Current, F) --> { page_name(F, P), file_name_extension(P, html, H), ( F == Current -> C = current ; C = none ),
-                           ( atom_concat('nanofil/', R, F) -> true ; R = F ) },
-    el(li, C, el(a, none, [href=H], esc(R))).
+                           file_base_name(F, Base) },
+    el(li, C, el(a, none, [href=H], esc(Base))).
 
 shell(Title, Crumbs, Main) -->
     "<!doctype html>\n<html lang=\"en\">\n<head>\n<meta charset=\"utf-8\">\n",
@@ -437,7 +622,7 @@ index_page(Pages) -->
                               el(a, none, [href="rocq-backend-Regs.html"], "Regs.v"), ", ",
                               el(a, none, [href="rocq-backend-RegsProof.html"], "RegsProof.v"), ", ",
                               el(a, none, [href="rocq-backend-NfbProof.html"], "NfbProof.v"), ")." )) )) )),
-               { findall(D, ( member(page(F, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds),
+               { findall(D, ( member(page_meta(F, _, _, _, _), Pages), file_directory_name(F, D) ), Ds0), sort(Ds0, Ds),
                  findall(G, role_group(G), Groups),
                  findall(GD, ( member(group(_, _, GDs), Groups), member(GD, GDs) ), Known0), sort(Known0, Known),
                  subtract(Ds, Known, Extra) },
@@ -504,11 +689,9 @@ file_dir(Pages, Dir) -->
     el(h3, "rq-dir", el(a, none, [href=Src], ( esc(R), "/" ))),
     el(dl, "rq-files", seq(Pages, file_row(Dir))).
 
-file_row(Dir, page(F, _, Items, _)) --> { file_directory_name(F, Dir) }, !,
-    { page_name(F, P), file_name_extension(P, html, H), ( page_summary(F, S, N) -> true ; S = "", N = 0 ),
-      file_base_name(F, Base), rocq_items_names(Items, Ns),
-      aggregate_all(count, member(n(_, _, _, lemma), Ns), NL),
-      aggregate_all(count, member(n(_, _, _, axiom), Ns), NA),
+file_row(Dir, page_meta(F, S, N, NL, NA)) --> { file_directory_name(F, Dir) }, !,
+    { page_name(F, P), file_name_extension(P, html, H),
+      file_base_name(F, Base),
       nb_setval(rq_file, F), nb_setval(rq_page, P) },
     el(dt, none, ( el(a, none, [href=H], esc(Base)),
                    el(span, "rq-file-meta", ( esc(N), "\u00A0lines", count_(NL, lemma), count_(NA, axiom) )) )),

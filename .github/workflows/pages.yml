@@ -70,10 +70,6 @@ jobs:
       - name: Build the complete site
         run: nix build -L --max-jobs auto --cores 0 .#site
       - name: Prepare the release
-        env:
-          AWS_ACCESS_KEY_ID: ${{ secrets.FILNIX_R2_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.FILNIX_R2_SECRET_ACCESS_KEY }}
-          AWS_DEFAULT_REGION: auto
         run: |
           cp -rL result _site
           chmod u+w _site
@@ -81,7 +77,8 @@ jobs:
           # Dates and activity under each document's title, the home
           # page's recent documents, and history.json, from git.
           python3 packages/site/history.py _site .
-          bash deploy/site/equity.sh _site
+          # PDF generation (deploy/site/equity.sh) is paused on the publish path;
+          # the scripts and Typst templates remain in the repo for standalone builds.
           python3 deploy/site/prepare.py _site "$GITHUB_SHA"
       - name: Publish the release
         id: publish
@@ -112,7 +109,10 @@ jobs:
         run: |
           set -o pipefail
           nix build --no-link --print-out-paths --max-jobs 0 \
-            .#site.rocqPages .#site.prologPages | cachix push filc
+            .#site.play .#site.prologPages .#site.rocqPages \
+            .#site.rocqPagesTheories .#site.rocqPagesOther \
+            .#site.rocqPagesBackend .#site.rocqPagesSpikes \
+            .#site.rocqPagesGlibc | cachix push filc
       # Retain the recovery format, but upload it after publication.
       - name: Package the published site
         run: tar -C _site -cf "$RUNNER_TEMP/artifact.tar" .
