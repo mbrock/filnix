@@ -7,7 +7,8 @@
 From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
   ExtrOcamlZBigInt ExtrOcamlNatInt.
 From Stdlib Require Import ZArith List String Ascii.
-From Frontend Require Import CAst CAttrs CLex CParse CCanon CPp.
+From Frontend Require Import CAst CAttrs CLex CIeee CParse CCanon CPp
+  CTypeAst CTypeTables CTypes CTypeCanon.
 
 Extract Inlined Constant Ascii.eqb => "(=)".
 Extract Inlined Constant String.eqb => "String.equal".
@@ -51,8 +52,13 @@ Extract Inlined Constant List.length => "List.length".
 Set Extraction Output Directory "extraction".
 Extraction "nanofil_frontend.ml"
   CLex.lex_chars CLex.c23_tokens
+  CIeee.ieee_binary CIeee.ieee_neg CIeee.ieee_sqrt CIeee.ieee_convert
+  CIeee.ieee_from_int CIeee.ieee_to_int CIeee.ieee_compare
+  CIeee.ieee_parse CIeee.ieee_decimal
   CParse.c_parse CParse.c_constant_expression
   CCanon.emit_token CCanon.emit_item
   CPp.preprocess_file CPp.make_pp_env CPp.parse_include_dirs
   CPp.default_feature_queries CPp.add_cli_define CPp.prepend_include_dirs
-  CPp.pp_value.
+  CPp.pp_value
+  CTypeAst.default_type_opts CTypeAst.mkCTypeOpts
+  CTypeCanon.check_tu_items.

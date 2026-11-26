@@ -34,7 +34,7 @@ make -C "$anf/lower" -j"${NIX_BUILD_CORES:-4}" anf-lower >"$work/anf-lower.log"
 [[ -x "$frontend/nanofil-frontend" ]] || make -C "$frontend" -j"${NIX_BUILD_CORES:-4}" >"$work/frontend.log"
 echo "$(stamp) tools ready in $((SECONDS - t0)) s"
 
-cp "$frontend"/{CAst,CAttrs,CLex,CParse,CCanon,CPp}.v "$work/f/"
+cp "$frontend"/{CAst,CAttrs,CLex,CIeee,CParse,CCanon,CPp,CTypeAst,CTypeTables,CTypes,CTypeCanon}.v "$work/f/"
 cp "$anf/lower/Prims.v" "$here"/{Drive,Tap}.v "$work/t/"
 
 t0=$SECONDS
@@ -44,9 +44,14 @@ echo "$(stamp) compiling frontend and tapping λANF (CertiRocq -O 1 --anf-varian
   rocq compile -w -all -R . Frontend CAst.v
   rocq compile -w -all -R . Frontend CAttrs.v
   rocq compile -w -all -R . Frontend CLex.v
+  rocq compile -w -all -R . Frontend CIeee.v
   rocq compile -w -all -R . Frontend CParse.v
   rocq compile -w -all -R . Frontend CCanon.v
   rocq compile -w -all -R . Frontend CPp.v
+  rocq compile -w -all -R . Frontend CTypeAst.v
+  rocq compile -w -all -R . Frontend CTypeTables.v
+  rocq compile -w -all -R . Frontend CTypes.v
+  rocq compile -w -all -R . Frontend CTypeCanon.v
 )
 (
   cd "$work/t"

@@ -1,6 +1,6 @@
-(* CLI driver for the extracted Gallina C frontend (CLex.v + CParse.v + CCanon.v + CPp.v).
-   Canonical Prolog term serialization lives in CCanon.v so OCaml and λANF builds
-   share one printer. *)
+(* CLI driver for the extracted Gallina C frontend (CLex, CParse, CCanon, CPp,
+   CIeee, CTypes). Canonical Prolog term serialization lives in CCanon.v and
+   CTypeCanon.v so OCaml and λANF builds share one printer. *)
 
 open Nanofil_frontend
 
@@ -181,6 +181,83 @@ let write_canon_list emit_elem xs =
       in
       go true xs
 
+let parse_fmt = function
+  | "s" -> FmtS
+  | "d" -> FmtD
+  | "x" -> FmtX
+  | s -> failwith ("unknown ieee format: " ^ s)
+
+let parse_binop = function
+  | "add" -> IeeeAdd
+  | "sub" -> IeeeSub
+  | "mul" -> IeeeMul
+  | "div" -> IeeeDiv
+  | s -> failwith ("unknown ieee binop: " ^ s)
+
+let parse_cond = function
+  | "eq" -> ICEq
+  | "ne" -> ICNe
+  | "lt" -> ICLt
+  | "le" -> ICLe
+  | "gt" -> ICGt
+  | "ge" -> ICGe
+  | "o" -> ICOrd
+  | "uo" -> ICUnord
+  | s -> failwith ("unknown ieee cond: " ^ s)
+
+let run_ieee_batch () =
+  try
+    while true do
+      let line = input_line stdin in
+      match split_ws line with
+      | [ "parse"; k; lit ] -> (
+          match ieee_parse (parse_fmt k) (string_to_char_list lit) with
+          | Some b -> Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int b)
+          | None -> print_endline "fail")
+      | [ "decimal"; k; b ] -> (
+          match ieee_decimal (parse_fmt k) (Big_int_Z.big_int_of_string b) with
+          | Some s -> Printf.printf "ok %s\n" s
+          | None -> print_endline "fail")
+      | [ "from_int"; k; n ] ->
+          let b = ieee_from_int (parse_fmt k) (Big_int_Z.big_int_of_string n) in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int b)
+      | [ "to_int"; k; b ] -> (
+          match ieee_to_int (parse_fmt k) (Big_int_Z.big_int_of_string b) with
+          | Some n -> Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int n)
+          | None -> print_endline "fail")
+      | [ "neg"; k; a ] ->
+          let r = ieee_neg (parse_fmt k) (Big_int_Z.big_int_of_string a) in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int r)
+      | [ "sqrt"; k; a ] ->
+          let r = ieee_sqrt (parse_fmt k) (Big_int_Z.big_int_of_string a) in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int r)
+      | [ "convert"; f; t; a ] ->
+          let r =
+            ieee_convert (parse_fmt f) (parse_fmt t)
+              (Big_int_Z.big_int_of_string a)
+          in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int r)
+      | [ "binary"; k; op; a; b ] ->
+          let r =
+            ieee_binary (parse_fmt k) (parse_binop op)
+              (Big_int_Z.big_int_of_string a)
+              (Big_int_Z.big_int_of_string b)
+          in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int r)
+      | [ "compare"; k; c; a; b ] ->
+          let r =
+            ieee_compare (parse_fmt k) (parse_cond c)
+              (Big_int_Z.big_int_of_string a)
+              (Big_int_Z.big_int_of_string b)
+          in
+          Printf.printf "ok %s\n" (Big_int_Z.string_of_big_int r)
+      | [] -> ()
+      | _ ->
+          Printf.eprintf "bad ieee query: %s\n" line;
+          exit 2
+    done
+  with End_of_file -> ()
+
 let lex_file ~c23 file =
   let cs = read_file_bytes file in
   match lex_chars file cs with
@@ -234,6 +311,7 @@ let () =
           | _ -> Some "clang")
   in
   match List.rev !pos with
+  | [ "ieee-batch" ] -> run_ieee_batch ()
   | [ "lex"; file ] -> (
       match lex_file ~c23:!c23 file with
       | COk ts -> write_canon_list emit_token ts
@@ -276,6 +354,56 @@ let () =
           | CErr m ->
               Printf.eprintf "parse error: %s\n" m;
               exit 1))
+  | [ "typecheck"; file ] -> (
+      match lex_file ~c23:!c23 file with
+      | CErr m ->
+          Printf.eprintf "lex error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items ->
+              let vecs =
+                match Sys.getenv_opt "NANOFIL_VECTORS" with
+                | Some "0" -> false
+                | _ -> true
+              in
+              let gnu89 =
+                match Sys.getenv_opt "NANOFIL_STD" with
+                | Some "gnu89" -> true
+                | _ -> false
+              in
+              let opts = { topt_vectors = vecs; topt_gnu89 = gnu89 } in
+              List.iter print_endline (check_tu_items items opts)))
+  | [ "pp-typecheck"; file ] -> (
+      let base_env =
+        discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
+          ~inc_dirs ~defines
+      in
+      match pp_one ~c23:!c23 ~clang_opt:effective_clang base_env file with
+      | CErr m ->
+          Printf.eprintf "pp error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items ->
+              let vecs =
+                match Sys.getenv_opt "NANOFIL_VECTORS" with
+                | Some "0" -> false
+                | _ -> true
+              in
+              let gnu89 =
+                match Sys.getenv_opt "NANOFIL_STD" with
+                | Some "gnu89" -> true
+                | _ -> false
+              in
+              let opts = { topt_vectors = vecs; topt_gnu89 = gnu89 } in
+              List.iter print_endline (check_tu_items items opts)))
   | "bench" :: files when files <> [] ->
       let t0 = Unix.gettimeofday () in
       let ok = ref 0 in
@@ -357,5 +485,5 @@ let () =
         !ok !err !total_toks !total_items dt dprof
   | _ ->
       prerr_endline
-        "usage: nanofil-frontend [--c23] [--no-profile] [--clang PATH] [-I DIR] [-D NAME[=VAL]] (lex | parse | pp | pp-parse | bench | pp-only-bench | pp-bench) FILE...";
+        "usage: nanofil-frontend [--c23] [--no-profile] [--clang PATH] [-I DIR] [-D NAME[=VAL]] (lex | parse | pp | pp-parse | ieee-batch | typecheck | pp-typecheck | bench | pp-only-bench | pp-bench) FILE...";
       exit 2

@@ -2,7 +2,12 @@
 CAst.v
 CAttrs.v
 CLex.v
+CIeee.v
 CParse.v
 CCanon.v
 CPp.v
+CTypeAst.v
+CTypeTables.v
+CTypes.v
+CTypeCanon.v
 Extract.v
