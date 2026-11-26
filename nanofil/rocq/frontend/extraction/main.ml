@@ -299,6 +299,132 @@ let emit_ir_module items =
       exit 1
   | TOk res -> List.iter (output_string stdout) (ir_module_lines res.cm_items)
 
+let read_ir_file path =
+  let ic = open_in_bin path in
+  let buf = Bytes.create 65536 in
+  let closed = ref false in
+  let close_once () =
+    if not !closed then (
+      closed := true;
+      close_in ic)
+  in
+  let rec next () =
+    let n = input ic buf 0 65536 in
+    if n = 0 then (
+      close_once ();
+      TextEnd)
+    else
+      let rec to_list i acc =
+        if i < 0 then acc else to_list (i - 1) (Bytes.unsafe_get buf i :: acc)
+      in
+      TextPiece (to_list (n - 1) [], fun () -> next ())
+  in
+  let res =
+    Fun.protect ~finally:close_once (fun () -> read_text (next ()))
+  in
+  match res with
+  | Some m -> m
+  | None ->
+      Printf.eprintf "ir parse error: %s\n" path;
+      exit 1
+
+let parse_opt_pass ~attrs = function
+  | "inline" -> PassInline
+  | "inline_simplified" -> PassInlineSimplified
+  | "inline_wide" -> PassInlineWide (false, attrs)
+  | "inline_wide_simplified" -> PassInlineWide (true, attrs)
+  | "promote" -> PassPromote
+  | "copy" -> PassCopy
+  | "simplify" -> PassSimplify
+  | "local_storage" -> PassLocalStorage
+  | s ->
+      Printf.eprintf "unknown pass: %s\n" s;
+      exit 2
+
+let build_opt_level ~opt_enabled ~opt_level_str ~inline_str ~simplify_str ~passes ~attrs =
+  match passes with
+  | _ :: _ ->
+      Some (OptPasses (List.map (parse_opt_pass ~attrs) passes))
+  | [] -> (
+      match opt_level_str with
+      | Some "o0" -> Some OptO0
+      | Some "o1" -> Some OptO1
+      | Some "o1-small" -> Some OptO1Small
+      | Some "o1-full" ->
+          let inl =
+            match inline_str with
+            | Some "none" -> InlNone
+            | Some "small" -> InlSmall
+            | Some "wide" | None -> InlWide attrs
+            | Some s ->
+                Printf.eprintf "unknown inline mode: %s\n" s;
+                exit 2
+          in
+          let simp =
+            match simplify_str with
+            | Some "none" -> SimpNone
+            | Some "full" | None -> SimpFull
+            | Some s ->
+                Printf.eprintf "unknown simplify mode: %s\n" s;
+                exit 2
+          in
+          Some (OptO1Full (inl, simp))
+      | Some s ->
+          Printf.eprintf "unknown opt level: %s\n" s;
+          exit 2
+      | None ->
+          if not opt_enabled then None
+          else
+            let inl =
+              match inline_str with
+              | Some "none" -> InlNone
+              | Some "small" -> InlSmall
+              | Some "wide" | None -> InlWide attrs
+              | Some s ->
+                  Printf.eprintf "unknown inline mode: %s\n" s;
+                  exit 2
+            in
+            let simp =
+              match simplify_str with
+              | Some "none" -> SimpNone
+              | Some "full" | None -> SimpFull
+              | Some s ->
+                  Printf.eprintf "unknown simplify mode: %s\n" s;
+                  exit 2
+            in
+            Some (OptO1Full (inl, simp)))
+
+let apply_opt_term level_opt m =
+  match level_opt with
+  | None -> m
+  | Some lvl -> (
+      match optimize lvl m with
+      | Some m' -> m'
+      | None ->
+          prerr_endline "optimizer failed";
+          exit 1)
+
+let print_module_term = function
+  | TApp ("module", [ TList items ]) ->
+      List.iter (output_string stdout) (ir_module_lines items)
+  | _ ->
+      prerr_endline "not a module term";
+      exit 1
+
+let emit_ir_module_opt ~opt_enabled ~opt_level_str ~inline_str ~simplify_str ~passes items =
+  let opts = lower_opts_from_env () in
+  match c_module_opts opts items with
+  | TErr err ->
+      Printf.eprintf "lower error: %s\n" (l_tr_msg unknown_loc err);
+      exit 1
+  | TOk res ->
+      let lvl =
+        build_opt_level ~opt_enabled ~opt_level_str ~inline_str ~simplify_str ~passes
+          ~attrs:res.cm_attrs
+      in
+      let m0 = TApp ("module", [ TList res.cm_items ]) in
+      print_module_term (apply_opt_term lvl m0)
+
 let emit_layouts_module items =
   let opts = lower_opts_from_env () in
   match c_module_opts opts items with
@@ -307,7 +433,7 @@ let emit_layouts_module items =
       exit 1
   | TOk res -> print_endline (module_layouts_canon res.cm_env res.cm_items)
 
-let emit_asm_module ~mode items =
+let emit_asm_module ~mode ~opt_enabled ~opt_level_str ~inline_str ~simplify_str ~passes items =
   let opts = lower_opts_from_env () in
   match c_module_opts opts items with
   | TErr err ->
@@ -320,12 +446,24 @@ let emit_asm_module ~mode items =
           exit 1
       | TOk asm_lines -> (
           let ir_items = without_symver_aliases asm_lines res.cm_items in
-          let mod_term = TApp ("module", [ TList ir_items ]) in
+          let mod_term0 = TApp ("module", [ TList ir_items ]) in
+          let lvl =
+            build_opt_level ~opt_enabled ~opt_level_str ~inline_str ~simplify_str ~passes
+              ~attrs:res.cm_attrs
+          in
           let compiled =
-            match mode with
-            | `Plain -> compile mod_term
-            | `Promoted -> compile_promoted mod_term
-            | `Allocated -> compile_allocated mod_term
+            match lvl with
+            | Some _ -> (
+                let mod_term = apply_opt_term lvl mod_term0 in
+                match mode with
+                | `Plain -> checked_lines false mod_term
+                | `Promoted -> checked_lines true mod_term
+                | `Allocated -> checked_lines_allocated mod_term)
+            | None -> (
+                match mode with
+                | `Plain -> compile mod_term0
+                | `Promoted -> compile_promoted mod_term0
+                | `Allocated -> compile_allocated mod_term0)
           in
           match compiled with
           | Refused why ->
@@ -363,10 +501,28 @@ let emit_asm_module ~mode items =
                   output_char stdout '\n')
                 asm_lines))
 
+let parse_attrs_arg s =
+  if s = "" then []
+  else
+    List.filter_map
+      (fun entry ->
+        match String.split_on_char ':' entry with
+        | [ sym; attr ] -> Some (sym, attr)
+        | _ -> None)
+      (String.split_on_char ',' s)
+
+let print_term_str t = String.concat "" (List.rev (ir_emit_term t []))
+
 let () =
   let c23 = ref false in
   let no_profile = ref false in
   let asm_mode = ref `Plain in
+  let opt_enabled = ref false in
+  let opt_level_str = ref None in
+  let inline_str = ref None in
+  let simplify_str = ref None in
+  let passes = ref [] in
+  let cli_attrs = ref [] in
   let clang_opt = ref None in
   let inc_dirs = ref [] in
   let defines = ref [] in
@@ -377,8 +533,22 @@ let () =
     let arg = Sys.argv.(!i) in
     if arg = "--c23" then c23 := true
     else if arg = "--no-profile" then no_profile := true
+    else if arg = "--plain" then asm_mode := `Plain
     else if arg = "--promoted" then asm_mode := `Promoted
     else if arg = "--allocated" then asm_mode := `Allocated
+    else if arg = "-O" then opt_enabled := true
+    else if String.length arg > 6 && String.sub arg 0 6 = "--opt=" then (
+      opt_enabled := true;
+      opt_level_str := Some (String.sub arg 6 (String.length arg - 6)))
+    else if String.length arg > 9 && String.sub arg 0 9 = "--inline=" then
+      inline_str := Some (String.sub arg 9 (String.length arg - 9))
+    else if String.length arg > 11 && String.sub arg 0 11 = "--simplify=" then
+      simplify_str := Some (String.sub arg 11 (String.length arg - 11))
+    else if String.length arg > 7 && String.sub arg 0 7 = "--pass=" then
+      passes := String.sub arg 7 (String.length arg - 7) :: !passes
+    else if String.length arg > 8 && String.sub arg 0 8 = "--attrs=" then
+      cli_attrs :=
+        !cli_attrs @ parse_attrs_arg (String.sub arg 8 (String.length arg - 8))
     else if arg = "--clang" && !i + 1 < argc then (
       incr i;
       clang_opt := Some Sys.argv.(!i))
@@ -397,6 +567,7 @@ let () =
   done;
   let inc_dirs = List.rev !inc_dirs in
   let defines = List.rev !defines in
+  let passes = List.rev !passes in
   let effective_clang =
     if !no_profile then None
     else
@@ -409,6 +580,51 @@ let () =
   in
   match List.rev !pos with
   | [ "ieee-batch" ] -> run_ieee_batch ()
+  | [ "opt"; file ] ->
+      let m0 = read_ir_file file in
+      let lvl =
+        match
+          build_opt_level ~opt_enabled:!opt_enabled ~opt_level_str:!opt_level_str
+            ~inline_str:!inline_str ~simplify_str:!simplify_str ~passes
+            ~attrs:!cli_attrs
+        with
+        | Some l -> Some l
+        | None -> Some OptO1
+      in
+      print_module_term (apply_opt_term lvl m0)
+  | [ "alias"; file ] -> (
+      match read_ir_file file with
+      | TApp ("module", [ TList items ]) ->
+          List.iter
+            (function
+              | TApp ("func", name :: _) as fn -> (
+                  match alias_facts fn with
+                  | Some facts ->
+                      let pairs = nm_to_sorted_list facts in
+                      let pair_terms =
+                        List.map (fun (k, v) -> TApp ("-", [ k; v ])) pairs
+                      in
+                      Printf.printf "%s: %s\n" (print_term_str name)
+                        (print_term_str (TList pair_terms))
+                  | None ->
+                      Printf.eprintf "alias_facts failed on %s\n"
+                        (print_term_str name);
+                      exit 1)
+              | _ -> ())
+            items
+      | _ ->
+          prerr_endline "not a module";
+          exit 1)
+  | [ "valid-contexts"; file ] -> (
+      match read_ir_file file with
+      | TApp ("module", [ TList items ]) ->
+          if valid_contexts items then print_endline "ok"
+          else (
+            print_endline "invalid";
+            exit 1)
+      | _ ->
+          prerr_endline "not a module";
+          exit 1)
   | [ "lex"; file ] -> (
       match lex_file ~c23:!c23 file with
       | COk ts -> write_canon_list emit_token ts
@@ -511,7 +727,10 @@ let () =
           | CErr m ->
               Printf.eprintf "parse error: %s\n" m;
               exit 1
-          | COk items -> emit_ir_module items))
+          | COk items ->
+              emit_ir_module_opt ~opt_enabled:!opt_enabled
+                ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                ~simplify_str:!simplify_str ~passes items))
   | [ "pp-cc-ir"; file ] -> (
       let base_env =
         discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
@@ -526,7 +745,10 @@ let () =
           | CErr m ->
               Printf.eprintf "parse error: %s\n" m;
               exit 1
-          | COk items -> emit_ir_module items))
+          | COk items ->
+              emit_ir_module_opt ~opt_enabled:!opt_enabled
+                ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                ~simplify_str:!simplify_str ~passes items))
   | [ "cc-layouts"; file ] -> (
       match lex_file ~c23:!c23 file with
       | CErr m ->
@@ -563,7 +785,10 @@ let () =
           | CErr m ->
               Printf.eprintf "parse error: %s\n" m;
               exit 1
-          | COk items -> emit_asm_module ~mode:!asm_mode items))
+          | COk items ->
+              emit_asm_module ~mode:!asm_mode ~opt_enabled:!opt_enabled
+                ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                ~simplify_str:!simplify_str ~passes items))
   | [ "pp-cc-asm"; file ] -> (
       let base_env =
         discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
@@ -578,7 +803,10 @@ let () =
           | CErr m ->
               Printf.eprintf "parse error: %s\n" m;
               exit 1
-          | COk items -> emit_asm_module ~mode:!asm_mode items))
+          | COk items ->
+              emit_asm_module ~mode:!asm_mode ~opt_enabled:!opt_enabled
+                ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                ~simplify_str:!simplify_str ~passes items))
   | "cc-ir-bench" :: files when files <> [] ->
       let opts = lower_opts_from_env () in
       let t0 = Unix.gettimeofday () in
@@ -595,9 +823,23 @@ let () =
               | COk items -> (
                   match c_module_opts opts items with
                   | TErr _ -> incr err
-                  | TOk res ->
-                      incr ok;
-                      total_items := !total_items + List.length res.cm_items)))
+                  | TOk res -> (
+                      let lvl =
+                        build_opt_level ~opt_enabled:!opt_enabled
+                          ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                          ~simplify_str:!simplify_str ~passes
+                          ~attrs:res.cm_attrs
+                      in
+                      let m0 = TApp ("module", [ TList res.cm_items ]) in
+                      match
+                        match lvl with
+                        | None -> Some m0
+                        | Some l -> optimize l m0
+                      with
+                      | Some (TApp ("module", [ TList its ])) ->
+                          incr ok;
+                          total_items := !total_items + List.length its
+                      | _ -> incr err))))
         files;
       let dt = (Unix.gettimeofday () -. t0) *. 1000.0 in
       Printf.printf
@@ -624,9 +866,23 @@ let () =
               | COk items -> (
                   match c_module_opts opts items with
                   | TErr _ -> incr err
-                  | TOk res ->
-                      incr ok;
-                      total_items := !total_items + List.length res.cm_items)))
+                  | TOk res -> (
+                      let lvl =
+                        build_opt_level ~opt_enabled:!opt_enabled
+                          ~opt_level_str:!opt_level_str ~inline_str:!inline_str
+                          ~simplify_str:!simplify_str ~passes
+                          ~attrs:res.cm_attrs
+                      in
+                      let m0 = TApp ("module", [ TList res.cm_items ]) in
+                      match
+                        match lvl with
+                        | None -> Some m0
+                        | Some l -> optimize l m0
+                      with
+                      | Some (TApp ("module", [ TList its ])) ->
+                          incr ok;
+                          total_items := !total_items + List.length its
+                      | _ -> incr err))))
         files;
       let dt = (Unix.gettimeofday () -. t0) *. 1000.0 in
       let dprof = (t0 -. tp0) *. 1000.0 in

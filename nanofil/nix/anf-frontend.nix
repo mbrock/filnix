@@ -20,6 +20,7 @@ let
       ../anf
       ../rocq/theories
       ../rocq/backend
+      ../rocq/opt
       ../rocq/frontend
       ../tests
     ];

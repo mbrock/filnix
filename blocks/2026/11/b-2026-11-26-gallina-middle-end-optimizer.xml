@@ -1,0 +1,71 @@
+<block id="b-2026-11-26-gallina-middle-end-optimizer" kind="milestone" actor="mbrock" created="2026-11-26T19:13:21Z">
+  <title>The unchecked-IR middle-end optimizer runs in pure Gallina</title>
+  <about path="nanofil/rocq/opt/Provenance.v"/>
+  <about path="nanofil/rocq/opt/OptIr.v"/>
+  <about path="nanofil/rocq/opt/OptPromote.v"/>
+  <about path="nanofil/rocq/opt/OptCopy.v"/>
+  <about path="nanofil/rocq/opt/Alias.v"/>
+  <about path="nanofil/rocq/opt/LocalStorage.v"/>
+  <about path="nanofil/rocq/opt/Simplify.v"/>
+  <about path="nanofil/rocq/opt/Inline.v"/>
+  <about path="nanofil/rocq/opt/Opt.v"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>The entire unchecked-IR middle end now lives in nine pure, zero-axiom
+    Gallina modules under <a path="nanofil/rocq/opt">nanofil/rocq/opt</a>,
+    porting <prolog>provenance.pl</prolog>, <prolog>promote.pl</prolog>,
+    <prolog>copy.pl</prolog>, <prolog>alias.pl</prolog>,
+    <prolog>local_storage.pl</prolog>, <prolog>simplify.pl</prolog>,
+    <prolog>inline.pl</prolog>, and <prolog>opt.pl</prolog>. Each pass reuses
+    the backend CFG, escape, promotion, and copy primitives while transporting
+    <ir>context/2</ir> provenance records, retiring reused temporary spellings
+    into <ir>history/5</ir>, and converting legacy <ir>loc/2</ir> markers.</p>
+  <p>The extracted OCaml driver
+    <a path="nanofil/rocq/frontend/extraction/main.ml">main.ml</a> exposes
+    standalone <sh>opt</sh>, <sh>alias</sh>, and <sh>valid-contexts</sh>
+    commands over IR text parsed by
+    <a path="nanofil/rocq/backend/IrText.v">IrText.v</a>, as well as
+    <sh>-O</sh>, <sh>--inline=none|small|wide</sh>,
+    <sh>--simplify=none|full</sh>, and <sh>--pass=</sh> flags on
+    <sh>cc-ir</sh>, <sh>pp-cc-ir</sh>, <sh>cc-asm</sh>, and
+    <sh>pp-cc-asm</sh>. Wide inlining consumes the <ir>always_inline</ir> and
+    <ir>noinline</ir> attribute list emitted by
+    <a path="nanofil/rocq/frontend/CLower.v">CLower.v</a> directly, and
+    <sh>nanofil-frontend -O --inline=wide --simplify=full --allocated pp-cc-asm</sh>
+    compiles optimized C source straight to Fil-C x86-64 assembly without
+    Prolog.</p>
+  <p>Differential testing against SWI-Prolog produces zero byte diffs across
+    every suite: all 40 <sh>.ir</sh> fixtures across 13 single-pass and
+    full-pipeline configurations (520/520) plus <sh>alias</sh> (40/40) and
+    <sh>valid-contexts</sh> (40/40), all 276 optimizer calls and 2
+    <sh>alias_facts</sh> calls captured from the 160-test
+    <a path="nanofil/tests/unit.pl">unit.pl</a> suite, and all 329 preprocessed
+    C units under <sh>nanofil/tests/</sh> across five optimization modes
+    (1,645/1,645 exact matches with full <ir>context/2</ir> provenance). On
+    <sh>swa</sh>, compiling, assembling with GNU <sh>as</sh>, linking with
+    <sh>filcc</sh>, and running the resulting zero-Prolog <sh>-O</sh> binaries
+    matched <sh>filcc -O1</sh> on 177 standalone C programs under
+    <sh>tests/c/prog/</sh>. Placing the optimizer in Gallina prepares the passes
+    for direct refinement proofs against
+    <a path="nanofil/rocq/theories/core/Semantics.v">Semantics.v</a>.</p>
+  <claim status="tested" check="nix build .#checks.x86_64-linux.nanofil-frontend">
+    <p>The extended <sh>nanofil-frontend</sh> Nix check passes all nine
+      differential suites including <sh>opt</sh> (645/645 exact across 13
+      passes and levels on all 40 <sh>.ir</sh> fixtures, <sh>alias</sh>,
+      <sh>valid-contexts</sh>, and optimized <sh>cc-ir</sh>), and all 28
+      <sh>.v</sh> files across <sh>rocq/opt</sh> and <sh>rocq/frontend</sh>
+      pass <sh>parse.sh</sh>.</p>
+  </claim>
+  <claim status="measured" check="nanofil-frontend -O --inline=wide --simplify=full pp-cc-ir-bench">
+    <p>Across the 329 lowered preprocessed C units on <sh>swa</sh> (reducing
+      6,295 IR items to 5,555), the middle-end optimizer delta drops from 32.6 s
+      in SWI-Prolog to 3.9 s in extracted Gallina-OCaml, and total
+      preprocess-to-optimized-IR wall time drops from 156.7 s to 40.3 s.</p>
+  </claim>
+  <metrics baseline="SWI-Prolog -O --inline=wide --simplify=full on 329 preprocessed C units (swa, single process)">
+    <metric label="SWI-Prolog opt delta" value="32.6" unit="s"/>
+    <metric label="Gallina-OCaml opt delta" value="3.9" unit="s" delta="8.5× faster"/>
+    <metric label="SWI-Prolog total pp+cc-ir -O" value="156.7" unit="s"/>
+    <metric label="Gallina-OCaml total pp+cc-ir -O" value="40.3" unit="s" delta="3.9× faster"/>
+  </metrics>
+</block>

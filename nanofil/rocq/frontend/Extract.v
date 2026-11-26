@@ -9,7 +9,8 @@ From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
   ExtrOcamlZBigInt ExtrOcamlNatInt.
 From Stdlib Require Import ZArith List String Ascii.
 From Nanofil Require Import Term Maps.
-From Backend Require Import Text Order Asm Compile.
+From Backend Require Import Text Order Asm Compile IrText.
+From Opt Require Import Provenance Alias Opt.
 From Frontend Require Import CAst CAttrs CLex CIeee CParse CCanon CPp
   CTypeAst CTypeTables CTypes CTypeCanon CLaunder CLowerState CLowerInit
   CLowerAsm CLowerBuiltins CLower CLayouts.
@@ -34,6 +35,18 @@ Extract Constant CAttrs.z_to_string => "Big_int_Z.string_of_big_int".
 Extract Constant CLex.code => "Char.code".
 Extract Constant CLex.byte => "Char.chr".
 Extract Constant CLex.string_of_rev =>
+  "(fun cs ->
+     let n = List.length cs in
+     let b = Bytes.create n in
+     let rec fill i = function
+       | [] -> ()
+       | c :: r -> Bytes.unsafe_set b i c; fill (i - 1) r in
+     fill (n - 1) cs;
+     Bytes.unsafe_to_string b)".
+
+Extract Constant IrText.code => "Char.code".
+Extract Constant IrText.byte => "Char.chr".
+Extract Constant IrText.string_of_rev =>
   "(fun cs ->
      let n = List.length cs in
      let b = Bytes.create n in
@@ -75,10 +88,15 @@ Extraction "nanofil_frontend.ml"
   CTypeCanon.check_tu_items
   CLaunder.launder_module
   CLowerState.default_lower_opts CLowerState.mkCLowerOpts
-  CLowerState.ir_module_lines CLowerState.ir_item_line
+  CLowerState.ir_module_lines CLowerState.ir_item_line CLowerState.ir_emit_term
   CLowerState.l_tr_msg CLowerState.unknown_loc
   CLowerAsm.c_toplevel_asm CLowerAsm.without_symver_aliases
   CLower.c_module_opts CLower.c_module
   CLayouts.module_layouts_canon
+  IrText.read_text
+  Provenance.valid_contexts Provenance.nm_to_sorted_list
+  Alias.alias_facts
+  Opt.optimize Opt.optimize_pass Opt.optimization_passes
   Compile.compile Compile.compile_promoted Compile.compile_allocated
+  Compile.checked_lines Compile.checked_lines_allocated
   Asm.rev_lines_parts.

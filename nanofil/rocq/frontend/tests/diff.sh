@@ -703,6 +703,154 @@ process([F|Fs], SI, SL) :-
     print(f"cc-ir: {ir_ok} ok + {ir_err} err = {ir_ok + ir_err}/{ir_ok + ir_err + ir_diff}, diffs={ir_diff}")
     print(f"layouts: {lay_ok} ok + {lay_err} err = {lay_ok + lay_err}/{lay_ok + lay_err + lay_diff}, diffs={lay_diff}")
 
-    if lex_diff or parse_diff or c23_diffs or pp_diffs or ieee_diffs or tc_diff or ir_diff or lay_diff:
+    # Differential check of middle-end optimizer passes (Opt.*) against
+    # SWI-Prolog (opt.pl, provenance.pl, promote.pl, copy.pl, alias.pl,
+    # simplify.pl, inline.pl, local_storage.pl) on all .ir fixtures and
+    # lowered standalone .c modules (including context/2 and cm_attrs).
+    irfiles = sorted(glob.glob(os.path.join(nanofil, 'tests', '**', '*.ir'), recursive=True))
+    opt_passes = [
+        ("promote", ["--pass=promote"], "promote"),
+        ("copy", ["--pass=copy"], "copy"),
+        ("simplify", ["--pass=simplify"], "simplify"),
+        ("inline", ["--pass=inline"], "inline"),
+        ("inline_simplified", ["--pass=inline_simplified"], "inline_simplified"),
+        ("inline_wide", ["--pass=inline_wide"], "inline_wide(plain, [])"),
+        ("inline_wide_simplified", ["--pass=inline_wide_simplified"], "inline_wide(simplified, [])"),
+        ("local_storage", ["--pass=local_storage"], "local_storage"),
+        ("o1", ["--opt=o1"], "opt(o1)"),
+        ("o1_small", ["--opt=o1-small"], "opt(o1(small))"),
+        ("o1_none_full", ["-O", "--inline=none", "--simplify=full"], "opt(o1(none, full))"),
+        ("o1_small_full", ["-O", "--inline=small", "--simplify=full"], "opt(o1(small, full))"),
+        ("o1_wide_full", ["-O", "--inline=wide", "--simplify=full"], "opt(o1(wide([]), full))"),
+    ]
+    opt_pl = os.path.join(td, 'opt_diff.pl')
+    with open(opt_pl, 'w') as f:
+        f.write(f"""
+:- use_module(library(assoc)).
+:- use_module('{nanofil}/src/ir_text').
+:- use_module('{nanofil}/src/opt').
+:- use_module('{nanofil}/src/alias').
+:- use_module('{nanofil}/src/provenance').
+:- use_module('{nanofil}/src/c_lex').
+:- use_module('{nanofil}/src/c_types').
+:- use_module('{nanofil}/src/c_parse').
+:- use_module('{nanofil}/src/c_lower').
+:- consult('{files_pl}').
+
+run_pass(opt(Opt), M0, M) :- !, opt:optimize(Opt, M0, M).
+run_pass(Pass, M0, M) :- opt:optimize_pass(Pass, M0, M).
+
+do_ir(F, OutDir) :-
+    ir_text:read_ir_file(F, M0, _),
+    M0 = module(Items),
+    atom_concat(OutDir, '/alias.txt', AF),
+    open(AF, write, SA),
+    forall(member(Fn, Items), (
+        Fn = func(Name, _, _, _, _) ->
+            alias:alias_facts(Fn, Facts),
+            assoc_to_list(Facts, Pairs),
+            with_output_to(SA, (write_term(Name, [quoted(true)]), write(': '),
+                                write_term(Pairs, [quoted(true)]), nl))
+        ; true
+    )),
+    close(SA),
+    atom_concat(OutDir, '/vc.txt', VF),
+    open(VF, write, SV),
+    ( provenance:valid_contexts(Items) -> writeln(SV, ok) ; writeln(SV, invalid) ),
+    close(SV),
+    forall(pass_spec(Tag, Spec), (
+        format(atom(PF), '~w/~w.ir', [OutDir, Tag]),
+        open(PF, write, SP),
+        once(run_pass(Spec, M0, M)),
+        with_output_to(SP, ir_text:print_module(M)),
+        close(SP)
+    )).
+
+do_c_opt([], _, _).
+do_c_opt([F|Fs], Idx, OutDir) :-
+    ( catch((c_lex:i_file_tokens(F, Toks), c_parse:c_parse(Toks, Ast),
+             once(c_lower:c_module(Ast, Mod, Attrs, _)),
+             once(opt:optimize(o1(wide(Attrs), full), Mod, OptMod))), _, fail) ->
+        format(atom(OF), '~w/c_~d.ir', [OutDir, Idx]),
+        open(OF, write, S),
+        with_output_to(S, ir_text:print_module(OptMod)),
+        close(S)
+    ; true
+    ),
+    Idx1 is Idx + 1,
+    do_c_opt(Fs, Idx1, OutDir).
+
+run_irs([]).
+run_irs([F-D|R]) :- do_ir(F, D), run_irs(R).
+
+run_opt_all(IrPairs, COutDir) :-
+    run_irs(IrPairs),
+    test_files(Fs),
+    do_c_opt(Fs, 0, COutDir).
+""")
+        for tag, _, pl_spec in opt_passes:
+            f.write(f"pass_spec('{tag}', {pl_spec}).\n")
+
+    ir_dirs = {}
+    ir_pairs = []
+    for idx, irf in enumerate(irfiles):
+        d = os.path.join(td, f'opt_ir_{idx}')
+        os.makedirs(d)
+        ir_dirs[irf] = d
+        ir_pairs.append(f"'{irf}'-'{d}'")
+    c_opt_dir = os.path.join(td, 'opt_c')
+    os.makedirs(c_opt_dir)
+    subprocess.run(
+        [swipl, '-q', '-s', os.path.join(nanofil, 'src', 'swi', 'compat.pl'),
+         '-s', opt_pl, '-g',
+         f"run_opt_all([{','.join(ir_pairs)}], '{c_opt_dir}')", '-t', 'halt'],
+        check=True)
+
+    opt_ok = opt_diff = 0
+    for irf in irfiles:
+        d = ir_dirs[irf]
+        ra = subprocess.run([fe, 'alias', irf], capture_output=True, text=True)
+        sa = open(os.path.join(d, 'alias.txt')).read()
+        if ra.returncode == 0 and ra.stdout.replace(', ', ',') == sa:
+            opt_ok += 1
+        else:
+            opt_diff += 1
+            if opt_diff <= 5:
+                print(f"OPT ALIAS DIFF {irf}", file=sys.stderr)
+        rv = subprocess.run([fe, 'valid-contexts', irf], capture_output=True)
+        sv = open(os.path.join(d, 'vc.txt'), 'rb').read().strip()
+        if rv.stdout.strip() == sv and ((sv == b'ok') == (rv.returncode == 0)):
+            opt_ok += 1
+        else:
+            opt_diff += 1
+            if opt_diff <= 5:
+                print(f"OPT VC DIFF {irf}", file=sys.stderr)
+        for tag, flags, _ in opt_passes:
+            so = open(os.path.join(d, f'{tag}.ir'), 'rb').read()
+            ro = subprocess.run([fe] + flags + ['opt', irf], capture_output=True)
+            if ro.returncode == 0 and ro.stdout == so:
+                opt_ok += 1
+            else:
+                opt_diff += 1
+                if opt_diff <= 5:
+                    print(f"OPT IR DIFF [{tag}] {irf} (rc={ro.returncode})", file=sys.stderr)
+
+    for idx, cf in enumerate(cfiles):
+        sof = os.path.join(c_opt_dir, f'c_{idx}.ir')
+        if not os.path.exists(sof):
+            continue
+        so = open(sof, 'rb').read()
+        ro = subprocess.run([fe, '-O', '--inline=wide', '--simplify=full', 'cc-ir', cf],
+                            capture_output=True)
+        if ro.returncode == 0 and ro.stdout == so:
+            opt_ok += 1
+        else:
+            opt_diff += 1
+            if opt_diff <= 5:
+                print(f"OPT CC-IR DIFF {cf} (rc={ro.returncode})", file=sys.stderr)
+
+    print(f"opt:   {opt_ok}/{opt_ok + opt_diff} exact, diffs={opt_diff}")
+
+    if lex_diff or parse_diff or c23_diffs or pp_diffs or ieee_diffs or tc_diff or ir_diff or lay_diff or opt_diff:
         sys.exit(1)
 PY

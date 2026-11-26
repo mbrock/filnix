@@ -19,6 +19,7 @@ let
       ../tests
       ../rocq/theories
       ../rocq/backend
+      ../rocq/opt
       ../rocq/frontend
       ../web/rocq/rocq_syntax.pl
       ../web/rocq/tests/parse.sh
@@ -48,7 +49,7 @@ pkgs.runCommandCC "nanofil-frontend"
     python3 tests/watch.py --label "frontend diff" -- \
       bash rocq/frontend/tests/diff.sh | tee diff.log
     python3 tests/watch.py --label "frontend parse/typecheck" -- \
-      bash web/rocq/tests/parse.sh rocq/frontend/*.v | tee parse.log
+      bash web/rocq/tests/parse.sh rocq/opt/*.v rocq/frontend/*.v | tee parse.log
     mkdir -p $out/bin
     cp rocq/frontend/nanofil-frontend $out/bin/
     cp build.log diff.log parse.log $out/

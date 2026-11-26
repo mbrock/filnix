@@ -1,5 +1,6 @@
 -R ../theories Nanofil
 -R ../backend Backend
+-R ../opt Opt
 -R . Frontend
 CAst.v
 CAttrs.v

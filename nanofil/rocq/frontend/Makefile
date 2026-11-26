@@ -1,17 +1,18 @@
 # Build the Gallina C frontend and extract ./nanofil-frontend.
-FLAGS = -R ../theories Nanofil -R ../backend Backend -R . Frontend
+FLAGS = -R ../theories Nanofil -R ../backend Backend -R ../opt Opt -R . Frontend
 SOURCES = $(shell grep '\.v$$' _RocqProject)
 MODEL = $(shell find ../theories -name '*.v' | sort)
 BACKEND = $(shell awk '/\.v$$/' ../backend/_RocqProject | sed 's|^|../backend/|')
+OPT = $(shell awk '/\.v$$/' ../opt/_RocqProject | sed 's|^|../opt/|')
 
 all: nanofil-frontend
 
 words:
-	@if grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture' $(SOURCES); then \
+	@if grep -nwE 'Admitted|Axiom|Axioms|Parameter|Conjecture' $(SOURCES) $(OPT); then \
 	  echo "frontend: no Admitted and no axioms" >&2; exit 1; fi
 
-.deps: _RocqProject $(SOURCES) $(MODEL) $(BACKEND)
-	rocq dep $(FLAGS) $(MODEL) $(BACKEND) $(SOURCES) >$@ 2>/dev/null
+.deps: _RocqProject $(SOURCES) $(MODEL) $(BACKEND) $(OPT)
+	rocq dep $(FLAGS) $(MODEL) $(BACKEND) $(OPT) $(SOURCES) >$@ 2>/dev/null
 
 %.vo: %.v
 	rocq compile $(FLAGS) $<
