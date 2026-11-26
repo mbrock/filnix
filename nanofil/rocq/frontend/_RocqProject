@@ -1,3 +1,5 @@
+-R ../theories Nanofil
+-R ../backend Backend
 -R . Frontend
 CAst.v
 CAttrs.v
@@ -10,4 +12,11 @@ CTypeAst.v
 CTypeTables.v
 CTypes.v
 CTypeCanon.v
+CLaunder.v
+CLowerState.v
+CLowerInit.v
+CLowerAsm.v
+CLowerBuiltins.v
+CLower.v
+CLayouts.v
 Extract.v

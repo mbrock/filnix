@@ -269,9 +269,104 @@ let pp_one ~c23 ~clang_opt base_env file =
   | COk ts -> COk (if c23 then c23_tokens ts else ts)
   | CErr m -> CErr m
 
+let lower_opts_from_env () =
+  let vecs =
+    match Sys.getenv_opt "NANOFIL_VECTORS" with Some "0" -> false | _ -> true
+  in
+  let gnu89 =
+    match Sys.getenv_opt "NANOFIL_STD" with Some "gnu89" -> true | _ -> false
+  in
+  let common =
+    match Sys.getenv_opt "NANOFIL_COMMON" with Some "1" -> true | _ -> false
+  in
+  let math_errno =
+    match Sys.getenv_opt "NANOFIL_MATH_ERRNO" with
+    | Some "0" -> false
+    | _ -> true
+  in
+  {
+    lo_vectors = vecs;
+    lo_gnu89 = gnu89;
+    lo_common = common;
+    lo_math_errno = math_errno;
+  }
+
+let emit_ir_module items =
+  let opts = lower_opts_from_env () in
+  match c_module_opts opts items with
+  | TErr err ->
+      Printf.eprintf "lower error: %s\n" (l_tr_msg unknown_loc err);
+      exit 1
+  | TOk res -> List.iter (output_string stdout) (ir_module_lines res.cm_items)
+
+let emit_layouts_module items =
+  let opts = lower_opts_from_env () in
+  match c_module_opts opts items with
+  | TErr err ->
+      Printf.eprintf "lower error: %s\n" (l_tr_msg unknown_loc err);
+      exit 1
+  | TOk res -> print_endline (module_layouts_canon res.cm_env res.cm_items)
+
+let emit_asm_module ~mode items =
+  let opts = lower_opts_from_env () in
+  match c_module_opts opts items with
+  | TErr err ->
+      Printf.eprintf "lower error: %s\n" (l_tr_msg unknown_loc err);
+      exit 1
+  | TOk res -> (
+      match c_toplevel_asm items with
+      | TErr err ->
+          Printf.eprintf "asm error: %s\n" (l_tr_msg unknown_loc err);
+          exit 1
+      | TOk asm_lines -> (
+          let ir_items = without_symver_aliases asm_lines res.cm_items in
+          let mod_term = TApp ("module", [ TList ir_items ]) in
+          let compiled =
+            match mode with
+            | `Plain -> compile mod_term
+            | `Promoted -> compile_promoted mod_term
+            | `Allocated -> compile_allocated mod_term
+          in
+          match compiled with
+          | Refused why ->
+              Printf.eprintf "backend refused: %s\n" why;
+              exit 1
+          | Outside why ->
+              Printf.eprintf "backend outside subset: %s\n" why;
+              exit 1
+          | Pieces ps ->
+              let text = Buffer.create (1 lsl 16) in
+              let rec take k rev = function
+                | l :: ls when k > 0 -> take (k - 1) (l :: rev) ls
+                | ls -> (rev, ls)
+              in
+              let rec emit_lines = function
+                | [] -> ()
+                | ls ->
+                    let rev, rest = take 2000 [] ls in
+                    List.iter (Buffer.add_string text) (rev_lines_parts rev []);
+                    Buffer.output_buffer stdout text;
+                    Buffer.clear text;
+                    emit_lines rest
+              in
+              List.iter
+                (fun piece ->
+                  match piece () with
+                  | None ->
+                      prerr_endline "backend failed on a piece";
+                      exit 1
+                  | Some groups -> List.iter emit_lines groups)
+                ps;
+              List.iter
+                (fun line ->
+                  output_string stdout line;
+                  output_char stdout '\n')
+                asm_lines))
+
 let () =
   let c23 = ref false in
   let no_profile = ref false in
+  let asm_mode = ref `Plain in
   let clang_opt = ref None in
   let inc_dirs = ref [] in
   let defines = ref [] in
@@ -282,6 +377,8 @@ let () =
     let arg = Sys.argv.(!i) in
     if arg = "--c23" then c23 := true
     else if arg = "--no-profile" then no_profile := true
+    else if arg = "--promoted" then asm_mode := `Promoted
+    else if arg = "--allocated" then asm_mode := `Allocated
     else if arg = "--clang" && !i + 1 < argc then (
       incr i;
       clang_opt := Some Sys.argv.(!i))
@@ -404,6 +501,138 @@ let () =
               in
               let opts = { topt_vectors = vecs; topt_gnu89 = gnu89 } in
               List.iter print_endline (check_tu_items items opts)))
+  | [ "cc-ir"; file ] -> (
+      match lex_file ~c23:!c23 file with
+      | CErr m ->
+          Printf.eprintf "lex error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_ir_module items))
+  | [ "pp-cc-ir"; file ] -> (
+      let base_env =
+        discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
+          ~inc_dirs ~defines
+      in
+      match pp_one ~c23:!c23 ~clang_opt:effective_clang base_env file with
+      | CErr m ->
+          Printf.eprintf "pp error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_ir_module items))
+  | [ "cc-layouts"; file ] -> (
+      match lex_file ~c23:!c23 file with
+      | CErr m ->
+          Printf.eprintf "lex error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_layouts_module items))
+  | [ "pp-cc-layouts"; file ] -> (
+      let base_env =
+        discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
+          ~inc_dirs ~defines
+      in
+      match pp_one ~c23:!c23 ~clang_opt:effective_clang base_env file with
+      | CErr m ->
+          Printf.eprintf "pp error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_layouts_module items))
+  | [ "cc-asm"; file ] -> (
+      match lex_file ~c23:!c23 file with
+      | CErr m ->
+          Printf.eprintf "lex error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_asm_module ~mode:!asm_mode items))
+  | [ "pp-cc-asm"; file ] -> (
+      let base_env =
+        discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
+          ~inc_dirs ~defines
+      in
+      match pp_one ~c23:!c23 ~clang_opt:effective_clang base_env file with
+      | CErr m ->
+          Printf.eprintf "pp error: %s\n" m;
+          exit 1
+      | COk ts -> (
+          match c_parse ts with
+          | CErr m ->
+              Printf.eprintf "parse error: %s\n" m;
+              exit 1
+          | COk items -> emit_asm_module ~mode:!asm_mode items))
+  | "cc-ir-bench" :: files when files <> [] ->
+      let opts = lower_opts_from_env () in
+      let t0 = Unix.gettimeofday () in
+      let ok = ref 0 in
+      let err = ref 0 in
+      let total_items = ref 0 in
+      List.iter
+        (fun file ->
+          match lex_file ~c23:!c23 file with
+          | CErr _ -> incr err
+          | COk ts -> (
+              match c_parse ts with
+              | CErr _ -> incr err
+              | COk items -> (
+                  match c_module_opts opts items with
+                  | TErr _ -> incr err
+                  | TOk res ->
+                      incr ok;
+                      total_items := !total_items + List.length res.cm_items)))
+        files;
+      let dt = (Unix.gettimeofday () -. t0) *. 1000.0 in
+      Printf.printf
+        "Gallina-OCaml cc-ir: %d ok, %d err | %d ir items | %.1f ms\n"
+        !ok !err !total_items dt
+  | "pp-cc-ir-bench" :: files when files <> [] ->
+      let opts = lower_opts_from_env () in
+      let tp0 = Unix.gettimeofday () in
+      let base_env =
+        discover_base_env ~no_profile:!no_profile ~clang_opt:!clang_opt
+          ~inc_dirs ~defines
+      in
+      let t0 = Unix.gettimeofday () in
+      let ok = ref 0 in
+      let err = ref 0 in
+      let total_items = ref 0 in
+      List.iter
+        (fun file ->
+          match pp_one ~c23:!c23 ~clang_opt:effective_clang base_env file with
+          | CErr _ -> incr err
+          | COk ts -> (
+              match c_parse ts with
+              | CErr _ -> incr err
+              | COk items -> (
+                  match c_module_opts opts items with
+                  | TErr _ -> incr err
+                  | TOk res ->
+                      incr ok;
+                      total_items := !total_items + List.length res.cm_items)))
+        files;
+      let dt = (Unix.gettimeofday () -. t0) *. 1000.0 in
+      let dprof = (t0 -. tp0) *. 1000.0 in
+      Printf.printf
+        "Gallina-OCaml pp+cc-ir: %d ok, %d err | %d ir items | %.1f ms (profile %.1f ms)\n"
+        !ok !err !total_items dt dprof
   | "bench" :: files when files <> [] ->
       let t0 = Unix.gettimeofday () in
       let ok = ref 0 in

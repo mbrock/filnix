@@ -1,10 +1,11 @@
-# The Gallina C frontend (rocq/frontend): CLex.v, CAttrs.v, CParse.v,
-# CCanon.v, CPp.v, CIeee.v, and CTypes (CTypeAst.v, CTypeTables.v,
-# CTypes.v, CTypeCanon.v) extracted to OCaml and held byte-for-byte to
-# SWI-Prolog's c_lex.pl + c_parse.pl + c_pp.pl + ieee.pl + c_types.pl
-# across every C test fixture, C23 fixture, preprocessor torture suite,
-# IEEE 754 corpus, and typechecker corpus, plus a parse.sh grammar
-# round-trip check over every frontend .v file.
+# The Gallina C frontend and lowering passes (rocq/frontend): CLex.v,
+# CAttrs.v, CParse.v, CCanon.v, CPp.v, CIeee.v, CTypes (CTypeAst.v,
+# CTypeTables.v, CTypes.v, CTypeCanon.v), CLaunder.v, CLower (CLowerState.v,
+# CLowerInit.v, CLowerAsm.v, CLowerBuiltins.v, CLower.v), and CLayouts.v
+# extracted to OCaml and held byte-for-byte to SWI-Prolog across every C test
+# fixture, C23 fixture, preprocessor torture suite, IEEE 754 corpus,
+# typechecker corpus, IR lowering corpus, and record-layout corpus, plus a
+# parse.sh grammar round-trip check over every frontend .v file.
 #
 #   nix build -L .#checks.x86_64-linux.nanofil-frontend
 { pkgs }:
@@ -16,6 +17,8 @@ let
     fileset = pkgs.lib.fileset.unions [
       ../src
       ../tests
+      ../rocq/theories
+      ../rocq/backend
       ../rocq/frontend
       ../web/rocq/rocq_syntax.pl
       ../web/rocq/tests/parse.sh

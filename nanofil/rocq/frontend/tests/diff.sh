@@ -596,6 +596,113 @@ process([F|Fs], S) :-
             tc_ok += 1
     print(f"types: {tc_ok}/{tc_ok + tc_diff} exact, diffs={tc_diff}")
 
-    if lex_diff or parse_diff or c23_diffs or pp_diffs or ieee_diffs or tc_diff:
+    # Differential check of full C lowering (cc-ir) and record layouts (cc-layouts)
+    # against SWI-Prolog (c_lower.pl + launder.pl + c_layouts.pl + ir_text.pl).
+    lower_pl = os.path.join(td, 'lower.pl')
+    with open(lower_pl, 'w') as f:
+        f.write(f"""
+:- use_module('{nanofil}/src/c_lex').
+:- use_module('{nanofil}/src/c_types').
+:- use_module('{nanofil}/src/c_parse').
+:- use_module('{nanofil}/src/c_lower').
+:- use_module('{nanofil}/src/c_layouts').
+:- use_module('{nanofil}/src/ir_text').
+:- consult('{files_pl}').
+
+run_all(IrOut, LayOut) :-
+    test_files(Files),
+    open(IrOut, write, SI),
+    open(LayOut, write, SL),
+    process(Files, SI, SL),
+    close(SI), close(SL).
+
+process([], _, _).
+process([F|Fs], SI, SL) :-
+    ( catch((c_lex:i_file_tokens(F, Toks), c_parse:c_parse(Toks, Ast)), _, fail) ->
+        ( catch(once(c_lower:c_module(Ast, Mod, _, Env)), _E, Mod = err) ->
+            ( Mod == err ->
+                format(SI, '=== ~w ===~nERR~n', [F]),
+                format(SL, '=== ~w ===~nERR~n', [F])
+            ; format(SI, '=== ~w ===~n', [F]),
+              with_output_to(SI, ir_text:print_module(Mod)),
+              c_layouts:module_layouts(Env, Mod, Lays),
+              format(SL, '=== ~w ===~n', [F]),
+              write_canonical(SL, Lays), write(SL, '.'), nl(SL)
+            )
+        ; format(SI, '=== ~w ===~nERR~n', [F]),
+          format(SL, '=== ~w ===~nERR~n', [F])
+        )
+    ; format(SI, '=== ~w ===~nSKIP~n', [F]),
+      format(SL, '=== ~w ===~nSKIP~n', [F])
+    ),
+    process(Fs, SI, SL).
+""")
+    swi_ir = os.path.join(td, 'swi_ir.txt')
+    swi_lay = os.path.join(td, 'swi_lay.txt')
+    subprocess.run(
+        [swipl, '-q', '-s', os.path.join(nanofil, 'src', 'swi', 'compat.pl'),
+         '-s', lower_pl, '-g', f"run_all('{swi_ir}','{swi_lay}')", '-t', 'halt'],
+        check=True)
+
+    def load_sections_raw(path):
+        d = {}
+        cur = None
+        buf = []
+        with open(path, 'rb') as f:
+            for line in f:
+                if line.startswith(b'=== ') and line.endswith(b' ===\n'):
+                    if cur is not None:
+                        d[cur] = b''.join(buf)
+                    cur = line[4:-5].decode('utf-8')
+                    buf = []
+                else:
+                    buf.append(line)
+            if cur is not None:
+                d[cur] = b''.join(buf)
+        return d
+
+    swi_ir_map = load_sections_raw(swi_ir)
+    swi_lay_map = load_sections_raw(swi_lay)
+    ir_ok = ir_err = ir_diff = 0
+    lay_ok = lay_err = lay_diff = 0
+    for cf in cfiles:
+        si = swi_ir_map[cf]
+        if si.strip() == b'SKIP':
+            continue
+        ri = subprocess.run([fe, 'cc-ir', cf], capture_output=True)
+        if ri.returncode != 0:
+            if si.strip() == b'ERR':
+                ir_err += 1
+            else:
+                ir_diff += 1
+                if ir_diff <= 5:
+                    print(f"CC-IR DIFF (err) {cf}: {ri.stderr.decode(errors='replace').strip()}", file=sys.stderr)
+        elif si.strip() == b'ERR' or ri.stdout != si:
+            ir_diff += 1
+            if ir_diff <= 5:
+                print(f"CC-IR DIFF {cf}", file=sys.stderr)
+        else:
+            ir_ok += 1
+
+        sl = swi_lay_map[cf]
+        rl = subprocess.run([fe, 'cc-layouts', cf], capture_output=True)
+        if rl.returncode != 0:
+            if sl.strip() == b'ERR':
+                lay_err += 1
+            else:
+                lay_diff += 1
+                if lay_diff <= 5:
+                    print(f"CC-LAYOUTS DIFF (err) {cf}: {rl.stderr.decode(errors='replace').strip()}", file=sys.stderr)
+        elif sl.strip() == b'ERR' or rl.stdout != sl:
+            lay_diff += 1
+            if lay_diff <= 5:
+                print(f"CC-LAYOUTS DIFF {cf}", file=sys.stderr)
+        else:
+            lay_ok += 1
+
+    print(f"cc-ir: {ir_ok} ok + {ir_err} err = {ir_ok + ir_err}/{ir_ok + ir_err + ir_diff}, diffs={ir_diff}")
+    print(f"layouts: {lay_ok} ok + {lay_err} err = {lay_ok + lay_err}/{lay_ok + lay_err + lay_diff}, diffs={lay_diff}")
+
+    if lex_diff or parse_diff or c23_diffs or pp_diffs or ieee_diffs or tc_diff or ir_diff or lay_diff:
         sys.exit(1)
 PY

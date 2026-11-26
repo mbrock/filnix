@@ -456,6 +456,24 @@ static uint32_t build_env_closure(uint32_t *arena, struct anf_state *st,
     return arena[ANF_IDX(out) + 1U];
 }
 
+static int collect_lower_opts(char *out[4])
+{
+    int n = 0;
+    const char *v = getenv("NANOFIL_VECTORS");
+    if (v && strcmp(v, "0") == 0)
+        out[n++] = "V0";
+    const char *std = getenv("NANOFIL_STD");
+    if (std && strcmp(std, "gnu89") == 0)
+        out[n++] = "G1";
+    const char *comm = getenv("NANOFIL_COMMON");
+    if (comm && strcmp(comm, "1") == 0)
+        out[n++] = "C1";
+    const char *merr = getenv("NANOFIL_MATH_ERRNO");
+    if (merr && strcmp(merr, "0") == 0)
+        out[n++] = "M0";
+    return n;
+}
+
 static double now_ms(void)
 {
     struct timespec ts;
@@ -495,8 +513,9 @@ int main(int argc, char **argv)
     if (n_pos < 2) {
         fprintf(stderr,
                 "usage: anf-frontend [--c23] [--no-profile] [--clang PATH] [-I DIR] [-D SPEC]\n"
-                "                    (lex|lex-c23|parse|parse-c23|count|pp|pp-parse FILE |\n"
-                "                     bench|pp-only-bench|pp-bench FILE...)\n");
+                "                    (lex|lex-c23|parse|parse-c23|count|cc-ir|cc-layouts|\n"
+                "                     pp|pp-parse|pp-cc-ir|pp-cc-layouts FILE |\n"
+                "                     bench|cc-ir-bench|pp-only-bench|pp-bench|pp-cc-ir-bench FILE...)\n");
         return 2;
     }
 
@@ -528,7 +547,12 @@ int main(int argc, char **argv)
 
     const char *cmd_str = pos[0];
 
-    if (strcmp(cmd_str, "bench") == 0) {
+    char *lower_opts[4];
+    int n_lower_opts = collect_lower_opts(lower_opts);
+
+    if (strcmp(cmd_str, "bench") == 0 || strcmp(cmd_str, "cc-ir-bench") == 0) {
+        int is_ir = (strcmp(cmd_str, "cc-ir-bench") == 0);
+        uint32_t subcmd = is_ir ? 10U : 4U;
         int nfiles = n_pos - 1;
         int ok = 0, err = 0;
         long long total_toks = 0, total_items = 0;
@@ -541,7 +565,8 @@ int main(int argc, char **argv)
                 return 2;
             }
             anf_arena_rewind(arena, st, mark, release_words);
-            uint32_t a = make_args(arena, st, 4U, pos[1 + i], buf, flen, piece, NULL, 0);
+            uint32_t a = make_args(arena, st, subcmd, pos[1 + i], buf, flen, piece,
+                                   is_ir ? lower_opts : NULL, is_ir ? n_lower_opts : 0);
             free(buf);
             char line[128];
             uint32_t out = drive_out(arena, st, apply(arena, st, run_clo, a),
@@ -549,9 +574,14 @@ int main(int argc, char **argv)
             uint32_t code = ANF_IMM_U31(arena[ANF_IDX(out) + 1U]);
             if (code == 0U) {
                 long long nt = 0, ni = 0;
-                if (sscanf(line, "ok %lld %lld", &nt, &ni) == 2) {
-                    total_toks += nt;
-                    total_items += ni;
+                if (is_ir) {
+                    if (sscanf(line, "ok %lld", &ni) == 1)
+                        total_items += ni;
+                } else {
+                    if (sscanf(line, "ok %lld %lld", &nt, &ni) == 2) {
+                        total_toks += nt;
+                        total_items += ni;
+                    }
                 }
                 ok++;
             } else {
@@ -559,15 +589,23 @@ int main(int argc, char **argv)
             }
         }
         double dt = now_ms() - t0;
-        printf("Gallina-λANF-FilC frontend: %d ok, %d err | %lld ok-tokens, %lld items | %.1f ms (gc=%llu, major_hwm=%u words)\n",
-               ok, err, total_toks, total_items, dt,
-               (unsigned long long)st->gc_count, st->major_hwm);
+        if (is_ir) {
+            printf("Gallina-λANF-FilC cc-ir: %d ok, %d err | %lld ir-items | %.1f ms (gc=%llu, major_hwm=%u words)\n",
+                   ok, err, total_items, dt,
+                   (unsigned long long)st->gc_count, st->major_hwm);
+        } else {
+            printf("Gallina-λANF-FilC frontend: %d ok, %d err | %lld ok-tokens, %lld items | %.1f ms (gc=%llu, major_hwm=%u words)\n",
+                   ok, err, total_toks, total_items, dt,
+                   (unsigned long long)st->gc_count, st->major_hwm);
+        }
         return 0;
     }
 
-    if (strcmp(cmd_str, "pp-bench") == 0 || strcmp(cmd_str, "pp-only-bench") == 0) {
+    if (strcmp(cmd_str, "pp-bench") == 0 || strcmp(cmd_str, "pp-only-bench") == 0
+        || strcmp(cmd_str, "pp-cc-ir-bench") == 0) {
+        int is_ir = (strcmp(cmd_str, "pp-cc-ir-bench") == 0);
         int parse_too = (strcmp(cmd_str, "pp-bench") == 0);
-        uint32_t subcmd = parse_too ? 4U : 5U;
+        uint32_t subcmd = is_ir ? 10U : (parse_too ? 4U : 5U);
         double tp0 = now_ms();
         uint32_t env_clo = build_env_closure(arena, st, run_clo, piece,
                                              no_profile, clang,
@@ -583,14 +621,18 @@ int main(int argc, char **argv)
         long long total_toks = 0, total_items = 0;
         for (int i = 0; i < nfiles; i++) {
             anf_arena_rewind(arena, st, env_mark, release_words);
-            uint32_t a = make_args(arena, st, subcmd, pos[1 + i], NULL, 0, piece, NULL, 0);
+            uint32_t a = make_args(arena, st, subcmd, pos[1 + i], NULL, 0, piece,
+                                   is_ir ? lower_opts : NULL, is_ir ? n_lower_opts : 0);
             char line[128];
             uint32_t out = drive_out(arena, st, apply(arena, st, env_clo, a),
                                      piece, clang, NULL, line, sizeof(line));
             uint32_t code = ANF_IMM_U31(arena[ANF_IDX(out) + 1U]);
             if (code == 0U) {
                 long long nt = 0, ni = 0;
-                if (sscanf(line, "ok %lld %lld", &nt, &ni) == 2) {
+                if (is_ir) {
+                    if (sscanf(line, "ok %lld", &ni) == 1)
+                        total_items += ni;
+                } else if (sscanf(line, "ok %lld %lld", &nt, &ni) == 2) {
                     total_toks += nt;
                     total_items += ni;
                 }
@@ -601,24 +643,36 @@ int main(int argc, char **argv)
         }
         double dt = now_ms() - t0;
         double dprof = t0 - tp0;
-        printf("Gallina-λANF-FilC %s: %d ok, %d err | %lld tokens, %lld items | %.1f ms (profile %.1f ms, gc=%llu, major_hwm=%u words)\n",
-               parse_too ? "pp+parse" : "pp-only",
-               ok, err, total_toks, total_items, dt, dprof,
-               (unsigned long long)st->gc_count, st->major_hwm);
+        if (is_ir) {
+            printf("Gallina-λANF-FilC pp-cc-ir: %d ok, %d err | %lld ir-items | %.1f ms (profile %.1f ms, gc=%llu, major_hwm=%u words)\n",
+                   ok, err, total_items, dt, dprof,
+                   (unsigned long long)st->gc_count, st->major_hwm);
+        } else {
+            printf("Gallina-λANF-FilC %s: %d ok, %d err | %lld tokens, %lld items | %.1f ms (profile %.1f ms, gc=%llu, major_hwm=%u words)\n",
+                   parse_too ? "pp+parse" : "pp-only",
+                   ok, err, total_toks, total_items, dt, dprof,
+                   (unsigned long long)st->gc_count, st->major_hwm);
+        }
         return 0;
     }
 
-    if (n_pos == 2 && (strcmp(cmd_str, "pp") == 0 || strcmp(cmd_str, "pp-parse") == 0)) {
+    if (n_pos == 2 && (strcmp(cmd_str, "pp") == 0 || strcmp(cmd_str, "pp-parse") == 0
+                       || strcmp(cmd_str, "pp-cc-ir") == 0 || strcmp(cmd_str, "pp-cc-layouts") == 0)) {
         uint32_t subcmd;
         if (strcmp(cmd_str, "pp") == 0)
             subcmd = c23 ? 1U : 0U;
-        else
+        else if (strcmp(cmd_str, "pp-parse") == 0)
             subcmd = c23 ? 3U : 2U;
+        else if (strcmp(cmd_str, "pp-cc-ir") == 0)
+            subcmd = c23 ? 7U : 6U;
+        else
+            subcmd = c23 ? 9U : 8U;
         uint32_t env_clo = build_env_closure(arena, st, run_clo, piece,
                                              no_profile, clang,
                                              inc_dirs, n_incs, defines, n_defs);
         anf_root_push(st, env_clo);
-        uint32_t a = make_args(arena, st, subcmd, pos[1], NULL, 0, piece, NULL, 0);
+        uint32_t a = make_args(arena, st, subcmd, pos[1], NULL, 0, piece,
+                               lower_opts, n_lower_opts);
         env_clo = anf_root_pop(st);
         uint32_t out = drive_out(arena, st, apply(arena, st, env_clo, a),
                                  piece, clang, stdout, NULL, 0);
@@ -641,9 +695,11 @@ int main(int argc, char **argv)
         else if (strcmp(cmd_str, "parse") == 0) cmd = c23 ? 3U : 2U;
         else if (strcmp(cmd_str, "parse-c23") == 0) cmd = 3U;
         else if (strcmp(cmd_str, "count") == 0) cmd = 4U;
+        else if (strcmp(cmd_str, "cc-ir") == 0) cmd = c23 ? 7U : 6U;
+        else if (strcmp(cmd_str, "cc-layouts") == 0) cmd = c23 ? 9U : 8U;
     }
     if (cmd == 5U) {
-        fprintf(stderr, "usage: anf-frontend (lex|lex-c23|parse|parse-c23|count|pp|pp-parse FILE | bench|pp-only-bench|pp-bench FILE...)\n");
+        fprintf(stderr, "usage: anf-frontend (lex|parse|count|cc-ir|cc-layouts|pp|pp-parse|pp-cc-ir|pp-cc-layouts FILE | bench|cc-ir-bench|pp-only-bench|pp-bench|pp-cc-ir-bench FILE...)\n");
         return 2;
     }
     size_t n = 0;
@@ -652,7 +708,8 @@ int main(int argc, char **argv)
         perror(pos[1]);
         return 2;
     }
-    uint32_t a = make_args(arena, st, cmd, pos[1], text, n, piece, NULL, 0);
+    uint32_t a = make_args(arena, st, cmd, pos[1], text, n, piece,
+                           lower_opts, n_lower_opts);
     free(text);
     uint32_t out = drive_out(arena, st, apply(arena, st, run_clo, a),
                              piece, NULL, stdout, NULL, 0);

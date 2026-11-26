@@ -1,0 +1,72 @@
+<block id="b-2026-11-26-gallina-c-lowering" kind="milestone" actor="mbrock" created="2026-11-26T18:11:52Z">
+  <title>The full C-to-IR lowering pipeline runs in Gallina through OCaml and λANF</title>
+  <about path="nanofil/rocq/frontend/CLaunder.v"/>
+  <about path="nanofil/rocq/frontend/CLowerState.v"/>
+  <about path="nanofil/rocq/frontend/CLowerInit.v"/>
+  <about path="nanofil/rocq/frontend/CLowerAsm.v"/>
+  <about path="nanofil/rocq/frontend/CLowerBuiltins.v"/>
+  <about path="nanofil/rocq/frontend/CLower.v"/>
+  <about path="nanofil/rocq/frontend/CLayouts.v"/>
+  <about path="nanofil/anf/frontend/Drive.v"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>The remaining Prolog compiler passes now live in pure, zero-axiom Gallina
+    under <a path="nanofil/rocq/frontend">nanofil/rocq/frontend</a>, porting
+    <prolog>launder.pl</prolog>, <prolog>c_lower.pl</prolog>, and
+    <prolog>c_layouts.pl</prolog> into seven modules:
+    <a path="nanofil/rocq/frontend/CLaunder.v">CLaunder.v</a>,
+    <a path="nanofil/rocq/frontend/CLowerState.v">CLowerState.v</a>,
+    <a path="nanofil/rocq/frontend/CLowerInit.v">CLowerInit.v</a>,
+    <a path="nanofil/rocq/frontend/CLowerAsm.v">CLowerAsm.v</a>,
+    <a path="nanofil/rocq/frontend/CLowerBuiltins.v">CLowerBuiltins.v</a>,
+    <a path="nanofil/rocq/frontend/CLower.v">CLower.v</a>, and
+    <a path="nanofil/rocq/frontend/CLayouts.v">CLayouts.v</a>. Together with
+    the preprocessor, lexer, parser, IEEE 754 engine, and type checker, the
+    extracted OCaml driver
+    <a path="nanofil/rocq/frontend/extraction/main.ml">main.ml</a> now compiles
+    C source files directly through
+    <a path="nanofil/rocq/backend/Compile.v">Compile.v</a> to Fil-C x86-64
+    assembly with zero Prolog in the path.</p>
+  <p>On <sh>swa</sh>, the OCaml extraction matches SWI-Prolog byte-for-byte on
+    both <sh>pp-cc-ir</sh> (including every provenance <ir>context/2</ir>
+    record) and <sh>pp-cc-layouts</sh> across all 482 preprocessed C test
+    fixtures and Fil-C glibc system headers (349 compiled, 133 matching
+    diagnostics, zero diffs), including all 27 <c>&lt;immintrin.h&gt;</c> vector
+    tests and <c>userland-idioms.c</c>. Compiling C programs end-to-end with
+    <sh>nanofil-frontend --allocated pp-cc-asm</sh>, assembling with GNU
+    <sh>as</sh>, linking with <sh>filcc</sh>, and running the resulting binaries
+    passed on all 23 tested standalone programs, including five AVX2 vector
+    suites (<c>vector-avx2-2.c</c> through <c>vector-avx2-6.c</c>) and
+    <c>vector-sse-arith.c</c>.</p>
+  <p>CertiRocq taps the full frontend, type checker, laundering, lowering, and
+    layout pipeline in <a path="nanofil/anf/frontend/Drive.v">Drive.v</a> with
+    <sh>-O 1 --anf-variant 8</sh> into 141,098 lines of λANF.
+    <a path="nanofil/anf/lower/AnfLower.v">AnfLower.v</a> lowers those 44,455
+    functions into 9,867 checked nanofil IR functions, and
+    <sh>nanofil-backend compile-allocated</sh> emits 19,781,470 lines of Fil-C
+    x86-64 assembly that link into a memory-safe <sh>anf-frontend</sh> binary in
+    13 seconds. The λANF Fil-C binary matches OCaml byte-for-byte across all
+    487 C fixtures (<sh>lex</sh>, <sh>parse</sh>, <sh>cc-ir</sh>, and
+    <sh>cc-layouts</sh>), all 20 Fil-C glibc headers, and 12 heavy preprocessed
+    programs under a 4096-word nursery with
+    <sh>FUGC_SCRIBBLE=1 FUGC_VERIFY=1</sh> (490,572 minor collections without
+    traps).</p>
+  <claim status="tested" check="nix build .#checks.x86_64-linux.nanofil-frontend">
+    <p>The extracted OCaml frontend matches SWI-Prolog byte-for-byte across all
+      eight differential suites (<sh>lex</sh> 487/487, <sh>parse</sh> 480/480,
+      <sh>c23</sh> 9/9, <sh>pp</sh> 4/4, <sh>ieee</sh> 2366/2366,
+      <sh>types</sh> 306/306, <sh>cc-ir</sh> 306/306, and <sh>layouts</sh>
+      306/306), and all 19 frontend <sh>.v</sh> files pass the
+      <sh>parse.sh</sh> grammar round-trip check.</p>
+  </claim>
+  <claim status="measured" check="nix build .#checks.x86_64-linux.nanofil-anf-frontend">
+    <p>Across 248 preprocessed C programs under <sh>tests/c/prog/</sh> (241
+      compiled into 5,107 IR items, 7 errors), both Gallina builds outpace
+      SWI-Prolog while producing identical IR and layout output.</p>
+  </claim>
+  <metrics baseline="SWI-Prolog pp+cc-ir on 248 preprocessed C programs (5,107 IR items, swa, best of 3)">
+    <metric label="SWI-Prolog" value="106.1" unit="s"/>
+    <metric label="Gallina → λANF → Fil-C" value="63.6" unit="s" delta="1.7× faster"/>
+    <metric label="Gallina → OCaml" value="33.4" unit="s" delta="3.2× faster"/>
+  </metrics>
+</block>

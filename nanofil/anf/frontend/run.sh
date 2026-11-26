@@ -14,6 +14,7 @@
 #   ANF_STRESS_NURSERY  default 4096
 #   ANF_WORK          scratch directory (default mktemp -d)
 set -euo pipefail
+ulimit -s "${ANF_STACK_KB:-1048576}"
 
 here=$(cd "$(dirname "$0")" && pwd)
 anf=$(cd "$here/.." && pwd)
@@ -23,7 +24,7 @@ filcc=${FILCC:-/tmp/filcc/bin/clang}
 backend=${NANOFIL_BACKEND:-$nanofil/rocq/backend/nanofil-backend}
 stress=${ANF_STRESS_NURSERY:-4096}
 work=${ANF_WORK:-$(mktemp -d)}
-mkdir -p "$work/f" "$work/t"
+mkdir -p "$work/t"
 echo "work: $work"
 stamp() { date -u +%H:%M:%S; }
 
@@ -31,33 +32,19 @@ t0=$SECONDS
 echo "$(stamp) building nanofil-backend, anf-lower, and reference nanofil-frontend"
 [[ -x $backend ]] || make -C "$nanofil/rocq/backend" -j"${NIX_BUILD_CORES:-4}" nanofil-backend >"$work/backend.log"
 make -C "$anf/lower" -j"${NIX_BUILD_CORES:-4}" anf-lower >"$work/anf-lower.log"
-[[ -x "$frontend/nanofil-frontend" ]] || make -C "$frontend" -j"${NIX_BUILD_CORES:-4}" >"$work/frontend.log"
+make -C "$frontend" -j"${NIX_BUILD_CORES:-4}" nanofil-frontend >"$work/frontend.log"
 echo "$(stamp) tools ready in $((SECONDS - t0)) s"
 
-cp "$frontend"/{CAst,CAttrs,CLex,CIeee,CParse,CCanon,CPp,CTypeAst,CTypeTables,CTypes,CTypeCanon}.v "$work/f/"
 cp "$anf/lower/Prims.v" "$here"/{Drive,Tap}.v "$work/t/"
 
 t0=$SECONDS
-echo "$(stamp) compiling frontend and tapping λANF (CertiRocq -O 1 --anf-variant 8)"
-(
-  cd "$work/f"
-  rocq compile -w -all -R . Frontend CAst.v
-  rocq compile -w -all -R . Frontend CAttrs.v
-  rocq compile -w -all -R . Frontend CLex.v
-  rocq compile -w -all -R . Frontend CIeee.v
-  rocq compile -w -all -R . Frontend CParse.v
-  rocq compile -w -all -R . Frontend CCanon.v
-  rocq compile -w -all -R . Frontend CPp.v
-  rocq compile -w -all -R . Frontend CTypeAst.v
-  rocq compile -w -all -R . Frontend CTypeTables.v
-  rocq compile -w -all -R . Frontend CTypes.v
-  rocq compile -w -all -R . Frontend CTypeCanon.v
-)
+echo "$(stamp) tapping full frontend + lowering λANF (CertiRocq -O 1 --anf-variant 8)"
+flags=(-w -all -R "$nanofil/rocq/theories" Nanofil -R "$nanofil/rocq/backend" Backend -R "$frontend" Frontend -R . AnfFrontend)
 (
   cd "$work/t"
-  rocq compile -w -all -R "$work/f" Frontend -R . AnfFrontend Prims.v
-  rocq compile -w -all -R "$work/f" Frontend -R . AnfFrontend Drive.v
-  rocq compile -w -all -R "$work/f" Frontend -R . AnfFrontend Tap.v
+  rocq compile "${flags[@]}" Prims.v
+  rocq compile "${flags[@]}" Drive.v
+  rocq compile "${flags[@]}" Tap.v
 )
 echo "$(stamp) tapped in $((SECONDS - t0)) s ($(wc -l <"$work/t/AnfFrontend.Drive.run.ir") lines)"
 
@@ -96,24 +83,28 @@ cfiles = sorted(glob.glob(os.path.join(nanofil, 'tests', '**', '*.c'), recursive
 if not cfiles:
     sys.exit("no .c fixtures found")
 
-lex_diffs = parse_diffs = 0
+lex_diffs = parse_diffs = ir_diffs = lay_diffs = 0
 for cf in cfiles:
-    for cmd in ('lex', 'parse'):
+    for cmd in ('lex', 'parse', 'cc-ir', 'cc-layouts'):
         r1 = subprocess.run([anf_bin, cmd, cf], capture_output=True)
         r2 = subprocess.run([ref_bin, cmd, cf], capture_output=True)
         if (r1.returncode == 0) != (r2.returncode == 0) or (r1.returncode == 0 and r1.stdout != r2.stdout):
             if cmd == 'lex':
                 lex_diffs += 1
-            else:
+            elif cmd == 'parse':
                 parse_diffs += 1
-            if lex_diffs + parse_diffs <= 5:
+            elif cmd == 'cc-ir':
+                ir_diffs += 1
+            else:
+                lay_diffs += 1
+            if lex_diffs + parse_diffs + ir_diffs + lay_diffs <= 5:
                 print(f"DIFF {cmd} {cf}: rc {r1.returncode} vs {r2.returncode}", file=sys.stderr)
 
-print(f"parity ({len(cfiles)} files): lex_diffs={lex_diffs}, parse_diffs={parse_diffs}")
-if lex_diffs or parse_diffs:
+print(f"parity ({len(cfiles)} files): lex_diffs={lex_diffs}, parse_diffs={parse_diffs}, ir_diffs={ir_diffs}, lay_diffs={lay_diffs}")
+if lex_diffs or parse_diffs or ir_diffs or lay_diffs:
     sys.exit(1)
 
-# Preprocessor parity across all 20 glibc headers under default and stress nurseries.
+# Preprocessor + lowering parity across all 20 glibc headers under default and stress nurseries.
 headers = [
     'stdio', 'stdlib', 'string', 'stdint', 'ctype', 'limits', 'errno', 'unistd',
     'signal', 'math', 'pthread', 'time', 'sys/stat', 'dirent', 'wchar',
@@ -131,7 +122,7 @@ with tempfile.TemporaryDirectory() as td:
         hfiles.append(p)
     pp_diffs = 0
     for hf in hfiles:
-        for cmd in ('pp', 'pp-parse'):
+        for cmd in ('pp', 'pp-parse', 'pp-cc-ir', 'pp-cc-layouts'):
             r1 = subprocess.run([anf_bin, '--clang', filcc, cmd, hf], capture_output=True)
             r2 = subprocess.run([ref_bin, '--clang', filcc, cmd, hf], capture_output=True)
             if r1.returncode != 0 or r2.returncode != 0 or r1.stdout != r2.stdout:
@@ -142,17 +133,17 @@ with tempfile.TemporaryDirectory() as td:
     if pp_diffs:
         sys.exit(1)
 
-    r_ref_pp = subprocess.run([ref_bin, '--clang', filcc, 'pp-bench'] + hfiles, capture_output=True, text=True, check=True)
-    r_anf_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-bench'] + hfiles, capture_output=True, text=True, check=True)
-    r_str_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-bench'] + hfiles, env=senv, capture_output=True, text=True, check=True)
+    r_ref_pp = subprocess.run([ref_bin, '--clang', filcc, 'pp-cc-ir-bench'] + hfiles, capture_output=True, text=True, check=True)
+    r_anf_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-cc-ir-bench'] + hfiles, capture_output=True, text=True, check=True)
+    r_str_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-cc-ir-bench'] + hfiles, env=senv, capture_output=True, text=True, check=True)
     print(r_ref_pp.stdout.strip())
     print(r_anf_pp.stdout.strip())
-    print("pp stress:", r_str_pp.stdout.strip())
+    print("pp-cc-ir stress:", r_str_pp.stdout.strip())
 
-r_ref = subprocess.run([ref_bin, 'bench'] + cfiles, capture_output=True, text=True, check=True)
-r_anf = subprocess.run([anf_bin, 'bench'] + cfiles, capture_output=True, text=True, check=True)
-r_str = subprocess.run([anf_bin, 'bench'] + cfiles, env=senv, capture_output=True, text=True, check=True)
+r_ref = subprocess.run([ref_bin, 'cc-ir-bench'] + cfiles, capture_output=True, text=True, check=True)
+r_anf = subprocess.run([anf_bin, 'cc-ir-bench'] + cfiles, capture_output=True, text=True, check=True)
+r_str = subprocess.run([anf_bin, 'cc-ir-bench'] + cfiles, env=senv, capture_output=True, text=True, check=True)
 print(r_ref.stdout.strip())
 print(r_anf.stdout.strip())
-print("stress:", r_str.stdout.strip())
+print("cc-ir stress:", r_str.stdout.strip())
 PY

@@ -6,11 +6,15 @@
     the same arena runtime functions used by nanofil/anf/backend/Tap.v. *)
 
 From CertiRocq.Plugin Require Import CertiRocq.
+From Nanofil Require Import Maps.
+From Backend Require Import Order.
 From Frontend Require Import CLex CParse.
 From AnfFrontend Require Import Prims Drive.
 
 CertiRocq Register [
   CParse.env_string_hash => "nf_str_hash",
+  Maps.string_hash => "nf_str_hash",
+  Order.atom_compare => "nf_str_compare",
   CLex.code => "nf_id",
   CLex.byte => "nf_ascii_of_nat",
   CLex.string_of_rev => "nf_str_of_rev"

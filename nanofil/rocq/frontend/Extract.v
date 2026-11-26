@@ -1,14 +1,18 @@
-(** Extraction of the Gallina C frontend to OCaml.
+(** Extraction of the Gallina C frontend and lowering passes to OCaml.
 
     Integers become Zarith big integers so 64-bit and 128-bit C constants keep
-    exact values; [nat] fuel and lengths become OCaml [int]; character and
-    string-building primitives map directly to OCaml [Char] and [Bytes]. *)
+    exact values; [nat] fuel and lengths become OCaml [int]; character,
+    hashing, ordering, and string-building primitives map directly to OCaml
+    primitives without pulling in [String] or [Ascii] internals. *)
 
 From Stdlib Require Extraction ExtrOcamlBasic ExtrOcamlNativeString
   ExtrOcamlZBigInt ExtrOcamlNatInt.
 From Stdlib Require Import ZArith List String Ascii.
+From Nanofil Require Import Term Maps.
+From Backend Require Import Text Order Asm Compile.
 From Frontend Require Import CAst CAttrs CLex CIeee CParse CCanon CPp
-  CTypeAst CTypeTables CTypes CTypeCanon.
+  CTypeAst CTypeTables CTypes CTypeCanon CLaunder CLowerState CLowerInit
+  CLowerAsm CLowerBuiltins CLower CLayouts.
 
 Extract Inlined Constant Ascii.eqb => "(=)".
 Extract Inlined Constant String.eqb => "String.equal".
@@ -43,6 +47,13 @@ Extract Constant CParse.env_string_hash =>
   "(fun s h -> Big_int_Z.big_int_of_int
      ((Hashtbl.hash s + 31 * Big_int_Z.int_of_big_int h) land 0xFFFFF))".
 
+Extract Constant Maps.string_hash =>
+  "(fun s h -> Big_int_Z.big_int_of_int
+     ((Hashtbl.hash s + 31 * Big_int_Z.int_of_big_int h) land 0xFFFFF))".
+
+Extract Inlined Constant Order.atom_compare =>
+  "(fun a b -> let c = Stdlib.compare (a : string) b in if c < 0 then Lt else if c = 0 then Eq else Gt)".
+
 Extract Constant Z.to_nat =>
   "(fun z -> if Big_int_Z.sign_big_int z <= 0 then 0 else Big_int_Z.int_of_big_int z)".
 Extract Constant Z.of_nat => "Big_int_Z.big_int_of_int".
@@ -61,4 +72,13 @@ Extraction "nanofil_frontend.ml"
   CPp.default_feature_queries CPp.add_cli_define CPp.prepend_include_dirs
   CPp.pp_value
   CTypeAst.default_type_opts CTypeAst.mkCTypeOpts
-  CTypeCanon.check_tu_items.
+  CTypeCanon.check_tu_items
+  CLaunder.launder_module
+  CLowerState.default_lower_opts CLowerState.mkCLowerOpts
+  CLowerState.ir_module_lines CLowerState.ir_item_line
+  CLowerState.l_tr_msg CLowerState.unknown_loc
+  CLowerAsm.c_toplevel_asm CLowerAsm.without_symver_aliases
+  CLower.c_module_opts CLower.c_module
+  CLayouts.module_layouts_canon
+  Compile.compile Compile.compile_promoted Compile.compile_allocated
+  Asm.rev_lines_parts.

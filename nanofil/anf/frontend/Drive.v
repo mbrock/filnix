@@ -1,11 +1,14 @@
-(** The arena driver for the Gallina C frontend mirrors nanofil/anf/backend/Drive.v.
-    It runs CLex, CParse, and CPp inside the 32-bit arena, streaming canonical
-    Prolog terms via [Chunk] and requesting file reads, existence checks,
-    canonical paths, and feature queries via [NeedRead], [NeedExists],
-    [NeedReal], and [NeedFeat]. *)
+(** The arena driver for the Gallina C frontend and lowering passes mirrors
+    nanofil/anf/backend/Drive.v. It runs CPp, CLex, CParse, CTypes, CLaunder,
+    CLower, and CLayouts inside the 32-bit arena, streaming canonical Prolog
+    terms, IR clauses, and record layouts via [Chunk] and requesting file reads,
+    existence checks, canonical paths, and feature queries via [NeedRead],
+    [NeedExists], [NeedReal], and [NeedFeat]. *)
 
 From Stdlib Require Import String List Ascii ZArith Arith Bool.
-From Frontend Require Import CAst CAttrs CLex CParse CCanon CPp.
+From Nanofil Require Import Term.
+From Frontend Require Import CAst CAttrs CLex CParse CCanon CPp
+  CTypeAst CLowerState CLower CLayouts.
 Import ListNotations.
 Local Open Scope string_scope.
 
@@ -123,17 +126,53 @@ Definition build_pp_env (a : args) : pp_env :=
   let env1 := match incs with [] => env0 | _ => prepend_include_dirs incs env0 end in
   fold_left (fun e spec => add_cli_define spec e) cli_defs env1.
 
+Definition parse_lower_opts (extra : list string) : c_lower_opts :=
+  let fix go (xs : list string) (vecs gnu89 comm merr : bool) : c_lower_opts :=
+    match xs with
+    | [] => mkCLowerOpts vecs gnu89 comm merr
+    | s :: rest =>
+        if String.eqb s "V0" then go rest false gnu89 comm merr
+        else if String.eqb s "G1" then go rest vecs true comm merr
+        else if String.eqb s "C1" then go rest vecs gnu89 true merr
+        else if String.eqb s "M0" then go rest vecs gnu89 comm false
+        else go rest vecs gnu89 comm merr
+    end in
+  go extra true false false true.
+
+Fixpoint stream_ir_items (items : list term) : out :=
+  match items with
+  | [] => Done 0 ""
+  | it :: rest =>
+      Chunk [ir_item_line it] (fun _ => stream_ir_items rest)
+  end.
+
+Definition run_lower_items (c : nat) (opts : c_lower_opts) (items : list c_item) : out :=
+  match c_module_opts opts items with
+  | TErr err => Done 1 ("lower error: " ++ l_tr_msg unknown_loc err)
+  | TOk res =>
+      if Nat.eqb c 8 || Nat.eqb c 9 then
+        Chunk [module_layouts_canon (cm_env res) (cm_items res); nl_str] (fun _ => Done 0 "")
+      else if Nat.eqb c 10 then
+        let ni := z_to_string (Z.of_nat (List.length (cm_items res))) in
+        Chunk ["ok "; ni; nl_str] (fun _ => Done 0 "")
+      else
+        stream_ir_items (cm_items res)
+  end.
+
 (** Run a preprocessor command against a prebuilt [pp_env]:
     `0` pp, `1` pp-c23, `2` pp-parse, `3` pp-parse-c23, `4` pp-count,
-    `5` pp-only-count. *)
+    `5` pp-only-count, `6` pp-cc-ir, `7` pp-cc-ir-c23, `8` pp-cc-layouts,
+    `9` pp-cc-layouts-c23, `10` pp-cc-ir-count. *)
 Definition run_with_env (base_env : pp_env) (a : args) : out :=
   let c := arg_cmd a in
   let fname := arg_filename a in
+  let opts := parse_lower_opts (arg_extra a) in
   drive_pp_step (preprocess_file fname base_env) (fun res =>
     match res with
     | CErr msg => Done 1 ("pp error: " ++ msg)
     | COk ts0 =>
-        let ts := if Nat.eqb c 1 || Nat.eqb c 3 then c23_tokens ts0 else ts0 in
+        let is_c23 := Nat.eqb c 1 || Nat.eqb c 3 || Nat.eqb c 7 || Nat.eqb c 9 in
+        let ts := if is_c23 then c23_tokens ts0 else ts0 in
         if Nat.eqb c 0 || Nat.eqb c 1 then
           emit_list_stream emit_token ts
         else if Nat.eqb c 5 then
@@ -147,24 +186,30 @@ Definition run_with_env (base_env : pp_env) (a : args) : out :=
                 let nt := z_to_string (Z.of_nat (List.length ts)) in
                 let ni := z_to_string (Z.of_nat (List.length items)) in
                 Chunk ["ok "; nt; " "; ni; nl_str] (fun _ => Done 0 "")
-              else
+              else if Nat.eqb c 2 || Nat.eqb c 3 then
                 emit_list_stream emit_item items
+              else
+                run_lower_items c opts items
           end
     end).
 
 (** Run the selected frontend command:
-    `0` lex, `1` lex-c23, `2` parse, `3` parse-c23, `4` count, `5` build-env. *)
+    `0` lex, `1` lex-c23, `2` parse, `3` parse-c23, `4` count, `5` build-env,
+    `6` cc-ir, `7` cc-ir-c23, `8` cc-layouts, `9` cc-layouts-c23,
+    `10` cc-ir-count. *)
 Definition run (a : args) : out :=
   let c := arg_cmd a in
   if Nat.eqb c 5 then
     let env := build_pp_env a in
     Ready (run_with_env env)
   else
+    let opts := parse_lower_opts (arg_extra a) in
     let cs := text_of (arg_input a) in
     match lex_chars (arg_filename a) cs with
     | CErr msg => Done 1 ("lex error: " ++ msg)
     | COk ts0 =>
-        let ts := if Nat.eqb c 1 || Nat.eqb c 3 then c23_tokens ts0 else ts0 in
+        let is_c23 := Nat.eqb c 1 || Nat.eqb c 3 || Nat.eqb c 7 || Nat.eqb c 9 in
+        let ts := if is_c23 then c23_tokens ts0 else ts0 in
         if Nat.eqb c 0 || Nat.eqb c 1 then
           emit_list_stream emit_token ts
         else
@@ -175,7 +220,9 @@ Definition run (a : args) : out :=
                 let nt := z_to_string (Z.of_nat (List.length ts)) in
                 let ni := z_to_string (Z.of_nat (List.length items)) in
                 Chunk ["ok "; nt; " "; ni; nl_str] (fun _ => Done 0 "")
-              else
+              else if Nat.eqb c 2 || Nat.eqb c 3 then
                 emit_list_stream emit_item items
+              else
+                run_lower_items c opts items
           end
     end.
