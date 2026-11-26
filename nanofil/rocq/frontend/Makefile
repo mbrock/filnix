@@ -16,7 +16,8 @@ CAttrs.vo: CAttrs.v CAst.vo
 CLex.vo: CLex.v CAst.vo CAttrs.vo
 CParse.vo: CParse.v CAst.vo CAttrs.vo CLex.vo
 CCanon.vo: CCanon.v CAst.vo CAttrs.vo CLex.vo
-Extract.vo: Extract.v CAst.vo CAttrs.vo CLex.vo CParse.vo CCanon.vo
+CPp.vo: CPp.v CAst.vo CAttrs.vo CLex.vo CParse.vo
+Extract.vo: Extract.v CAst.vo CAttrs.vo CLex.vo CParse.vo CCanon.vo CPp.vo
 
 nanofil-frontend: words Extract.vo extraction/main.ml
 	cd extraction && ocamlfind ocamlopt -w -a -package zarith,unix -linkpkg \

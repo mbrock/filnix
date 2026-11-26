@@ -1,7 +1,8 @@
-# The Gallina C frontend (rocq/frontend): CLex.v, CAttrs.v, CParse.v, and
-# CCanon.v extracted to OCaml and held byte-for-byte to SWI-Prolog's
-# c_lex.pl + c_parse.pl across every C test fixture and C23 fixture, plus
-# a parse.sh grammar round-trip check over every frontend .v file.
+# The Gallina C frontend (rocq/frontend): CLex.v, CAttrs.v, CParse.v,
+# CCanon.v, and CPp.v extracted to OCaml and held byte-for-byte to SWI-Prolog's
+# c_lex.pl + c_parse.pl + c_pp.pl across every C test fixture, C23 fixture,
+# and preprocessor torture suite, plus a parse.sh grammar round-trip check
+# over every frontend .v file.
 #
 #   nix build -L .#checks.x86_64-linux.nanofil-frontend
 { pkgs }:

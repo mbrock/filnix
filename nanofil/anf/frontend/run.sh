@@ -34,7 +34,7 @@ make -C "$anf/lower" -j"${NIX_BUILD_CORES:-4}" anf-lower >"$work/anf-lower.log"
 [[ -x "$frontend/nanofil-frontend" ]] || make -C "$frontend" -j"${NIX_BUILD_CORES:-4}" >"$work/frontend.log"
 echo "$(stamp) tools ready in $((SECONDS - t0)) s"
 
-cp "$frontend"/{CAst,CAttrs,CLex,CParse,CCanon}.v "$work/f/"
+cp "$frontend"/{CAst,CAttrs,CLex,CParse,CCanon,CPp}.v "$work/f/"
 cp "$anf/lower/Prims.v" "$here"/{Drive,Tap}.v "$work/t/"
 
 t0=$SECONDS
@@ -46,6 +46,7 @@ echo "$(stamp) compiling frontend and tapping λANF (CertiRocq -O 1 --anf-varian
   rocq compile -w -all -R . Frontend CLex.v
   rocq compile -w -all -R . Frontend CParse.v
   rocq compile -w -all -R . Frontend CCanon.v
+  rocq compile -w -all -R . Frontend CPp.v
 )
 (
   cd "$work/t"
@@ -82,10 +83,10 @@ echo "$(stamp) linked $work/anf-frontend in $((SECONDS - t0)) s"
 
 ulimit -s "${ANF_STACK_KB:-1048576}"
 
-python3 - "$nanofil" "$frontend/nanofil-frontend" "$work/anf-frontend" "$stress" <<'PY'
-import glob, os, subprocess, sys
+python3 - "$nanofil" "$frontend/nanofil-frontend" "$work/anf-frontend" "$stress" "$filcc" <<'PY'
+import glob, os, subprocess, sys, tempfile
 
-nanofil, ref_bin, anf_bin, stress = sys.argv[1:5]
+nanofil, ref_bin, anf_bin, stress, filcc = sys.argv[1:6]
 cfiles = sorted(glob.glob(os.path.join(nanofil, 'tests', '**', '*.c'), recursive=True))
 if not cfiles:
     sys.exit("no .c fixtures found")
@@ -107,8 +108,42 @@ print(f"parity ({len(cfiles)} files): lex_diffs={lex_diffs}, parse_diffs={parse_
 if lex_diffs or parse_diffs:
     sys.exit(1)
 
+# Preprocessor parity across all 20 glibc headers under default and stress nurseries.
+headers = [
+    'stdio', 'stdlib', 'string', 'stdint', 'ctype', 'limits', 'errno', 'unistd',
+    'signal', 'math', 'pthread', 'time', 'sys/stat', 'dirent', 'wchar',
+    'inttypes', 'fcntl', 'sys/mman', 'getopt', 'setjmp',
+]
 senv = os.environ.copy()
 senv.update({'ANF_NURSERY': stress, 'FUGC_SCRIBBLE': '1', 'FUGC_VERIFY': '1'})
+
+with tempfile.TemporaryDirectory() as td:
+    hfiles = []
+    for h in headers:
+        p = os.path.join(td, f"h-{h.replace('/', '_')}.c")
+        with open(p, 'w') as f:
+            f.write(f"#include <{h}.h>\n")
+        hfiles.append(p)
+    pp_diffs = 0
+    for hf in hfiles:
+        for cmd in ('pp', 'pp-parse'):
+            r1 = subprocess.run([anf_bin, '--clang', filcc, cmd, hf], capture_output=True)
+            r2 = subprocess.run([ref_bin, '--clang', filcc, cmd, hf], capture_output=True)
+            if r1.returncode != 0 or r2.returncode != 0 or r1.stdout != r2.stdout:
+                pp_diffs += 1
+                if pp_diffs <= 5:
+                    print(f"PP DIFF {cmd} {os.path.basename(hf)}: rc {r1.returncode} vs {r2.returncode}", file=sys.stderr)
+    print(f"pp parity ({len(hfiles)} glibc headers): pp_diffs={pp_diffs}")
+    if pp_diffs:
+        sys.exit(1)
+
+    r_ref_pp = subprocess.run([ref_bin, '--clang', filcc, 'pp-bench'] + hfiles, capture_output=True, text=True, check=True)
+    r_anf_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-bench'] + hfiles, capture_output=True, text=True, check=True)
+    r_str_pp = subprocess.run([anf_bin, '--clang', filcc, 'pp-bench'] + hfiles, env=senv, capture_output=True, text=True, check=True)
+    print(r_ref_pp.stdout.strip())
+    print(r_anf_pp.stdout.strip())
+    print("pp stress:", r_str_pp.stdout.strip())
+
 r_ref = subprocess.run([ref_bin, 'bench'] + cfiles, capture_output=True, text=True, check=True)
 r_anf = subprocess.run([anf_bin, 'bench'] + cfiles, capture_output=True, text=True, check=True)
 r_str = subprocess.run([anf_bin, 'bench'] + cfiles, env=senv, capture_output=True, text=True, check=True)

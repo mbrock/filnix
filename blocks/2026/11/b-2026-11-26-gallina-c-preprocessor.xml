@@ -1,0 +1,58 @@
+<block id="b-2026-11-26-gallina-c-preprocessor" kind="milestone" actor="mbrock" created="2026-11-26T00:46:11Z">
+  <title>The C preprocessor runs in Gallina through both OCaml and λANF</title>
+  <about path="nanofil/rocq/frontend/CPp.v"/>
+  <about path="nanofil/anf/frontend/Drive.v"/>
+  <about path="nanofil/anf/frontend/driver.c"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>The C preprocessor and its 64-bit <c>#if</c> constant evaluator now live in
+    pure, zero-axiom Gallina in <a path="nanofil/rocq/frontend/CPp.v">CPp.v</a>,
+    porting <prolog>c_pp.pl</prolog> and the <prolog>pp_value/2</prolog>
+    evaluator from <prolog>c_types.pl</prolog>. It implements line splicing,
+    comment stripping, preprocessing tokenization, Dave Prosser hide-set macro
+    expansion, <c>#</c> stringification, <c>##</c> token pasting, variadic
+    macros, conditional stacks, <c>#line</c> remapping, <c>#include</c> and
+    <c>#include_next</c>, <c>__has_include</c>, target feature queries, and
+    <c>#pragma once</c>, <c>push_macro</c>, <c>pop_macro</c>, <c>weak</c>, and
+    <c>pack</c>. File reads, path canonicalization, and target feature queries
+    suspend through a pure resumption type (<c>pp_step</c>) interpreted by
+    <a path="nanofil/rocq/frontend/extraction/main.ml">main.ml</a> in OCaml and
+    by <a path="nanofil/anf/frontend/driver.c">driver.c</a> in the Fil-C arena
+    binary.</p>
+  <p>CertiRocq taps the combined preprocessor, lexer, parser, and canonical
+    printer in <a path="nanofil/anf/frontend/Drive.v">Drive.v</a> into 6.5 MB
+    of λANF in 18 seconds.
+    <a path="nanofil/anf/lower/AnfLower.v">AnfLower.v</a> lowers those 3,232
+    hoisted functions into 1,720 checked nanofil IR functions in 6 seconds.
+    Then <sh>nanofil-backend compile-allocated</sh> emits 1,362,219 lines of
+    Fil-C x86-64 assembly in 6 seconds and links a 6.6 MB <sh>anf-frontend</sh>
+    binary in 3 seconds.</p>
+  <p>On <sh>swa</sh>, the OCaml extraction matches SWI-Prolog's
+    <prolog>c_pp.pl</prolog> byte-for-byte across all 20 Fil-C glibc system
+    headers and all 487 C test fixtures, covering 9,672,404 preprocessed tokens
+    with zero diffs, and matches <sh>filcc -E</sh> ASTs on all 20 headers. The
+    λANF Fil-C binary matches OCaml byte-for-byte across all 487 C fixtures and
+    all 20 glibc headers. Across the 487-file corpus, full preprocessing and
+    parsing take 133.7 seconds in SWI-Prolog, 41.3 seconds in the λANF Fil-C
+    binary, and 21.2 seconds in OCaml 5.4.1. Running the 20 glibc headers under
+    a 4096-word nursery with <sh>FUGC_SCRIBBLE=1 FUGC_VERIFY=1</sh> completed
+    43,854 minor collections without traps.</p>
+  <claim status="tested" check="nix build .#checks.x86_64-linux.nanofil-frontend">
+    <p>The extracted OCaml preprocessor matches SWI-Prolog byte-for-byte on the
+      hermetic torture suite (macros, hide sets, 64-bit <c>#if</c>,
+      <c>#line</c>, <c>#include_next</c>, <c>#pragma once</c>,
+      <c>push_macro</c>/<c>pop_macro</c>, <c>weak</c>, <c>pack</c>, and
+      <c>#error</c>) alongside all 487 lex/parse fixtures and 9 C23 fixtures.</p>
+  </claim>
+  <claim status="measured" check="nix build .#checks.x86_64-linux.nanofil-anf-frontend">
+    <p>Both OCaml and λANF-lowered Fil-C preprocess and parse all 20 Fil-C glibc
+      system headers (35,473 tokens, 2,403 AST items) and all 487 C test
+      fixtures (9.64M tokens, 238,887 AST items) with zero diffs against
+      SWI-Prolog.</p>
+  </claim>
+  <metrics baseline="SWI-Prolog pp+parse on 20 Fil-C glibc headers (35,473 tokens, 2,403 items, swa)">
+    <metric label="SWI-Prolog" value="1424" unit="ms"/>
+    <metric label="Gallina → λANF → Fil-C" value="444" unit="ms" delta="3.2× faster"/>
+    <metric label="Gallina → OCaml 5.4.1" value="212" unit="ms" delta="6.7× faster"/>
+  </metrics>
+</block>

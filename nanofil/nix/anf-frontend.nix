@@ -1,7 +1,8 @@
-# The Gallina C frontend (rocq/frontend) through CertiRocq's λANF
-# (certirocq-anf.nix), AnfLower.v, and `nanofil-backend compile-allocated`,
-# linked with the arena of anf/ and Fil-C, and checked byte-for-byte against
-# the OCaml extraction across every C test fixture under both default and
+# The Gallina C frontend (rocq/frontend: CLex, CParse, CCanon, CPp) through
+# CertiRocq's λANF (certirocq-anf.nix), AnfLower.v, and
+# `nanofil-backend compile-allocated`, linked with the arena of anf/ and
+# Fil-C, and checked byte-for-byte against the OCaml extraction across every
+# C test fixture and all 20 Fil-C glibc system headers under both default and
 # 4096-word stress nurseries with FUGC verification.
 #
 # Opt-in like nanofil-anf-backend: builds CertiRocq, which is not in the

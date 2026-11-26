@@ -1,27 +1,32 @@
 (** The arena driver for the Gallina C frontend mirrors nanofil/anf/backend/Drive.v.
-    It reads a file name and source pieces, runs CLex and CParse, and returns a
-    chunked stream of canonical Prolog terms followed by an exit code and any
-    diagnostic message. *)
+    It runs CLex, CParse, and CPp inside the 32-bit arena, streaming canonical
+    Prolog terms via [Chunk] and requesting file reads, existence checks,
+    canonical paths, and feature queries via [NeedRead], [NeedExists],
+    [NeedReal], and [NeedFeat]. *)
 
 From Stdlib Require Import String List Ascii ZArith Arith Bool.
-From Frontend Require Import CAst CAttrs CLex CParse CCanon.
+From Frontend Require Import CAst CAttrs CLex CParse CCanon CPp.
 Import ListNotations.
 Local Open Scope string_scope.
 
-(** A streaming result matching nanofil/anf/backend/driver.c: either [Done]
-    with an exit code and error message, or [Chunk] with string parts to print
-    before invoking the continuation. *)
+(** Arguments passed from C into [run] or a [Ready] closure. *)
+Record args := mkargs {
+  arg_cmd : nat;
+  arg_filename : string;
+  arg_input : list string;
+  arg_extra : list string;
+}.
+
+(** A streaming and I/O resumption result matching nanofil/anf/frontend/driver.c:
+    every constructor has arity at least 1, so constructor ordinals are 0..6. *)
 Inductive out : Type :=
 | Done (code : nat) (why : string)
-| Chunk (ps : list string) (next : unit -> out).
-
-(** The command (`0` lex, `1` lex-c23, `2` parse, `3` parse-c23, `4` count),
-    source file name for locations, and source text in 1 MB pieces. *)
-Record args := mkargs {
-  cmd : nat;
-  filename : string;
-  input : list string;
-}.
+| Chunk (ps : list string) (next : unit -> out)
+| NeedRead (path : string) (next : nat * list string -> out)
+| NeedExists (path : string) (next : nat -> out)
+| NeedReal (path : string) (next : string -> out)
+| NeedFeat (op name : string) (next : string -> out)
+| Ready (k : args -> out).
 
 Definition text_of (l : list string) : list ascii :=
   rev_append (fold_left (fun acc s => rev_append (list_ascii_of_string s) acc) l []) [].
@@ -45,25 +50,132 @@ Definition emit_list_stream {A : Type} (f : A -> list string -> list string)
   | _ => stream_list f true xs
   end.
 
-(** Run the selected frontend command on the given source text. *)
-Definition run (a : args) : out :=
-  let cs := text_of (input a) in
-  match lex_chars (filename a) cs with
-  | CErr msg => Done 1 ("lex error: " ++ msg)
-  | COk ts0 =>
-      let c := cmd a in
-      let ts := if Nat.eqb c 1 || Nat.eqb c 3 then c23_tokens ts0 else ts0 in
-      if Nat.eqb c 0 || Nat.eqb c 1 then
-        emit_list_stream emit_token ts
-      else
-        match c_parse ts with
-        | CErr msg => Done 1 ("parse error: " ++ msg)
-        | COk items =>
-            if Nat.eqb c 4 then
-              let nt := z_to_string (Z.of_nat (List.length ts)) in
-              let ni := z_to_string (Z.of_nat (List.length items)) in
-              Chunk ["ok "; nt; " "; ni; nl_str] (fun _ => Done 0 "")
-            else
-              emit_list_stream emit_item items
-        end
+(** Interpret a pure [pp_step] computation into the arena driver's [out]
+    resumption protocol. *)
+Fixpoint drive_pp_step {A : Type} (s : pp_step A) (k : c_result A -> out) : out :=
+  match s with
+  | PPDone r => k r
+  | PPReadFile path cont =>
+      NeedRead path (fun p =>
+        let '(found, pieces) := p in
+        let ocs := if Nat.eqb found 0 then None else Some (text_of pieces) in
+        drive_pp_step (cont ocs) k)
+  | PPFileExists path cont =>
+      NeedExists path (fun flag =>
+        drive_pp_step (cont (negb (Nat.eqb flag 0))) k)
+  | PPRealPath path cont =>
+      NeedReal path (fun realp =>
+        drive_pp_step (cont realp) k)
+  | PPQueryFeature op name cont =>
+      NeedFeat op name (fun ans =>
+        drive_pp_step (cont ans) k)
   end.
+
+(** Split a space-delimited feature triple `"op name val"` into a
+    [feature_entry]. *)
+Fixpoint split_spaces_acc (cs cur : list ascii) (acc : list string)
+  : list string :=
+  match cs with
+  | [] =>
+      match cur with
+      | [] => rev_append acc []
+      | _ => rev_append (string_of_rev cur :: acc) []
+      end
+  | c :: rest =>
+      if Ascii.eqb c " "%char then
+        match cur with
+        | [] => split_spaces_acc rest [] acc
+        | _ => split_spaces_acc rest [] (string_of_rev cur :: acc)
+        end
+      else split_spaces_acc rest (c :: cur) acc
+  end.
+
+Definition parse_extra_items (extra : list string)
+  : list string * list string * list feature_entry :=
+  let fix go (xs incs defs : list string) (feats : list feature_entry) :=
+    match xs with
+    | [] => (rev_append incs [], rev_append defs [], rev_append feats [])
+    | s :: rest =>
+        match list_ascii_of_string s with
+        | tag :: tail_cs =>
+            let tail_s := string_of_rev (rev_append tail_cs []) in
+            if Ascii.eqb tag "I"%char then
+              go rest (tail_s :: incs) defs feats
+            else if Ascii.eqb tag "D"%char then
+              go rest incs (tail_s :: defs) feats
+            else if Ascii.eqb tag "F"%char then
+              match split_spaces_acc tail_cs [] [] with
+              | [op; nm; v] =>
+                  go rest incs defs (mkFeat op nm v :: feats)
+              | _ => go rest incs defs feats
+              end
+            else go rest incs defs feats
+        | [] => go rest incs defs feats
+        end
+    end in
+  go extra [] [] [].
+
+Definition build_pp_env (a : args) : pp_env :=
+  let defs_cs := text_of (arg_input a) in
+  let dirs := parse_include_dirs (list_ascii_of_string (arg_filename a)) in
+  let '(incs, cli_defs, feats) := parse_extra_items (arg_extra a) in
+  let env0 := make_pp_env defs_cs dirs feats "<input>" in
+  let env1 := match incs with [] => env0 | _ => prepend_include_dirs incs env0 end in
+  fold_left (fun e spec => add_cli_define spec e) cli_defs env1.
+
+(** Run a preprocessor command against a prebuilt [pp_env]:
+    `0` pp, `1` pp-c23, `2` pp-parse, `3` pp-parse-c23, `4` pp-count,
+    `5` pp-only-count. *)
+Definition run_with_env (base_env : pp_env) (a : args) : out :=
+  let c := arg_cmd a in
+  let fname := arg_filename a in
+  drive_pp_step (preprocess_file fname base_env) (fun res =>
+    match res with
+    | CErr msg => Done 1 ("pp error: " ++ msg)
+    | COk ts0 =>
+        let ts := if Nat.eqb c 1 || Nat.eqb c 3 then c23_tokens ts0 else ts0 in
+        if Nat.eqb c 0 || Nat.eqb c 1 then
+          emit_list_stream emit_token ts
+        else if Nat.eqb c 5 then
+          let nt := z_to_string (Z.of_nat (List.length ts)) in
+          Chunk ["ok "; nt; " 0"; nl_str] (fun _ => Done 0 "")
+        else
+          match c_parse ts with
+          | CErr msg => Done 1 ("parse error: " ++ msg)
+          | COk items =>
+              if Nat.eqb c 4 then
+                let nt := z_to_string (Z.of_nat (List.length ts)) in
+                let ni := z_to_string (Z.of_nat (List.length items)) in
+                Chunk ["ok "; nt; " "; ni; nl_str] (fun _ => Done 0 "")
+              else
+                emit_list_stream emit_item items
+          end
+    end).
+
+(** Run the selected frontend command:
+    `0` lex, `1` lex-c23, `2` parse, `3` parse-c23, `4` count, `5` build-env. *)
+Definition run (a : args) : out :=
+  let c := arg_cmd a in
+  if Nat.eqb c 5 then
+    let env := build_pp_env a in
+    Ready (run_with_env env)
+  else
+    let cs := text_of (arg_input a) in
+    match lex_chars (arg_filename a) cs with
+    | CErr msg => Done 1 ("lex error: " ++ msg)
+    | COk ts0 =>
+        let ts := if Nat.eqb c 1 || Nat.eqb c 3 then c23_tokens ts0 else ts0 in
+        if Nat.eqb c 0 || Nat.eqb c 1 then
+          emit_list_stream emit_token ts
+        else
+          match c_parse ts with
+          | CErr msg => Done 1 ("parse error: " ++ msg)
+          | COk items =>
+              if Nat.eqb c 4 then
+                let nt := z_to_string (Z.of_nat (List.length ts)) in
+                let ni := z_to_string (Z.of_nat (List.length items)) in
+                Chunk ["ok "; nt; " "; ni; nl_str] (fun _ => Done 0 "")
+              else
+                emit_list_stream emit_item items
+          end
+    end.
