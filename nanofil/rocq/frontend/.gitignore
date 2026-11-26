@@ -1,0 +1,10 @@
+*.vo
+*.vok
+*.vos
+*.glob
+.*.aux
+nanofil-frontend
+extraction/nanofil_frontend.ml
+extraction/nanofil_frontend.mli
+extraction/*.cm*
+extraction/*.o

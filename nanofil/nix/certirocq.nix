@@ -33,7 +33,7 @@ let
             "lib"
           ];
           buildPhase = "make depend && make -j$NIX_BUILD_CORES export/Clightdefs.vo cfrontend/Csyntax.vo common/Globalenvs.vo";
-          installPhase = "mkdir -p $out $lib/lib/coq/9.1/user-contrib/compcert; for d in lib common x86_64 x86 cfrontend export; do mkdir -p $lib/lib/coq/9.1/user-contrib/compcert/$d; cp -f $d/*.v $d/*.vo $d/*.glob $lib/lib/coq/9.1/user-contrib/compcert/$d/ 2>/dev/null || true; done";
+          installPhase = "mkdir -p $out $lib/lib/coq/9.1/user-contrib/compcert; for d in lib common x86_64 x86 aarch64 cfrontend export; do mkdir -p $lib/lib/coq/9.1/user-contrib/compcert/$d; cp -f $d/*.v $d/*.vo $d/*.glob $lib/lib/coq/9.1/user-contrib/compcert/$d/ 2>/dev/null || true; done";
         })
     ).lib;
 in

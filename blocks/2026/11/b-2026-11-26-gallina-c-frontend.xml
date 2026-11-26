@@ -1,0 +1,44 @@
+<block id="b-2026-11-26-gallina-c-frontend" kind="milestone" actor="mbrock" created="2026-11-26T00:16:01Z">
+  <title>The C lexer and parser run in Gallina through both OCaml and λANF</title>
+  <about path="nanofil/rocq/frontend/CLex.v"/>
+  <about path="nanofil/rocq/frontend/CParse.v"/>
+  <about path="nanofil/anf/frontend/Drive.v"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>The C lexer, attribute classification table, C parser, and canonical Prolog
+    serializer now exist in pure, zero-axiom Gallina in
+    <a path="nanofil/rocq/frontend/CLex.v">CLex.v</a>,
+    <a path="nanofil/rocq/frontend/CAttrs.v">CAttrs.v</a>,
+    <a path="nanofil/rocq/frontend/CParse.v">CParse.v</a>, and
+    <a path="nanofil/rocq/frontend/CCanon.v">CCanon.v</a>.
+    They port <prolog>c_lex.pl</prolog>, <prolog>c_parse.pl</prolog>, and the
+    attribute table of <prolog>c_types.pl</prolog> without pattern matching on
+    string or character literals, so both standard OCaml extraction and
+    CertiRocq's λANF lowering map comparisons onto native equality primitives.</p>
+  <p>CertiRocq taps the full frontend driver into 5.2 MB of λANF in 17 seconds.
+    <a path="nanofil/anf/lower/AnfLower.v">AnfLower.v</a> lowers those 2,412
+    hoisted functions into 1,376 checked nanofil IR functions (9.1 MB) in
+    4 seconds using only the existing arena primitives, and
+    <sh>nanofil-backend compile-allocated</sh> validates and emits 989,080 lines
+    of Fil-C x86-64 assembly in 3 seconds. On <sh>swa</sh> (Ryzen 9 7950X3D),
+    both the OCaml extraction and the Fil-C arena binary match SWI-Prolog
+    byte-for-byte across all 487 C test files, 9 C23 files, and 48 Fil-C glibc
+    preprocessed translation units (4.60 MB, 644,822 tokens, 22,173 AST items).
+    Running the arena binary with a 4096-word nursery under
+    <sh>FUGC_SCRIBBLE=1 FUGC_VERIFY=1</sh> completed 11,767 minor collections
+    across the 487-file corpus without traps.</p>
+  <claim status="tested" check="nix build .#checks.x86_64-linux.nanofil-frontend">
+    <p>The extracted OCaml C frontend matches SWI-Prolog byte-for-byte on all
+      487 C test fixtures and 9 C23 fixtures.</p>
+  </claim>
+  <claim status="measured" check="nix build .#checks.x86_64-linux.nanofil-anf-frontend">
+    <p>The λANF-lowered Fil-C frontend binary matches OCaml and SWI-Prolog
+      byte-for-byte across all 487 C test fixtures and 48 Fil-C glibc
+      preprocessed translation units.</p>
+  </claim>
+  <metrics baseline="SWI-Prolog on 48 Fil-C glibc .i units (4.60 MB, 644k tokens, swa)">
+    <metric label="SWI-Prolog" value="2330" unit="ms"/>
+    <metric label="Gallina → λANF → Fil-C" value="808" unit="ms" delta="2.9× faster"/>
+    <metric label="Gallina → OCaml 5.4.1" value="279" unit="ms" delta="8.3× faster"/>
+  </metrics>
+</block>
