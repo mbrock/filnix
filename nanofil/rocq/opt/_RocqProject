@@ -10,3 +10,9 @@ LocalStorage.v
 Simplify.v
 Inline.v
 Opt.v
+OptAluProof.v
+AliasProof.v
+CopyLocalProof.v
+SimplifyArithProof.v
+SimplifyRebaseProof.v
+SimplifyCfgProof.v

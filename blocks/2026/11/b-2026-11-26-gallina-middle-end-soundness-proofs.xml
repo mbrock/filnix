@@ -1,0 +1,75 @@
+<block id="b-2026-11-26-gallina-middle-end-soundness-proofs" kind="milestone" actor="mbrock" created="2026-11-26T20:22:05Z">
+  <title>Zero-axiom Rocq soundness proofs cover the Gallina middle-end optimizer</title>
+  <about path="nanofil/rocq/opt/OptAluProof.v"/>
+  <about path="nanofil/rocq/opt/AliasProof.v"/>
+  <about path="nanofil/rocq/opt/CopyLocalProof.v"/>
+  <about path="nanofil/rocq/opt/SimplifyArithProof.v"/>
+  <about path="nanofil/rocq/opt/SimplifyRebaseProof.v"/>
+  <about path="nanofil/rocq/opt/SimplifyCfgProof.v"/>
+  <about path="nanofil/rocq/opt/Makefile"/>
+  <about path="nanofil/nix/frontend.nix"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>Six zero-axiom Rocq proof modules under
+    <a path="nanofil/rocq/opt">nanofil/rocq/opt</a> now prove soundness
+    properties of the Gallina unchecked-IR middle-end optimizer directly
+    against <a path="nanofil/rocq/theories/core/Ops.v">Ops.v</a>,
+    <a path="nanofil/rocq/theories/core/Values.v">Values.v</a>, and
+    <a path="nanofil/rocq/theories/core/Semantics.v">Semantics.v</a>.
+    Every proof compiles under pinned Rocq 9.1.1 without importing
+    <a path="nanofil/rocq/theories/core/Runtime.v">Runtime.v</a>, and
+    <a path="nanofil/rocq/opt/Makefile">Makefile</a> runs
+    <sh>Print Assumptions</sh> across all 209 top-level declarations to
+    require <sh>Closed under the global context</sh>.</p>
+  <p><a path="nanofil/rocq/opt/OptAluProof.v">OptAluProof.v</a> proves
+    that <sh>OptIr.eval_alu</sh> matches <sh>Nanofil.Ops.alu</sh> and
+    <sh>Nanofil.Ops.additive_res</sh> across all 18 integer operations and
+    proves that every <sh>Simplify.pure_op</sh> leaves memory untouched,
+    never traps, and evaluates identically in any two memory states,
+    isolating <sh>FloatToInt</sh> as the only pure operation that can return
+    <sh>OpUB</sh>. <a path="nanofil/rocq/opt/SimplifyArithProof.v">SimplifyArithProof.v</a>
+    proves soundness for commutativity, comparison mirroring and negation,
+    power-of-two shift and mask rewrites, all algebraic identities in
+    <sh>apply_identity</sh>, narrow extension subsumption, boolean
+    comparisons, additive and equality cancellation (including exact
+    <sh>ptr_cap</sh> capability preservation at class <ir>p</ir>), and the
+    top-level <sh>simplified</sh> dispatcher.
+    <a path="nanofil/rocq/opt/SimplifyRebaseProof.v">SimplifyRebaseProof.v</a>
+    proves 32-bit signed range analysis, overflow-free 32-to-64
+    <ir>ext(uw)</ir> and <ir>ext(sw)</ir> widening in <sh>lin_op</sh>,
+    commutative value-numbering keys, capability-preserving address rebasing
+    in <sh>rebased_op</sh>, boolean result recording, and branch folding in
+    <sh>fold_jump</sh>.</p>
+  <p><a path="nanofil/rocq/opt/SimplifyCfgProof.v">SimplifyCfgProof.v</a>
+    proves that the worklist fuel <sh>S (length roots + edge_sum)</sh> in
+    <sh>dead_code</sh> always reaches dependency closure, that only pure
+    removable definitions are deleted, that <sh>prune_blocks</sh> preserves
+    every reachable block, and that <sh>bypass_one</sh> and
+    <sh>absorb_one</sh> preserve entry blocks.
+    <a path="nanofil/rocq/opt/AliasProof.v">AliasProof.v</a> proves
+    <sh>alias_facts_sound</sh> for exact 64-bit modular displacements and
+    exact pointer capability preservation.
+    <a path="nanofil/rocq/opt/CopyLocalProof.v">CopyLocalProof.v</a> proves
+    copy-value soundness, copy-chain normality and domain coverage,
+    rank-justified trivial-phi worklist soundness, equivalence between
+    <sh>OptCopy.reps_block_map</sh> and <sh>Copy.reps_block</sh>, the
+    4096-byte local-storage budget bound, and in-bounds byte access for
+    every rewritten <ir>local_load</ir> and <ir>local_store</ir>.</p>
+  <p>Mechanization also surfaced five implicit preconditions and recorded
+    kernel-checked counterexamples for each: a self-mapping cache breaks
+    <sh>copy_chain</sh> normality unless cached endpoints are normal;
+    mutually circular phis break non-well-founded phi consistency without a
+    strictly decreasing rank witness; <sh>bool_result</sh> matches
+    <ir>ext(s)</ir> unless floating-point widening is excluded by typing;
+    folding a same-target branch requires its condition to evaluate; and
+    an unchecked self-comparison at pointer result class changes the word
+    constructor from <sh>WInt 1</sh> to <sh>WPtr</sh>.</p>
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-frontend">
+    <p>The <sh>nanofil-frontend</sh> Nix check builds
+      <sh>make -C rocq/opt proofs</sh>, verifies that all 209 top-level
+      declarations across the six proof modules are closed under the global
+      context with zero axioms, and passes <sh>web/rocq/tests/parse.sh</sh>
+      grammar round-trip compilation across all 34 <sh>.v</sh> files in
+      <sh>rocq/opt</sh> and <sh>rocq/frontend</sh>.</p>
+  </claim>
+</block>
