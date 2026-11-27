@@ -4,8 +4,9 @@
 
 From Stdlib Require Import String ZArith List Bool Lia.
 From Nanofil Require Import Term Maps Syntax Values Memory Ops Semantics Cfg Validate Transport.
+From Nanofil Require IRNotation.
 From Backend Require Import Text Pizlonate PizlonatePollProof PizlonateEvidenceProof.
-From Backend Require NfbTransport.
+From Backend Require IrTerm Nfb NfbTransport.
 Import ListNotations.
 Local Open Scope string_scope.
 Local Open Scope Z_scope.
@@ -1797,27 +1798,121 @@ Qed.
 (** ## Sanity examples *)
 
 (** The loop uses a pointer parameter whose name the generator must
-    skip. A separate integer function exercises the pass in plain mode. *)
+    skip, together with pointer arithmetic, a heap load, stack-local
+    accesses, and a back edge. A separate integer function exercises
+    the pass in plain mode, and both checked outputs are written in
+    [IRNotation](IRNotation.v). *)
 
-Local Definition tmp_atom (s : string) := Pizlonate.tmp (TAtom s).
-Local Definition example_block (s : string) ins j := TApp "block" [TAtom s; TList []; TList ins; j].
+Import IRNotation.
+
+(** Encoding an unchecked instruction [uinst] to its ground Prolog term
+    mirrors [duinst] and delegates core instructions to [IrTerm.enc_inst]. *)
+Local Definition enc_uinst (ui : uinst) : term :=
+  match ui with
+  | UCore i => IrTerm.enc_inst i
+  | ULoadPtr d a =>
+      TApp "let" [IrTerm.enc_tmp d; TAtom "p"; TApp "load" [TAtom "p"]; TList [IrTerm.enc_value a]]
+  | ULoad d k lt a =>
+      TApp "let" [IrTerm.enc_tmp d; eclass k; TApp "load" [IrTerm.enc_load_type lt]; TList [IrTerm.enc_value a]]
+  | UAtomicLoadPtr d a =>
+      TApp "let" [IrTerm.enc_tmp d; TAtom "p"; TApp "atomic_load" [TAtom "p"]; TList [IrTerm.enc_value a]]
+  | UCas d k ct e n a =>
+      TApp "let" [IrTerm.enc_tmp d; eclass k; TApp "cas" [IrTerm.enc_cas_type ct];
+                  TList [IrTerm.enc_value e; IrTerm.enc_value n; IrTerm.enc_value a]]
+  | UStorePtr v a => TApp "store" [TAtom "p"; IrTerm.enc_value v; IrTerm.enc_value a]
+  | UStore w v a => TApp "store" [IrTerm.enc_width w; IrTerm.enc_value v; IrTerm.enc_value a]
+  | UAtomicStorePtr v a => TApp "atomic_store" [TAtom "p"; IrTerm.enc_value v; IrTerm.enc_value a]
+  | UAccess r a sz al => TApp "access" [IrTerm.enc_rights r; IrTerm.enc_value a; TInt sz; TInt al]
+  | ULocalLoadPtr d x off =>
+      TApp "local_load" [IrTerm.enc_tmp d; TAtom "p"; TAtom "p"; x; TInt off]
+  | ULocalLoad d k lt x off =>
+      TApp "local_load" [IrTerm.enc_tmp d; eclass k; IrTerm.enc_load_type lt; x; TInt off]
+  | ULocalStorePtr v x off => TApp "local_store" [TAtom "p"; IrTerm.enc_value v; x; TInt off]
+  | ULocalStore w v x off => TApp "local_store" [IrTerm.enc_width w; IrTerm.enc_value v; x; TInt off]
+  end.
+
+(** Encoding an unchecked block or function turns typed [ublock] and
+    [ufunc] values into the Prolog module terms that [Pizlonate] accepts. *)
+Local Definition enc_ublock (ub : ublock) : term :=
+  TApp "block" [ub_label ub; TList (map IrTerm.enc_phi (ub_phis ub));
+                TList (map enc_uinst (ub_insts ub)); IrTerm.enc_jump (ub_jump ub)].
+
+Local Definition enc_ufunc (uf : ufunc) : term :=
+  TApp "func" [ufn_name uf; ufn_linkage uf; Nfb.enc_ret (ufn_ret uf);
+               TList (map (fun p => TApp "param" [eclass (fst p); TApp "tmp" [snd p]]) (ufn_params uf));
+               TList (map enc_ublock (ufn_blocks uf))].
+
+Local Definition enc_uitem (it : uitem) : term :=
+  match it with
+  | UIFunc uf => enc_ufunc uf
+  | UIData n lk al its => Nfb.enc_item (IData n lk al its)
+  | UIAlias n lk tg => Nfb.enc_item (IAlias n lk tg)
+  end.
+
+Local Definition enc_umodule (umd : umodule) : term :=
+  TApp "module" [TList (map enc_uitem umd)].
+
+Local Definition ufn (lk fn : string) (ps : list (class * name)) (r : ret_type)
+    (bs : list ublock) : ufunc :=
+  mkUFunc (TAtom fn) (TAtom lk) r ps bs.
+
+Local Definition uparam (k : class) (d : string) : class * name := (k, TAtom d).
+
+Local Definition ublk (lab : string) (uis : list uinst) (j : jump) : ublock :=
+  mkUBlock (TAtom lab) [] uis j.
+
+Local Definition uload (d : string) (k : class) (lt : load_type) (a : string) : uinst :=
+  ULoad (TAtom d) k lt (Tmp (TAtom a)).
+
+Local Definition ulocal_store (w : width) (v x : string) (off : Z) : uinst :=
+  ULocalStore w (Tmp (TAtom v)) (TAtom x) off.
+
+Local Definition ulocal_load (d : string) (k : class) (lt : load_type) (x : string) (off : Z) : uinst :=
+  ULocalLoad (TAtom d) k lt (TAtom x) off.
 
 (** The entry allocates a stack slot. Each iteration loads a word at a
     fixed offset from the pointer and branches on the value read back from the slot. *)
-Definition example_filc_loop_module :=
-  TApp "module" [TList [TApp "func" [TAtom "loop"; TAtom "export"; TAtom "w";
-    TList [TApp "param" [TAtom "p"; tmp_atom "chk0"]];
-    TList [
-      example_block "entry" [TApp "local_alloc" [TAtom "slot"; TInt 4]]
-        (TApp "goto" [TAtom "header"]);
-      example_block "header" [
-        TApp "let" [tmp_atom "address"; TAtom "p"; TAtom "add";
-                    TList [tmp_atom "chk0"; TApp "const" [TInt 4]]];
-        TApp "let" [tmp_atom "word"; TAtom "w"; TApp "load" [TAtom "sw"]; TList [tmp_atom "address"]];
-        TApp "local_store" [TAtom "w"; tmp_atom "word"; TAtom "slot"; TInt 0];
-        TApp "local_load" [tmp_atom "again"; TAtom "w"; TAtom "sw"; TAtom "slot"; TInt 0]]
-        (TApp "branch" [tmp_atom "again"; TAtom "header"; TAtom "exit"]);
-      example_block "exit" [] (TApp "ret" [tmp_atom "again"])]]]].
+Definition example_filc_loop_func : ufunc :=
+  ufn "export" "loop" [uparam P "chk0"] (RClass W) [
+    ublk "entry"
+      [UCore ir{ alloca "slot" 4 }]
+      ir{ goto "header" };
+    ublk "header"
+      [UCore ir{ %"address" : P = Add %"chk0", #4 };
+       uload "word" W (LdNarrow Sw) "address";
+       ulocal_store Ww "word" "slot" 0;
+       ulocal_load "again" W (LdNarrow Sw) "slot" 0]
+      ir{ br %"again" ? "header" : "exit" };
+    ublk "exit" []
+      ir{ ret %"again" }
+  ].
+
+(** Encoding [example_filc_loop_func] yields the unchecked module term
+    consumed by [Pizlonate.pizlonate_module]. *)
+Definition example_filc_loop_module : term :=
+  enc_umodule [UIFunc example_filc_loop_func].
+
+(** Pizlonating [example_filc_loop_module] skips the parameter name
+    `chk0`, turns pointer addition into a flight, wraps each heap and
+    local access in a fresh capability check, and inserts a poll on the
+    loop back edge. *)
+Definition example_filc_loop_checked : func :=
+  ir_fn{ "export" "loop"(P %"chk0") -> (RClass W) {
+    @"entry":
+      alloca "slot" 4
+      => goto "header";
+    @"header":
+      %"address" = %"chk0" +p #4;
+      %"chk1" : A = (Check 0 4 Read 1) %"address";
+      %"word" : W = (RawLoad (LdNarrow Sw) 0) %"chk1";
+      %"chk2" : A = (CheckLocal (TAtom "slot") 0 4 Write 1);
+      store Ww [%"chk2" + 0] <- %"word";
+      %"chk3" : A = (CheckLocal (TAtom "slot") 0 4 Read 1);
+      %"again" : W = (RawLoad (LdNarrow Sw) 0) %"chk3"
+      => br %"again" ? poll "header" : "exit";
+    @"exit":
+      => ret %"again"
+  } }.
 
 (** The unchecked validator accepts the loop and its local accesses. *)
 Example example_filc_loop_valid_unchecked : valid_unchecked_module example_filc_loop_module.
@@ -1826,27 +1921,39 @@ Proof.
   split; [reflexivity|]. constructor; [vm_compute; reflexivity|constructor].
 Qed.
 
-(** The transformed loop satisfies module validity and sets the checked flag. *)
-Example example_filc_loop_pizlonates_valid : exists m_out md,
+(** The transformed loop decodes to [example_filc_loop_checked],
+    satisfies module validity, and sets the checked flag. *)
+Example example_filc_loop_pizlonates_valid : exists m_out,
   Pizlonate.pizlonate_module example_filc_loop_module = Some m_out /\
-  Transport.decode_module m_out = Some md /\ Validate.valid md = Some true /\
-  Validate.module_checked md = true.
+  Transport.decode_module m_out = Some [IFunc example_filc_loop_checked] /\
+  Validate.valid [IFunc example_filc_loop_checked] = Some true /\
+  Validate.module_checked [IFunc example_filc_loop_checked] = true.
 Proof.
   let out := eval vm_compute in (Pizlonate.pizlonate_module example_filc_loop_module) in
-  lazymatch out with Some ?m => exists m; assert (Run : Pizlonate.pizlonate_module example_filc_loop_module = Some m)
-    by reflexivity end.
+  lazymatch out with
+  | Some ?m =>
+      exists m;
+      assert (Run : Pizlonate.pizlonate_module example_filc_loop_module = Some m)
+        by (vm_compute; reflexivity)
+  end.
   destruct (pizlonate_module_valid _ _ example_filc_loop_valid_unchecked Run) as (md & D & V).
-  exists md. split; [exact Run|]. split; [exact D|]. split; [exact V|].
-  vm_compute in D. injection D as <-. reflexivity.
+  assert (Eq : md = [IFunc example_filc_loop_checked]).
+  { vm_compute in D. injection D as <-. reflexivity. }
+  subst md.
+  split; [exact Run|]. split; [exact D|]. split; [exact V|]. reflexivity.
 Qed.
 
 (** The plain function returns the sum of two words. *)
-Definition example_plain_module :=
-  TApp "module" [TList [TApp "func" [TAtom "sum"; TAtom "local"; TAtom "w";
-    TList [TApp "param" [TAtom "w"; tmp_atom "x"]; TApp "param" [TAtom "w"; tmp_atom "y"]];
-    TList [example_block "entry"
-      [TApp "let" [tmp_atom "z"; TAtom "w"; TAtom "add"; TList [tmp_atom "x"; tmp_atom "y"]]]
-      (TApp "ret" [tmp_atom "z"])]]]].
+Definition example_plain_func : func :=
+  ir_fn{ "local" "sum"(W %"x", W %"y") -> (RClass W) {
+    @"entry":
+      %"z" : W = Add %"x", %"y"
+      => ret %"z"
+  } }.
+
+(** Encoding [example_plain_func] produces the plain-mode module term. *)
+Definition example_plain_module : term :=
+  Nfb.enc_module [IFunc example_plain_func].
 
 (** The mode detector selects plain mode for the integer function. *)
 Example example_plain_mode :
@@ -1859,4 +1966,25 @@ Example example_plain_valid_unchecked : valid_unchecked_module example_plain_mod
 Proof.
   do 2 eexists. split; [reflexivity|]. split; [vm_compute; reflexivity|].
   split; [reflexivity|]. constructor; [vm_compute; reflexivity|constructor].
+Qed.
+
+(** Pizlonating the plain module preserves [example_plain_func] and
+    passes [Validate.valid]. *)
+Example example_plain_pizlonates_valid : exists m_out,
+  Pizlonate.pizlonate_module example_plain_module = Some m_out /\
+  Transport.decode_module m_out = Some [IFunc example_plain_func] /\
+  Validate.valid [IFunc example_plain_func] = Some true.
+Proof.
+  let out := eval vm_compute in (Pizlonate.pizlonate_module example_plain_module) in
+  lazymatch out with
+  | Some ?m =>
+      exists m;
+      assert (Run : Pizlonate.pizlonate_module example_plain_module = Some m)
+        by (vm_compute; reflexivity)
+  end.
+  destruct (pizlonate_module_valid _ _ example_plain_valid_unchecked Run) as (md & D & V).
+  assert (Eq : md = [IFunc example_plain_func]).
+  { vm_compute in D. injection D as <-. reflexivity. }
+  subst md.
+  split; [exact Run|]. split; [exact D|]. exact V.
 Qed.

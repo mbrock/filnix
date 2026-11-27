@@ -17,8 +17,8 @@
     <a path="nanofil/rocq/theories/core/Validate.v">Validate.v</a>.
     <a path="nanofil/rocq/backend/Makefile">Makefile</a> adds
     <sh>.pizlonate-assumptions</sh> to both <sh>all</sh> and <sh>proofs</sh>
-    and verifies with <sh>Print Assumptions</sh> that all 64 exported
-    declarations across the three modules are
+    and verifies with <sh>Print Assumptions</sh> that every exported
+    declaration across the three modules is
     <sh>Closed under the global context</sh> with no <sh>Runtime</sh>
     axioms.</p>
   <p><a path="nanofil/rocq/backend/PizlonatePollProof.v">PizlonatePollProof.v</a>
