@@ -15,9 +15,11 @@ SOURCES = $(shell grep '\.v$$' _RocqProject)
 AMD64 = Amd64Word Amd64Memory Amd64Machine Amd64Step Amd64Asm Amd64Total \
   Amd64DivisionCode Amd64Division Amd64Frame Amd64Layout Amd64DivisionStep
 
-PROOFS = RegsProof.vo NfbProof.vo NfbTotal.vo $(AMD64:=.vo)
+PIZLONATE = PizlonatePollProof PizlonateEvidenceProof PizlonateProof
 
-all: nanofil-backend RegsProof.vo .regs-assumptions .amd64-assumptions
+PROOFS = RegsProof.vo NfbProof.vo NfbTotal.vo $(PIZLONATE:=.vo) $(AMD64:=.vo)
+
+all: nanofil-backend RegsProof.vo .regs-assumptions .pizlonate-assumptions .amd64-assumptions
 
 # No Admitted and no axioms, in any backend file.
 words:
@@ -46,11 +48,15 @@ endef
 	$(call closed,RegsProof)
 	@touch $@
 
+.pizlonate-assumptions: words $(PIZLONATE:=.vo)
+	$(call closed,$(PIZLONATE))
+	@touch $@
+
 .amd64-assumptions: words $(AMD64:=.vo)
 	$(call closed,$(AMD64))
 	@touch $@
 
-proofs: words $(PROOFS) .regs-assumptions .amd64-assumptions
+proofs: words $(PROOFS) .regs-assumptions .pizlonate-assumptions .amd64-assumptions
 
 # What each file imports, the model's files included. rocq dep warns
 # about the libraries of model files the backend does not import.
@@ -71,7 +77,7 @@ nanofil-backend: words Extract.vo extraction/main.ml
 	  nanofil_backend.mli nanofil_backend.ml main.ml -o ../nanofil-backend
 
 clean:
-	rm -f .deps .regs-assumptions .amd64-assumptions *.vo *.vok *.vos *.glob .*.aux nanofil-backend
+	rm -f .deps .regs-assumptions .pizlonate-assumptions .amd64-assumptions *.vo *.vok *.vos *.glob .*.aux nanofil-backend
 	rm -f extraction/nanofil_backend.ml extraction/nanofil_backend.mli extraction/*.cm* extraction/*.o
 
 .PHONY: all words proofs clean

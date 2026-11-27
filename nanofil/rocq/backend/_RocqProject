@@ -28,6 +28,9 @@ NfbRead.v
 NfbProof.v
 NfbTotal.v
 Pizlonate.v
+PizlonatePollProof.v
+PizlonateEvidenceProof.v
+PizlonateProof.v
 TermCfg.v
 Copy.v
 Escape.v

@@ -1,0 +1,68 @@
+<block id="b-2026-11-27-pizlonate-validity-proof" kind="milestone" actor="mbrock" created="2026-11-27T13:09:58Z">
+  <title>Zero-axiom Rocq proofs establish validator acceptance for the Gallina Pizlonator</title>
+  <about path="nanofil/rocq/backend/Pizlonate.v"/>
+  <about path="nanofil/rocq/backend/PizlonatePollProof.v"/>
+  <about path="nanofil/rocq/backend/PizlonateEvidenceProof.v"/>
+  <about path="nanofil/rocq/backend/PizlonateProof.v"/>
+  <about path="nanofil/rocq/backend/Makefile"/>
+  <tag name="nanofil"/>
+  <tag name="formal"/>
+  <p>Three zero-axiom Rocq proof modules under
+    <a path="nanofil/rocq/backend">nanofil/rocq/backend</a> now prove that
+    <a path="nanofil/rocq/backend/Pizlonate.v">Pizlonate.v</a> turns every
+    well-formed unchecked core-subset module into a checked-IR module that
+    decodes under
+    <a path="nanofil/rocq/theories/core/Transport.v">Transport.v</a> and
+    passes
+    <a path="nanofil/rocq/theories/core/Validate.v">Validate.v</a>.
+    <a path="nanofil/rocq/backend/Makefile">Makefile</a> adds
+    <sh>.pizlonate-assumptions</sh> to both <sh>all</sh> and <sh>proofs</sh>
+    and verifies with <sh>Print Assumptions</sh> that all 64 exported
+    declarations across the three modules are
+    <sh>Closed under the global context</sh> with no <sh>Runtime</sh>
+    axioms.</p>
+  <p><a path="nanofil/rocq/backend/PizlonatePollProof.v">PizlonatePollProof.v</a>
+    proves decimal-printer injectivity for <sh>Text.decimal</sh>, shows
+    that <sh>Pizlonate.fresh</sh> with fuel equal to <sh>length names</sh>
+    always finds an unused <ir>chk</ir> proof name with a strictly
+    increasing counter, proves <sh>label_index</sh> uniqueness, proves that
+    <sh>polled_jump</sh> preserves block successors, predecessors, and
+    <sh>Cfg.block_intervals</sh>, and proves unconditionally in
+    <sh>pizlonated_blocks_polls_every_cycle</sh> that every output function
+    passes <sh>Validate.polls_every_cycle</sh> because all unpolled edges
+    strictly increase block order.</p>
+  <p><a path="nanofil/rocq/backend/PizlonateEvidenceProof.v">PizlonateEvidenceProof.v</a>
+    defines the unchecked core-subset instruction syntax, decoder
+    <sh>decode_umodule</sh>, and well-formedness predicate
+    <sh>valid_unchecked_module</sh>. It proves term-to-syntax simulation
+    between <sh>Pizlonate.checked_access</sh>,
+    <sh>Pizlonate.flight_inst</sh>, and <sh>Transport.dinst</sh> across all
+    twelve unchecked heap, atomic, vector-access, and stack-local forms plus
+    indirect calls and pointer flights. Because every emitted capability
+    check is consumed by the immediately following raw access, touch, or
+    raw call, <sh>piz_func_evidence_pass</sh> discharges
+    <sh>Validate.evidence_pass</sh> from arbitrary incoming live facts,
+    <sh>piz_func_limit_reads</sh> discharges <sh>Validate.limit_reads</sh>,
+    and <sh>step_uinst_valid_inst</sh> proves instruction typing.</p>
+  <p><a path="nanofil/rocq/backend/PizlonateProof.v">PizlonateProof.v</a>
+    connects fresh-name disjointness, temporary-class preservation,
+    monotone instruction-index mapping for strict SSA dominance and
+    <sh>valid_locals</sh>, and module-level symbol, data, and alias
+    preservation to prove <sh>pizlonate_module_stage_valid</sh>,
+    <sh>pizlonate_module_valid</sh>, and
+    <sh>pizlonate_module_checked_valid</sh>. Whenever an output module sets
+    <sh>Validate.module_checked</sh>, the corollary delivers both conjuncts
+    of <sh>Walk.checked_module</sh>, matching the precondition of
+    <a path="nanofil/rocq/theories/soundness/Soundness.v">Soundness.v</a>.
+    Sanity examples verify that concrete Fil-C loop and plain-mode integer
+    modules satisfy <sh>valid_unchecked_module</sh> and discharge
+    <sh>Validate.valid</sh> through the main theorem.</p>
+  <claim status="proved" check="nix build .#checks.x86_64-linux.nanofil-backend">
+    <p>The <sh>nanofil-backend</sh> Nix check compiles all three Pizlonation
+      proof modules under pinned Rocq 9.1.1, enforces
+      <sh>Closed under the global context</sh> via
+      <sh>.pizlonate-assumptions</sh>, runs every backend regression gate,
+      and passes <sh>web/rocq/tests/parse.sh</sh> grammar round-trip
+      compilation across all backend <sh>.v</sh> files.</p>
+  </claim>
+</block>
