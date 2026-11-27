@@ -6,9 +6,9 @@
 #   nix build -L .#checks.x86_64-linux.nanofil-backend
 #   nix build -L .#checks.x86_64-linux.nanofil-backend-full
 #
-# It compiles the backend and the model files it imports (theories;
-# not the model's proofs, so this does not wait for them), printing
-# each file's time, extracts and links bin/nanofil-backend, and runs
+# It compiles the backend and the model and soundness files it imports
+# (theories; not the Iris program-logic proofs, so this does not wait for
+# them), printing each file's time, extracts and links bin/nanofil-backend, and runs
 # the gates of the milestones reached so far. M1: the extracted
 # printer prints asm.pl's text from the lines the Prolog compiler
 # emits (rocq/backend/tests/asm.sh), on the Fil-C IR fixtures and

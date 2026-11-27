@@ -3,10 +3,11 @@
 #   make clean
 # Needs rocq, the Rocq stdlib, ocamlfind and zarith (nix/backend.nix).
 #
-# The backend imports the model's definitions (../theories). Only the
-# model files it imports are compiled, each with its own imports, so a
-# build does not wait for the model's proofs; a model file that is
-# already compiled is not compiled again. Each file's time is printed.
+# The backend imports the model's definitions and soundness theorems
+# (../theories). Only the model files it imports are compiled, each with
+# its own imports, so a build does not wait for the Iris program-logic
+# proofs; a model file that is already compiled is not compiled again.
+# Each file's time is printed.
 FLAGS = -R ../theories Nanofil -R . Backend
 SOURCES = $(shell grep '\.v$$' _RocqProject)
 
@@ -15,7 +16,7 @@ SOURCES = $(shell grep '\.v$$' _RocqProject)
 AMD64 = Amd64Word Amd64Memory Amd64Machine Amd64Step Amd64Asm Amd64Total \
   Amd64DivisionCode Amd64Division Amd64Frame Amd64Layout Amd64DivisionStep
 
-PIZLONATE = PizlonatePollProof PizlonateEvidenceProof PizlonateProof
+PIZLONATE = PizlonatePollProof PizlonateEvidenceProof PizlonateProof PizlonateSoundness
 
 PROOFS = RegsProof.vo NfbProof.vo NfbTotal.vo $(PIZLONATE:=.vo) $(AMD64:=.vo)
 

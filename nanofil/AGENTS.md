@@ -324,6 +324,12 @@ exemplars):
 - Do not use `*italics*` or `_italics_` in `.v` comments (`rocq_draw.pl`
   does not parse Markdown emphasis), and do not wrap single-letter bound
   variables in `[...]` or backticks.
+- Write concrete IR functions, blocks, instructions, and jumps in Rocq
+  definitions and examples with `Nanofil.IRNotation` (`ir_fn{ ... }`,
+  `ir_blk{ ... }`, `ir[...]`, `ir{ ... }`) and typed encoders rather than
+  raw `TApp`/`TAtom` term trees; when earlier proof binders clash with
+  `IRNotation` keywords, require it at the top and `Import IRNotation.`
+  only above the examples section.
 - Run `../scripts/prose-check -v --all-comments --max-passages 64 FILE.v`
   to check every comment passage in a `.v` file.
 
